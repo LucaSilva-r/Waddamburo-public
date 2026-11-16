@@ -3,9 +3,9 @@ using Waddamburo.Catalog;
 namespace Waddamburo.Providers.Stock;
 
 /// <summary>
-/// The WII/WII U library: the console discs' songs (<see cref="WiiCatalogProvider"/>, <see cref="WiiUCatalogProvider"/>)
+/// The WII library or the WII U library (one platform each, as Nijiiro's installs): its releases' songs (newest first) (<see cref="WiiCatalogProvider"/>, <see cref="WiiUCatalogProvider"/>)
 /// in one folder per genre. A song on several discs (same id) whose charts play the same (each shared course's notes
-/// and rolls, in order; the ports' timing floats differ) is listed once, from the newest disc (Wii U: ura, 44.1 kHz);
+/// and rolls, in order; the ports' timing floats differ) is listed once, from the newest disc;
 /// one charted differently is listed per disc, its title marked with the release.
 /// </summary>
 public sealed class WiiLibraryProvider : ISongCatalogProvider, ICatalogAssetResolver, IPlayableChartProvider
@@ -16,12 +16,23 @@ public sealed class WiiLibraryProvider : ISongCatalogProvider, ICatalogAssetReso
     // The game's genre order.
     private static readonly string[] Genres = ["J-POP", "アニメ", "ボーカロイド", "童謡", "バラエティ", "クラシック", "ゲームミュージック", "ナムコオリジナル"];
 
-    public WiiLibraryProvider(IEnumerable<WiiUCatalogProvider> wiiU, IEnumerable<WiiCatalogProvider> wii) =>
-        _discs = [.. wiiU.Select(static disc => ((ISongCatalogProvider)disc, "Wii U")), .. wii.Select(static disc => ((ISongCatalogProvider)disc, "Wii"))];
+    /// <summary>The WII library: the Wii discs' songs.</summary>
+    public WiiLibraryProvider(IEnumerable<WiiCatalogProvider> wii)
+        : this(SongSourceKind.Wii, "wii", wii.Select(static disc => ((ISongCatalogProvider)disc, disc.Release, disc.Order))) { }
 
-    public CatalogProviderId Id { get; } = new("wii");
+    /// <summary>The WII U library: the Wii U titles' songs.</summary>
+    public WiiLibraryProvider(IEnumerable<WiiUCatalogProvider> wiiU)
+        : this(SongSourceKind.WiiU, "wii-u", wiiU.Select(static disc => ((ISongCatalogProvider)disc, disc.Release, disc.Order))) { }
 
-    public SongSourceKind Source => SongSourceKind.Wii;
+    private WiiLibraryProvider(SongSourceKind source, string id, IEnumerable<(ISongCatalogProvider Disc, string Release, int Order)> discs)
+    {
+        (Source, Id) = (source, new CatalogProviderId(id));
+        _discs = [.. discs.OrderByDescending(static disc => disc.Order).Select(static disc => (disc.Disc, disc.Release))];
+    }
+
+    public CatalogProviderId Id { get; }
+
+    public SongSourceKind Source { get; }
 
     public async ValueTask<SongCatalogContribution> ScanAsync(IProgress<CatalogScanProgress>? progress, CancellationToken cancellationToken)
     {
@@ -94,14 +105,15 @@ public sealed class WiiLibraryProvider : ISongCatalogProvider, ICatalogAssetReso
     // The disc's song with this library's assets and, when the discs differ, its release in the title.
     private SongDescriptor relabel(SongDescriptor song, int disc, string? release)
     {
+        var key = song.Key;
         var title = release is null ? song.Title
             : new SongTitle($"{song.Title.Primary} ({release})", song.Title.Japanese is { } japanese ? $"{japanese} ({release})" : null);
-        var charts = song.Charts.Select(chart => new SongChartDescriptor(chart.Key, chart.DifficultyName, own(disc, chart.ChartAsset),
+        var charts = song.Charts.Select(chart => new SongChartDescriptor(new ChartKey(key, chart.Key.StableId), chart.DifficultyName, own(disc, chart.ChartAsset),
             chart.Course, chart.Level, chart.DuetChartAssets.IsEmpty ? null : chart.DuetChartAssets.Select(duet => own(disc, duet)))
         {
             HasBranches = chart.HasBranches,
         });
-        return new SongDescriptor(song.Key, title, song.Artist, charts,
+        return new SongDescriptor(key, title, song.Artist, charts,
             song.AudioAsset is { } audio ? own(disc, audio) : null, song.PreviewStart, song.Subtitle)
         {
             ScenePresets = song.ScenePresets,
@@ -136,7 +148,7 @@ public sealed class WiiLibraryProvider : ISongCatalogProvider, ICatalogAssetReso
         return (true, firstSpecial, secondSpecial);
     }
 
-    // "wii1:anp" and "wiiu:anp" are one song id.
+    // "wii1:anp", "wii4:anp" and "wiiu:anp" are one song id.
     private static string bareId(SongKey key) => key.StableId[(key.StableId.IndexOf(':', StringComparison.Ordinal) + 1)..];
 
     private static string genreName(string genre) => genre switch

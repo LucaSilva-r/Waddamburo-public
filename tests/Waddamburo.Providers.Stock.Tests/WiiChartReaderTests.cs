@@ -57,5 +57,42 @@ public sealed class WiiChartReaderTests
         Assert.Equal((4000d, 4500d, PlayableLongNoteKind.Balloon, 5),
             (balloon.StartTime.TotalMilliseconds, balloon.EndTime.TotalMilliseconds, balloon.Kind, balloon.RequiredHits));
         Assert.Equal((720, 180), (chart.ScoreInit, chart.ScoreDiff));
+
+        // The same chart in みんなでパーティ☆3代目!'s compact layout comes back as the same arcade fumen.
+        var fumen = WiiChartReader.ToFumen(data, tuning, 100, 100);
+        Assert.Null(WiiChartReader.CompactToFumen(fumen, 100));
+        Assert.Equal(fumen, WiiChartReader.CompactToFumen(compact(fumen), 100));
+    }
+
+    // An arcade fumen (thresholds fitting int16) in the compact layout CompactToFumen reads.
+    private static byte[] compact(byte[] fumen)
+    {
+        var output = new List<byte>(fumen[..0x178]);
+        output.AddRange(fumen[0x1B0..0x1F8]);
+        output.AddRange(new byte[4]);
+        output.AddRange(fumen[0x200..0x204]);
+        var at = 520;
+        for (var measure = 0; measure < BinaryPrimitives.ReadInt32BigEndian(fumen.AsSpan(0x200)); measure++)
+        {
+            output.AddRange(fumen[at..(at + 10)]);
+            var threshold = new byte[2];
+            for (var value = 0; value < 6; value++)
+            {
+                BinaryPrimitives.WriteInt16BigEndian(threshold, (short)BinaryPrimitives.ReadInt32BigEndian(fumen.AsSpan(at + 12 + 4 * value)));
+                output.AddRange(threshold);
+            }
+            output.AddRange(new byte[2]);
+            at += 40;
+            for (var branch = 0; branch < 3; branch++)
+            {
+                var notes = BinaryPrimitives.ReadUInt16BigEndian(fumen.AsSpan(at));
+                var end = at + 8;
+                for (var note = 0; note < notes; note++)
+                    end += BinaryPrimitives.ReadInt32BigEndian(fumen.AsSpan(end)) is 6 or 9 ? 32 : 24;
+                output.AddRange(fumen[at..end]);
+                at = end;
+            }
+        }
+        return [.. output];
     }
 }

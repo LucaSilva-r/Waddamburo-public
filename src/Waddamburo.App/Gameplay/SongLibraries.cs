@@ -128,13 +128,14 @@ internal sealed class SongLibraries : IDisposable
             .ToList() : [];
         // The running game's data is Green, the newest release: it comes first whatever the others are.
         List<string> roots = [.. StockCatalogProvider.IsStockData(dataRoot) ? [dataRoot] : Array.Empty<string>(), .. others];
-        // Wii and Wii U discs set among them: the WII/WII U library.
+        // Wii and Wii U discs set among them: the WII and WII U libraries.
         var folders = arcade.Home ? ArcadeSettings.Folders(arcade.StockFolders) : [];
         List<WiiUCatalogProvider> wiiU = [.. folders.Select(WiiUCatalogProvider.FindRoot).OfType<string>()
             .Distinct(StringComparer.Ordinal).Select(static root => new WiiUCatalogProvider(root))];
         List<WiiCatalogProvider> wii = [.. folders.Select(WiiCatalogProvider.FindRoot).OfType<string>()
             .Distinct(StringComparer.Ordinal).Select(static root => new WiiCatalogProvider(root))];
-        ISongCatalogProvider[] wiiLibrary = wiiU.Count + wii.Count > 0 ? [new WiiLibraryProvider(wiiU, wii)] : [];
+        ISongCatalogProvider[] wiiLibrary = [.. wii.Count > 0 ? [new WiiLibraryProvider(wii)] : Array.Empty<ISongCatalogProvider>(),
+            .. wiiU.Count > 0 ? [new WiiLibraryProvider(wiiU)] : Array.Empty<ISongCatalogProvider>()];
         return [.. roots.Count switch
         {
             0 => [],

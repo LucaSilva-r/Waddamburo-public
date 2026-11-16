@@ -399,7 +399,7 @@ public sealed class ScoreStore : IDisposable
         ArgumentNullException.ThrowIfNull(play);
         ArgumentNullException.ThrowIfNull(chart);
         // Record privacy with the play itself, so a later setting change never queues private history.
-        if (!uploadCustomSongs && play.Chart.Song.Source is not (SongSourceKind.Stock or SongSourceKind.Nijiiro or SongSourceKind.Wii))
+        if (!uploadCustomSongs && play.Chart.Song.Source is not (SongSourceKind.Stock or SongSourceKind.Nijiiro or SongSourceKind.Wii or SongSourceKind.WiiU))
             play = play with { UploadBlocked = true };
         lock (_connection)
         {

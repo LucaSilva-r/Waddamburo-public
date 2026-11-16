@@ -21,7 +21,7 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
     private readonly OverlayMenu _menu = new(application, fontPath);
 
     // Section: one of the settings page's sections (its title in the page's section).
-    private enum Page { Main, Coin, Game, Sound, Io, Bookkeeping, Others, Section, Drums, Libraries, Network }
+    private enum Page { Main, Coin, Game, Sound, Io, Bookkeeping, Others, Section, Drums, Libraries, Network, Releases, WiiReleases, NijiiroInstalls }
 
     /// <summary>The server check behind NETWORK OPTIONS (null: no server set).</summary>
     public Online.ServerHealth? Health { get; set; }
@@ -285,6 +285,21 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
             Colour: found is null ? folderColour(folder) : static () => OverlayMenu.Green);
     }
 
+    // A group of official libraries: how many, red when one of them was left out at startup.
+    private Row groupRow(string label, Page page, IReadOnlyList<string> folders) =>
+        new(label, 400, () => $"{folders.Count}", 640, Enter: () => open(page),
+            Colour: folders.Any(folder => problemOf(folder) is not null) ? static () => OverlayMenu.Red : null);
+
+    private IReadOnlyList<string> arcadeFolders() => [.. ArcadeSettings.Folders(_settings.StockFolders).Where(folder => !isWii(folder))];
+
+    private IReadOnlyList<string> wiiFolders() => [.. ArcadeSettings.Folders(_settings.StockFolders).Where(isWii)];
+
+    // A Wii or Wii U disc among the releases; remembered, as the rows are built every frame.
+    private readonly Dictionary<string, bool> _wii = new(StringComparer.Ordinal);
+
+    private bool isWii(string folder) => _wii.TryGetValue(folder, out var wii) ? wii
+        : _wii[folder] = Providers.Stock.WiiCatalogProvider.FindRoot(folder) is not null || Providers.Stock.WiiUCatalogProvider.FindRoot(folder) is not null;
+
     private static string folderName(string? path) =>
         path is null ? S("service.not_set") : upper(Path.GetFileName(Path.TrimEndingDirectorySeparator(path)));
     private static int wrap(int value, int step, int min, int max) => value + step > max ? min : value + step < min ? max : value + step;
@@ -456,17 +471,31 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
                 Hint: problemOf(_settings.TjaFolder ?? _defaultTja) ?? S("service.folder.hint"), Colour: folderColour(_settings.TjaFolder ?? _defaultTja)),
             osuRow(S("service.osu_songs"), "osu", _settings.OsuFolder, Providers.OsuLazer.OsuLazerCatalogProvider.FindDataFolder),
             osuRow(S("service.osu_stable_songs"), "osu-stable", _settings.OsuStableFolder, Providers.OsuLazer.OsuLazerCatalogProvider.FindStableFolder),
+            // The official libraries, each on its own page (a list of every release no longer fits one).
             new(S("service.official_songs"), 400, Gap: true),
-            .. ArcadeSettings.Folders(_settings.StockFolders).Select(folder => new Row(S("service.release"), 400, () => folderName(folder), 640,
-                Enter: () => set(s => s with { StockFolders = ArcadeSettings.JoinFolders(ArcadeSettings.Folders(s.StockFolders).Where(f => f != folder)) }),
-                Hint: problemOf(folder) ?? S("service.remove.hint"), Colour: folderColour(folder))),
-            .. ArcadeSettings.Folders(_settings.NijiiroFolder).Select(folder => new Row(S("service.nijiiro"), 400, () => folderName(folder), 640,
-                Enter: () => set(s => s with { NijiiroFolder = ArcadeSettings.JoinFolders(ArcadeSettings.Folders(s.NijiiroFolder).Where(f => f != folder)) }),
-                Hint: problemOf(folder) ?? S("service.remove.hint"), Colour: folderColour(folder))),
+            groupRow(S("service.arcade_releases"), Page.Releases, arcadeFolders()),
+            groupRow(S("service.wii_releases"), Page.WiiReleases, wiiFolders()),
+            groupRow(S("service.nijiiro_installs"), Page.NijiiroInstalls, ArcadeSettings.Folders(_settings.NijiiroFolder)),
             new(S("service.add_official"), 400, Enter: () => pick("official", null),
                 Hint: S("service.add_official.hint")),
             new(S("service.rehash"), 400, Gap: true, Enter: () => _rehash?.Invoke(),
                 Hint: S("service.rehash.hint")),
+            new(S("service.exit"), 400, Gap: true, Enter: _menu.Pop),
+        ],
+        Page.Releases or Page.WiiReleases =>
+        [
+            .. (page == Page.Releases ? arcadeFolders() : wiiFolders()).Select(folder => new Row(S("service.release").Trim(), 400, () => folderName(folder), 640,
+                Enter: () => set(s => s with { StockFolders = ArcadeSettings.JoinFolders(ArcadeSettings.Folders(s.StockFolders).Where(f => f != folder)) }),
+                Hint: problemOf(folder) ?? S("service.remove.hint"), Colour: folderColour(folder))),
+            new(S("service.add_official"), 400, Gap: true, Enter: () => pick("official", null), Hint: S("service.add_official.hint")),
+            new(S("service.exit"), 400, Gap: true, Enter: _menu.Pop),
+        ],
+        Page.NijiiroInstalls =>
+        [
+            .. ArcadeSettings.Folders(_settings.NijiiroFolder).Select(folder => new Row(S("service.nijiiro").Trim(), 400, () => folderName(folder), 640,
+                Enter: () => set(s => s with { NijiiroFolder = ArcadeSettings.JoinFolders(ArcadeSettings.Folders(s.NijiiroFolder).Where(f => f != folder)) }),
+                Hint: problemOf(folder) ?? S("service.remove.hint"), Colour: folderColour(folder))),
+            new(S("service.add_official"), 400, Gap: true, Enter: () => pick("official", null), Hint: S("service.add_official.hint")),
             new(S("service.exit"), 400, Gap: true, Enter: _menu.Pop),
         ],
         _ => [],
@@ -526,6 +555,9 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
         Page.Network => S("service.network_options"),
         Page.Drums => S("service.drum_controls"),
         Page.Libraries => S("service.song_libraries"),
+        Page.Releases => S("service.arcade_releases"),
+        Page.WiiReleases => S("service.wii_releases"),
+        Page.NijiiroInstalls => S("service.nijiiro_installs"),
         _ => "",
     };
 

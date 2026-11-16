@@ -91,26 +91,97 @@ internal static class WiiChartReader
         return output.ToArray();
     }
 
+    /// <summary>
+    /// みんなでパーティ☆3代目!'s <c>sheet/newsht</c> charts: the arcade fumen made smaller. A 456-byte header (the
+    /// arcade's from 0x1B0 sits at 0x178: branch flag, score fields, gauge ratios, branch points; the measure count at
+    /// 0x1C4), 24-byte measure headers (BPM, offset, Go-Go, barline, six branch thresholds as int16, 2 bytes padding),
+    /// then the arcade's branch records and notes. Rewritten as the arcade layout; null when the bytes are not this
+    /// layout (the walk must end exactly at the end of the file).
+    /// </summary>
+    public static byte[]? CompactToFumen(ReadOnlySpan<byte> data, int maximumMeasures)
+    {
+        const int Header = 0x1C8, MeasureHeader = 24;
+        if (data.Length < Header || i32(data, 0x1C4) is var measures && (measures <= 0 || measures > maximumMeasures))
+            return null;
+        // Walk first: where each measure starts, and that the notes fill the file exactly.
+        var starts = new int[measures];
+        var at = Header;
+        for (var measure = 0; measure < measures; measure++)
+        {
+            starts[measure] = at;
+            at += MeasureHeader;
+            for (var branch = 0; branch < 3; branch++)
+            {
+                if (at + 8 > data.Length)
+                    return null;
+                var count = BinaryPrimitives.ReadUInt16BigEndian(data[at..]);
+                at += 8;
+                for (var note = 0; note < count; note++)
+                {
+                    if (at + 24 > data.Length)
+                        return null;
+                    at += i32(data, at) is 6 or 9 ? 32 : 24;
+                }
+            }
+        }
+        if (at != data.Length)
+            return null;
+
+        var output = new byte[data.Length + (520 - Header) + measures * (40 - MeasureHeader)];
+        data[..0x178].CopyTo(output);
+        data[0x178..0x1C0].CopyTo(output.AsSpan(0x1B0));
+        BinaryPrimitives.WriteInt32BigEndian(output.AsSpan(0x200), measures);
+        var to = 520;
+        for (var measure = 0; measure < measures; measure++)
+        {
+            var from = starts[measure];
+            data.Slice(from, 10).CopyTo(output.AsSpan(to)); // BPM, offset, Go-Go, barline
+            for (var value = 0; value < 6; value++)
+                BinaryPrimitives.WriteInt32BigEndian(output.AsSpan(to + 12 + 4 * value), BinaryPrimitives.ReadInt16BigEndian(data[(from + 10 + 2 * value)..]));
+            var end = measure + 1 < measures ? starts[measure + 1] : data.Length;
+            data[(from + MeasureHeader)..end].CopyTo(output.AsSpan(to + 40));
+            to += 40 + end - from - MeasureHeader;
+        }
+        return output;
+    }
+
     // The arcade's numbering, 14-25 the Wii notes (read with FumenChartReader's wiiNotes).
     private static int arcadeType(int type) => type is >= 1 and <= 25 ? type
         : throw new InvalidDataException($"Unknown Wii note type {type}.");
 
     /// <summary>
-    /// <c>sheet/tuning/bin/tuning.bin</c>: a record count, 2172-byte records (music id, bank and an unknown string
-    /// offset, then 18 course entries of 120 bytes), then a string pool. A course entry: name offset
-    /// (<c>&lt;id&gt;1p_&lt;c&gt;</c>), stars, ?, score init, score diff, …, gauge ratios at +68, branch points at +80.
+    /// <c>sheet/tuning/bin/tuning.bin</c>: a record count, records (music id, bank and an unknown string offset, then
+    /// 18 course entries), then a string pool. A course entry: name offset (<c>&lt;id&gt;1p_&lt;c&gt;</c>), stars, ?,
+    /// score init, score diff, …, gauge ratios at +68, branch points at +80. Courses are 120 bytes (2008 disc) or 124
+    /// (決定版, 超ごうか版: one more word at the end); the size whose first course name is in the pool wins.
     /// </summary>
     public static Dictionary<string, CourseTuning> ReadTuning(ReadOnlySpan<byte> data)
     {
-        const int RecordSize = 2172, Courses = 18, CourseSize = 120;
+        const int Courses = 18;
         var result = new Dictionary<string, CourseTuning>(StringComparer.Ordinal);
-        if (data.Length < 4 || i32(data, 0) is var count && (count < 0 || count > (data.Length - 4) / RecordSize))
+        if (data.Length < 4 + 12 + 4)
             return result;
-        var pool = data[(4 + count * RecordSize)..];
+        var count = i32(data, 0);
+        var courseSize = 0;
+        foreach (var size in (ReadOnlySpan<int>)[120, 124])
+        {
+            var record = 12 + Courses * size;
+            if (count >= 0 && count <= (data.Length - 4) / record
+                && text(data[(4 + count * record)..], i32(data, 16), Encoding.ASCII) is { Length: > 3 } first
+                && first.Contains('_', StringComparison.Ordinal) && first.All(static c => char.IsAsciiLetterLower(c) || char.IsAsciiDigit(c) || c == '_'))
+            {
+                courseSize = size;
+                break;
+            }
+        }
+        if (courseSize == 0)
+            return result;
+        var recordSize = 12 + Courses * courseSize;
+        var pool = data[(4 + count * recordSize)..];
         for (var record = 0; record < count; record++)
             for (var course = 0; course < Courses; course++)
             {
-                var at = 4 + record * RecordSize + 12 + course * CourseSize;
+                var at = 4 + record * recordSize + 12 + course * courseSize;
                 if (text(pool, i32(data, at), Encoding.ASCII) is not { Length: > 0 } name)
                     continue;
                 result[name] = new CourseTuning(i32(data, at + 4), i32(data, at + 12), i32(data, at + 16),

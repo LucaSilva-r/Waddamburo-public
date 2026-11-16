@@ -7,8 +7,10 @@ public enum SongSourceKind
     Tja,
     OsuLazer,
     OsuStable,
-    /// <summary>The Wii and Wii U releases' songs, the WII/WII U library.</summary>
+    /// <summary>The Wii releases' songs, the WII library.</summary>
     Wii,
+    /// <summary>The Wii U releases' songs, the WII U library (uploads as <see cref="Wii"/>, see ServerSource).</summary>
+    WiiU,
 }
 
 public static class SongSourceKinds
@@ -18,10 +20,18 @@ public static class SongSourceKinds
 
     /// <summary>
     /// The source the score server knows: osu!stable's charts are osu! charts like lazer's (same id, same rules), so
-    /// uploads name them OsuLazer and its rescoring and leaderboards treat both alike.
+    /// uploads name them OsuLazer and its rescoring and leaderboards treat both alike; Wii U songs are Wii (TaikOnline's
+    /// one Wii/Wii U source).
     /// </summary>
-    public static SongSourceKind ServerSource(this SongSourceKind source) =>
-        source == SongSourceKind.OsuStable ? SongSourceKind.OsuLazer : source;
+    public static SongSourceKind ServerSource(this SongSourceKind source) => source switch
+    {
+        SongSourceKind.OsuStable => SongSourceKind.OsuLazer,
+        SongSourceKind.WiiU => SongSourceKind.Wii,
+        _ => source,
+    };
+
+    /// <summary>A Wii or Wii U release's song (official, like the arcade's).</summary>
+    public static bool IsWii(this SongSourceKind source) => source is SongSourceKind.Wii or SongSourceKind.WiiU;
 }
 
 public sealed record CatalogProviderId
