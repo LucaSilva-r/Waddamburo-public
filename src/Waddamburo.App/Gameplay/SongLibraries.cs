@@ -57,7 +57,9 @@ internal sealed class SongLibraries : IDisposable
 
     /// <summary>Scans the libraries; throws when none lists a song. <paramref name="dataRoot"/>: the game's data folder.</summary>
     /// <paramref name="percent"/>: how far the scan is, 0-100, from the scanning threads.
-    public static SongLibraries Load(string dataRoot, ArcadeSettings arcade, string defaultTjaFolder, Action<int>? percent = null)
+    /// <paramref name="building"/>: runs once when this start parses many song files again (the cache is being built).
+    public static SongLibraries Load(string dataRoot, ArcadeSettings arcade, string defaultTjaFolder, Action<int>? percent = null,
+        Action? building = null)
     {
         var tja = arcade.TjaFolder ?? defaultTjaFolder;
         var cacheFolder = Path.GetDirectoryName(VgmstreamCli.CacheDirectory)!;
@@ -69,6 +71,7 @@ internal sealed class SongLibraries : IDisposable
             // The installations' folders are walked again once the start is over, not against its own reads.
             // ponytail: a fixed minute after the scan; signal the end of the boot instead if a slow disk still collides.
             RevalidateAfter = Task.Delay(TimeSpan.FromMinutes(1)),
+            Building = building,
         };
         List<(string, string)> problems = [];
         if (arcade.Home && arcade.TjaFolder is not null && !Directory.Exists(tja))

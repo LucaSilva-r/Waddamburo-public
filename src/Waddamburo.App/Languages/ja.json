@@ -277,6 +277,7 @@
   "notices.source.player": "{0}さんへ",
   "job.hash_library": "オンラインスコアのために曲を準備中",
   "job.check_libraries": "曲ライブラリの変更を確認中",
+  "boot.building_cache": "曲キャッシュを作成中: 今回の起動のみ時間がかかります。",
   "job.rescore_scores": "新しい採点ルールでスコアを更新中",
   "job.upload_scores": "スコアを送信中",
   "notice.ai_unranked": "このAIバトルではオンラインのランクポイントと勝利数は加算されません。",

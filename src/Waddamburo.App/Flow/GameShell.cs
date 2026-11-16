@@ -680,7 +680,8 @@ internal sealed class GameShell : IDisposable
                         _ => "Cabinet token refused",
                     });
             }
-            _libraries = _boot.Background("SONG LIBRARY", () => SongLibraries.Load(dataRoot, Arcade, options.TjaRoot, _boot.Progress));
+            _libraries = _boot.Background("SONG LIBRARY", () => SongLibraries.Load(dataRoot, Arcade, options.TjaRoot, _boot.Progress,
+                () => _boot.Note(Strings.T("boot.building_cache"))));
             // Not fatal: the libraries that load are listed (the settings say what's wrong with the others).
             if (_libraries.Problems is { Count: > 0 } problems)
                 _boot.Warn(problems.Count == 1 ? "1 library left out" : $"{problems.Count} libraries left out",

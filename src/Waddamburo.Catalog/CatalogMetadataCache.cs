@@ -17,20 +17,37 @@ public sealed class CatalogMetadataCache(string databasePath)
         IReadOnlyList<string>? within = null, CancellationToken cancellationToken = default)
     {
         _ = _preloaded.Value;
-        var scope = new CatalogMetadataScope(databasePath, root, parserVersion, sourceTree, within, cancellationToken, check =>
-        {
-            var started = Task.Run(async () =>
-            {
-                await RevalidateAfter.ConfigureAwait(false);
-                report();
-                await check().ConfigureAwait(false);
-                Interlocked.Increment(ref _checked);
-                report();
-            });
-            lock (_checks) _checks.Add(started);
-        }, () => Paused);
+        var scope = new CatalogMetadataScope(this, databasePath, root, parserVersion, sourceTree, within, cancellationToken);
         lock (_opened) _opened.Add(scope.InventoryKey);
         return scope;
+    }
+
+    // A scope opened from its stored inventory: its folders are walked again in the background.
+    internal void Schedule(Func<Task> check)
+    {
+        var started = Task.Run(async () =>
+        {
+            await RevalidateAfter.ConfigureAwait(false);
+            report();
+            await check().ConfigureAwait(false);
+            Interlocked.Increment(ref _checked);
+            report();
+        });
+        lock (_checks) _checks.Add(started);
+    }
+
+    private int _misses;
+
+    /// <summary>
+    /// Runs once, from a scanning thread, when this start parses many files again (no cache yet, a damaged one rebuilt,
+    /// a new parser or a large new library): the start takes longer than usual, and the player can be told.
+    /// </summary>
+    public Action? Building { get; set; }
+
+    internal void Missed()
+    {
+        if (Interlocked.Increment(ref _misses) == 200)
+            Building?.Invoke();
     }
 
     private readonly HashSet<string> _opened = new(StringComparer.Ordinal);
@@ -125,16 +142,14 @@ public sealed class CatalogMetadataScope : IDisposable
     private bool _fromSnapshot;
     // One background walk at a time: several releases walked at once thrash a spinning disk.
     private static readonly SemaphoreSlim Walking = new(1, 1);
-    private readonly Action<Func<Task>> _checking;
-    private readonly Func<bool> _held;
+    private readonly CatalogMetadataCache _owner;
     public int Hits { get; private set; }
     public int Misses { get; private set; }
 
-    internal CatalogMetadataScope(string database, string root, string version, bool sourceTree, IReadOnlyList<string>? within, CancellationToken cancellation, Action<Func<Task>> checking, Func<bool> held)
+    internal CatalogMetadataScope(CatalogMetadataCache owner, string database, string root, string version, bool sourceTree, IReadOnlyList<string>? within, CancellationToken cancellation)
     {
         _cancellation = cancellation;
-        _checking = checking;
-        _held = held;
+        _owner = owner;
         _root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
         _space = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(_root + "|" + version)));
         _files = newInventory();
@@ -252,7 +267,7 @@ public sealed class CatalogMetadataScope : IDisposable
         try
         {
             var elapsed = System.Diagnostics.Stopwatch.StartNew();
-            var now = walk(_root, _sourceTree, _within, CancellationToken.None, _held);
+            var now = walk(_root, _sourceTree, _within, CancellationToken.None, () => _owner.Paused);
             if (now.Count == _files.Count && now.All(file => _files.GetValueOrDefault(file.Key) == file.Value)) return;
             using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
             {
@@ -291,6 +306,7 @@ public sealed class CatalogMetadataScope : IDisposable
             catch (Exception exception) when (exception is JsonException or NotSupportedException or ArgumentException) { }
         }
         Misses++;
+        _owner.Missed();
         var before = diagnostics?.Count ?? 0;
         var value = read();
         var additions = diagnostics?.Skip(before).ToArray() ?? [];
@@ -319,7 +335,7 @@ public sealed class CatalogMetadataScope : IDisposable
         try
         {
             if (_cancellation.IsCancellationRequested) return;
-            if (_fromSnapshot) _checking(revalidate);
+            if (_fromSnapshot) _owner.Schedule(revalidate);
             else if (_sourceTree) saveInventory(_connection, _files);
             if (!_changed && _used.SetEquals(_entries.Keys)) return;
             using var transaction = _connection.BeginTransaction();

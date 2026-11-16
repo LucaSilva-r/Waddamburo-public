@@ -31,7 +31,7 @@ internal sealed class BootChecks : IDisposable
     private readonly string _fontPath;
     private readonly OverlayMenu _menu;
     private readonly List<Check> _checks = [];
-    private readonly (string Text, RenderColor Colour)[] _footer;
+    private (string Text, RenderColor Colour)[] _footer;
 
     // Nobody at the window (a scripted run): a failure is thrown on, not waited on.
     private readonly bool _interactive;
@@ -72,6 +72,10 @@ internal sealed class BootChecks : IDisposable
         if (_checks is [.., { Ok: null } last])
             last.Percent = percent;
     }
+
+    /// <summary>A line above the version at the bottom, for something the player should know while it loads (any thread).</summary>
+    public void Note(string text) =>
+        _footer = [(OverlayMenu.upper(text), OverlayMenu.White), .. _footer];
 
     /// <summary>The part under way is OK.</summary>
     public void Done()
