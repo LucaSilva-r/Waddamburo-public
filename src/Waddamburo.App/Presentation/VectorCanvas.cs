@@ -77,7 +77,8 @@ internal sealed class VectorCanvas(int width, int height, int scale, string font
     /// <summary>
     /// The game's outlined title text, cropped to its ink and centred at (<paramref name="centreX"/>,
     /// <paramref name="centreY"/>), shrunk to fit <paramref name="maxWidth"/> x <paramref name="maxHeight"/>.
-    /// <paramref name="spacing"/> (in em) spreads the characters apart, drawn one by one on a shared baseline.
+    /// <paramref name="spacing"/> (in em) spreads the characters apart, drawn one by one on a shared baseline: the most
+    /// gap between two characters; a longer text closes the gaps first and only then shrinks.
     /// </summary>
     public void Text(string text, float centreX, float centreY, float maxWidth, float maxHeight, uint outlineRgb = 0x000000,
         float anchorX = 0.5f, (byte R, byte G, byte B)? tint = null, float spacing = 0)
@@ -108,17 +109,21 @@ internal sealed class VectorCanvas(int width, int height, int scale, string font
             else
                 glyphs.Add((null, 0, space));
         }
-        var width = glyphs.Sum(static glyph => glyph.W) + gap * (glyphs.Count - 1);
         float s = Scale;
-        var factor = Math.Min(1f, Math.Min(maxWidth * s / width, maxHeight * s / whole.H));
-        var x = centreX - width * factor / s * anchorX;
+        var inked = glyphs.Sum(static glyph => glyph.W);
+        var factor = Math.Min(1f, Math.Min(maxWidth * s / inked, maxHeight * s / whole.H));
+        // The room the letters leave, shared by the gaps up to their most (output units).
+        var gaps = Math.Max(1, glyphs.Count - 1);
+        var gapOut = Math.Clamp((maxWidth - inked * factor / s) / gaps, 0, gap * factor / s);
+        var width = inked * factor / s + gapOut * (glyphs.Count - 1);
+        var x = centreX - width * anchorX;
         foreach (var (surface, gx, gw) in glyphs)
         {
             var partWidth = gw * factor / s;
             if (surface is not null)
                 Image(surface, (gx, whole.Y, gw, whole.H), x + partWidth / 2, centreY, partWidth, whole.H * factor / s,
                     upscale: false, tint: tint);
-            x += partWidth + gap * factor / s;
+            x += partWidth + gapOut;
         }
     }
 

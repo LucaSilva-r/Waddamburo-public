@@ -11,6 +11,7 @@ namespace Waddamburo.App.Presentation;
 /// </summary>
 internal sealed class NameTextTextures(SdlApplication application, string fontPath) : IDisposable
 {
+    private const float NameSpacing = 0.07f; // em; matched by eye to the game's boards (やばいわよ)
     private readonly Dictionary<(string, int), RenderTextureId> _uploaded = [];
 
     public RenderTextureId? Resolve(LumenNativeSurfaceKey key)
@@ -26,7 +27,9 @@ internal sealed class NameTextTextures(SdlApplication application, string fontPa
         // the lettering close to its natural width while preserving the gap and rounded-edge inset.
         var (width, height) = (ranked ? 144 : NameText.Box.Width, NameText.Box.Height);
         var canvas = new VectorCanvas((int)width, (int)height, scale, fontPath);
-        canvas.Text(name, width / 2, height / 2, width, height);
+        // The game's boards space their kana out: short names get up to NameSpacing between characters
+        // (Latin and Japanese alike), closing up as a name fills the plate before it shrinks.
+        canvas.Text(name, width / 2, height / 2, width, height, spacing: NameSpacing);
         return _uploaded[(key.Value, scale)] = application.UploadRgba8((uint)canvas.PixelWidth, (uint)canvas.PixelHeight, canvas.Pixels);
     }
 
