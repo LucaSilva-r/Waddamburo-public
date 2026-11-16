@@ -902,13 +902,14 @@ internal sealed class GameShell : IDisposable
         }
     }
 
-    // --start-scene=result-fail/-clear show these results; --start-scene=waiwai-result shows Waiwai's
+    // --start-scene=result-fail/-almost/-clear show these results; --start-scene=waiwai-result shows Waiwai's
     // (WADDAMBURO_WAIWAI_RESULT=segments,duet%,rare hits, e.g. 30,70,10).
     private static (TaikoPlayResult? Result, WaiwaiOutcome? Waiwai) diagnosticResults(StartScene start)
     {
         TaikoPlayResult? result = start switch
         {
             StartScene.ResultFail => new TaikoPlayResult(TaikoCourse.Normal, 0, 0, 0, 100, 0, 0, 0, false),
+            StartScene.ResultAlmost => new TaikoPlayResult(TaikoCourse.Normal, 250_000, 60, 20, 40, 30, 0, 20, false),
             StartScene.ResultClear => new TaikoPlayResult(TaikoCourse.Normal, 500_000, 90, 7, 3, 80, 0, 45, true),
             _ => null,
         };
@@ -956,7 +957,10 @@ internal sealed class GameShell : IDisposable
             () => SongInfo,
             Options.Countdown,
             () => Gameplay.Results is { Count: > 0 } results ? Match.WithPartnerResult(results)
-                : diagnosticResult is { } diagnostic ? [diagnostic] : [],
+                // ponytail: WADDAMBURO_RESULT_PLAYERS=2 shows the diagnostic result for both players.
+                : diagnosticResult is { } diagnostic
+                    ? Environment.GetEnvironmentVariable("WADDAMBURO_RESULT_PLAYERS") == "2" ? [diagnostic, diagnostic] : [diagnostic]
+                    : [],
             () => Arcade,
             Coins)
         {
@@ -1171,7 +1175,7 @@ internal sealed class GameShell : IDisposable
             StartScene.Entry => FlowScenes.Entry,
             StartScene.SongSelect or StartScene.AiSongSelect => FlowScenes.SongSelect,
             StartScene.DaniSelect => FlowScenes.DaniSelect,
-            StartScene.ResultFail or StartScene.ResultClear or StartScene.WaiwaiResult
+            StartScene.ResultFail or StartScene.ResultAlmost or StartScene.ResultClear or StartScene.WaiwaiResult
                 or StartScene.DaniResultFail or StartScene.DaniResultClear => FlowScenes.Result,
             StartScene.Retry => FlowScenes.Retry,
             StartScene.GameOver or StartScene.DaniGameOver => FlowScenes.GameOver,

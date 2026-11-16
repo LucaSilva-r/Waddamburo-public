@@ -25,12 +25,7 @@ public sealed class TaikoSoulGauge
 
     public TaikoSoulGauge(TaikoCourse course, int? level, int noteCount)
     {
-        Clear = course switch
-        {
-            TaikoCourse.Easy => 6000,
-            TaikoCourse.Normal or TaikoCourse.Hard => 7000,
-            _ => 8000,
-        };
+        Clear = ClearFor(course);
         (_great, _good, _miss) = rates(course, Math.Clamp(level ?? 10, 1, 10), noteCount);
     }
 
@@ -66,6 +61,14 @@ public sealed class TaikoSoulGauge
     }
 
     public int Clear { get; }
+
+    /// <summary>The clear line of <paramref name="course"/>'s gauge (of <see cref="Max"/>).</summary>
+    public static int ClearFor(TaikoCourse course) => course switch
+    {
+        TaikoCourse.Easy => 6000,
+        TaikoCourse.Normal or TaikoCourse.Hard => 7000,
+        _ => 8000,
+    };
     public int Value => (int)(_points / _scale);
 
     /// <summary>Sets the gauge to a point of a reviewed play.</summary>

@@ -11,6 +11,7 @@ internal enum StartScene
     AiSongSelect,
     DaniSelect,
     ResultFail,
+    ResultAlmost,
     ResultClear,
     DaniResultFail,
     DaniResultClear,
@@ -34,6 +35,7 @@ internal static class StartSceneParser
         "ai-song-select" => StartScene.AiSongSelect,
         "dani-select" => StartScene.DaniSelect,
         "result-fail" => StartScene.ResultFail,
+        "result-almost" => StartScene.ResultAlmost,
         "result-clear" => StartScene.ResultClear,
         "dani-result-fail" => StartScene.DaniResultFail,
         "dani-result-clear" => StartScene.DaniResultClear,
@@ -45,6 +47,6 @@ internal static class StartSceneParser
         "waiwai-tutorial" => StartScene.WaiwaiTutorial,
         "ai-tutorial" => StartScene.AiTutorial,
         _ => throw new ArgumentException(
-            "--start-scene must be boot, attract, entry, song-select, ai-song-select, dani-select, result-fail, dani-result-fail, dani-result-clear, dani-gameover, result-clear, retry, gameover, waiwai-result, or ai-remind."),
+            "--start-scene must be boot, attract, entry, song-select, ai-song-select, dani-select, result-fail, result-almost, dani-result-fail, dani-result-clear, dani-gameover, result-clear, retry, gameover, waiwai-result, or ai-remind."),
     };
 }

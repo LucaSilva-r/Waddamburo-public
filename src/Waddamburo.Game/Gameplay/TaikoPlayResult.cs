@@ -34,9 +34,12 @@ public sealed record TaikoPlayResult(
 
     /// <summary>
     /// result.lm SetResultLevel: RESULT_FAILURE 0 / ALMOST 1 / SUCCESS 2 / FULL 3 (traced: a full gauge
-    /// with 3 misses sent 3). ponytail: ALMOST never sent, its threshold is unknown.
+    /// with 3 misses sent 3). ALMOST (おしかった, Don's percious motions): a failed gauge at half the clear line
+    /// or more (a Green recording from a player: a fail at about half shows it).
+    /// ponytail: osu! charts fill as Oni but are judged against their slot's line here.
     /// </summary>
-    public int ResultLevel => !Cleared ? 0 : GaugeSegments >= TaikoSoulGauge.Segments ? 3 : 2;
+    public int ResultLevel => Cleared ? GaugeSegments >= TaikoSoulGauge.Segments ? 3 : 2
+        : GaugeSegments * 2 * TaikoSoulGauge.Max >= TaikoSoulGauge.ClearFor(Course) * TaikoSoulGauge.Segments ? 1 : 0;
 
     /// <summary>result.lm SetCourse: 0 easy .. 3 oni, 4 ura (traced: oni 3, normal 1).</summary>
     public int CourseIndex => Course switch
