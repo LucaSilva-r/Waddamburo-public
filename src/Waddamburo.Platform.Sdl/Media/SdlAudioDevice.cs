@@ -116,6 +116,7 @@ public sealed unsafe class SdlAudioDevice : IAudioOutput
             if (device.Name == name)
                 return device.Id;
         Console.Error.WriteLine($"Audio: no playback device named '{name}', using the default.");
+        AudioNotices.Raise(AudioProblem.DeviceMissing, name);
         return SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK;
     }
 

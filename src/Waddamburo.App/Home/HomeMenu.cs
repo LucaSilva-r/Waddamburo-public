@@ -34,6 +34,8 @@ internal enum HomeMenuAction
     BakeTextures,
     /// <summary>Close the game and start it again (settings that apply at start, memory after a bake).</summary>
     RestartGame,
+    /// <summary>Reopen the audio output with the new settings (back to the attract, every sound stops).</summary>
+    SwitchAudio,
     /// <summary>Start the audio calibration (the calibration page shows it).</summary>
     Calibrate,
     /// <summary>The calibration page closed (saved or not): its sound stops.</summary>
@@ -392,7 +394,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     public int Selection { get; private set; }
 
     public string Title => T(Bake is not null ? "menu.title.bake" : Calibration is not null ? "menu.title.calibration"
-        : _restartPrompt ? "menu.title.restart" : _reportPrompt ? "menu.title.report"
+        : _restartPrompt ? "menu.title.restart" : _audioPrompt ? "menu.title.audio" : _reportPrompt ? "menu.title.report"
         : _quitPrompt ? "menu.title.quit" : _layoutsPage ? TwoPlayerLayouts() ? "menu.title.layouts_two" : "menu.title.layouts"
         : "menu.title.paused") is var title
         && _layoutPick is { } pick ? _removePrompt ? T("menu.title.remove_layout", pick) : pick : title;
@@ -426,7 +428,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     private long _calibrationDoneAt;
 
     /// <summary>A line above the choices (the restart prompt's reason), or null.</summary>
-    public string? Message => _restartPrompt ? T("menu.restart_message") : null;
+    public string? Message => _restartPrompt ? T("menu.restart_message") : _audioPrompt ? T("menu.audio_message") : null;
 
     /// <summary>What the player picked to report the replay for (with <see cref="HomeMenuAction.Report"/>): a server reason.</summary>
     public string ReportReason { get; private set; } = "cheating";
@@ -441,9 +443,14 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     // Leaving the settings asks for a restart when a setting that applies at start changed, or after a
     // bake (the memory it used goes back with the restart); "Later" is not asked again for the same state.
     private readonly ArcadeSettings _atStart = get();
-    // The audio output's settings it runs with (a change reopens it instead of asking for a restart).
-    private (AudioOutputMode, string?, int, int, string?, int, int) _audioAt = get().AudioOutputSettings;
     private bool _restartPrompt;
+    // Leaving the settings after an audio output change asks to apply it now (back to the attract) or at the next start;
+    // "Later" is not asked again for the same settings.
+    private bool _audioPrompt;
+    private (AudioOutputMode, string?, int, int, string?, int, int)? _audioDeclined;
+
+    /// <summary>The audio output settings the game runs with (set by the host).</summary>
+    public static Func<(AudioOutputMode, string?, int, int, string?, int, int)> RunningAudio { get; set; } = static () => default;
     private string? _declined;
     private string[] _pauseChoices = [];
 
@@ -498,7 +505,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             _choices = [.. _choices, "menu.quit_game"];
         IsOpen = true;
         Selection = 0;
-        _restartPrompt = _reportPrompt = _quitPrompt = _layoutsPage = _removePrompt = false;
+        _restartPrompt = _audioPrompt = _reportPrompt = _quitPrompt = _layoutsPage = _removePrompt = false;
         _layoutPick = null;
         VgmstreamCli.Recheck(); // it may have been installed while the game ran
     }
@@ -515,8 +522,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     /// The settings overlay closed: its settings are saved and, when one that applies at start changed, the restart
     /// prompt shows as after the settings page.
     /// </summary>
-    /// <returns>True when the audio output's settings changed: the caller reopens it (back to the attract).</returns>
-    public bool SettingsOverlayClosed()
+    public void SettingsOverlayClosed()
     {
         Selection = Array.IndexOf(_choices, "menu.settings");
         save();
@@ -527,12 +533,15 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             _pauseChoices = _choices;
             _choices = ["menu.restart_now", "menu.later"];
             Selection = 0;
-            return false;
+            return;
         }
-        if (get().AudioOutputSettings == _audioAt)
-            return false;
-        _audioAt = get().AudioOutputSettings;
-        return true;
+        if (get().AudioOutputSettings is var audio && audio != RunningAudio() && audio != _audioDeclined)
+        {
+            _audioPrompt = true;
+            _pauseChoices = _choices;
+            _choices = ["menu.apply_now", "menu.later"];
+            Selection = 0;
+        }
     }
 
     /// <summary>
@@ -546,6 +555,12 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         {
             if (Selection == 0)
                 return close(HomeMenuAction.RestartGame);
+            return Back();
+        }
+        if (_audioPrompt)
+        {
+            if (Selection == 0)
+                return close(HomeMenuAction.SwitchAudio);
             return Back();
         }
         if (_reportPrompt)
@@ -659,6 +674,14 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         {
             _declined = restartState();
             _restartPrompt = false;
+            _choices = _pauseChoices;
+            Selection = Array.IndexOf(_choices, "menu.settings");
+            return HomeMenuAction.None;
+        }
+        if (_audioPrompt)
+        {
+            _audioDeclined = get().AudioOutputSettings;
+            _audioPrompt = false;
             _choices = _pauseChoices;
             Selection = Array.IndexOf(_choices, "menu.settings");
             return HomeMenuAction.None;

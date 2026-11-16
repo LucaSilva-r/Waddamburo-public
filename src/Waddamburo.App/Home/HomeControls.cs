@@ -55,6 +55,7 @@ internal sealed class HomeControls : IDisposable
         HomeMenu.DisplayModes = shell.Headless ? [] : shell.Application.FullscreenModes();
         HomeMenu.AudioDevices = shell.Headless ? [] : SdlAudioDevice.PlaybackDeviceNames();
         HomeMenu.AsioDrivers = OperatingSystem.IsWindows() ? AsioOutput.DriverNames() : [];
+        HomeMenu.RunningAudio = () => shell.RunningAudio.AudioOutputSettings;
         HomeMenu.LayoutNames = () => PlayerLayouts.Names(gameplay.LayoutFolder);
         HomeMenu.ActiveLayout = () => gameplay.ActiveLayout;
         HomeMenu.TwoPlayerLayouts = () => gameplay.TwoPlayerLayouts;
@@ -177,10 +178,8 @@ internal sealed class HomeControls : IDisposable
                         : _shell.Bake = TextureBake.Start(upscale, _assetRoot));
                     break;
                 default:
-                    if (_menu.SettingsOverlayClosed())
-                        switchAudio();
-                    else if (_pause is not null)
-                        _pause.Selection = _menu.Selection;
+                    _menu.SettingsOverlayClosed();
+                    if (_pause is not null) _pause.Selection = _menu.Selection;
                     break;
             }
         }
@@ -469,10 +468,8 @@ internal sealed class HomeControls : IDisposable
             if (!settings.IsOpen && _settingsOverlay)
             {
                 _settingsOverlay = false;
-                if (_menu.SettingsOverlayClosed())
-                    switchAudio();
-                else if (_pause is not null)
-                    _pause.Selection = _menu.Selection;
+                _menu.SettingsOverlayClosed();
+                if (_pause is not null) _pause.Selection = _menu.Selection;
             }
             return true;
         }
@@ -546,6 +543,10 @@ internal sealed class HomeControls : IDisposable
             case HomeMenuAction.RestartGame:
                 save();
                 _shell.RequestRestart();
+                break;
+            case HomeMenuAction.SwitchAudio:
+                save();
+                switchAudio();
                 break;
             // A bake already running is shown again rather than started twice.
             case HomeMenuAction.BakeTextures when _shell.Upscale is { } upscale:

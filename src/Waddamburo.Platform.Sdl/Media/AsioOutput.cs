@@ -172,7 +172,10 @@ public sealed unsafe class AsioOutput : IPullAudioOutput
                 throw new InvalidOperationException("No ASIO driver is installed.");
             var name = driverName is not null && names.Contains(driverName) ? driverName : names[0];
             if (driverName is not null && name != driverName)
+            {
                 Console.Error.WriteLine($"Audio: no ASIO driver named '{driverName}', using '{name}'.");
+                AudioNotices.Raise(AudioProblem.AsioDriverMissing, driverName);
+            }
             using (var key = Registry.LocalMachine.OpenSubKey($@"SOFTWARE\ASIO\{name}"))
             {
                 if (key?.GetValue("CLSID") is not string text || !Guid.TryParse(text, out var clsid))
@@ -194,6 +197,7 @@ public sealed unsafe class AsioOutput : IPullAudioOutput
             if ((_outputPair + 1) * Channels > outputs)
             {
                 Console.Error.WriteLine($"Audio: the ASIO driver '{name}' has no outputs {_outputPair * 2 + 1}-{_outputPair * 2 + 2}, using 1-2.");
+                AudioNotices.Raise(AudioProblem.AsioOutputsMissing, $"{_outputPair * 2 + 1}-{_outputPair * 2 + 2}");
                 _outputPair = 0;
             }
 

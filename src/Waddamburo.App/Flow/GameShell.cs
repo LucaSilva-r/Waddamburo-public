@@ -731,6 +731,7 @@ internal sealed class GameShell : IDisposable
                 Don.SetAccessory(0, puchiSetting);
             _boot.Begin("AUDIO DEVICE");
             var needsAudio = !Headless || options.JinglePath is not null || options.SoundRoot is not null;
+            AudioNotices.Raised += audioProblem;
             _audioDevice = needsAudio ? openAudio() : null;
             if (Environment.GetEnvironmentVariable("WADDAMBURO_PROFILE") == "1" && _audioDevice is not null)
                 Console.Error.WriteLine($"Profile audio: {_audioDevice.Driver}, "
@@ -1003,51 +1004,119 @@ internal sealed class GameShell : IDisposable
         if (Audio is null)
             return false;
         resetForService();
-        var switched = Audio.SwitchOutput(openAudio);
+        var previous = RunningAudio;
+        var switched = Audio.SwitchOutput(() => openAudio(previous));
         _audioDevice = Audio.Output;
-        Console.WriteLine(switched ? "Audio: output switched." : "Audio: the new output runs at another sample rate, restarting.");
+        _audioFailureShown = false;
+        if (switched)
+            Console.WriteLine("Audio: output switched.");
+        else
+        {
+            Console.WriteLine("Audio: the new output runs at another sample rate, restarting.");
+            Sync.Notices.AddLocal(Strings.T("audio.rate_restart"), NoticeSeverity.Warning);
+        }
         return switched;
     }
 
-    private IAudioOutput openAudio()
+    // The output's failure (unplugged, the driver gone) was toasted once.
+    private bool _audioFailureShown;
+
+    /// <summary>The audio output settings the running output opened with (after any fallback).</summary>
+    public ArcadeSettings RunningAudio { get; private set; } = new();
+
+    // An output problem the player should hear of, as a toast (from any thread: the notice board locks).
+    private void audioProblem(AudioProblem problem, string detail) => Sync.Notices.AddLocal(problem switch
+    {
+        AudioProblem.DeviceMissing => Strings.T("audio.device_missing", detail),
+        AudioProblem.AsioDriverMissing => Strings.T("audio.asio_driver_missing", detail),
+        AudioProblem.AsioOutputsMissing => Strings.T("audio.asio_outputs_missing", detail),
+        _ => detail.Split('|') is [var frames, var ms] ? Strings.T("audio.period_fallback", frames, ms) : detail,
+    }, NoticeSeverity.Warning);
+
+    // Opens the output Arcade asks for. When it fails: the one that ran before (a live switch; Arcade's audio settings
+    // go back to it, saved), else shared output; a toast says which and why.
+    private IAudioOutput openAudio(ArcadeSettings? previous = null)
     {
         Home.HomeMenu.OutputInUse = null;
-        if (Arcade.AudioOutput == AudioOutputMode.Asio && OperatingSystem.IsWindows())
+        if (tryOpenAudio(Arcade, out var output, out var problem))
+        {
+            RunningAudio = Arcade;
+            return output;
+        }
+        var mode = Strings.T(Arcade.AudioOutput == AudioOutputMode.Asio ? "settings.audio_output.asio" : "settings.audio_output.exclusive");
+        if (previous is not null && previous.AudioOutputSettings != Arcade.AudioOutputSettings && tryOpenAudio(previous, out output, out _))
+        {
+            Arcade = Arcade with
+            {
+                AudioOutput = previous.AudioOutput, AudioDevice = previous.AudioDevice, AudioBufferFrames = previous.AudioBufferFrames,
+                AudioExclusivePeriod = previous.AudioExclusivePeriod, AsioDriver = previous.AsioDriver,
+                AsioBufferFrames = previous.AsioBufferFrames, AsioOutputPair = previous.AsioOutputPair,
+            };
+            if (Options.ArcadePath is { } path)
+                try
+                {
+                    ArcadeSettings.SaveMenuSettings(path, Arcade);
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    Console.Error.WriteLine($"Error SETTINGS_SAVE: {exception.Message}");
+                }
+            RunningAudio = previous;
+            Sync.Notices.AddLocal(Strings.T("audio.restored", mode, problem), NoticeSeverity.Warning);
+            return output;
+        }
+        Sync.Notices.AddLocal(Strings.T("audio.fallback_shared", mode, problem), NoticeSeverity.Warning);
+        RunningAudio = Arcade with { AudioOutput = AudioOutputMode.Shared };
+        return new SdlAudioDevice(requestedBufferFrames: Arcade.AudioBufferFrames, deviceName: Arcade.AudioDevice);
+    }
+
+    // Opens the output settings asks for; false (with why) when exclusive or ASIO output can't open. Shared opens or throws.
+    private bool tryOpenAudio(ArcadeSettings settings, out IAudioOutput output, out string problem)
+    {
+        problem = "";
+        if (settings.AudioOutput == AudioOutputMode.Asio && OperatingSystem.IsWindows())
         {
             try
             {
-                var asio = new AsioOutput(Arcade.AsioDriver, Arcade.AsioBufferFrames, Arcade.AsioOutputPair);
+                var asio = new AsioOutput(settings.AsioDriver, settings.AsioBufferFrames, settings.AsioOutputPair);
                 Home.HomeMenu.AsioOutputs = asio.OutputCount;
-                var (setting, driver) = (Arcade.AsioBufferFrames, Arcade.AsioDriver);
+                var (setting, driver) = (settings.AsioBufferFrames, settings.AsioDriver);
                 Home.HomeMenu.OutputInUse = () => (AudioOutputMode.Asio, setting, driver, asio.HardwareBufferFrames, asio.Format.SampleRate);
                 Console.WriteLine($"Audio: {asio.Driver}, {asio.HardwareBufferFrames} frames "
                     + $"({1000.0 * asio.HardwareBufferFrames / asio.Format.SampleRate:0.##} ms) at {asio.Format.SampleRate} Hz, "
                     + $"output latency {1000.0 * asio.OutputLatencyFrames / asio.Format.SampleRate:0.#} ms, "
                     + $"outputs {asio.OutputPair * 2 + 1}-{asio.OutputPair * 2 + 2} of {asio.OutputCount}.");
-                return asio;
+                output = asio;
+                return true;
             }
             catch (Exception exception) when (exception is InvalidOperationException or PlatformNotSupportedException)
             {
-                Console.Error.WriteLine($"Audio: ASIO unavailable, using shared. {exception.Message}");
+                Console.Error.WriteLine($"Audio: ASIO unavailable. {exception.Message}");
+                (output, problem) = (null!, exception.Message);
+                return false;
             }
         }
-        if (Arcade.AudioOutput == AudioOutputMode.Exclusive && OperatingSystem.IsWindows())
+        if (settings.AudioOutput == AudioOutputMode.Exclusive && OperatingSystem.IsWindows())
         {
             try
             {
-                var exclusive = new WasapiExclusiveOutput(periodFrames: Arcade.AudioExclusivePeriod, deviceName: Arcade.AudioDevice);
-                var (setting, device) = (Arcade.AudioExclusivePeriod, Arcade.AudioDevice);
+                var exclusive = new WasapiExclusiveOutput(periodFrames: settings.AudioExclusivePeriod, deviceName: settings.AudioDevice);
+                var (setting, device) = (settings.AudioExclusivePeriod, settings.AudioDevice);
                 Home.HomeMenu.OutputInUse = () => (AudioOutputMode.Exclusive, setting, device, exclusive.HardwareBufferFrames, exclusive.Format.SampleRate);
                 Console.WriteLine($"Audio: WASAPI exclusive, {exclusive.HardwareBufferFrames} frames "
                     + $"({1000.0 * exclusive.HardwareBufferFrames / exclusive.Format.SampleRate:0.##} ms), {exclusive.Driver}.");
-                return exclusive;
+                output = exclusive;
+                return true;
             }
             catch (InvalidOperationException exception)
             {
-                Console.Error.WriteLine($"Audio: exclusive output unavailable, using shared. {exception.Message}");
+                Console.Error.WriteLine($"Audio: exclusive output unavailable. {exception.Message}");
+                (output, problem) = (null!, exception.Message);
+                return false;
             }
         }
-        return new SdlAudioDevice(requestedBufferFrames: Arcade.AudioBufferFrames, deviceName: Arcade.AudioDevice);
+        output = new SdlAudioDevice(requestedBufferFrames: settings.AudioBufferFrames, deviceName: settings.AudioDevice);
+        return true;
     }
 
     private FlowScene flowOf(SceneId scene) => _scenes[scene];
@@ -1240,6 +1309,12 @@ internal sealed class GameShell : IDisposable
         Tick++;
         updateRumbles();
         Sounds?.Bank.Pump();
+        if (!_audioFailureShown && Audio?.Failure is { } audioFailure)
+        {
+            _audioFailureShown = true;
+            Console.Error.WriteLine($"Audio: the output stopped. {audioFailure.Message}");
+            Sync.Notices.AddLocal(Strings.T("audio.output_failed", audioFailure.Message), NoticeSeverity.Warning);
+        }
         // Diagnostic: WADDAMBURO_CRASH_AT=<tick> crashes the game there, to see its error screen.
         if (_crashAt == Tick)
             throw new InvalidOperationException($"WADDAMBURO_CRASH_AT asked the game to crash at tick {Tick}.");
@@ -1711,6 +1786,7 @@ internal sealed class GameShell : IDisposable
         Previews?.Dispose();
         Audio?.Dispose();
         _audioDevice?.Dispose();
+        AudioNotices.Raised -= audioProblem;
         DonRenderer?.Dispose();
         Bake?.Stop(); // it upscales through the tool disposed next
         SceneTextures.Upscaler?.Dispose();

@@ -180,7 +180,10 @@ public sealed unsafe class WasapiExclusiveOutput : IPullAudioOutput
                 Console.WriteLine(FormattableString.Invariant(
                     $"Audio: {late:P1} of the exclusive device's events late at its minimum period{(late > TooLate ? ", using its default" : "")}."));
                 if (late > TooLate)
+                {
                     reopen(defaultPeriod);
+                    raisePeriodFallback();
+                }
                 else
                     watched = minimumPeriod < defaultPeriod;
             }
@@ -235,6 +238,7 @@ public sealed unsafe class WasapiExclusiveOutput : IPullAudioOutput
                         Console.WriteLine(FormattableString.Invariant(
                             $"Audio: {(double)windowLate / windowEvents:P1} of the exclusive device's events late at its minimum period while playing, using its default."));
                         reopen(defaultPeriod);
+                        raisePeriodFallback();
                         watched = false;
                         samples = new float[HardwareBufferFrames * channels];
                         periodTicks = ticks(HardwareBufferFrames);
@@ -297,6 +301,9 @@ public sealed unsafe class WasapiExclusiveOutput : IPullAudioOutput
 
     // More late device events than this share: the period is too short for the device.
     private const double TooLate = 0.1;
+
+    private void raisePeriodFallback() => AudioNotices.Raise(AudioProblem.ExclusivePeriodFallback, FormattableString.Invariant(
+        $"{HardwareBufferFrames}|{HardwareBufferFrames * 1000.0 / Format.SampleRate:0.#}"));
 
     private long ticks(int frames) => (long)((double)frames / Format.SampleRate * System.Diagnostics.Stopwatch.Frequency);
 
@@ -397,6 +404,7 @@ public sealed unsafe class WasapiExclusiveOutput : IPullAudioOutput
                 release(ref device);
             }
             Console.Error.WriteLine($"Audio: no playback device named '{name}', using the default.");
+            AudioNotices.Raise(AudioProblem.DeviceMissing, name);
             return 0;
         }
         finally
