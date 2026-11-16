@@ -79,7 +79,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     /// <summary>The running ASIO driver's outputs (mono channels); 0 before one ran.</summary>
     public static int AsioOutputs { get; set; }
 
-    /// <summary>The installed ASIO drivers' names (set once by the host).</summary>
+    /// <summary>The installed ASIO drivers' names (read again as the settings open).</summary>
     public static IReadOnlyList<string> AsioDrivers { get; set; } = [];
 
     // The ASIO Driver row's choices after the first: the drivers, and the saved one when it is not installed.
@@ -89,8 +89,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     // The ASIO Buffer row's choices: the driver's preferred size, then frames (the driver takes the nearest it allows).
     private static readonly int[] AsioBuffers = [0, 32, 64, 128, 256, 512, 1024, 2048];
 
-    /// <summary>The playback devices' names (set once by the host).</summary>
-    // ponytail: read once at start; a device plugged in later needs a restart to be listed.
+    /// <summary>The playback devices' names (read again as the settings open).</summary>
     public static IReadOnlyList<string> AudioDevices { get; set; } = [];
 
     // The Audio Device row's choices after the default: the devices, and the saved one when it is not plugged in.
@@ -442,6 +441,8 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     // Leaving the settings asks for a restart when a setting that applies at start changed, or after a
     // bake (the memory it used goes back with the restart); "Later" is not asked again for the same state.
     private readonly ArcadeSettings _atStart = get();
+    // The audio output's settings it runs with (a change reopens it instead of asking for a restart).
+    private (AudioOutputMode, string?, int, int, string?, int, int) _audioAt = get().AudioOutputSettings;
     private bool _restartPrompt;
     private string? _declined;
     private string[] _pauseChoices = [];
@@ -449,16 +450,12 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     private string restartState()
     {
         var now = get();
-        var changed = now.AudioBufferFrames != _atStart.AudioBufferFrames || now.AudioOutput != _atStart.AudioOutput
-            || now.AudioDevice != _atStart.AudioDevice || now.AudioExclusivePeriod != _atStart.AudioExclusivePeriod
-            || now.AsioDriver != _atStart.AsioDriver || now.AsioBufferFrames != _atStart.AsioBufferFrames
-            || now.AsioOutputPair != _atStart.AsioOutputPair
-            || now.TjaFolder != _atStart.TjaFolder || now.NijiiroFolder != _atStart.NijiiroFolder || now.OsuFolder != _atStart.OsuFolder || now.OsuStableFolder != _atStart.OsuStableFolder
+        var changed = now.TjaFolder != _atStart.TjaFolder || now.NijiiroFolder != _atStart.NijiiroFolder || now.OsuFolder != _atStart.OsuFolder || now.OsuStableFolder != _atStart.OsuStableFolder
             || now.StockFolders != _atStart.StockFolders
             || now.CacheFolder != _atStart.CacheFolder
             || now.Language != _atStart.Language || now.EnglishTitles != _atStart.EnglishTitles;
         return changed || _baked
-            ? $"{now.AudioBufferFrames}|{now.AudioOutput}|{now.AudioDevice}|{now.AudioExclusivePeriod}|{now.AsioDriver}|{now.AsioBufferFrames}|{now.AsioOutputPair}|{now.TjaFolder}|{now.NijiiroFolder}|{now.StockFolders}|{now.OsuFolder}|{now.OsuStableFolder}|{now.CacheFolder}|{now.Language}|{now.EnglishTitles}|{_baked}" : "";
+            ? $"{now.TjaFolder}|{now.NijiiroFolder}|{now.StockFolders}|{now.OsuFolder}|{now.OsuStableFolder}|{now.CacheFolder}|{now.Language}|{now.EnglishTitles}|{_baked}" : "";
     }
 
     /// <summary>The choices shown (the pause choices, or a prompt's).</summary>
@@ -518,17 +515,24 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     /// The settings overlay closed: its settings are saved and, when one that applies at start changed, the restart
     /// prompt shows as after the settings page.
     /// </summary>
-    public void SettingsOverlayClosed()
+    /// <returns>True when the audio output's settings changed: the caller reopens it (back to the attract).</returns>
+    public bool SettingsOverlayClosed()
     {
         Selection = Array.IndexOf(_choices, "menu.settings");
         save();
+        // A restart reopens the audio too, so the prompt comes first.
         if (restartState() is { Length: > 0 } state && state != _declined)
         {
             _restartPrompt = true;
             _pauseChoices = _choices;
             _choices = ["menu.restart_now", "menu.later"];
             Selection = 0;
+            return false;
         }
+        if (get().AudioOutputSettings == _audioAt)
+            return false;
+        _audioAt = get().AudioOutputSettings;
+        return true;
     }
 
     /// <summary>

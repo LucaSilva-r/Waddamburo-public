@@ -603,6 +603,10 @@ public sealed record ArcadeSettings
     /// <summary>The ASIO outputs played on: 0 = 1-2, 1 = 3-4, and so on.</summary>
     public int AsioOutputPair { get; init; }
 
+    /// <summary>The settings the audio output opens with: a change reopens it (back to the attract, no restart).</summary>
+    public (AudioOutputMode, string?, int, int, string?, int, int) AudioOutputSettings =>
+        (AudioOutput, AudioDevice, AudioBufferFrames, AudioExclusivePeriod, AsioDriver, AsioBufferFrames, AsioOutputPair);
+
     /// <summary>Two players' sounds panned to their own side; false: centred, shared.</summary>
     public bool StereoPanning { get; init; } = true;
 

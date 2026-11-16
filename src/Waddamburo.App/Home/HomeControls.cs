@@ -177,11 +177,20 @@ internal sealed class HomeControls : IDisposable
                         : _shell.Bake = TextureBake.Start(upscale, _assetRoot));
                     break;
                 default:
-                    _menu.SettingsOverlayClosed();
-                    if (_pause is not null) _pause.Selection = _menu.Selection;
+                    if (_menu.SettingsOverlayClosed())
+                        switchAudio();
+                    else if (_pause is not null)
+                        _pause.Selection = _menu.Selection;
                     break;
             }
         }
+    }
+
+    // The audio output's settings changed: back to the attract on the new output (a restart when it can't).
+    private void switchAudio()
+    {
+        if (!_shell.SwitchAudioOutput())
+            _shell.RequestRestart();
     }
 
     private void applySettings(ArcadeSettings settings)
@@ -460,8 +469,10 @@ internal sealed class HomeControls : IDisposable
             if (!settings.IsOpen && _settingsOverlay)
             {
                 _settingsOverlay = false;
-                _menu.SettingsOverlayClosed();
-                if (_pause is not null) _pause.Selection = _menu.Selection;
+                if (_menu.SettingsOverlayClosed())
+                    switchAudio();
+                else if (_pause is not null)
+                    _pause.Selection = _menu.Selection;
             }
             return true;
         }

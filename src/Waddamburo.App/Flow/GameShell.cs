@@ -386,7 +386,7 @@ internal sealed class GameShell : IDisposable
     public PlayerSession Players { get; }
 
     private readonly SongLibraries _libraries;
-    private readonly IAudioOutput? _audioDevice;
+    private IAudioOutput? _audioDevice;
     private readonly LumenGameSceneLoader _loader;
     private readonly CostumeIconTextures _costumeIcons;
     private readonly DanChallengeArt _danArt;
@@ -993,8 +993,25 @@ internal sealed class GameShell : IDisposable
         return File.Exists(path) ? path : null;
     }
 
+    /// <summary>
+    /// The audio output's settings changed: the game stops everything, goes back to the attract and opens the new output
+    /// in place (no restart, no library scan). False when it can't (no audio, or the new output runs at another sample
+    /// rate than the mix): the caller restarts.
+    /// </summary>
+    public bool SwitchAudioOutput()
+    {
+        if (Audio is null)
+            return false;
+        resetForService();
+        var switched = Audio.SwitchOutput(openAudio);
+        _audioDevice = Audio.Output;
+        Console.WriteLine(switched ? "Audio: output switched." : "Audio: the new output runs at another sample rate, restarting.");
+        return switched;
+    }
+
     private IAudioOutput openAudio()
     {
+        Home.HomeMenu.OutputInUse = null;
         if (Arcade.AudioOutput == AudioOutputMode.Asio && OperatingSystem.IsWindows())
         {
             try

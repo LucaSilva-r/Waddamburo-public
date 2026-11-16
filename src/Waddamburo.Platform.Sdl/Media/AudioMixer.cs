@@ -240,10 +240,15 @@ public sealed class AudioMixer
     /// output, so they skip the output queue. Their gain is taken when they start.
     /// </summary>
     // ponytail: volume changes, bus fades and pauses don't reach a drum hit already sounding (< 1 s).
-    public void UseDirectVoices(Func<DirectVoice> create)
+    /// <remarks>Null stops using them (the output changes): the voices are dropped, their device destroys them.</remarks>
+    public void UseDirectVoices(Func<DirectVoice>? create)
     {
         lock (_gate)
+        {
             _createDirect = create;
+            if (create is null)
+                _direct.Clear();
+        }
     }
 
     /// <summary>Reports whether the identified clip or stream still has mixer-owned samples to render.</summary>

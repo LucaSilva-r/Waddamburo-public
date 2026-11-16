@@ -14,9 +14,9 @@ public sealed class AudioEngine : IDisposable
     // ~21 ms at 48 kHz: rides out the GC's own pauses while scenes load (8-20 ms traced); drum hits skip it.
     private const int TargetQueuedFrames = 1024;
 
-    private readonly IAudioOutput _device;
-    private readonly CancellationTokenSource _cancellation = new();
-    private readonly Thread? _producer;
+    private IAudioOutput _device;
+    private CancellationTokenSource _cancellation = new();
+    private Thread? _producer;
     private readonly object _outputGate = new();
     private volatile bool _performanceMonitoring;
     private long _performanceBlocks;
@@ -28,6 +28,45 @@ public sealed class AudioEngine : IDisposable
         ArgumentNullException.ThrowIfNull(device);
         _device = device;
         Mixer = new AudioMixer(device.Format);
+        attach(device);
+    }
+
+    /// <summary>The output the mix plays on (the engine owns it after <see cref="SwitchOutput"/>).</summary>
+    public IAudioOutput Output => _device;
+
+    /// <summary>
+    /// Plays the mix on another output: everything stops, the current output is closed first (exclusive and ASIO
+    /// outputs hold the device), then <paramref name="open"/> opens the next. The mixer, its buses and every clip stay.
+    /// False when the next output runs at another format than the mix (the clips were decoded for it): it is closed
+    /// and the engine stays silent; the caller restarts.
+    /// </summary>
+    public bool SwitchOutput(Func<IAudioOutput> open)
+    {
+        ArgumentNullException.ThrowIfNull(open);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        _cancellation.Cancel();
+        _producer?.Join();
+        _producer = null;
+        Mixer.StopAll();
+        Mixer.UseDirectVoices(null); // the old device destroys them
+        // Not under _outputGate: a pull output's thread renders under it, and disposing joins that thread.
+        _device.Dispose();
+        _cancellation.Dispose();
+        _cancellation = new CancellationTokenSource();
+        _failure = null;
+        var next = open();
+        _device = next;
+        if (next.Format != Mixer.Format)
+        {
+            next.Dispose();
+            return false;
+        }
+        attach(next);
+        return true;
+    }
+
+    private void attach(IAudioOutput device)
+    {
         if (device is SdlAudioDevice sdl)
         {
             // The mix keeps a queue (it rides out GC pauses); drum hits skip it.

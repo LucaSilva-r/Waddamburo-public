@@ -96,17 +96,19 @@ internal sealed class CabinetControls(GameShell shell, InputLatches input, Actio
         if (settings.Language != before.Language || settings.EnglishTitles != before.EnglishTitles
             || settings.TjaFolder != before.TjaFolder || settings.OsuFolder != before.OsuFolder || settings.OsuStableFolder != before.OsuStableFolder
             || settings.NijiiroFolder != before.NijiiroFolder || settings.StockFolders != before.StockFolders
-            || settings.CacheFolder != before.CacheFolder || settings.AudioBufferFrames != before.AudioBufferFrames
-            || settings.AudioOutput != before.AudioOutput || settings.AudioDevice != before.AudioDevice
-            || settings.AudioExclusivePeriod != before.AudioExclusivePeriod
-            || settings.AsioDriver != before.AsioDriver || settings.AsioBufferFrames != before.AsioBufferFrames
-            || settings.AsioOutputPair != before.AsioOutputPair)
+            || settings.CacheFolder != before.CacheFolder)
         {
             Console.WriteLine("Service menu left: a setting read at start changed, restarting.");
             shell.RequestRestart();
             return;
         }
         applyHome(settings);
+        // The audio output reopens in place (the menu stopped everything already).
+        if (settings.AudioOutputSettings != before.AudioOutputSettings && !shell.SwitchAudioOutput())
+        {
+            shell.RequestRestart();
+            return;
+        }
         shell.Coins = settings.FreePlay ? null : new CoinBank(settings);
         shell.Hosts.Coins = shell.Coins;
         if (shell.Indicators is { } indicators)
