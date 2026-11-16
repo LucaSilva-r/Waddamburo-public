@@ -519,6 +519,7 @@ internal sealed class LayerHostFactory(
         var binding = new ResultHostBinding(() => own, songInfo().Stage, endMessage, don, sounds?.Results, 0)
         {
             Best = Best,
+            Placement = Placement, // the ranking, as on a song's results
             AiBattle = true,
             PlayCue = sounds is null ? null : sounds.Frontend.PlayCue,
             NormalResultClosed = () => AiSectionResult?.Start(),

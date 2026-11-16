@@ -49,9 +49,10 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
                 dani.SetNativeFill($"song_name{index + 1}", title);
             }
         }
-        // result.lm's song_name slot is the same as gameplay song_info's: reuse its title texture.
+        // result.lm's song_name slot (AI battle's result_normal.lm has the same) is the same as gameplay
+        // song_info's: reuse its title texture.
         var resultIndex = Shell.Active.Layers.ToList().FindIndex(layer =>
-            Path.GetFileNameWithoutExtension(layer.Definition.MovieId) == "result");
+            Path.GetFileNameWithoutExtension(layer.Definition.MovieId) is "result" or "result_normal");
         if (resultIndex >= 0 && gameplay.Song is { } song)
             Shell.Active.Player.Layers[resultIndex].Player.SetNativeFill("song_name", Shell.Titles.GetGameplayTitle(song));
     }
