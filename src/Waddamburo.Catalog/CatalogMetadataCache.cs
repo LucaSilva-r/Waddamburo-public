@@ -17,11 +17,38 @@ public sealed class CatalogMetadataCache(string databasePath)
         IReadOnlyList<string>? within = null, CancellationToken cancellationToken = default)
     {
         _ = _preloaded.Value;
-        return new(databasePath, root, parserVersion, sourceTree, within, cancellationToken, check =>
+        var scope = new CatalogMetadataScope(databasePath, root, parserVersion, sourceTree, within, cancellationToken, check =>
         {
             var started = Task.Run(async () => { await RevalidateAfter.ConfigureAwait(false); await check().ConfigureAwait(false); });
             lock (_checks) _checks.Add(started);
         });
+        lock (_opened) _opened.Add(scope.InventoryKey);
+        return scope;
+    }
+
+    private readonly HashSet<string> _opened = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Drops the stored inventories of the installations this run did not open (a library removed, a drive unplugged):
+    /// one that comes back is walked at its first start instead of starting from a list that may be stale.
+    /// Call after the scans.
+    /// </summary>
+    public void ForgetUnopenedInventories()
+    {
+        try
+        {
+            using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+            {
+                DataSource = databasePath, DefaultTimeout = 2, Pooling = false, Mode = SqliteOpenMode.ReadWrite,
+            }.ToString());
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "DELETE FROM file_inventory_v2 WHERE scope NOT IN (SELECT value FROM json_each($opened))";
+            lock (_opened) command.Parameters.AddWithValue("$opened", JsonSerializer.Serialize(_opened));
+            command.ExecuteNonQuery();
+        }
+        catch (Exception exception) when (exception is SqliteException or IOException or UnauthorizedAccessException)
+        { Console.Error.WriteLine($"Catalog cache: old inventories not cleared: {exception.Message}"); }
     }
 
     // One sequential read of the whole file puts it in the OS file cache, so SQLite's page reads come from memory:
@@ -69,6 +96,7 @@ public sealed class CatalogMetadataScope : IDisposable
     private readonly bool _sourceTree;
     private readonly IReadOnlyList<string>? _within;
     private readonly string _inventory;
+    internal string InventoryKey => _inventory;
     private bool _fromSnapshot;
     // One background walk at a time: several releases walked at once thrash a spinning disk.
     private static readonly SemaphoreSlim Walking = new(1, 1);

@@ -79,6 +79,20 @@ public sealed partial class CatalogMetadataCacheTests : IDisposable
     }
 
     [Fact]
+    public void AnInstallationLeftOutForOneStartIsWalkedWhenItComesBack()
+    {
+        CatalogMetadataScope Install(CatalogMetadataCache cache) => cache.Open(Root, "v1", sourceTree: true);
+        using (Install(new CatalogMetadataCache(Database))) { }
+        var added = Path.Combine(Root, "new.txt");
+        File.WriteAllText(added, "new");
+        var without = new CatalogMetadataCache(Database); // a start with the library removed
+        using (without.Open(Directory.CreateDirectory(Path.Combine(_directory, "other")).FullName, "v1", sourceTree: true)) { }
+        without.ForgetUnopenedInventories();
+        using var back = Install(new CatalogMetadataCache(Database));
+        Assert.True(back.Exists(added));
+    }
+
+    [Fact]
     public void SourceTreesFollowLinksAndUserLibrariesDoNot()
     {
         if (OperatingSystem.IsWindows()) return; // links need a privilege there

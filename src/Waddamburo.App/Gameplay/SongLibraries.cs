@@ -89,6 +89,7 @@ internal sealed class SongLibraries : IDisposable
             .. arcade.Home && OsuLazerCatalogProvider.FindStableFolder(arcade.OsuStableFolder) is { } stable
                 ? [new OsuLazerCatalogProvider(stable)] : Array.Empty<ISongCatalogProvider>(),
         ], percent);
+        metadataCache.ForgetUnopenedInventories();
         libraries.Problems.AddRange(problems);
         var snapshot = libraries.Snapshot;
         foreach (var status in snapshot.Providers)
@@ -157,8 +158,10 @@ internal sealed class SongLibraries : IDisposable
 
     private static string? warnMissing(string folder, List<(string, string)> problems)
     {
-        Console.Error.WriteLine($"Game data left out: no songs in {folder}.");
-        problems.Add((folder, "No game songs in this folder"));
+        // A missing folder (removed, or a drive not plugged in) says so: its songs are left out until it is back.
+        var why = Directory.Exists(folder) ? "No game songs in this folder" : "Folder not found";
+        Console.Error.WriteLine($"Game data left out: {why}: {folder}.");
+        problems.Add((folder, why));
         return null;
     }
 
@@ -174,7 +177,7 @@ internal sealed class SongLibraries : IDisposable
 
     private static bool usable(string folder, NijiiroCatalogProvider installation, List<(string, string)> problems)
     {
-        if (NijiiroProblem(installation) is not { } problem)
+        if ((Directory.Exists(folder) ? NijiiroProblem(installation) : "Folder not found") is not { } problem)
             return true;
         Console.Error.WriteLine($"Nijiiro library left out: {problem}");
         problems.Add((folder, problem));
