@@ -279,6 +279,7 @@
   "score_list.switch": "{0}: leaderboard / your plays · {1}: shin-uchi",
   "score_list.leaderboard_shinuchi": "Leaderboard · Shin-uchi",
   "score_list.keys": "←/→ difficulty · ↑/↓ choose · {0} watch the replay · {1}/Esc close",
+  "score_list.keys_no_replay": "←/→ difficulty · ↑/↓ choose · {0}/Esc close",
   "score_list.loading": "Loading scores…",
   "score_list.loading_replay": "Loading the replay…",
   "score_list.empty": "No plays yet.",

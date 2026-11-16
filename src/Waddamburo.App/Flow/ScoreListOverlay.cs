@@ -77,7 +77,8 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, 
             _selection = Math.Max(0, _selection - 1);
         if (keys.IsDown(SdlKeyboardKey.Down))
             _selection = Math.Min(Math.Max(0, rows.Count - 1), _selection + 1);
-        if (GameActions.Down(keys, GameAction.Confirm) && _selection < rows.Count)
+        // AI battle: the leaderboard only (its gameplay is AI-don's two lanes, a replay is one player's).
+        if (GameActions.Down(keys, GameAction.Confirm) && _selection < rows.Count && !shell.Hosts.AiBattle)
         {
             var play = rows[_selection];
             TaikoReplay? local;
@@ -243,7 +244,8 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, 
                 quads.AddRange(row(rows[index], y + (RowHeight - 4) / 2));
             }
         }
-        quads.Add(painter.Text(T("score_list.keys", GameActions.Name(GameAction.Confirm), GameActions.Name(GameAction.Scores)), Left + Width / 2, Top + Height - 26, Width - 60, 22, tint: (170, 175, 190)));
+        quads.Add(painter.Text(shell.Hosts.AiBattle ? T("score_list.keys_no_replay", GameActions.Name(GameAction.Scores))
+            : T("score_list.keys", GameActions.Name(GameAction.Confirm), GameActions.Name(GameAction.Scores)), Left + Width / 2, Top + Height - 26, Width - 60, 22, tint: (170, 175, 190)));
         return quads;
     }
 
