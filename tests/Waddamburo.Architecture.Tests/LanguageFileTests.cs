@@ -16,7 +16,8 @@ public sealed partial class LanguageFileTests
         return [.. Directory.EnumerateFiles(Path.Combine(FindRoot(), "src", "Waddamburo.App"), "*.cs", SearchOption.AllDirectories)
             .Where(static path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"))
             .SelectMany(static path => KeyLiteral().Matches(File.ReadAllText(path)).Select(static match => match.Groups[1].Value))
-            .Where(literal => prefixes.Any(literal.StartsWith))];
+            // ponytail: file names share the shape ("favourites.txt"); add extensions here as they turn up.
+            .Where(literal => prefixes.Any(literal.StartsWith) && !literal.EndsWith(".txt", StringComparison.Ordinal))];
     }
 
     [Fact]

@@ -239,8 +239,8 @@ public sealed class AudioMixer
     /// Plays <see cref="AudioBus.DrumHit"/> one-shots through device-mixed voices instead of this mixer's
     /// output, so they skip the output queue. Their gain is taken when they start.
     /// </summary>
-    // ponytail: volume changes, bus fades and pauses don't reach a drum hit already sounding (< 1 s).
     /// <remarks>Null stops using them (the output changes): the voices are dropped, their device destroys them.</remarks>
+    // ponytail: volume changes, bus fades and pauses don't reach a drum hit already sounding (< 1 s).
     public void UseDirectVoices(Func<DirectVoice>? create)
     {
         lock (_gate)

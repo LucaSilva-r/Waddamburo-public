@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using Microsoft.Data.Sqlite;
 
@@ -86,7 +87,7 @@ public sealed class CatalogMetadataCache(string databasePath)
             connection.Open();
             using var command = connection.CreateCommand();
             command.CommandText = "DELETE FROM file_inventory_v2 WHERE scope NOT IN (SELECT value FROM json_each($opened))";
-            lock (_opened) command.Parameters.AddWithValue("$opened", JsonSerializer.Serialize(_opened));
+            lock (_opened) command.Parameters.AddWithValue("$opened", JsonSerializer.Serialize([.. _opened], OpenedScopesJson.Default.StringArray));
             command.ExecuteNonQuery();
         }
         catch (Exception exception) when (exception is SqliteException or IOException or UnauthorizedAccessException)
@@ -365,3 +366,6 @@ public sealed class CatalogMetadataScope : IDisposable
         }
     }
 }
+
+[JsonSerializable(typeof(string[]))]
+internal sealed partial class OpenedScopesJson : JsonSerializerContext;

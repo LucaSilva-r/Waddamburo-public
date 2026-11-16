@@ -1112,7 +1112,7 @@ internal sealed class GameShell : IDisposable
     }
 
     // Opens the output settings asks for; false (with why) when exclusive or ASIO output can't open. Shared opens or throws.
-    private bool tryOpenAudio(ArcadeSettings settings, out IAudioOutput output, out string problem)
+    private static bool tryOpenAudio(ArcadeSettings settings, out IAudioOutput output, out string problem)
     {
         problem = "";
         if (settings.AudioOutput == AudioOutputMode.Asio && OperatingSystem.IsWindows())
@@ -1121,8 +1121,8 @@ internal sealed class GameShell : IDisposable
             {
                 var asio = new AsioOutput(settings.AsioDriver, settings.AsioBufferFrames, settings.AsioOutputPair);
                 Home.HomeMenu.AsioOutputs = asio.OutputCount;
-                var (setting, driver) = (settings.AsioBufferFrames, settings.AsioDriver);
-                Home.HomeMenu.OutputInUse = () => (AudioOutputMode.Asio, setting, driver, asio.HardwareBufferFrames, asio.Format.SampleRate);
+                var (setting, driver, frames, rate) = (settings.AsioBufferFrames, settings.AsioDriver, asio.HardwareBufferFrames, asio.Format.SampleRate);
+                Home.HomeMenu.OutputInUse = () => (AudioOutputMode.Asio, setting, driver, frames, rate);
                 Console.WriteLine($"Audio: {asio.Driver}, {asio.HardwareBufferFrames} frames "
                     + $"({1000.0 * asio.HardwareBufferFrames / asio.Format.SampleRate:0.##} ms) at {asio.Format.SampleRate} Hz, "
                     + $"output latency {1000.0 * asio.OutputLatencyFrames / asio.Format.SampleRate:0.#} ms, "
@@ -1142,8 +1142,8 @@ internal sealed class GameShell : IDisposable
             try
             {
                 var exclusive = new WasapiExclusiveOutput(periodFrames: settings.AudioExclusivePeriod, deviceName: settings.AudioDevice);
-                var (setting, device) = (settings.AudioExclusivePeriod, settings.AudioDevice);
-                Home.HomeMenu.OutputInUse = () => (AudioOutputMode.Exclusive, setting, device, exclusive.HardwareBufferFrames, exclusive.Format.SampleRate);
+                var (setting, device, frames, rate) = (settings.AudioExclusivePeriod, settings.AudioDevice, exclusive.HardwareBufferFrames, exclusive.Format.SampleRate);
+                Home.HomeMenu.OutputInUse = () => (AudioOutputMode.Exclusive, setting, device, frames, rate);
                 Console.WriteLine($"Audio: WASAPI exclusive, {exclusive.HardwareBufferFrames} frames "
                     + $"({1000.0 * exclusive.HardwareBufferFrames / exclusive.Format.SampleRate:0.##} ms), {exclusive.Driver}.");
                 output = exclusive;
