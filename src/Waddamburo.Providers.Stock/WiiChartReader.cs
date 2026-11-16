@@ -10,7 +10,7 @@ namespace Waddamburo.Providers.Stock;
 /// arcade fumen, six scrolls (three per note set), then two note sets × three branches of (first note, count,
 /// notes left). A 16-byte note: type, tick (1/12 beat from the measure start), balloon hits, roll length (ms).
 /// Set 0 is the chart; set 1 only differs in some 2P duet files. The chart is rewritten as an arcade fumen and read
-/// by <see cref="FumenChartReader"/> (its consoleNotes), so branches, rolls and scroll follow the same rules.
+/// by <see cref="FumenChartReader"/> (its wiiNotes), so branches, rolls and scroll follow the same rules.
 /// </summary>
 internal static class WiiChartReader
 {
@@ -91,7 +91,7 @@ internal static class WiiChartReader
         return output.ToArray();
     }
 
-    // The arcade's numbering, 14-25 the console notes (read with FumenChartReader's consoleNotes).
+    // The arcade's numbering, 14-25 the Wii notes (read with FumenChartReader's wiiNotes).
     private static int arcadeType(int type) => type is >= 1 and <= 25 ? type
         : throw new InvalidDataException($"Unknown Wii note type {type}.");
 

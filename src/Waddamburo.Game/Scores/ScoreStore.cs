@@ -124,7 +124,7 @@ public sealed record ChartUpload(string Notes, string? Title, string? Subtitle, 
             SongKey = source switch
             {
                 // Wii/Wii U: "wii1:anp", "wiiu:anp" (their own ids, apart from the arcade's).
-                SongSourceKind.Stock or SongSourceKind.Nijiiro or SongSourceKind.Console => chart.Key.Song.StableId,
+                SongSourceKind.Stock or SongSourceKind.Nijiiro or SongSourceKind.Wii => chart.Key.Song.StableId,
                 // An unsubmitted set has no online id; its local key is still one song on this machine.
                 SongSourceKind.OsuLazer => song?.OnlineSetId is { } set ? $"set:{set}" : $"local:{chart.Key.Song.StableId}",
                 _ => null,
@@ -399,7 +399,7 @@ public sealed class ScoreStore : IDisposable
         ArgumentNullException.ThrowIfNull(play);
         ArgumentNullException.ThrowIfNull(chart);
         // Record privacy with the play itself, so a later setting change never queues private history.
-        if (!uploadCustomSongs && play.Chart.Song.Source is not (SongSourceKind.Stock or SongSourceKind.Nijiiro or SongSourceKind.Console))
+        if (!uploadCustomSongs && play.Chart.Song.Source is not (SongSourceKind.Stock or SongSourceKind.Nijiiro or SongSourceKind.Wii))
             play = play with { UploadBlocked = true };
         lock (_connection)
         {

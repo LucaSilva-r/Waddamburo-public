@@ -27,7 +27,7 @@ internal static class ChartExport
                 .Where(static installed => installed.Problem is null),
             .. ArcadeSettings.Folders(arcade.StockFolders) is var folders
                 && folders.Any(folder => WiiCatalogProvider.FindRoot(folder) is not null || WiiUCatalogProvider.FindRoot(folder) is not null)
-                ? [new ConsoleCatalogProvider(
+                ? [new WiiLibraryProvider(
                     folders.Select(WiiUCatalogProvider.FindRoot).OfType<string>().Distinct().Select(static root => new WiiUCatalogProvider(root)),
                     folders.Select(WiiCatalogProvider.FindRoot).OfType<string>().Distinct().Select(static root => new WiiCatalogProvider(root)))]
                 : Array.Empty<ISongCatalogProvider>(),

@@ -316,7 +316,7 @@ public sealed class SongSelectCatalogView
         SongSourceKind.Tja => (130, 210, 60),
         SongSourceKind.OsuLazer or SongSourceKind.OsuStable => (255, 102, 171),
         SongSourceKind.Nijiiro => (170, 110, 255),
-        SongSourceKind.Console => (255, 255, 255),
+        SongSourceKind.Wii => (255, 255, 255),
         _ => (60, 170, 240),
     };
 
@@ -461,7 +461,7 @@ public sealed class SongSelectCatalogView
             Japanese ? "ニジイロの\n譜面で\nあそぼう!!" : "Play Taiko\nNijiiro\ncharts!!"),
         SongSourceKind.Tja => new FolderArt(FolderArtStyle.Tja, LibraryName(library),
             Japanese ? "じぶんの\n譜面で\nあそぼう!!" : "Play your\ncustom\ncharts!!"),
-        SongSourceKind.Console => new FolderArt(FolderArtStyle.Original, LibraryName(library),
+        SongSourceKind.Wii => new FolderArt(FolderArtStyle.Original, LibraryName(library),
             Japanese ? "Wii・Wii Uの\n曲で\nあそぼう!!" : "Play the\nWii/Wii U\nsongs!!"),
         _ => null,
     };
@@ -486,7 +486,7 @@ public sealed class SongSelectCatalogView
         SongSourceKind.Tja => Japanese ? "創作譜面" : "CUSTOM TJA",
         SongSourceKind.OsuLazer => Japanese ? "osu!lazer" : "OSU! LAZER",
         SongSourceKind.OsuStable => Japanese ? "osu!stable" : "OSU! STABLE",
-        SongSourceKind.Console => "WII/WII U",
+        SongSourceKind.Wii => "WII/WII U",
         _ => library.ToString(),
     };
 

@@ -24,11 +24,11 @@ internal static class FumenChartReader
     private const int NoteSize = 24;
     private const int RollPadding = 8;
 
-    // consoleNotes: the console releases' (太鼓の達人Wii, Wii U) note types 14-25: 14/15 giant don/ka (big notes drawn
+    // wiiNotes: the console releases' (太鼓の達人Wii, Wii U) note types 14-25: 14/15 giant don/ka (big notes drawn
     // giant), 16-25 sparkling notes (items in medleys: 16-18 and 21-23 don, 19-20 and 24-25 ka; from footage of Super
     // Mario medley ふつう and Namcot medley), drawn glowing.
     public static PlayableChart Read(ReadOnlySpan<byte> data, ChartKey key, int maximumMeasures, int maximumNotes,
-        bool consoleNotes = false)
+        bool wiiNotes = false)
     {
         if (data.Length < HeaderSize)
             throw new InvalidDataException("The fumen is shorter than its header.");
@@ -82,7 +82,7 @@ internal static class FumenChartReader
                 {
                     reader.Require(NoteSize);
                     var type = reader.Int32();
-                    var (giant, sparkle) = (consoleNotes && type is 14 or 15, consoleNotes && type is >= 16 and <= 25);
+                    var (giant, sparkle) = (wiiNotes && type is 14 or 15, wiiNotes && type is >= 16 and <= 25);
                     if (giant)
                         type -= 7;
                     else if (sparkle)

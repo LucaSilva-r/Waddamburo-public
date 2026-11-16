@@ -8,7 +8,7 @@ namespace Waddamburo.Providers.Stock;
 /// and rolls, in order; the ports' timing floats differ) is listed once, from the newest disc (Wii U: ura, 44.1 kHz);
 /// one charted differently is listed per disc, its title marked with the release.
 /// </summary>
-public sealed class ConsoleCatalogProvider : ISongCatalogProvider, ICatalogAssetResolver, IPlayableChartProvider
+public sealed class WiiLibraryProvider : ISongCatalogProvider, ICatalogAssetResolver, IPlayableChartProvider
 {
     // Newest first, with the title mark a song gets when the discs chart it differently.
     private readonly (ISongCatalogProvider Provider, string Release)[] _discs;
@@ -16,12 +16,12 @@ public sealed class ConsoleCatalogProvider : ISongCatalogProvider, ICatalogAsset
     // The game's genre order.
     private static readonly string[] Genres = ["J-POP", "アニメ", "ボーカロイド", "童謡", "バラエティ", "クラシック", "ゲームミュージック", "ナムコオリジナル"];
 
-    public ConsoleCatalogProvider(IEnumerable<WiiUCatalogProvider> wiiU, IEnumerable<WiiCatalogProvider> wii) =>
+    public WiiLibraryProvider(IEnumerable<WiiUCatalogProvider> wiiU, IEnumerable<WiiCatalogProvider> wii) =>
         _discs = [.. wiiU.Select(static disc => ((ISongCatalogProvider)disc, "Wii U")), .. wii.Select(static disc => ((ISongCatalogProvider)disc, "Wii"))];
 
-    public CatalogProviderId Id { get; } = new("console");
+    public CatalogProviderId Id { get; } = new("wii");
 
-    public SongSourceKind Source => SongSourceKind.Console;
+    public SongSourceKind Source => SongSourceKind.Wii;
 
     public async ValueTask<SongCatalogContribution> ScanAsync(IProgress<CatalogScanProgress>? progress, CancellationToken cancellationToken)
     {
@@ -51,7 +51,7 @@ public sealed class ConsoleCatalogProvider : ISongCatalogProvider, ICatalogAsset
         }
         var categories = songs.GroupBy(static song => song.Genre ?? "")
             .OrderBy(static genre => Array.IndexOf(Genres, genre.Key) is var order and >= 0 ? order : int.MaxValue)
-            .Select((genre, index) => new SongCategoryDescriptor(new CategoryKey(Source, $"console-{index}"),
+            .Select((genre, index) => new SongCategoryDescriptor(new CategoryKey(Source, $"wii-{index}"),
                 genre.Key.Length == 0 ? "Other" : genreName(genre.Key), index, genre.Select(static song => song.Song.Key))
             {
                 Genre = genre.Key.Length == 0 ? null : genre.Key,
@@ -78,7 +78,7 @@ public sealed class ConsoleCatalogProvider : ISongCatalogProvider, ICatalogAsset
         ArgumentNullException.ThrowIfNull(asset);
         var bar = asset.StableId.IndexOf('|', StringComparison.Ordinal);
         if (asset.Provider != Id || bar < 0 || !int.TryParse(asset.StableId.AsSpan(0, bar), out var disc) || disc < 0 || disc >= _discs.Length)
-            throw new ArgumentException("The asset is not a console disc's.", nameof(asset));
+            throw new ArgumentException("The asset is not a Wii or Wii U disc's.", nameof(asset));
         return (_discs[disc].Provider, new CatalogAssetKey(_discs[disc].Provider.Id, asset.StableId[(bar + 1)..]));
     }
 

@@ -95,7 +95,7 @@ public sealed record SongBrowse(SongGroupMode Group = SongGroupMode.Title, SongS
             song.Title.Primary, song.Title.English, song.Title.Japanese, song.Subtitle, song.EnglishSubtitle,
             song.Artist, song.Creator,
             // The game's music id (e.g. "10tai"); custom songs' ids are paths or hashes, not worth matching.
-            song.Key.Source is SongSourceKind.Stock or SongSourceKind.Nijiiro or SongSourceKind.Console ? song.Key.StableId : null,
+            song.Key.Source is SongSourceKind.Stock or SongSourceKind.Nijiiro or SongSourceKind.Wii ? song.Key.StableId : null,
         }.Where(static value => value is not null));
         // ponytail: romanised per query, each song every keystroke; cache it on the song if search gets slow.
         var romaji = Romaji.Fold(Romaji.FromKana(text));

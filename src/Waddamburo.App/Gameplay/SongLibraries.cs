@@ -111,19 +111,19 @@ internal sealed class SongLibraries : IDisposable
             .ToList() : [];
         // The running game's data is Green, the newest release: it comes first whatever the others are.
         List<string> roots = [.. StockCatalogProvider.IsStockData(dataRoot) ? [dataRoot] : Array.Empty<string>(), .. others];
-        // Console discs (太鼓の達人Wii, Wii U) set among them: the WII/WII U library.
+        // Wii and Wii U discs set among them: the WII/WII U library.
         var folders = arcade.Home ? ArcadeSettings.Folders(arcade.StockFolders) : [];
         List<WiiUCatalogProvider> wiiU = [.. folders.Select(WiiUCatalogProvider.FindRoot).OfType<string>()
             .Distinct(StringComparer.Ordinal).Select(static root => new WiiUCatalogProvider(root))];
         List<WiiCatalogProvider> wii = [.. folders.Select(WiiCatalogProvider.FindRoot).OfType<string>()
             .Distinct(StringComparer.Ordinal).Select(static root => new WiiCatalogProvider(root))];
-        ISongCatalogProvider[] consoles = wiiU.Count + wii.Count > 0 ? [new ConsoleCatalogProvider(wiiU, wii)] : [];
+        ISongCatalogProvider[] wiiLibrary = wiiU.Count + wii.Count > 0 ? [new WiiLibraryProvider(wiiU, wii)] : [];
         return [.. roots.Count switch
         {
             0 => [],
             1 => [new StockCatalogProvider(roots[0]) { MetadataCache = metadataCache }],
             _ => new ISongCatalogProvider[] { new MergedCatalogProvider([.. roots.Select(root => new StockCatalogProvider(root) { MetadataCache = metadataCache })]) },
-        }, .. consoles];
+        }, .. wiiLibrary];
     }
 
     // Nijiiro installations that can play, the newest (highest song number) first.

@@ -34,7 +34,7 @@ public sealed partial class WiiUCatalogProvider : ISongCatalogProvider, ICatalog
 
     public CatalogProviderId Id { get; }
 
-    public SongSourceKind Source => SongSourceKind.Console;
+    public SongSourceKind Source => SongSourceKind.Wii;
 
     /// <summary>The disc's <c>content</c> folder in what a player picked (itself, <c>content</c> or <c>game/content</c>); null when none.</summary>
     public static string? FindRoot(string folder)
@@ -118,7 +118,7 @@ public sealed partial class WiiUCatalogProvider : ISongCatalogProvider, ICatalog
             throw new InvalidDataException("The Wii U chart exceeds the chart-size limit.");
         var bytes = await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false);
         var fields = asset.StableId.Split(':');
-        return FumenChartReader.Read(bytes, chart, MaximumMeasures, MaximumNotes, consoleNotes: true) with { Level = stars(fields[1], fields[2][0]) };
+        return FumenChartReader.Read(bytes, chart, MaximumMeasures, MaximumNotes, wiiNotes: true) with { Level = stars(fields[1], fields[2][0]) };
     }
 
     // "chart:<id>:<course>", "duet:<id>:<course>:<1|2>" or "audio:<bank>"; validated so a key cannot leave the root.

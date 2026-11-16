@@ -8,7 +8,7 @@ public enum SongSourceKind
     OsuLazer,
     OsuStable,
     /// <summary>The Wii and Wii U releases' songs, the WII/WII U library.</summary>
-    Console,
+    Wii,
 }
 
 public static class SongSourceKinds

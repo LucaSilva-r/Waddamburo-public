@@ -6,7 +6,7 @@ namespace Waddamburo.Providers.Stock;
 /// <summary>
 /// The songs of a 太鼓の達人Wii (2008) disc the player extracted: the songs <c>sheet/musicinfo</c> lists, their 1P
 /// charts from <c>sheet/sht/bin</c>, stars and 配点 from <c>sheet/tuning</c>, music from <c>sound/SONG_&lt;ID&gt;.nub</c>
-/// (Nintendo DSP-ADPCM, decoded by vgmstream). The WII/WII U library (<see cref="SongSourceKind.Console"/>): ids
+/// (Nintendo DSP-ADPCM, decoded by vgmstream). The WII/WII U library (<see cref="SongSourceKind.Wii"/>): ids
 /// overlap the arcade's (anp, natsu), and its scores count as custom songs'.
 /// </summary>
 public sealed partial class WiiCatalogProvider : ISongCatalogProvider, ICatalogAssetResolver, IPlayableChartProvider
@@ -29,7 +29,7 @@ public sealed partial class WiiCatalogProvider : ISongCatalogProvider, ICatalogA
 
     public CatalogProviderId Id { get; }
 
-    public SongSourceKind Source => SongSourceKind.Console;
+    public SongSourceKind Source => SongSourceKind.Wii;
 
     /// <summary>
     /// The disc's <c>files</c> folder in what a player picked: the folder itself, its <c>files</c>, or an extraction's
@@ -110,7 +110,7 @@ public sealed partial class WiiCatalogProvider : ISongCatalogProvider, ICatalogA
         var bytes = await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false);
         var fields = asset.StableId.Split(':');
         var fumen = WiiChartReader.ToFumen(bytes, _tuning.GetValueOrDefault(courseName(fields[1], fields[2][0])), MaximumMeasures, MaximumNotes);
-        return FumenChartReader.Read(fumen, chart, MaximumMeasures, MaximumNotes, consoleNotes: true) with { Level = stars(fields[1], fields[2][0]) };
+        return FumenChartReader.Read(fumen, chart, MaximumMeasures, MaximumNotes, wiiNotes: true) with { Level = stars(fields[1], fields[2][0]) };
     }
 
     // "chart:<id>:<course letter>" or "audio:<id>"; ids are validated so a key cannot leave the root.
