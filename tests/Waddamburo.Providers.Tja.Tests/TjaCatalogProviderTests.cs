@@ -595,6 +595,26 @@ public sealed class TjaCatalogProviderTests
     }
 
     [Fact]
+    public async Task CameraCommandsBecomeCameraChanges()
+    {
+        // 120 BPM: a measure is 2 s. A START sets its from value, then eases to its to value until its END.
+        var chart = await loadSynthetic("#BORDERCOLOR 255,128,0\n#CAMZOOM 2\n#CAMROTATIONSTART 0,90,OUT,CUBIC\n1,\n#CAMROTATIONEND\n"
+            + "#CAMHMOVESTART 10,-20\n1,\n#CAMRESET\n#CAMVSCALE oops\n1,");
+        var mods = chart.Effects.Mods;
+        Assert.All(mods, change => Assert.Equal("camera", change.Target));
+        Assert.Equal(2, ChartMods.ValueAt([.. mods.Where(m => m.Property == "scale")], TimeSpan.FromSeconds(1), 1));
+        var rotation = mods.Where(m => m.Property == "rotation").ToArray();
+        Assert.Equal((TimeSpan.FromSeconds(2), ChartEase.OutCubic), (rotation[1].Length, rotation[1].Ease));
+        Assert.Equal(90 * 0.875, ChartMods.ValueAt(rotation, TimeSpan.FromSeconds(1), 0), 9);
+        // No #CAMHMOVEEND: the move ends at once; #CAMRESET puts every property back, a bad value is skipped.
+        Assert.Equal(-20, ChartMods.ValueAt([.. mods.Where(m => m.Property == "x")], TimeSpan.FromSeconds(3), 0));
+        Assert.Equal(1, ChartMods.ValueAt([.. mods.Where(m => m.Property == "scale")], TimeSpan.FromSeconds(5), 1));
+        Assert.DoesNotContain(mods, m => m.Property == "scaley" && m.Value != 1);
+        // #BORDERCOLOR outlives #CAMRESET.
+        Assert.Equal(128, ChartMods.ValueAt([.. mods.Where(m => m.Property == "bordergreen")], TimeSpan.FromSeconds(5), 0));
+    }
+
+    [Fact]
     public async Task NegativeDelayOffsetsOneNoteAndKeepsEventsOrdered()
     {
         // Editors' per-note "time offset": #DELAY x before the note, #DELAY -x after it.

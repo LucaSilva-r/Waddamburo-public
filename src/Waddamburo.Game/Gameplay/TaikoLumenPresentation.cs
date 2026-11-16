@@ -261,9 +261,13 @@ public sealed class TaikoLumenPresentation
                 player.TryInvokeCallback("SetComboBonus", [LumenHostValue.FromNumber(100)]);
     }
 
+    /// <summary>The camera as the last <see cref="CreateLayers"/> placed the lane (<see cref="StageEffects.Camera"/>).</summary>
+    public (LumenMatrix Matrix, float Red, float Green, float Blue)? Camera { get; private set; }
+
     public (List<LumenSceneLayer> Back, List<LumenSceneLayer> Front) CreateLayers(TimeSpan time,
         LumenSceneLayer? character = null, int characterSlot = 0)
     {
+        Camera = _stage.IsActive ? _stage.Camera(time) : null;
         var layers = new List<LumenSceneLayer>(_background);
         if (character is { } don)
             layers.Insert(Math.Clamp(characterSlot, 0, layers.Count), don);

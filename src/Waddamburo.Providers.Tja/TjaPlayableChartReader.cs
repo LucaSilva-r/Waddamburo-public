@@ -661,6 +661,45 @@ internal static partial class TjaPlayableChartReader
                 scroll = scroll with { Mode = name switch { "#HBSCROLL" => 1, "#BMSCROLL" => 2, _ => 0 } };
                 appendOrReplace(scrollPoints, scrollPoint(controlTime(scrollPoints, cursorSeconds), scroll));
                 break;
+            case "#CAMHOFFSET" or "#CAMVOFFSET" or "#CAMZOOM" or "#CAMROTATION" or "#CAMHSCALE" or "#CAMVSCALE" when mainRoute:
+                // TJAPlayer3-Extended (YataiDON, OpenTaiko): the whole screen moves (stage pixels), zooms, turns
+                // (degrees, clockwise) or stretches about its centre. A bad value skips the command.
+                if (cameraProperty(name[4..]) is { } setProperty && double.TryParse(argument.Split(',')[0].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var setValue)
+                    && double.IsFinite(setValue))
+                    drawn.CameraSet(cursorSeconds, setProperty, setValue);
+                break;
+            case { } start when mainRoute && start.StartsWith("#CAM", StringComparison.Ordinal) && start.EndsWith("START", StringComparison.Ordinal)
+                && cameraProperty(start[4..^5]) is { } startProperty:
+            {
+                // #CAM…START from,to[,IN|OUT|IN_OUT[,LINEAR|CUBIC|QUARTIC|QUINTIC|SINUSOIDAL|EXPONENTIAL|CIRCULAR]] … #CAM…END
+                var fields = argument.Split(',', StringSplitOptions.TrimEntries);
+                if (fields.Length >= 2
+                    && double.TryParse(fields[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var from) && double.IsFinite(from)
+                    && double.TryParse(fields[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var to) && double.IsFinite(to))
+                    drawn.CameraStart(cursorSeconds, startProperty, from, to,
+                        cameraEase(fields.Length > 2 ? fields[2] : "IN", fields.Length > 3 ? fields[3] : "LINEAR"));
+                break;
+            }
+            case { } end when mainRoute && end.StartsWith("#CAM", StringComparison.Ordinal) && end.EndsWith("END", StringComparison.Ordinal)
+                && cameraProperty(end[4..^3]) is { } endProperty:
+                drawn.CameraEnd(cursorSeconds, endProperty);
+                break;
+            case "#BORDERCOLOR" when mainRoute:
+            {
+                // #BORDERCOLOR r,g,b (0-255): the colour around the stage; #CAMRESET keeps it (YataiDON).
+                var fields = argument.Split(',', StringSplitOptions.TrimEntries);
+                var rgb = new double[3];
+                if (fields.Length >= 3 && Enumerable.Range(0, 3).All(i => double.TryParse(fields[i], NumberStyles.Float, CultureInfo.InvariantCulture, out rgb[i]) && double.IsFinite(rgb[i])))
+                {
+                    drawn.CameraSet(cursorSeconds, "borderred", rgb[0]);
+                    drawn.CameraSet(cursorSeconds, "bordergreen", rgb[1]);
+                    drawn.CameraSet(cursorSeconds, "borderblue", rgb[2]);
+                }
+                break;
+            }
+            case "#CAMRESET" when mainRoute:
+                drawn.CameraReset(cursorSeconds);
+                break;
             case "#SENOTECHANGE":
                 drawn.NoteText(int.TryParse(argument, NumberStyles.Integer, CultureInfo.InvariantCulture, out var text) ? text : 0);
                 break;
@@ -669,14 +708,38 @@ internal static partial class TjaPlayableChartReader
             case "#NEXTSONG":
                 throw new NotSupportedException("TJA #NEXTSONG (a dan course in one file) is not supported.");
             default:
-                // #SECTION, #LYRIC and anything else (OpenTaiko's camera and object commands, #BMSCROLL/#HBSCROLL/#NMSCROLL
-                // scroll modes, #SPLITLANE, #BGAON, typos): the chart plays as written without the effect.
+                // #SECTION, #LYRIC and anything else (OpenTaiko's object commands, #SPLITLANE, #BGAON,
+                // typos): the chart plays as written without the effect.
                 // ponytail: silently; a diagnostics list if users ask why an effect is missing.
                 break;
         }
     }
 
     // The scroll state between commands: #SCROLL's speed, #DIRECTION, #SUDDEN.
+    // The modchart camera property a TJAPlayer3-Extended camera command names (#CAM<name>, #CAM<name>START/END).
+    private static string? cameraProperty(string name) => name switch
+    {
+        "HOFFSET" or "HMOVE" => "x",
+        "VOFFSET" or "VMOVE" => "y",
+        "ZOOM" => "scale",
+        "ROTATION" => "rotation",
+        "HSCALE" => "scalex",
+        "VSCALE" => "scaley",
+        _ => null,
+    };
+
+    // A camera ease's direction and curve (YataiDON's defaults: IN, LINEAR; unknown words fall back to them).
+    private static ChartEase cameraEase(string direction, string curve)
+    {
+        var suffix = curve.ToUpperInvariant() switch
+        {
+            "CUBIC" => "Cubic", "QUARTIC" => "Quart", "QUINTIC" => "Quint", "SINUSOIDAL" => "Sine",
+            "EXPONENTIAL" => "Expo", "CIRCULAR" => "Circ", _ => null,
+        };
+        var prefix = direction.ToUpperInvariant() switch { "OUT" => "Out", "IN_OUT" => "InOut", _ => "In" };
+        return suffix is null ? ChartEase.Linear : Enum.Parse<ChartEase>(prefix + suffix);
+    }
+
     // Mode: 0 by time, 1 by beat (#HBSCROLL), 2 by beat at speed 1 (#BMSCROLL).
     // BpmBack: a negative tempo is in force, reversing time scrolling (beat scrolling reverses through the beat count).
     private readonly record struct TjaScroll(double Re, double Im, int Direction, TimeSpan? Show, TimeSpan? Wait, int Mode,

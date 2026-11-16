@@ -428,6 +428,24 @@ internal sealed class GameShell : IDisposable
     public RoomOverlay Room { get; private set; } = null!;
     public OverlayPainter Painter { get; }
 
+    /// <summary>
+    /// A moved camera's surroundings (TJA #BORDERCOLOR, default black): one big band past each edge of the 1280x720
+    /// stage, through the camera, so whatever lies off the stage stays hidden however it is turned or zoomed out.
+    /// </summary>
+    private IEnumerable<RenderQuad> CameraBorder(LumenMatrix camera, RenderColor colour)
+    {
+        const float far = 100_000;
+        foreach (var (x, y, width, height) in (IEnumerable<(float, float, float, float)>)[
+            (-far, -far, far, 720 + 2 * far), (1280, -far, far, 720 + 2 * far), (0, -far, 1280, far), (0, 720, 1280, far)])
+        {
+            var quad = Painter.Rect(x, y, width, height, colour);
+            RenderVertex moved(RenderVertex vertex) => camera.Transform(vertex.X * 1280, vertex.Y * 720) is var point
+                ? vertex with { X = point.X / 1280, Y = point.Y / 720 } : vertex;
+            yield return quad with { TopLeft = moved(quad.TopLeft), TopRight = moved(quad.TopRight),
+                BottomRight = moved(quad.BottomRight), BottomLeft = moved(quad.BottomLeft) };
+        }
+    }
+
     /// <summary>Song Select's quick reload (library, grouping, order, search).</summary>
     public SongSelectReload Reload { get; }
     private readonly Dictionary<SceneId, FlowScene> _scenes;
@@ -1628,7 +1646,11 @@ internal sealed class GameShell : IDisposable
             : Unsqueezed(SceneTextures.Compose(_indicators.CreateSnapshot(overIntermission, interpolation), _indicatorTextures,
                 "Indicator", Titles.Resolve).Quads);
         if (Active.Id == FlowScenes.Gameplay)
+        {
+            if (Gameplay.Camera is { } camera)
+                quads.AddRange(CameraBorder(camera.Matrix, new RenderColor(camera.Red, camera.Green, camera.Blue, 1)));
             quads.AddRange(_timingMarks.Quads(Gameplay.TimingMarks, Arcade.TimingIndicator));
+        }
         if (!EffectsEditorOpen && _gameplay.Reviewing && _gameplay.Review is { } review)
             quads.AddRange(_reviewBar.Quads(review, _gameplay.Training, _gameplay.AutoplayReview && _gameplay.Training is null));
         if (_playerSetup is not null)

@@ -169,6 +169,9 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
     }
 
     /// <remarks><paramref name="allLanes"/>: both lanes' elements, the second lane's named *_p2 (a two-player layout).</remarks>
+    /// <summary>The camera as the lanes were last placed (shared, so the first lane's); null when it is untouched.</summary>
+    public (LumenMatrix Matrix, float Red, float Green, float Blue)? Camera => _lanes.Length == 0 ? null : _lanes[0].Camera;
+
     public IReadOnlyList<StageEffectElement> EffectElements(TimeSpan time, bool allLanes = false) =>
         _lanes.Length == 1 ? _lanes[0].EffectElements(time)
         : !allLanes ? []
@@ -951,6 +954,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
 
         public IReadOnlyList<StageEffectElement> EffectElements(TimeSpan time) =>
             _presentation.EffectElements(shown(time), _character?.Layer, _characterSlot);
+
+        public (LumenMatrix Matrix, float Red, float Green, float Blue)? Camera => _presentation.Camera;
 
         public void RemoveNote(int index) => _presentation.RemoveNote(index);
 

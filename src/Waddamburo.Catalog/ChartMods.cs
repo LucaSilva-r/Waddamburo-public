@@ -7,6 +7,8 @@ public enum ChartEase
 {
     Linear, InQuad, OutQuad, InOutQuad, InCubic, OutCubic, InOutCubic, InSine, OutSine, InOutSine,
     InExpo, OutExpo, InOutExpo, InBack, OutBack, InOutBack, OutElastic, OutBounce, Step,
+    // Appended (the cache stores the number): TJA camera commands' QUARTIC, QUINTIC and CIRCULAR curves.
+    InQuart, OutQuart, InOutQuart, InQuint, OutQuint, InOutQuint, InCirc, OutCirc, InOutCirc,
 }
 
 /// <summary>
@@ -67,12 +69,13 @@ public static class ChartMods
             return lane != "camera" && IsKnown(lane, property);
         return target == "notes" ? NoteProperties.Contains(property)
         : Elements.Contains(target) && (ElementProperties.Contains(property) || target == "don" && DonModelProperties.Contains(property)
-            || target == "camera" && property == "aspect");
+            || target == "camera" && property is "aspect" or "borderred" or "bordergreen" or "borderblue");
     }
 
     /// <summary>A property's value before any change: 1 for scales, zoom and alpha, else 0.</summary>
     /// <remarks>camera.aspect: the stage's width on screen, 1 = 16:9, below 1 = a 4:3 screen (the stage squeezed into it,
-    /// read at the chart's start).</remarks>
+    /// read at the chart's start). camera.borderred/bordergreen/borderblue: the colour around the stage when the camera
+    /// moves it (0-255, default black; TJA #BORDERCOLOR).</remarks>
     public static double Default(string property) => property is "scale" or "scalex" or "scaley" or "zoom" or "alpha" or "aspect" ? 1 : 0;
 
     /// <summary>
@@ -167,6 +170,15 @@ public static class ChartMods
                 : (Math.Pow(2 * t - 2, 2) * ((backInOut + 1) * (t * 2 - 2) + backInOut) + 2) / 2,
             ChartEase.OutElastic => t is 0 or 1 ? t : Math.Pow(2, -10 * t) * Math.Sin((t * 10 - 0.75) * (2 * Math.PI / 3)) + 1,
             ChartEase.OutBounce => bounce(t),
+            ChartEase.InQuart => Math.Pow(t, 4),
+            ChartEase.OutQuart => 1 - Math.Pow(1 - t, 4),
+            ChartEase.InOutQuart => t < 0.5 ? 8 * Math.Pow(t, 4) : 1 - Math.Pow(-2 * t + 2, 4) / 2,
+            ChartEase.InQuint => Math.Pow(t, 5),
+            ChartEase.OutQuint => 1 - Math.Pow(1 - t, 5),
+            ChartEase.InOutQuint => t < 0.5 ? 16 * Math.Pow(t, 5) : 1 - Math.Pow(-2 * t + 2, 5) / 2,
+            ChartEase.InCirc => 1 - Math.Sqrt(1 - t * t),
+            ChartEase.OutCirc => Math.Sqrt(1 - Math.Pow(t - 1, 2)),
+            ChartEase.InOutCirc => t < 0.5 ? (1 - Math.Sqrt(1 - Math.Pow(2 * t, 2))) / 2 : (Math.Sqrt(1 - Math.Pow(-2 * t + 2, 2)) + 1) / 2,
             _ => t,
         };
 
