@@ -581,6 +581,20 @@ public sealed class TjaCatalogProviderTests
     }
 
     [Fact]
+    public async Task NegativeTempoAndMeasureKeepTheirPaceAndReverseTheScroll()
+    {
+        // YataiDON/OpenTaiko: -120 BPM over -4/4 lasts a 4/4 measure at 120. By time the notes come from the other
+        // side; by beat (#HBSCROLL/#BMSCROLL) the count runs down, so the lane slides back.
+        var chart = await loadSynthetic("#MEASURE -4/4\n#BPMCHANGE -120\n1,\n#MEASURE 4/4\n#BPMCHANGE 120\n1,\n"
+            + "#HBSCROLL\n#MEASURE -4/4\n#BPMCHANGE -120\n1,\n#MEASURE 4/4\n#BPMCHANGE 120\n1,");
+        Assert.Equal([0d, 2d, 4d, 6d], chart.HitObjects.Select(n => n.StartTime.TotalSeconds));
+        Assert.Equal([(0d, -1d, false), (2d, 1d, false), (4d, 1d, true)], chart.ScrollPoints.Select(p => (p.Time.TotalSeconds, p.Multiplier, p.ByBeat)));
+        Assert.Equal(-4, chart.Effects.BeatAt(TimeSpan.FromSeconds(2)));
+        Assert.Equal(-4, chart.Effects.BeatAt(TimeSpan.FromSeconds(6)));
+        Assert.Equal(0, chart.Effects.BeatAt(TimeSpan.FromSeconds(8)));
+    }
+
+    [Fact]
     public async Task NegativeDelayOffsetsOneNoteAndKeepsEventsOrdered()
     {
         // Editors' per-note "time offset": #DELAY x before the note, #DELAY -x after it.

@@ -17,6 +17,7 @@ public sealed class NoteGeometry
     private readonly ChartEffects _effects;
     private readonly ChartModValues _mods;
     private readonly bool _noteMods;
+    private readonly bool _beatsRunBack; // a negative tempo counts the beats down (TJA #BPMCHANGE -x)
 
     public NoteGeometry(PlayableChart chart, float hitX, float hitY, ChartModValues mods)
     {
@@ -26,6 +27,7 @@ public sealed class NoteGeometry
         HitX = hitX;
         HitY = hitY;
         _noteMods = mods.Touches("notes");
+        _beatsRunBack = _effects.Beats.Any(static point => point.BeatsPerSecond < 0);
         WideView = mods.Touches("playfield") || mods.Touches("camera");
     }
 
@@ -109,6 +111,10 @@ public sealed class NoteGeometry
         // A moved camera or playfield: listed as long as any of it could be on screen (a turned or shrunk lane).
         if (WideView && !scroll.ByBeat && speed >= 1 && scroll.Show is null && scroll.Wait is null)
             return (noteTime - TimeSpan.FromSeconds(4000 / speed), noteTime + TimeSpan.FromSeconds(4000 / speed));
+        // A beat count that runs back (negative tempo) comes back to a note's beat more than once, and the note shows on
+        // every pass, not due yet or already missed (OpenTaiko, YataiDON: user-checked). ponytail: listed the whole chart.
+        if (scroll.ByBeat && _beatsRunBack)
+            return (TimeSpan.MinValue, TimeSpan.MaxValue);
         if (scroll.ByBeat && !_effects.Beats.IsEmpty)
         {
             // Within a screen's diagonal of the target, in beats; a #DELAY on the way keeps it listed longer.

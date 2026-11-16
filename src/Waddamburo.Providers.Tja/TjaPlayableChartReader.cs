@@ -93,10 +93,12 @@ internal static partial class TjaPlayableChartReader
                         && player == target.Player
                         && occurrence == target.Occurrence)
                     {
-                        bpm = positiveNumber(bpmText, "BPM");
+                        bpm = nonZeroNumber(bpmText, "BPM");
+                        scroll = scroll with { BpmBack = bpm < 0 };
+                        bpm = Math.Abs(bpm);
                         timingPoints.Add(new ChartTimingPoint(TimeSpan.Zero, (double)bpm, numerator, denominator));
                         scrollPoints.Add(scrollPoint(TimeSpan.Zero, scroll));
-                        drawn.Start(bpm);
+                        drawn.Start(scroll.BpmBack ? -bpm : bpm);
                         effectPoints.Add(new ChartEffectPoint(TimeSpan.Zero, isGoGo));
                         active = true;
                     }
@@ -564,19 +566,32 @@ internal static partial class TjaPlayableChartReader
             case "#MEASURE":
                 var parts = argument.Split('/');
                 if (parts.Length != 2
-                    || !int.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out numerator)
-                    || !int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out denominator)
-                    || numerator <= 0
-                    || denominator <= 0)
+                    || !int.TryParse(parts[0], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out numerator)
+                    || !int.TryParse(parts[1], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out denominator)
+                    || numerator is 0 or int.MinValue
+                    || denominator is 0 or int.MinValue)
                 {
-                    throw new InvalidDataException("TJA #MEASURE requires positive integer numerator/denominator values.");
+                    throw new InvalidDataException("TJA #MEASURE requires non-zero integer numerator/denominator values.");
                 }
+                // A negative measure goes with a negative tempo (#BPMCHANGE) so time still runs forward: it lasts as
+                // long as its positive one. ponytail: a sign on one of the two alone is read the same way.
+                (numerator, denominator) = (Math.Abs(numerator), Math.Abs(denominator));
                 appendOrReplace(timingPoints, new ChartTimingPoint(controlTime(timingPoints, cursorSeconds), (double)bpm, numerator, denominator));
                 break;
             case "#BPMCHANGE":
-                bpm = positiveNumber(argument, "#BPMCHANGE");
+                bpm = nonZeroNumber(argument, "#BPMCHANGE");
+                // A negative tempo (TJAP3/OpenTaiko/YataiDON, paired with a negative #MEASURE so time still runs
+                // forward) keeps its pace and runs the scroll backwards: by time (#NMSCROLL) the notes come from the
+                // other side; the beat count (#HBSCROLL/#BMSCROLL) counts down, so the lane slides back.
+                if (scroll.BpmBack != (bpm < 0))
+                {
+                    scroll = scroll with { BpmBack = !scroll.BpmBack };
+                    if (scroll.Mode == 0)
+                        appendOrReplace(scrollPoints, scrollPoint(controlTime(scrollPoints, cursorSeconds), scroll));
+                }
+                bpm = Math.Abs(bpm);
                 if (mainRoute)
-                    drawn.TempoChanged(cursorSeconds, bpm);
+                    drawn.TempoChanged(cursorSeconds, scroll.BpmBack ? -bpm : bpm);
                 appendOrReplace(timingPoints, new ChartTimingPoint(controlTime(timingPoints, cursorSeconds), (double)bpm, numerator, denominator));
                 break;
             case "#SCROLL":
@@ -602,7 +617,7 @@ internal static partial class TjaPlayableChartReader
                 // Negative delays are legal: editors offset one note with #DELAY x … #DELAY -x.
                 var delay = finiteDecimal(argument, "#DELAY");
                 if (mainRoute)
-                    drawn.Delayed(cursorSeconds, delay, bpm);
+                    drawn.Delayed(cursorSeconds, delay, scroll.BpmBack ? -bpm : bpm);
                 cursorSeconds = checked(cursorSeconds + delay);
                 ensureTimeFits(cursorSeconds, "TJA #DELAY places the chart outside the supported time range.");
                 break;
@@ -663,7 +678,12 @@ internal static partial class TjaPlayableChartReader
 
     // The scroll state between commands: #SCROLL's speed, #DIRECTION, #SUDDEN.
     // Mode: 0 by time, 1 by beat (#HBSCROLL), 2 by beat at speed 1 (#BMSCROLL).
-    private readonly record struct TjaScroll(double Re, double Im, int Direction, TimeSpan? Show, TimeSpan? Wait, int Mode);
+    // BpmBack: a negative tempo is in force, reversing time scrolling (beat scrolling reverses through the beat count).
+    private readonly record struct TjaScroll(double Re, double Im, int Direction, TimeSpan? Show, TimeSpan? Wait, int Mode,
+        bool BpmBack = false)
+    {
+        public double Sign => Mode == 0 && BpmBack ? -1 : 1;
+    }
 
     // #DIRECTION turns the real speed (OpenTaiko's table: diagonals keep the full speed on both axes); a complex
     // #SCROLL keeps its own vertical part (TJAP3).
@@ -671,7 +691,7 @@ internal static partial class TjaPlayableChartReader
     {
         // #BMSCROLL ignores #SCROLL and #DIRECTION (OpenTaiko: speed 1, no vertical part); the speed option still applies.
         if (scroll.Mode == 2)
-            return new(time, 1) { Show = scroll.Show, Wait = scroll.Wait, ByBeat = true };
+            return new(time, scroll.Sign) { Show = scroll.Show, Wait = scroll.Wait, ByBeat = true };
         var (re, im) = scroll.Direction switch
         {
             1 => (0, -scroll.Re),
@@ -683,7 +703,7 @@ internal static partial class TjaPlayableChartReader
             7 => (-scroll.Re, scroll.Re),
             _ => (scroll.Re, 0d),
         };
-        return new(time, re) { Imaginary = scroll.Im != 0 ? scroll.Im : im, Show = scroll.Show, Wait = scroll.Wait, ByBeat = scroll.Mode == 1 };
+        return new(time, re * scroll.Sign) { Imaginary = (scroll.Im != 0 ? scroll.Im : im) * scroll.Sign, Show = scroll.Show, Wait = scroll.Wait, ByBeat = scroll.Mode == 1 };
     }
 
     /// <summary>A TJA real or complex number: <c>2</c>, <c>-1.5</c>, <c>3i</c>, <c>1+2i</c>, <c>0-100i</c>, <c>-i</c>.</summary>
@@ -737,10 +757,10 @@ internal static partial class TjaPlayableChartReader
         var player => player,
     };
 
-    private static decimal positiveNumber(string value, string field)
+    private static decimal nonZeroNumber(string value, string field)
     {
         var number = finiteDecimal(value, field);
-        return number > 0 ? number : throw new InvalidDataException($"TJA {field} must be positive.");
+        return number != 0 ? number : throw new InvalidDataException($"TJA {field} must not be zero.");
     }
 
     private static decimal finiteDecimal(string value, string field) =>
