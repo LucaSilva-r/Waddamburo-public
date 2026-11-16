@@ -35,6 +35,10 @@ public sealed record LmbAction(int Index, ImmutableArray<byte> Bytecode, long Of
     public EvidenceStatus Evidence { get; init; } = EvidenceStatus.Confirmed;
 
     public required Avm1CodeBlock Code { get; init; }
+
+    /// <summary>This action with other bytecode (a patch), decoded again.</summary>
+    public LmbAction WithBytecode(ImmutableArray<byte> bytecode, ParserLimits? limits = null) =>
+        this with { Bytecode = bytecode, Code = Avm1BytecodeReader.Read(bytecode, Offset, limits ?? ParserLimits.Default) };
 }
 
 public sealed record LmbColorTransform(short Red, short Green, short Blue, short Alpha)

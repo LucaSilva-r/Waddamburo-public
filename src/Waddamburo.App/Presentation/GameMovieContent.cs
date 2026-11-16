@@ -78,6 +78,7 @@ internal static class GameMovieContent
                 upscale?.Tool.MarkUpscaled(pixels);
             return;
         }
+        SongSelectCoursePatch.Apply(content);
         var patching = SongSelectGenrePatch.AppliesTo(content);
         // The genre patch decodes only the textures it recolours (song_select decoded whole was 343 MiB, 337 ms).
         var started = Stopwatch.GetTimestamp();

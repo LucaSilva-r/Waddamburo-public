@@ -85,7 +85,7 @@ public sealed class SongSelectSessionTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void MissingCoursesRestrictSelectionUnlessTheSongHasUra(bool hasUra)
+    public void MissingCoursesRestrictSelectionAndOniShowsBeforeUra(bool hasUra)
     {
         var key = new SongKey(SongSourceKind.Tja, "course-projection");
         var descriptor = new SongDescriptor(
@@ -113,9 +113,8 @@ public sealed class SongSelectSessionTests
 
         var presentation = SongSelectCoursePresentation.FromSong(song);
 
-        // Restricted mode would show Ura in Oni's place, so a song with Ura keeps the game's board.
-        Assert.Equal(hasUra ? AuthoredSongCourseBits.None : AuthoredSongCourseBits.All & ~AuthoredSongCourseBits.Oni,
-            presentation.SelectionRestrictions);
+        // Ura stays marked invalid so the restricted board shows Oni; its stars let right-ka switch to it.
+        Assert.Equal(AuthoredSongCourseBits.All & ~AuthoredSongCourseBits.Oni, presentation.SelectionRestrictions);
         Assert.Equal(8, presentation.OniStars);
         Assert.Equal(hasUra ? 10 : 0, presentation.HiddenOniStars); // a custom 12 shows as the board's 10
         Assert.Equal(0, presentation.EasyStars);
@@ -305,7 +304,7 @@ public sealed class SongSelectSessionTests
     }
 
     [Fact]
-    public async Task UnrestrictedSongCanLaunchBothOniAndUraAndAMissingCourseFallsBackToTheNearest()
+    public async Task SongMissingACourseCanLaunchBothOniAndUraAndAMissingCourseFallsBackToTheNearest()
     {
         using var catalog = new GlobalSongCatalog([new SyntheticProvider(includeUra: true)]);
         var snapshot = await catalog.RefreshAsync();
@@ -315,7 +314,7 @@ public sealed class SongSelectSessionTests
             new RecordingPreviewController(), pending);
         Assert.True(view.TryGetSong(0, 0, out var song));
         var presentation = SongSelectCoursePresentation.FromSong(song);
-        Assert.Equal(AuthoredSongCourseBits.None, presentation.SelectionRestrictions);
+        Assert.True(presentation.SelectionRestrictions.HasFlag(AuthoredSongCourseBits.HiddenOni));
         Assert.Equal(8, presentation.OniStars);
         Assert.Equal(9, presentation.HiddenOniStars);
         foreach (var authoredCourse in new[] { 3, 7 })

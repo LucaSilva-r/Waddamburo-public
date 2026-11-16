@@ -59,27 +59,27 @@ public readonly record struct SongSelectCoursePresentation(
     // keep the game's board, zero bits): every slot the song lacks is marked invalid, hidden
     // Easy/Normal/Hard always. The nonzero bits put the board in the movie's restricted mode
     // (MusicInfo.HasInvalidCourse): Oni shows at once (CheckMania, no right-ka presses) and missing
-    // courses are greyed and cannot be picked. In that mode Ura shows in Oni's place: right for a song with Ura
-    // but no Oni (an Edit-only TJA), so only a song with both keeps the game's board when it misses a course.
-    // ponytail: such a song's missing courses stay pickable; SongSelectSession plays its nearest course.
+    // courses are greyed and cannot be picked. A valid Ura bit shows Ura in Oni's place: right for a song with Ura
+    // but no Oni (an Edit-only TJA). A song with both marks Ura invalid: Oni shows, and right-ka presses on it
+    // switch to Ura as on the game's board (its stars are sent; SongSelectCoursePatch lets the presses count).
     private static AuthoredSongCourseBits restrictions(SongSelectSong song)
     {
         var complete = song.HasCourse(TaikoCourse.Easy) && song.HasCourse(TaikoCourse.Normal)
             && song.HasCourse(TaikoCourse.Hard) && song.HasCourse(TaikoCourse.Oni);
-        if (!song.Descriptor.Key.Source.IsOsu()
-            && (complete || song.HasCourse(TaikoCourse.Oni) && song.HasCourse(TaikoCourse.Ura)))
+        if (complete && !song.Descriptor.Key.Source.IsOsu())
             return AuthoredSongCourseBits.None;
         var available = AuthoredSongCourseBits.None;
         foreach (var (course, bit) in new[]
         {
             (TaikoCourse.Easy, AuthoredSongCourseBits.Easy), (TaikoCourse.Normal, AuthoredSongCourseBits.Normal),
             (TaikoCourse.Hard, AuthoredSongCourseBits.Hard), (TaikoCourse.Oni, AuthoredSongCourseBits.Oni),
-            (TaikoCourse.Ura, AuthoredSongCourseBits.HiddenOni),
         })
         {
             if (song.HasCourse(course))
                 available |= bit;
         }
+        if (song.HasCourse(TaikoCourse.Ura) && !song.HasCourse(TaikoCourse.Oni))
+            available |= AuthoredSongCourseBits.HiddenOni;
         return AuthoredSongCourseBits.All & ~available;
     }
 
