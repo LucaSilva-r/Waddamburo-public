@@ -69,6 +69,21 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     // ponytail: read once at start; a different monitor plugged in later needs a restart.
     public static IReadOnlyList<(int Width, int Height, int RefreshRate)> DisplayModes { get; set; } = [];
 
+    // The Exclusive Period row's choices: the device's minimum (its default when the minimum proves too short), its
+    // default, then frames.
+    private static readonly int[] ExclusivePeriods = [0, -1, 32, 64, 128, 256, 512, 1024, 2048];
+
+    /// <summary>The exclusive output the game runs (its period setting and device, the frames it took), or null.</summary>
+    public static Func<(int Setting, string? Device, int Frames, int Rate)?>? ExclusiveInUse { get; set; }
+
+    /// <summary>The playback devices' names (set once by the host).</summary>
+    // ponytail: read once at start; a device plugged in later needs a restart to be listed.
+    public static IReadOnlyList<string> AudioDevices { get; set; } = [];
+
+    // The Audio Device row's choices after the default: the devices, and the saved one when it is not plugged in.
+    private static string[] audioDevices(ArcadeSettings s) =>
+        s.AudioDevice is { } saved && !AudioDevices.Contains(saved) ? [.. AudioDevices, saved] : [.. AudioDevices];
+
     /// <summary>The saved layouts' names (the Layouts page lists them).</summary>
     public static Func<IReadOnlyList<string>> LayoutNames { get; set; } = static () => [];
 
@@ -185,10 +200,46 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         new(Setting: toggle("settings.stereo_panning", static s => s.StereoPanning, static (s, v) => s with { StereoPanning = v })),
         new(Setting: toggle("settings.mute_in_background", static s => s.MuteInBackground, static (s, v) => s with { MuteInBackground = v })),
         new(Setting: toggle("settings.drum_sound_in_songs", static s => s.DrumSoundInSongs, static (s, v) => s with { DrumSoundInSongs = v })),
+        // The output: applied at start (leaving the settings asks for the restart).
+        new(T("section.audio_advanced")),
+        // Exclusive output exists on Windows only.
+        new(Setting: new(T("settings.audio_output"), static s => (int)s.AudioOutput, static (s, v) => s with { AudioOutput = (AudioOutputMode)v },
+            static (value, step) => value + Math.Sign(step), 0,
+            static value => T(value == 1 ? "settings.audio_output.exclusive" : "settings.audio_output.shared"), 1,
+            Hint: T("settings.audio_output.hint")), Shown: static _ => OperatingSystem.IsWindows()),
+        // 0 = the system's default, then each device (a saved one that is unplugged listed last).
+        new(Setting: new(T("settings.audio_device"), static s => s.AudioDevice is { } name ? Array.IndexOf(audioDevices(s), name) + 1 : 0,
+            static (s, v) => audioDevices(s) is var devices && v == 0 || devices.Length == 0 ? s with { AudioDevice = null }
+                : s with { AudioDevice = devices[Math.Min(v, devices.Length) - 1] },
+            static (value, step) => value + Math.Sign(step), 0, static _ => "", int.MaxValue, Hint: T("settings.audio_device.hint"))
+        {
+            FormatFor = static s => s.AudioDevice ?? T("settings.audio_device.default"),
+        }),
         new(Setting: new(T("settings.audio_buffer"), static s => s.AudioBufferFrames, static (s, v) => s with { AudioBufferFrames = v },
             static (value, step) => step > 0 ? value * 2 : value / 2, 64,
-            static value => T("settings.audio_buffer.value", value), 2048, Hint: T("settings.audio_buffer.hint"))),
-        new(Setting: toggle("settings.exclusive_audio", static s => s.AudioExclusive, static (s, v) => s with { AudioExclusive = v })),
+            static value => T("settings.audio_buffer.value", value), 2048, Hint: T("settings.audio_buffer.hint")),
+            Shown: static s => s.AudioOutput == AudioOutputMode.Shared),
+        new(Setting: new(T("settings.exclusive_period"), static s => Math.Max(0, Array.IndexOf(ExclusivePeriods, s.AudioExclusivePeriod)),
+            static (s, v) => s with { AudioExclusivePeriod = ExclusivePeriods[v] },
+            static (value, step) => value + Math.Sign(step), 0, static value => ExclusivePeriods[value] switch
+            {
+                0 => T("settings.exclusive_period.minimum"),
+                -1 => T("settings.exclusive_period.default"),
+                var frames => T("settings.audio_buffer.value", frames),
+            }, ExclusivePeriods.Length - 1, Hint: T("settings.exclusive_period.hint"))
+        {
+            // Device minimum or default, as the game runs it now: the period it picked, in frames and milliseconds.
+            FormatFor = static s => ExclusivePeriods[Math.Max(0, Array.IndexOf(ExclusivePeriods, s.AudioExclusivePeriod))] switch
+            {
+                0 or -1 when ExclusiveInUse?.Invoke() is { } use && use.Setting == s.AudioExclusivePeriod && use.Device == s.AudioDevice
+                    => T(s.AudioExclusivePeriod == 0 ? "settings.exclusive_period.minimum" : "settings.exclusive_period.default")
+                        + T("settings.exclusive_period.in_use", use.Frames, (1000.0 * use.Frames / use.Rate).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)),
+                0 => T("settings.exclusive_period.minimum"),
+                -1 => T("settings.exclusive_period.default"),
+                var frames => T("settings.audio_buffer.value", frames),
+            },
+        },
+            Shown: static s => s.AudioOutput == AudioOutputMode.Exclusive),
         new(T("section.display")),
         new(Setting: new(T("settings.fullscreen"), static s => !s.Fullscreen ? 0 : exclusive(s) ? 2 : 1,
             static (s, v) => s with { Fullscreen = v != 0, ExclusiveFullscreen = v == 2 ? true : v == 1 ? false : s.ExclusiveFullscreen },
@@ -363,13 +414,14 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     private string restartState()
     {
         var now = get();
-        var changed = now.AudioBufferFrames != _atStart.AudioBufferFrames || now.AudioExclusive != _atStart.AudioExclusive
+        var changed = now.AudioBufferFrames != _atStart.AudioBufferFrames || now.AudioOutput != _atStart.AudioOutput
+            || now.AudioDevice != _atStart.AudioDevice || now.AudioExclusivePeriod != _atStart.AudioExclusivePeriod
             || now.TjaFolder != _atStart.TjaFolder || now.NijiiroFolder != _atStart.NijiiroFolder || now.OsuFolder != _atStart.OsuFolder || now.OsuStableFolder != _atStart.OsuStableFolder
             || now.StockFolders != _atStart.StockFolders
             || now.CacheFolder != _atStart.CacheFolder
             || now.Language != _atStart.Language || now.EnglishTitles != _atStart.EnglishTitles;
         return changed || _baked
-            ? $"{now.AudioBufferFrames}|{now.AudioExclusive}|{now.TjaFolder}|{now.NijiiroFolder}|{now.StockFolders}|{now.OsuFolder}|{now.OsuStableFolder}|{now.CacheFolder}|{now.Language}|{now.EnglishTitles}|{_baked}" : "";
+            ? $"{now.AudioBufferFrames}|{now.AudioOutput}|{now.AudioDevice}|{now.AudioExclusivePeriod}|{now.TjaFolder}|{now.NijiiroFolder}|{now.StockFolders}|{now.OsuFolder}|{now.OsuStableFolder}|{now.CacheFolder}|{now.Language}|{now.EnglishTitles}|{_baked}" : "";
     }
 
     /// <summary>The choices shown (the pause choices, or a prompt's).</summary>

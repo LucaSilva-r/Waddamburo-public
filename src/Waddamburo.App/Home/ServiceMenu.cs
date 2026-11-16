@@ -56,7 +56,7 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
 
     // The settings page's sections, by title (the language one goes in OTHERS, the volume and sound ones in SOUND).
     private static readonly string LanguageSection = Strings.T("section.language"), VolumeSection = Strings.T("section.volume"),
-        SoundSection = Strings.T("section.sound"),
+        SoundSection = Strings.T("section.sound"), AdvancedAudioSection = Strings.T("section.audio_advanced"),
         SongsSection = Strings.T("section.songs"), DisplaySection = Strings.T("section.display"),
         GraphicsSection = Strings.T("section.graphics");
 
@@ -297,7 +297,7 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
             new(upper(SoundSection), Enter: () => open(Page.Sound)),
             // The rest of Waddamburo's settings, a page per section of the home settings.
             .. HomeMenu.Sections.Where(static section => section.Title != LanguageSection && section.Title != VolumeSection
-                    && section.Title != SoundSection && section.Title != SongsSection && section.Title != GraphicsSection)
+                    && section.Title != SoundSection && section.Title != AdvancedAudioSection && section.Title != SongsSection && section.Title != GraphicsSection)
                 .Select(section => new Row(upper(section.Title), Enter: () => open(Page.Section, section.Title))),
             new(S("service.drum_controls"), Enter: () => open(Page.Drums)),
             new(S("service.song_libraries"), Enter: () => open(Page.Libraries)),
@@ -346,6 +346,8 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
         [
             .. shared(VolumeSection),
             .. shared(SoundSection),
+            new(upper(AdvancedAudioSection), 400, Gap: true, Enter: () => open(Page.Section, AdvancedAudioSection),
+                Hint: Strings.T("section.audio_advanced.hint")),
             new(S("service.exit"), 400, Gap: true, Enter: _menu.Pop),
             new(S("service.sound_test.note"), 400),
         ],

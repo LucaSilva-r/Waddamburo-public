@@ -26,7 +26,8 @@ public sealed unsafe class SdlAudioDevice : IAudioOutput
     public SdlAudioDevice(
         int sampleRate = DefaultSampleRate,
         int channels = DefaultChannels,
-        int requestedBufferFrames = 256)
+        int requestedBufferFrames = 256,
+        string? deviceName = null)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(sampleRate);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(channels);
@@ -51,7 +52,7 @@ public sealed unsafe class SdlAudioDevice : IAudioOutput
                 freq = sampleRate,
             };
             // Opened as a device (not SDL_OpenAudioDeviceStream) so direct voices can bind streams to it too.
-            _device = SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &specification);
+            _device = SDL_OpenAudioDevice(playbackDevice(deviceName), &specification);
             if (_device == 0)
                 throw sdlFailure("open the SDL playback device");
             if (!SDL_PauseAudioDevice(_device))
@@ -77,6 +78,45 @@ public sealed unsafe class SdlAudioDevice : IAudioOutput
             disposeNativeResources();
             throw;
         }
+    }
+
+    /// <summary>The playback devices' names (on Windows, the endpoints' friendly names, as WASAPI names them).</summary>
+    public static string[] PlaybackDeviceNames()
+    {
+        if (!SDL_InitSubSystem(SDL_InitFlags.SDL_INIT_AUDIO))
+            return [];
+        try
+        {
+            return [.. playbackDevices().Select(static device => device.Name)];
+        }
+        finally
+        {
+            SDL_QuitSubSystem(SDL_InitFlags.SDL_INIT_AUDIO);
+        }
+    }
+
+    private static List<(SDL_AudioDeviceID Id, string Name)> playbackDevices()
+    {
+        int count;
+        var ids = SDL_GetAudioPlaybackDevices(&count);
+        var result = new List<(SDL_AudioDeviceID, string)>();
+        for (var index = 0; index < count; index++)
+            if (SDL_GetAudioDeviceName(ids[index]) is { } name)
+                result.Add((ids[index], name));
+        SDL_free(ids);
+        return result;
+    }
+
+    // The named device, or the default when there is none by that name (unplugged).
+    private static SDL_AudioDeviceID playbackDevice(string? name)
+    {
+        if (name is null)
+            return SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK;
+        foreach (var device in playbackDevices())
+            if (device.Name == name)
+                return device.Id;
+        Console.Error.WriteLine($"Audio: no playback device named '{name}', using the default.");
+        return SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK;
     }
 
     /// <summary>The format callers put into this device. Samples are interleaved floats.</summary>

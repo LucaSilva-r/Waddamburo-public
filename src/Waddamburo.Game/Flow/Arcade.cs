@@ -17,6 +17,15 @@ public enum ControllerVibration { Off, BigNotes, AllNotes, EveryHit }
 /// <c>config_version</c>; an older file gets each later version's settings appended (with their
 /// comments and defaults) the next time it is loaded, keeping the user's edits.
 /// </summary>
+/// <summary>How sound reaches the device (config.cfg audio_output).</summary>
+public enum AudioOutputMode
+{
+    /// <summary>SDL's output, shared with other programs (audio_buffer_frames applies).</summary>
+    Shared,
+    /// <summary>Windows: WASAPI exclusive, the device for the game alone (audio_exclusive_period applies).</summary>
+    Exclusive,
+}
+
 /// <summary>Picture quality (config.cfg upscale; the Settings menu's Upscaling).</summary>
 public enum UpscaleLevel
 {
@@ -74,7 +83,7 @@ public sealed record ArcadeSettings
         audio_offset_ms = 0
         # input_offset_ms: raise it when your hits are judged late (the drum or keyboard lags).
         input_offset_ms = 0
-        # audio_buffer_frames: the audio device's period, applied at start. Lower = less delay; too low crackles.
+        # audio_buffer_frames: the shared output's period, applied at start. Lower = less delay; too low crackles.
         audio_buffer_frames = 256
 
         """,
@@ -100,10 +109,15 @@ public sealed record ArcadeSettings
 
         """,
         """
-        # audio_exclusive (Windows): take the sound device for the game alone (WASAPI exclusive mode)
-        # for the lowest delay; other programs are silent while the game runs. Recalibrate the offsets
-        # after changing it. Falls back to shared output when the device refuses.
-        audio_exclusive = false
+        # audio_output: shared, or exclusive (Windows): take the sound device for the game alone (WASAPI
+        # exclusive mode) for the lowest delay; other programs are silent while the game runs. Recalibrate
+        # the offsets after changing it. Falls back to shared output when the device refuses.
+        audio_output = shared
+        # audio_device: the playback device by name, empty = the system's default.
+        audio_device =
+        # audio_exclusive_period: exclusive mode's period in frames; 0 = the device's minimum (its default
+        # when the minimum proves too short at start), -1 = its default. Raise it when the sound stutters.
+        audio_exclusive_period = 0
 
         """,
         """
@@ -559,11 +573,17 @@ public sealed record ArcadeSettings
     /// <summary>Milliseconds the player's hits arrive late: they are judged this much earlier.</summary>
     public int InputOffsetMs { get; init; }
 
-    /// <summary>The audio device period requested at start (SDL may choose another).</summary>
+    /// <summary>The shared output's device period requested at start (SDL may choose another).</summary>
     public int AudioBufferFrames { get; init; } = 256;
 
-    /// <summary>Windows: WASAPI exclusive output at the device's minimum period, instead of SDL's shared output.</summary>
-    public bool AudioExclusive { get; init; }
+    /// <summary>Shared (SDL) or, on Windows, WASAPI exclusive output.</summary>
+    public AudioOutputMode AudioOutput { get; init; }
+
+    /// <summary>The playback device's name; null = the system's default.</summary>
+    public string? AudioDevice { get; init; }
+
+    /// <summary>Exclusive output's period in frames; 0 = the device's minimum (checked at start), -1 = its default.</summary>
+    public int AudioExclusivePeriod { get; init; }
 
     /// <summary>Two players' sounds panned to their own side; false: centred, shared.</summary>
     public bool StereoPanning { get; init; } = true;
@@ -825,7 +845,16 @@ public sealed record ArcadeSettings
                 "audio_offset_ms" => settings with { AudioOffsetMs = integer(value, index, -1000, 1000) },
                 "input_offset_ms" => settings with { InputOffsetMs = integer(value, index, -1000, 1000) },
                 "audio_buffer_frames" => settings with { AudioBufferFrames = integer(value, index, 16, 8192) },
-                "audio_exclusive" => settings with { AudioExclusive = boolean(value, index) },
+                // audio_exclusive: before audio_output (true = exclusive).
+                "audio_exclusive" => boolean(value, index) ? settings with { AudioOutput = AudioOutputMode.Exclusive } : settings,
+                "audio_output" => settings with { AudioOutput = value.ToLowerInvariant() switch
+                {
+                    "shared" => AudioOutputMode.Shared,
+                    "exclusive" => AudioOutputMode.Exclusive,
+                    _ => throw new InvalidDataException($"{FileName} line {index}: audio_output is shared or exclusive, not '{value}'."),
+                } },
+                "audio_device" => settings with { AudioDevice = value.Length == 0 ? null : value },
+                "audio_exclusive_period" => settings with { AudioExclusivePeriod = integer(value, index, -1, 8192) },
                 "stereo_panning" => settings with { StereoPanning = boolean(value, index) },
                 "upscale" => settings with { Upscale = value.ToLowerInvariant() switch
                 {
@@ -962,7 +991,9 @@ public sealed record ArcadeSettings
             ["audio_offset_ms"] = settings.AudioOffsetMs,
             ["input_offset_ms"] = settings.InputOffsetMs,
             ["audio_buffer_frames"] = settings.AudioBufferFrames,
-            ["audio_exclusive"] = settings.AudioExclusive ? "true" : "false",
+            ["audio_output"] = settings.AudioOutput.ToString().ToLowerInvariant(),
+            ["audio_device"] = settings.AudioDevice ?? "",
+            ["audio_exclusive_period"] = settings.AudioExclusivePeriod,
             ["stereo_panning"] = settings.StereoPanning ? "true" : "false",
             ["upscale"] = settings.Upscale.ToString().ToLowerInvariant(),
             ["upscale_threads"] = settings.UpscaleThreads,
@@ -1045,8 +1076,9 @@ public sealed record ArcadeSettings
         var lines = (File.Exists(path) ? File.ReadAllText(path) : DefaultFileText).Split('\n');
         for (var index = 0; index < lines.Length; index++)
             foreach (var (key, value) in values)
-                // upscale_textures (on/off) became upscale: its line is rewritten in place.
-                if (isKey(lines[index], key) || key == "upscale" && isKey(lines[index], "upscale_textures"))
+                // upscale_textures (on/off) became upscale, audio_exclusive audio_output: their lines are rewritten in place.
+                if (isKey(lines[index], key) || key == "upscale" && isKey(lines[index], "upscale_textures")
+                    || key == "audio_output" && isKey(lines[index], "audio_exclusive"))
                 {
                     lines[index] = string.Create(CultureInfo.InvariantCulture, $"{key} = {value}");
                     values.Remove(key);

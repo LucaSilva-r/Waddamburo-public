@@ -137,6 +137,33 @@ public sealed class ArcadeTests
     }
 
     [Fact]
+    public void AudioExclusiveBecomesAudioOutput()
+    {
+        Assert.Equal(AudioOutputMode.Shared, ArcadeSettings.Parse("").AudioOutput);
+        Assert.Equal(AudioOutputMode.Exclusive, ArcadeSettings.Parse("audio_exclusive = true").AudioOutput);
+        Assert.Equal(AudioOutputMode.Shared, ArcadeSettings.Parse("audio_exclusive = false").AudioOutput);
+        var path = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(path, "audio_exclusive = true\n");
+            ArcadeSettings.SaveMenuSettings(path, new ArcadeSettings
+            {
+                AudioOutput = AudioOutputMode.Exclusive, AudioDevice = "Speakers (Scarlett Solo USB)", AudioExclusivePeriod = 256,
+            });
+            var text = File.ReadAllText(path);
+            Assert.StartsWith("audio_output = exclusive\n", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("audio_exclusive =", text, StringComparison.Ordinal);
+            var saved = ArcadeSettings.Parse(text);
+            Assert.Equal((AudioOutputMode.Exclusive, "Speakers (Scarlett Solo USB)", 256),
+                (saved.AudioOutput, saved.AudioDevice, saved.AudioExclusivePeriod));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void TheServiceMenuSavesTheCabinetSettings()
     {
         var path = Path.GetTempFileName();

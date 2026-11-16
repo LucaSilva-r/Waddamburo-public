@@ -546,7 +546,7 @@ internal sealed class GameShell : IDisposable
                     + $"{(Arcade.Fullscreen ? Arcade.ExclusiveFullscreen ? " (exclusive)" : " (borderless)" : "")}, "
                     + $"textures {(MovieContent.KeepCompressed ? "BC1/BC3 kept" : "decoded to RGBA")}, "
                     + $"refresh {Arcade.RefreshRate}, mode {(Arcade.Home ? "home" : "arcade")}, skin {Arcade.GameplaySkin}, "
-                    + $"audio buffer {Arcade.AudioBufferFrames}{(Arcade.AudioExclusive ? " exclusive" : "")}",
+                    + $"audio {(Arcade.AudioOutput == AudioOutputMode.Exclusive ? $"exclusive period {Arcade.AudioExclusivePeriod}" : $"buffer {Arcade.AudioBufferFrames}")}, device {Arcade.AudioDevice ?? "default"}",
                     // Upscaled textures are 9x the pixels (BC7 on the GPU when it has it, else RGBA): they change memory and load times most.
                     $"upscaled textures\t{(Upscale is not { } upscale ? "unavailable (no model)"
                         : !Arcade.UpscaleTextures ? "off" : $"on, shown {Application.ShowUpscaled}, scale {upscale.Scale.ToString("0.#", CultureInfo.InvariantCulture)}x, "
@@ -990,11 +990,13 @@ internal sealed class GameShell : IDisposable
 
     private IAudioOutput openAudio()
     {
-        if (Arcade.AudioExclusive && OperatingSystem.IsWindows())
+        if (Arcade.AudioOutput == AudioOutputMode.Exclusive && OperatingSystem.IsWindows())
         {
             try
             {
-                var exclusive = new WasapiExclusiveOutput();
+                var exclusive = new WasapiExclusiveOutput(periodFrames: Arcade.AudioExclusivePeriod, deviceName: Arcade.AudioDevice);
+                var (setting, device) = (Arcade.AudioExclusivePeriod, Arcade.AudioDevice);
+                Home.HomeMenu.ExclusiveInUse = () => (setting, device, exclusive.HardwareBufferFrames, exclusive.Format.SampleRate);
                 Console.WriteLine($"Audio: WASAPI exclusive, {exclusive.HardwareBufferFrames} frames "
                     + $"({1000.0 * exclusive.HardwareBufferFrames / exclusive.Format.SampleRate:0.##} ms), {exclusive.Driver}.");
                 return exclusive;
@@ -1004,7 +1006,7 @@ internal sealed class GameShell : IDisposable
                 Console.Error.WriteLine($"Audio: exclusive output unavailable, using shared. {exception.Message}");
             }
         }
-        return new SdlAudioDevice(requestedBufferFrames: Arcade.AudioBufferFrames);
+        return new SdlAudioDevice(requestedBufferFrames: Arcade.AudioBufferFrames, deviceName: Arcade.AudioDevice);
     }
 
     private FlowScene flowOf(SceneId scene) => _scenes[scene];
