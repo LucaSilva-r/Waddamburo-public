@@ -73,8 +73,18 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     // default, then frames.
     private static readonly int[] ExclusivePeriods = [0, -1, 32, 64, 128, 256, 512, 1024, 2048];
 
-    /// <summary>The exclusive output the game runs (its period setting and device, the frames it took), or null.</summary>
-    public static Func<(int Setting, string? Device, int Frames, int Rate)?>? ExclusiveInUse { get; set; }
+    /// <summary>The exclusive or ASIO output the game runs (its buffer setting and device or driver, the frames it took), or null.</summary>
+    public static Func<(AudioOutputMode Mode, int Setting, string? Device, int Frames, int Rate)?>? OutputInUse { get; set; }
+
+    /// <summary>The installed ASIO drivers' names (set once by the host).</summary>
+    public static IReadOnlyList<string> AsioDrivers { get; set; } = [];
+
+    // The ASIO Driver row's choices after the first: the drivers, and the saved one when it is not installed.
+    private static string[] asioDrivers(ArcadeSettings s) =>
+        s.AsioDriver is { } saved && !AsioDrivers.Contains(saved) ? [.. AsioDrivers, saved] : [.. AsioDrivers];
+
+    // The ASIO Buffer row's choices: the driver's preferred size, then frames (the driver takes the nearest it allows).
+    private static readonly int[] AsioBuffers = [0, 32, 64, 128, 256, 512, 1024, 2048];
 
     /// <summary>The playback devices' names (set once by the host).</summary>
     // ponytail: read once at start; a device plugged in later needs a restart to be listed.
@@ -202,11 +212,11 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         new(Setting: toggle("settings.drum_sound_in_songs", static s => s.DrumSoundInSongs, static (s, v) => s with { DrumSoundInSongs = v })),
         // The output: applied at start (leaving the settings asks for the restart).
         new(T("section.audio_advanced")),
-        // Exclusive output exists on Windows only.
+        // Exclusive and ASIO output exist on Windows only.
         new(Setting: new(T("settings.audio_output"), static s => (int)s.AudioOutput, static (s, v) => s with { AudioOutput = (AudioOutputMode)v },
             static (value, step) => value + Math.Sign(step), 0,
-            static value => T(value == 1 ? "settings.audio_output.exclusive" : "settings.audio_output.shared"), 1,
-            Hint: T("settings.audio_output.hint")), Shown: static _ => OperatingSystem.IsWindows()),
+            static value => T(value switch { 1 => "settings.audio_output.exclusive", 2 => "settings.audio_output.asio", _ => "settings.audio_output.shared" }),
+            2, Hint: T("settings.audio_output.hint")), Shown: static _ => OperatingSystem.IsWindows()),
         // 0 = the system's default, then each device (a saved one that is unplugged listed last).
         new(Setting: new(T("settings.audio_device"), static s => s.AudioDevice is { } name ? Array.IndexOf(audioDevices(s), name) + 1 : 0,
             static (s, v) => audioDevices(s) is var devices && v == 0 || devices.Length == 0 ? s with { AudioDevice = null }
@@ -214,7 +224,24 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             static (value, step) => value + Math.Sign(step), 0, static _ => "", int.MaxValue, Hint: T("settings.audio_device.hint"))
         {
             FormatFor = static s => s.AudioDevice ?? T("settings.audio_device.default"),
-        }),
+        }, Shown: static s => s.AudioOutput != AudioOutputMode.Asio),
+        // ASIO: the driver (0 = the first installed, then each; a saved one no longer installed listed last) and its buffer.
+        new(Setting: new(T("settings.asio_driver"), static s => s.AsioDriver is { } name ? Array.IndexOf(asioDrivers(s), name) + 1 : 0,
+            static (s, v) => asioDrivers(s) is var drivers && v == 0 || drivers.Length == 0 ? s with { AsioDriver = null }
+                : s with { AsioDriver = drivers[Math.Min(v, drivers.Length) - 1] },
+            static (value, step) => value + Math.Sign(step), 0, static _ => "", int.MaxValue, Hint: T("settings.asio_driver.hint"))
+        {
+            FormatFor = static s => s.AsioDriver ?? (AsioDrivers.Count == 0 ? T("settings.asio_driver.none") : T("settings.asio_driver.first")),
+        }, Shown: static s => s.AudioOutput == AudioOutputMode.Asio),
+        new(Setting: new(T("settings.asio_buffer"), static s => Math.Max(0, Array.IndexOf(AsioBuffers, s.AsioBufferFrames)),
+            static (s, v) => s with { AsioBufferFrames = AsioBuffers[v] },
+            static (value, step) => value + Math.Sign(step), 0, static _ => "", AsioBuffers.Length - 1, Hint: T("settings.asio_buffer.hint"))
+        {
+            // The size the driver took, in frames and milliseconds (it may round a requested one).
+            FormatFor = static s => (s.AsioBufferFrames == 0 ? T("settings.asio_buffer.preferred") : T("settings.audio_buffer.value", s.AsioBufferFrames))
+                + (OutputInUse?.Invoke() is { Mode: AudioOutputMode.Asio } use && use.Setting == s.AsioBufferFrames && use.Device == s.AsioDriver
+                    ? T("settings.exclusive_period.in_use", use.Frames, (1000.0 * use.Frames / use.Rate).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)) : ""),
+        }, Shown: static s => s.AudioOutput == AudioOutputMode.Asio),
         new(Setting: new(T("settings.audio_buffer"), static s => s.AudioBufferFrames, static (s, v) => s with { AudioBufferFrames = v },
             static (value, step) => step > 0 ? value * 2 : value / 2, 64,
             static value => T("settings.audio_buffer.value", value), 2048, Hint: T("settings.audio_buffer.hint")),
@@ -231,7 +258,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             // Device minimum or default, as the game runs it now: the period it picked, in frames and milliseconds.
             FormatFor = static s => ExclusivePeriods[Math.Max(0, Array.IndexOf(ExclusivePeriods, s.AudioExclusivePeriod))] switch
             {
-                0 or -1 when ExclusiveInUse?.Invoke() is { } use && use.Setting == s.AudioExclusivePeriod && use.Device == s.AudioDevice
+                0 or -1 when OutputInUse?.Invoke() is { Mode: AudioOutputMode.Exclusive } use && use.Setting == s.AudioExclusivePeriod && use.Device == s.AudioDevice
                     => T(s.AudioExclusivePeriod == 0 ? "settings.exclusive_period.minimum" : "settings.exclusive_period.default")
                         + T("settings.exclusive_period.in_use", use.Frames, (1000.0 * use.Frames / use.Rate).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)),
                 0 => T("settings.exclusive_period.minimum"),
@@ -416,12 +443,13 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         var now = get();
         var changed = now.AudioBufferFrames != _atStart.AudioBufferFrames || now.AudioOutput != _atStart.AudioOutput
             || now.AudioDevice != _atStart.AudioDevice || now.AudioExclusivePeriod != _atStart.AudioExclusivePeriod
+            || now.AsioDriver != _atStart.AsioDriver || now.AsioBufferFrames != _atStart.AsioBufferFrames
             || now.TjaFolder != _atStart.TjaFolder || now.NijiiroFolder != _atStart.NijiiroFolder || now.OsuFolder != _atStart.OsuFolder || now.OsuStableFolder != _atStart.OsuStableFolder
             || now.StockFolders != _atStart.StockFolders
             || now.CacheFolder != _atStart.CacheFolder
             || now.Language != _atStart.Language || now.EnglishTitles != _atStart.EnglishTitles;
         return changed || _baked
-            ? $"{now.AudioBufferFrames}|{now.AudioOutput}|{now.AudioDevice}|{now.AudioExclusivePeriod}|{now.TjaFolder}|{now.NijiiroFolder}|{now.StockFolders}|{now.OsuFolder}|{now.OsuStableFolder}|{now.CacheFolder}|{now.Language}|{now.EnglishTitles}|{_baked}" : "";
+            ? $"{now.AudioBufferFrames}|{now.AudioOutput}|{now.AudioDevice}|{now.AudioExclusivePeriod}|{now.AsioDriver}|{now.AsioBufferFrames}|{now.TjaFolder}|{now.NijiiroFolder}|{now.StockFolders}|{now.OsuFolder}|{now.OsuStableFolder}|{now.CacheFolder}|{now.Language}|{now.EnglishTitles}|{_baked}" : "";
     }
 
     /// <summary>The choices shown (the pause choices, or a prompt's).</summary>

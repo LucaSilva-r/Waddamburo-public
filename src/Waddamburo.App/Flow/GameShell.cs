@@ -546,7 +546,12 @@ internal sealed class GameShell : IDisposable
                     + $"{(Arcade.Fullscreen ? Arcade.ExclusiveFullscreen ? " (exclusive)" : " (borderless)" : "")}, "
                     + $"textures {(MovieContent.KeepCompressed ? "BC1/BC3 kept" : "decoded to RGBA")}, "
                     + $"refresh {Arcade.RefreshRate}, mode {(Arcade.Home ? "home" : "arcade")}, skin {Arcade.GameplaySkin}, "
-                    + $"audio {(Arcade.AudioOutput == AudioOutputMode.Exclusive ? $"exclusive period {Arcade.AudioExclusivePeriod}" : $"buffer {Arcade.AudioBufferFrames}")}, device {Arcade.AudioDevice ?? "default"}",
+                    + $"audio {Arcade.AudioOutput switch
+                    {
+                        AudioOutputMode.Exclusive => $"exclusive period {Arcade.AudioExclusivePeriod}, device {Arcade.AudioDevice ?? "default"}",
+                        AudioOutputMode.Asio => $"asio {Arcade.AsioDriver ?? "first driver"} buffer {Arcade.AsioBufferFrames}",
+                        _ => $"buffer {Arcade.AudioBufferFrames}, device {Arcade.AudioDevice ?? "default"}",
+                    }}",
                     // Upscaled textures are 9x the pixels (BC7 on the GPU when it has it, else RGBA): they change memory and load times most.
                     $"upscaled textures\t{(Upscale is not { } upscale ? "unavailable (no model)"
                         : !Arcade.UpscaleTextures ? "off" : $"on, shown {Application.ShowUpscaled}, scale {upscale.Scale.ToString("0.#", CultureInfo.InvariantCulture)}x, "
@@ -990,13 +995,30 @@ internal sealed class GameShell : IDisposable
 
     private IAudioOutput openAudio()
     {
+        if (Arcade.AudioOutput == AudioOutputMode.Asio && OperatingSystem.IsWindows())
+        {
+            try
+            {
+                var asio = new AsioOutput(Arcade.AsioDriver, Arcade.AsioBufferFrames);
+                var (setting, driver) = (Arcade.AsioBufferFrames, Arcade.AsioDriver);
+                Home.HomeMenu.OutputInUse = () => (AudioOutputMode.Asio, setting, driver, asio.HardwareBufferFrames, asio.Format.SampleRate);
+                Console.WriteLine($"Audio: {asio.Driver}, {asio.HardwareBufferFrames} frames "
+                    + $"({1000.0 * asio.HardwareBufferFrames / asio.Format.SampleRate:0.##} ms) at {asio.Format.SampleRate} Hz, "
+                    + $"output latency {1000.0 * asio.OutputLatencyFrames / asio.Format.SampleRate:0.#} ms.");
+                return asio;
+            }
+            catch (Exception exception) when (exception is InvalidOperationException or PlatformNotSupportedException)
+            {
+                Console.Error.WriteLine($"Audio: ASIO unavailable, using shared. {exception.Message}");
+            }
+        }
         if (Arcade.AudioOutput == AudioOutputMode.Exclusive && OperatingSystem.IsWindows())
         {
             try
             {
                 var exclusive = new WasapiExclusiveOutput(periodFrames: Arcade.AudioExclusivePeriod, deviceName: Arcade.AudioDevice);
                 var (setting, device) = (Arcade.AudioExclusivePeriod, Arcade.AudioDevice);
-                Home.HomeMenu.ExclusiveInUse = () => (setting, device, exclusive.HardwareBufferFrames, exclusive.Format.SampleRate);
+                Home.HomeMenu.OutputInUse = () => (AudioOutputMode.Exclusive, setting, device, exclusive.HardwareBufferFrames, exclusive.Format.SampleRate);
                 Console.WriteLine($"Audio: WASAPI exclusive, {exclusive.HardwareBufferFrames} frames "
                     + $"({1000.0 * exclusive.HardwareBufferFrames / exclusive.Format.SampleRate:0.##} ms), {exclusive.Driver}.");
                 return exclusive;

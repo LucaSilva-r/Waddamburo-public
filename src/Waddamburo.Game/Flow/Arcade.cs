@@ -24,6 +24,8 @@ public enum AudioOutputMode
     Shared,
     /// <summary>Windows: WASAPI exclusive, the device for the game alone (audio_exclusive_period applies).</summary>
     Exclusive,
+    /// <summary>Windows: an ASIO driver (asio_driver, asio_buffer_frames).</summary>
+    Asio,
 }
 
 /// <summary>Picture quality (config.cfg upscale; the Settings menu's Upscaling).</summary>
@@ -109,15 +111,20 @@ public sealed record ArcadeSettings
 
         """,
         """
-        # audio_output: shared, or exclusive (Windows): take the sound device for the game alone (WASAPI
-        # exclusive mode) for the lowest delay; other programs are silent while the game runs. Recalibrate
-        # the offsets after changing it. Falls back to shared output when the device refuses.
+        # audio_output: shared, exclusive (Windows): take the sound device for the game alone (WASAPI
+        # exclusive mode) for the lowest delay; other programs are silent while the game runs; or asio
+        # (Windows): an ASIO driver. Recalibrate the offsets after changing it. Falls back to shared
+        # output when the device or driver refuses.
         audio_output = shared
         # audio_device: the playback device by name, empty = the system's default.
         audio_device =
         # audio_exclusive_period: exclusive mode's period in frames; 0 = the device's minimum (its default
         # when the minimum proves too short at start), -1 = its default. Raise it when the sound stutters.
         audio_exclusive_period = 0
+        # asio_driver: the ASIO driver by name, empty = the first installed. asio_buffer_frames: its buffer,
+        # 0 = the driver's preferred size (set in its control panel), else the nearest size it allows.
+        asio_driver =
+        asio_buffer_frames = 0
 
         """,
         """
@@ -585,6 +592,12 @@ public sealed record ArcadeSettings
     /// <summary>Exclusive output's period in frames; 0 = the device's minimum (checked at start), -1 = its default.</summary>
     public int AudioExclusivePeriod { get; init; }
 
+    /// <summary>The ASIO driver's name; null = the first installed.</summary>
+    public string? AsioDriver { get; init; }
+
+    /// <summary>The ASIO buffer in frames; 0 = the driver's preferred size.</summary>
+    public int AsioBufferFrames { get; init; }
+
     /// <summary>Two players' sounds panned to their own side; false: centred, shared.</summary>
     public bool StereoPanning { get; init; } = true;
 
@@ -851,10 +864,13 @@ public sealed record ArcadeSettings
                 {
                     "shared" => AudioOutputMode.Shared,
                     "exclusive" => AudioOutputMode.Exclusive,
-                    _ => throw new InvalidDataException($"{FileName} line {index}: audio_output is shared or exclusive, not '{value}'."),
+                    "asio" => AudioOutputMode.Asio,
+                    _ => throw new InvalidDataException($"{FileName} line {index}: audio_output is shared, exclusive or asio, not '{value}'."),
                 } },
                 "audio_device" => settings with { AudioDevice = value.Length == 0 ? null : value },
                 "audio_exclusive_period" => settings with { AudioExclusivePeriod = integer(value, index, -1, 8192) },
+                "asio_driver" => settings with { AsioDriver = value.Length == 0 ? null : value },
+                "asio_buffer_frames" => settings with { AsioBufferFrames = integer(value, index, 0, 8192) },
                 "stereo_panning" => settings with { StereoPanning = boolean(value, index) },
                 "upscale" => settings with { Upscale = value.ToLowerInvariant() switch
                 {
@@ -994,6 +1010,8 @@ public sealed record ArcadeSettings
             ["audio_output"] = settings.AudioOutput.ToString().ToLowerInvariant(),
             ["audio_device"] = settings.AudioDevice ?? "",
             ["audio_exclusive_period"] = settings.AudioExclusivePeriod,
+            ["asio_driver"] = settings.AsioDriver ?? "",
+            ["asio_buffer_frames"] = settings.AsioBufferFrames,
             ["stereo_panning"] = settings.StereoPanning ? "true" : "false",
             ["upscale"] = settings.Upscale.ToString().ToLowerInvariant(),
             ["upscale_threads"] = settings.UpscaleThreads,

@@ -38,8 +38,8 @@ public sealed class AudioEngine : IDisposable
             _producer = new Thread(() => produce(sdl)) { IsBackground = true, Name = "Audio mix", Priority = ThreadPriority.Highest };
             _producer.Start();
         }
-        else if (OperatingSystem.IsWindows() && device is WasapiExclusiveOutput exclusive)
-            exclusive.Start(render);
+        else if (device is IPullAudioOutput pull)
+            pull.Start(render);
         else
             throw new ArgumentException($"Unsupported audio output {device.GetType().Name}.", nameof(device));
     }
@@ -52,7 +52,7 @@ public sealed class AudioEngine : IDisposable
     private Exception? _failure;
 
     public Exception? Failure => _failure
-        ?? (OperatingSystem.IsWindows() && _device is WasapiExclusiveOutput exclusive ? exclusive.Failure : null);
+        ?? (_device as IPullAudioOutput)?.Failure;
 
     public void SetPerformanceMonitoring(bool enabled) => _performanceMonitoring = enabled;
 

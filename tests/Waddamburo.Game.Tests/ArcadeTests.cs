@@ -142,6 +142,8 @@ public sealed class ArcadeTests
         Assert.Equal(AudioOutputMode.Shared, ArcadeSettings.Parse("").AudioOutput);
         Assert.Equal(AudioOutputMode.Exclusive, ArcadeSettings.Parse("audio_exclusive = true").AudioOutput);
         Assert.Equal(AudioOutputMode.Shared, ArcadeSettings.Parse("audio_exclusive = false").AudioOutput);
+        var asio = ArcadeSettings.Parse("audio_output = asio\nasio_driver = ASIO4ALL v2\nasio_buffer_frames = 128");
+        Assert.Equal((AudioOutputMode.Asio, "ASIO4ALL v2", 128), (asio.AudioOutput, asio.AsioDriver, asio.AsioBufferFrames));
         var path = Path.GetTempFileName();
         try
         {

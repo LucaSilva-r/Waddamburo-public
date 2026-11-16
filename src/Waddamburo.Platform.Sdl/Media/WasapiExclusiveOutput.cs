@@ -25,6 +25,16 @@ public interface IAudioOutput : IDisposable
     string Diagnostics => "";
 }
 
+/// <summary>An output whose device asks for each buffer (WASAPI exclusive, ASIO): the mix runs on its thread.</summary>
+public interface IPullAudioOutput : IAudioOutput
+{
+    /// <summary>Starts rendering: <paramref name="render"/> fills one device buffer each time the device asks.</summary>
+    void Start(Action<Span<float>> render);
+
+    /// <summary>The device thread's error; it then goes silent.</summary>
+    Exception? Failure { get; }
+}
+
 /// <summary>
 /// WASAPI exclusive-mode, event-driven playback of the default endpoint at the device's minimum
 /// period. The device thread renders each endpoint buffer straight from the mixer (pull), so a
@@ -33,7 +43,7 @@ public interface IAudioOutput : IDisposable
 /// </summary>
 /// <remarks>COM is driven through raw vtable slots so nothing depends on built-in COM interop.</remarks>
 [SupportedOSPlatform("windows")]
-public sealed unsafe class WasapiExclusiveOutput : IAudioOutput
+public sealed unsafe class WasapiExclusiveOutput : IPullAudioOutput
 {
     private const int ExclusiveMode = 1; // AUDCLNT_SHAREMODE_EXCLUSIVE
     private const uint EventCallback = 0x00040000; // AUDCLNT_STREAMFLAGS_EVENTCALLBACK
