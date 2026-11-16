@@ -14,8 +14,35 @@ public sealed class CatalogMetadataCache(string databasePath)
     /// <paramref name="within"/> keeps the inventory to those folders and files below the root (the rest of an
     /// installation is never walked): everything the scan asks about must lie in them.</summary>
     public CatalogMetadataScope Open(string root, string parserVersion, bool sourceTree = false,
-        IReadOnlyList<string>? within = null, CancellationToken cancellationToken = default) =>
-        new(databasePath, root, parserVersion, sourceTree, within, cancellationToken, check => { lock (_checks) _checks.Add(check); });
+        IReadOnlyList<string>? within = null, CancellationToken cancellationToken = default)
+    {
+        _ = _preloaded.Value;
+        return new(databasePath, root, parserVersion, sourceTree, within, cancellationToken, check =>
+        {
+            var started = Task.Run(async () => { await RevalidateAfter.ConfigureAwait(false); await check().ConfigureAwait(false); });
+            lock (_checks) _checks.Add(started);
+        });
+    }
+
+    // One sequential read of the whole file puts it in the OS file cache, so SQLite's page reads come from memory:
+    // on a spinning disk they were a seek each. Once per cache; the scans opening at the same time wait for it.
+    // ponytail: relies on the OS keeping ~35 MB cached; load it into an in-memory database if a low-RAM PC evicts it.
+    private readonly Lazy<bool> _preloaded = new(() =>
+    {
+        try
+        {
+            using var file = new FileStream(databasePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 1 << 20, FileOptions.SequentialScan);
+            var buffer = new byte[1 << 20];
+            var elapsed = System.Diagnostics.Stopwatch.StartNew();
+            while (file.Read(buffer) > 0) { }
+            Console.WriteLine($"Catalog cache preloaded: {file.Length / 1048576} MiB in {elapsed.Elapsed.TotalSeconds:F2}s.");
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { } // none yet: nothing to warm
+        return true;
+    });
+
+    /// <summary>The background checks wait for this (the start's own disk reads come first). Default: at once.</summary>
+    public Task RevalidateAfter { get; set; } = Task.CompletedTask;
 
     private readonly List<Task> _checks = [];
 
@@ -45,11 +72,11 @@ public sealed class CatalogMetadataScope : IDisposable
     private bool _fromSnapshot;
     // One background walk at a time: several releases walked at once thrash a spinning disk.
     private static readonly SemaphoreSlim Walking = new(1, 1);
-    private readonly Action<Task> _checking;
+    private readonly Action<Func<Task>> _checking;
     public int Hits { get; private set; }
     public int Misses { get; private set; }
 
-    internal CatalogMetadataScope(string database, string root, string version, bool sourceTree, IReadOnlyList<string>? within, CancellationToken cancellation, Action<Task> checking)
+    internal CatalogMetadataScope(string database, string root, string version, bool sourceTree, IReadOnlyList<string>? within, CancellationToken cancellation, Action<Func<Task>> checking)
     {
         _cancellation = cancellation;
         _checking = checking;
@@ -71,8 +98,11 @@ public sealed class CatalogMetadataScope : IDisposable
                 }.ToString());
                 _connection.Open();
                 using var command = _connection.CreateCommand();
-                command.CommandText = "CREATE TABLE IF NOT EXISTS file_metadata_v1 (scope TEXT NOT NULL, path TEXT NOT NULL, size INTEGER NOT NULL, modified INTEGER NOT NULL, json TEXT NOT NULL, PRIMARY KEY(scope,path));"
-                    + "CREATE TABLE IF NOT EXISTS file_inventory_v1 (scope TEXT NOT NULL, path TEXT NOT NULL, size INTEGER NOT NULL, modified INTEGER NOT NULL, PRIMARY KEY(scope,path));";
+                command.CommandText = "CREATE TABLE IF NOT EXISTS file_metadata_v2 (scope TEXT NOT NULL, path TEXT NOT NULL, size INTEGER NOT NULL, modified INTEGER NOT NULL, json TEXT NOT NULL, PRIMARY KEY(scope,path)) WITHOUT ROWID;"
+                    + "CREATE TABLE IF NOT EXISTS file_inventory_v2 (scope TEXT NOT NULL, path TEXT NOT NULL, size INTEGER NOT NULL, modified INTEGER NOT NULL, PRIMARY KEY(scope,path)) WITHOUT ROWID;";
+                // WITHOUT ROWID keeps a scope's rows together in key order: a start reads them in one sweep, not one
+                // seek per row through a rowid index (23 s of a cold start on a spinning disk).
+                // ponytail: rewrites scatter pages again over time; VACUUM now and then if cold starts creep back up.
                 command.ExecuteNonQuery();
                 // An installation's last inventory stands in for the walk (a spinning disk takes most of the boot
                 // walking a dozen releases); Dispose walks it again in the background. User libraries are walked
@@ -80,7 +110,7 @@ public sealed class CatalogMetadataScope : IDisposable
                 // ponytail: a changed installation shows its changes one start late; swap the catalog live if that bites.
                 if (sourceTree)
                 {
-                    command.CommandText = "SELECT path,size,modified FROM file_inventory_v1 WHERE scope=$scope";
+                    command.CommandText = "SELECT path,size,modified FROM file_inventory_v2 WHERE scope=$scope";
                     command.Parameters.AddWithValue("$scope", _inventory);
                     using (var stored = command.ExecuteReader())
                         while (stored.Read())
@@ -88,7 +118,7 @@ public sealed class CatalogMetadataScope : IDisposable
                     _fromSnapshot = _files.Count > 0;
                     command.Parameters.Clear();
                 }
-                command.CommandText = "SELECT path,size,modified,json FROM file_metadata_v1 WHERE scope=$scope";
+                command.CommandText = "SELECT path,size,modified,json FROM file_metadata_v2 WHERE scope=$scope";
                 command.Parameters.AddWithValue("$scope", _space);
                 using var reader = command.ExecuteReader();
                 while (reader.Read()) _entries[reader.GetString(0)] = new Entry(reader.GetInt64(1), reader.GetInt64(2), reader.GetString(3));
@@ -143,9 +173,9 @@ public sealed class CatalogMetadataScope : IDisposable
         using var transaction = connection.BeginTransaction();
         using var command = connection.CreateCommand();
         command.Transaction = transaction;
-        command.CommandText = "DELETE FROM file_inventory_v1 WHERE scope=$scope";
+        command.CommandText = "DELETE FROM file_inventory_v2 WHERE scope=$scope";
         command.Parameters.AddWithValue("$scope", _inventory); command.ExecuteNonQuery();
-        command.CommandText = "INSERT INTO file_inventory_v1(scope,path,size,modified) VALUES($scope,$path,$size,$modified)";
+        command.CommandText = "INSERT INTO file_inventory_v2(scope,path,size,modified) VALUES($scope,$path,$size,$modified)";
         var path = command.Parameters.Add("$path", SqliteType.Text);
         var size = command.Parameters.Add("$size", SqliteType.Integer);
         var modified = command.Parameters.Add("$modified", SqliteType.Integer);
@@ -231,15 +261,15 @@ public sealed class CatalogMetadataScope : IDisposable
         try
         {
             if (_cancellation.IsCancellationRequested) return;
-            if (_fromSnapshot) _checking(Task.Run(revalidate));
+            if (_fromSnapshot) _checking(revalidate);
             else if (_sourceTree) saveInventory(_connection, _files);
             if (!_changed && _used.SetEquals(_entries.Keys)) return;
             using var transaction = _connection.BeginTransaction();
             using var command = _connection.CreateCommand();
             command.Transaction = transaction;
-            command.CommandText = "DELETE FROM file_metadata_v1 WHERE scope=$scope";
+            command.CommandText = "DELETE FROM file_metadata_v2 WHERE scope=$scope";
             command.Parameters.AddWithValue("$scope", _space); command.ExecuteNonQuery();
-            command.CommandText = "INSERT INTO file_metadata_v1(scope,path,size,modified,json) VALUES($scope,$path,$size,$modified,$json)";
+            command.CommandText = "INSERT INTO file_metadata_v2(scope,path,size,modified,json) VALUES($scope,$path,$size,$modified,$json)";
             var path = command.Parameters.Add("$path", SqliteType.Text);
             var size = command.Parameters.Add("$size", SqliteType.Integer);
             var modified = command.Parameters.Add("$modified", SqliteType.Integer);

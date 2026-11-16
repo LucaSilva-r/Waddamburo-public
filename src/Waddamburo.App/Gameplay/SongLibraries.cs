@@ -57,7 +57,16 @@ internal sealed class SongLibraries : IDisposable
     public static SongLibraries Load(string dataRoot, ArcadeSettings arcade, string defaultTjaFolder, Action<int>? percent = null)
     {
         var tja = arcade.TjaFolder ?? defaultTjaFolder;
-        var metadataCache = new CatalogMetadataCache(Path.Combine(Path.GetDirectoryName(VgmstreamCli.CacheDirectory)!, "catalog-metadata.db"));
+        var cacheFolder = Path.GetDirectoryName(VgmstreamCli.CacheDirectory)!;
+        // v1's rowid tables were read with a seek per row; v2 starts clean (the cache is disposable).
+        try { File.Delete(Path.Combine(cacheFolder, "catalog-metadata.db")); }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { }
+        var metadataCache = new CatalogMetadataCache(Path.Combine(cacheFolder, "catalog-metadata-v2.db"))
+        {
+            // The installations' folders are walked again once the start is over, not against its own reads.
+            // ponytail: a fixed minute after the scan; signal the end of the boot instead if a slow disk still collides.
+            RevalidateAfter = Task.Delay(TimeSpan.FromMinutes(1)),
+        };
         List<(string, string)> problems = [];
         if (arcade.Home && arcade.TjaFolder is not null && !Directory.Exists(tja))
             problems.Add((tja, "Folder not found"));

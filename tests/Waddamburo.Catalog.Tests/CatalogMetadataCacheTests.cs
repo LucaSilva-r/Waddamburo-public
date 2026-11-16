@@ -57,7 +57,7 @@ public sealed partial class CatalogMetadataCacheTests : IDisposable
         using var connection = new SqliteConnection($"Data Source={Database}");
         connection.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT count(*) FROM file_metadata_v1";
+        command.CommandText = "SELECT count(*) FROM file_metadata_v2";
         Assert.Equal(1L, command.ExecuteScalar());
     }
 
@@ -146,7 +146,7 @@ public sealed partial class CatalogMetadataCacheTests : IDisposable
         {
             connection.Open();
             using var command = connection.CreateCommand();
-            command.CommandText = "UPDATE file_metadata_v1 SET json='invalid json'";
+            command.CommandText = "UPDATE file_metadata_v2 SET json='invalid json'";
             command.ExecuteNonQuery();
         }
         using var next = Open();
