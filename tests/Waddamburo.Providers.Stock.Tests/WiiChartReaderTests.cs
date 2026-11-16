@@ -47,7 +47,7 @@ public sealed class WiiChartReaderTests
 
         var tuning = new WiiChartReader.CourseTuning(4, 720, 180, [0x10000, 0x10000, 0x10000], [20, 10, 0, 1, 20, 10, 1, 30, 30]);
         var key = new ChartKey(new SongKey(SongSourceKind.Console, "wii1:test"), "easy");
-        var chart = FumenChartReader.Read(WiiChartReader.ToFumen(data, tuning, 100, 100), key, 100, 100);
+        var chart = FumenChartReader.Read(WiiChartReader.ToFumen(data, tuning, 100, 100), key, 100, 100, consoleNotes: true);
 
         Assert.Equal([(2000d, PlayableNoteKind.Don), (2250d, PlayableNoteKind.Ka), (2500d, PlayableNoteKind.BigDon)],
             chart.HitObjects.Select(static note => (Math.Round(note.StartTime.TotalMilliseconds), note.Kind)));

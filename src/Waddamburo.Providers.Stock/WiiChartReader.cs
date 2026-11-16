@@ -10,7 +10,7 @@ namespace Waddamburo.Providers.Stock;
 /// arcade fumen, six scrolls (three per note set), then two note sets × three branches of (first note, count,
 /// notes left). A 16-byte note: type, tick (1/12 beat from the measure start), balloon hits, roll length (ms).
 /// Set 0 is the chart; set 1 only differs in some 2P duet files. The chart is rewritten as an arcade fumen and read
-/// by <see cref="FumenChartReader"/>, so branches, rolls and scroll follow the same rules.
+/// by <see cref="FumenChartReader"/> (its consoleNotes), so branches, rolls and scroll follow the same rules.
 /// </summary>
 internal static class WiiChartReader
 {
@@ -91,17 +91,9 @@ internal static class WiiChartReader
         return output.ToArray();
     }
 
-    // 1-13 are the arcade's (11/13 big hand notes); 14/15 giant don/ka (big, drawn giant); 16-25 sparkling notes, items in
-    // medleys: 16-18 and 21-23 don, 19-20 and 24-25 ka (from footage of Super Mario medley, ふつう, and Namcot).
-    private static int arcadeType(int type) => type switch
-    {
-        >= 1 and <= 13 => type,
-        14 => FumenChartReader.GiantDon,
-        15 => FumenChartReader.GiantKa,
-        16 or 17 or 18 or 21 or 22 or 23 => FumenChartReader.SparkleDon,
-        19 or 20 or 24 or 25 => FumenChartReader.SparkleKa,
-        _ => throw new InvalidDataException($"Unknown Wii note type {type}."),
-    };
+    // The arcade's numbering, 14-25 the console notes (read with FumenChartReader's consoleNotes).
+    private static int arcadeType(int type) => type is >= 1 and <= 25 ? type
+        : throw new InvalidDataException($"Unknown Wii note type {type}.");
 
     /// <summary>
     /// <c>sheet/tuning/bin/tuning.bin</c>: a record count, 2172-byte records (music id, bank and an unknown string

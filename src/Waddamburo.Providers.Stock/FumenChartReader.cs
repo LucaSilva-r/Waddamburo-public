@@ -24,13 +24,11 @@ internal static class FumenChartReader
     private const int NoteSize = 24;
     private const int RollPadding = 8;
 
-    /// <summary>
-    /// Note types no game file has: <see cref="WiiChartReader"/>'s giant don/ka (big notes drawn giant) and sparkling
-    /// don/ka (notes drawn glowing).
-    /// </summary>
-    internal const int GiantDon = 0x10E, GiantKa = 0x10F, SparkleDon = 0x110, SparkleKa = 0x111;
-
-    public static PlayableChart Read(ReadOnlySpan<byte> data, ChartKey key, int maximumMeasures, int maximumNotes)
+    // consoleNotes: the console releases' (太鼓の達人Wii, Wii U) note types 14-25: 14/15 giant don/ka (big notes drawn
+    // giant), 16-25 sparkling notes (items in medleys: 16-18 and 21-23 don, 19-20 and 24-25 ka; from footage of Super
+    // Mario medley ふつう and Namcot medley), drawn glowing.
+    public static PlayableChart Read(ReadOnlySpan<byte> data, ChartKey key, int maximumMeasures, int maximumNotes,
+        bool consoleNotes = false)
     {
         if (data.Length < HeaderSize)
             throw new InvalidDataException("The fumen is shorter than its header.");
@@ -84,6 +82,11 @@ internal static class FumenChartReader
                 {
                     reader.Require(NoteSize);
                     var type = reader.Int32();
+                    var (giant, sparkle) = (consoleNotes && type is 14 or 15, consoleNotes && type is >= 16 and <= 25);
+                    if (giant)
+                        type -= 7;
+                    else if (sparkle)
+                        type = type is 19 or 20 or 24 or 25 ? 0x4 : 0x1;
                     var position = reader.Single();
                     reader.Position += 8; // item, padding
                     int first = reader.UInt16(), second = reader.UInt16();
@@ -105,7 +108,7 @@ internal static class FumenChartReader
                     if (isRoll)
                         longNotes.Add((noteMs, noteMs + Math.Max(0, duration), type == 0x9 ? PlayableLongNoteKind.BigRoll : PlayableLongNoteKind.Roll, 0, route));
                     else if (kind(type) is { } noteKind)
-                        notes.Add((noteMs, noteKind, type is 0xB or 0xD, type is 0x2 or 0x3 or 0x5, type is 0x3, route, measure, type is GiantDon or GiantKa, type is SparkleDon or SparkleKa));
+                        notes.Add((noteMs, noteKind, type is 0xB or 0xD, type is 0x2 or 0x3 or 0x5, type is 0x3, route, measure, giant, sparkle));
                     if (notes.Count + longNotes.Count > maximumNotes)
                         throw new InvalidDataException("The fumen exceeds the note limit.");
                 }
@@ -238,10 +241,10 @@ internal static class FumenChartReader
     // Note types per tja2fumen: 1-3 don, 4-5 ka, 7/8 big don/ka, 0xB/0xD big don/ka (hand notes).
     private static PlayableNoteKind? kind(int type) => type switch
     {
-        0x1 or 0x2 or 0x3 or SparkleDon => PlayableNoteKind.Don,
-        0x4 or 0x5 or SparkleKa => PlayableNoteKind.Ka,
-        0x7 or 0xB or GiantDon => PlayableNoteKind.BigDon,
-        0x8 or 0xD or GiantKa => PlayableNoteKind.BigKa,
+        0x1 or 0x2 or 0x3 => PlayableNoteKind.Don,
+        0x4 or 0x5 => PlayableNoteKind.Ka,
+        0x7 or 0xB => PlayableNoteKind.BigDon,
+        0x8 or 0xD => PlayableNoteKind.BigKa,
         _ => null,
     };
 

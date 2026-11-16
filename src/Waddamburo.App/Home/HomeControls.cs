@@ -567,7 +567,8 @@ internal sealed class HomeControls : IDisposable
     public static ArcadeSettings AddOfficialFolder(ArcadeSettings arcade, string folder, Action<string> warn)
     {
         if (Waddamburo.Providers.Stock.StockCatalogProvider.FindDataRoot(folder) is not null
-            || Waddamburo.Providers.Stock.WiiCatalogProvider.FindRoot(folder) is not null)
+            || Waddamburo.Providers.Stock.WiiCatalogProvider.FindRoot(folder) is not null
+            || Waddamburo.Providers.Stock.WiiUCatalogProvider.FindRoot(folder) is not null)
             return arcade with { StockFolders = ArcadeSettings.JoinFolders([.. ArcadeSettings.Folders(arcade.StockFolders), folder]) };
         if (new Waddamburo.Providers.Stock.NijiiroCatalogProvider(folder,
             keys: Waddamburo.Providers.Stock.NijiiroKeys.Parse(arcade.NijiiroDatatableKey, arcade.NijiiroFumenKey)) is { Exists: true } installation)

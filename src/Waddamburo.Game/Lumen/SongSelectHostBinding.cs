@@ -561,10 +561,16 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         _featureFolders.Clear();
         var genres = registerCustomGenres();
         var custom = 0;
+        var used = new HashSet<string>(StringComparer.Ordinal);
         for (var index = 0; index < _session.Catalog.Categories.Length; index++)
         {
             var category = _session.Catalog.Categories[index];
             var label = category.AuthoredLabel;
+            // The movie keeps one folder per genre label: a second folder of a genre (Wii and Wii U J-POP) takes a
+            // custom genre named after it.
+            if (label != SongSelectCatalogView.FeatureLabel && category.Key != SongSelectCatalogView.RollKey
+                && !used.Add(label) && custom < genres)
+                label = customGenre(custom++, category);
             // AssignMusic's last argument picks a feature folder's slot (00-09) whose spine and banner
             // show host-drawn text; -1 = none (the baked イベント art). Named folders take a custom genre
             // (the patched ボーカロイド art: own colour and name slots) while there are slots; more than ten

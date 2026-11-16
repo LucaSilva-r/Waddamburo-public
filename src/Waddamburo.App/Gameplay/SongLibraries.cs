@@ -102,7 +102,7 @@ internal sealed class SongLibraries : IDisposable
     private static ISongCatalogProvider[] stock(string dataRoot, ArcadeSettings arcade, List<(string, string)> problems, CatalogMetadataCache metadataCache)
     {
         var others = arcade.Home ? ArcadeSettings.Folders(arcade.StockFolders)
-            .Where(static folder => WiiCatalogProvider.FindRoot(folder) is null)
+            .Where(static folder => WiiCatalogProvider.FindRoot(folder) is null && WiiUCatalogProvider.FindRoot(folder) is null)
             .Select(folder => StockCatalogProvider.FindDataRoot(folder) is { } root ? root : warnMissing(folder, problems))
             .OfType<string>()
             .Where(root => !string.Equals(root, Path.GetFullPath(dataRoot), StringComparison.Ordinal))
@@ -111,10 +111,13 @@ internal sealed class SongLibraries : IDisposable
             .ToList() : [];
         // The running game's data is Green, the newest release: it comes first whatever the others are.
         List<string> roots = [.. StockCatalogProvider.IsStockData(dataRoot) ? [dataRoot] : Array.Empty<string>(), .. others];
-        // Console discs (太鼓の達人Wii) set among them: the CONSOLE library.
-        ISongCatalogProvider[] consoles = arcade.Home ? [.. ArcadeSettings.Folders(arcade.StockFolders)
-            .Select(WiiCatalogProvider.FindRoot).OfType<string>().Distinct(StringComparer.Ordinal)
-            .Select(static root => new WiiCatalogProvider(root))] : [];
+        // Console discs (太鼓の達人Wii, Wii U) set among them: the CONSOLE library.
+        var folders = arcade.Home ? ArcadeSettings.Folders(arcade.StockFolders) : [];
+        List<WiiUCatalogProvider> wiiU = [.. folders.Select(WiiUCatalogProvider.FindRoot).OfType<string>()
+            .Distinct(StringComparer.Ordinal).Select(static root => new WiiUCatalogProvider(root))];
+        List<WiiCatalogProvider> wii = [.. folders.Select(WiiCatalogProvider.FindRoot).OfType<string>()
+            .Distinct(StringComparer.Ordinal).Select(static root => new WiiCatalogProvider(root))];
+        ISongCatalogProvider[] consoles = wiiU.Count + wii.Count > 0 ? [new ConsoleCatalogProvider(wiiU, wii)] : [];
         return [.. roots.Count switch
         {
             0 => [],

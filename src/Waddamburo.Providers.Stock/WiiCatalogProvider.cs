@@ -81,7 +81,11 @@ public sealed partial class WiiCatalogProvider : ISongCatalogProvider, ICatalogA
         return ValueTask.FromResult(new SongCatalogContribution(Id, Source, songs,
             // The game's own genre art for each folder; the name says which release.
             genres.Select((genre, index) => new SongCategoryDescriptor(new CategoryKey(Source, $"wii1-{genre.Key}"),
-                "Wii " + genreName(genre.Key).English, index, genre.Value) { Genre = genreName(genre.Key).Japanese }),
+                "Wii " + genreName(genre.Key).English, index, genre.Value)
+                {
+                    Genre = genreName(genre.Key).Japanese,
+                    Colour = WiiCatalogProvider.GenreColour(genreName(genre.Key).Japanese),
+                }),
             diagnostics));
     }
 
@@ -106,7 +110,7 @@ public sealed partial class WiiCatalogProvider : ISongCatalogProvider, ICatalogA
         var bytes = await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false);
         var fields = asset.StableId.Split(':');
         var fumen = WiiChartReader.ToFumen(bytes, _tuning.GetValueOrDefault(courseName(fields[1], fields[2][0])), MaximumMeasures, MaximumNotes);
-        return FumenChartReader.Read(fumen, chart, MaximumMeasures, MaximumNotes) with { Level = stars(fields[1], fields[2][0]) };
+        return FumenChartReader.Read(fumen, chart, MaximumMeasures, MaximumNotes, consoleNotes: true) with { Level = stars(fields[1], fields[2][0]) };
     }
 
     // "chart:<id>:<course letter>" or "audio:<id>"; ids are validated so a key cannot leave the root.
@@ -141,6 +145,20 @@ public sealed partial class WiiCatalogProvider : ISongCatalogProvider, ICatalogA
         5 => ("Kids", "童謡"),
         6 => ("Game Music", "ゲームミュージック"),
         _ => ($"Genre {genre}", null),
+    };
+
+    /// <summary>A genre's folder colour (a folder sharing its genre with another is recoloured with it).</summary>
+    internal static uint? GenreColour(string? genre) => genre switch
+    {
+        "J-POP" => 0x42C0D2,
+        "アニメ" => 0xFF9A00,
+        "ボーカロイド" => 0xB4B4B4,
+        "童謡" => 0xFF5BA7,
+        "バラエティ" => 0x8ECE26,
+        "クラシック" => 0xCAC101,
+        "ゲームミュージック" => 0x9369C7,
+        "ナムコオリジナル" => 0xFF5A30,
+        _ => null,
     };
 
     // The arcade's gameplay skin (enso_<name>) a Wii song plays with: the ones with a matching theme.
