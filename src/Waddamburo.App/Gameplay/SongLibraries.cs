@@ -102,6 +102,7 @@ internal sealed class SongLibraries : IDisposable
     private static ISongCatalogProvider[] stock(string dataRoot, ArcadeSettings arcade, List<(string, string)> problems, CatalogMetadataCache metadataCache)
     {
         var others = arcade.Home ? ArcadeSettings.Folders(arcade.StockFolders)
+            .Where(static folder => WiiCatalogProvider.FindRoot(folder) is null)
             .Select(folder => StockCatalogProvider.FindDataRoot(folder) is { } root ? root : warnMissing(folder, problems))
             .OfType<string>()
             .Where(root => !string.Equals(root, Path.GetFullPath(dataRoot), StringComparison.Ordinal))
@@ -110,12 +111,16 @@ internal sealed class SongLibraries : IDisposable
             .ToList() : [];
         // The running game's data is Green, the newest release: it comes first whatever the others are.
         List<string> roots = [.. StockCatalogProvider.IsStockData(dataRoot) ? [dataRoot] : Array.Empty<string>(), .. others];
-        return roots.Count switch
+        // Console discs (太鼓の達人Wii) set among them: the CONSOLE library.
+        ISongCatalogProvider[] consoles = arcade.Home ? [.. ArcadeSettings.Folders(arcade.StockFolders)
+            .Select(WiiCatalogProvider.FindRoot).OfType<string>().Distinct(StringComparer.Ordinal)
+            .Select(static root => new WiiCatalogProvider(root))] : [];
+        return [.. roots.Count switch
         {
             0 => [],
             1 => [new StockCatalogProvider(roots[0]) { MetadataCache = metadataCache }],
-            _ => [new MergedCatalogProvider([.. roots.Select(root => new StockCatalogProvider(root) { MetadataCache = metadataCache })])],
-        };
+            _ => new ISongCatalogProvider[] { new MergedCatalogProvider([.. roots.Select(root => new StockCatalogProvider(root) { MetadataCache = metadataCache })]) },
+        }, .. consoles];
     }
 
     // Nijiiro installations that can play, the newest (highest song number) first.

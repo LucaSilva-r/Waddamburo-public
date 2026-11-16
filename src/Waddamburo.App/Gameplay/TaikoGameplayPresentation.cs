@@ -760,16 +760,24 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                         [PlayableNoteKind.BigKa] = layers["onp_tetunagikatsu_1p"],
                     }
                     : null,
-                layers.TryGetValue("onp_synchro_don_1p", out var synchroDon)
+                layers.TryGetValue("onp_synchro_daidon_1p", out var synchroBigDon)
                     ? new Dictionary<PlayableNoteKind, LumenSceneLayer>
                     {
-                        [PlayableNoteKind.Don] = synchroDon,
+                        [PlayableNoteKind.Don] = layers["onp_synchro_don_1p"],
                         [PlayableNoteKind.Ka] = layers["onp_synchro_katsu_1p"],
-                        [PlayableNoteKind.BigDon] = layers["onp_synchro_daidon_1p"],
+                        [PlayableNoteKind.BigDon] = synchroBigDon,
                         [PlayableNoteKind.BigKa] = layers["onp_synchro_daikatsu_1p"],
                     }
                     : null,
                 layers.GetValueOrDefault("onp_rare_0_w_00"),
+                // 太鼓の達人Wii's sparkling notes: the small synchro notes' glow.
+                layers.TryGetValue("onp_synchro_don_1p", out var sparkleDon)
+                    ? new Dictionary<PlayableNoteKind, LumenSceneLayer>
+                    {
+                        [PlayableNoteKind.Don] = sparkleDon,
+                        [PlayableNoteKind.Ka] = layers["onp_synchro_katsu_1p"],
+                    }
+                    : null,
                 layers.GetValueOrDefault("onp_kadon"),
                 // One onp_moji player per text label (a traced clone per note, parked on its label).
                 NoteTextLabels.ToDictionary(label => label, label =>

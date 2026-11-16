@@ -235,6 +235,9 @@ internal static class GameplaySceneComposition
         // Hand notes with feet: two-player gameplay only.
         ("enso_system/base1p", "onp_tetunagidon_1p", null, 1002),
         ("enso_system/base1p", "onp_tetunagikatsu_1p", null, 1002),
+        // Waiwai's glowing synchro notes: 太鼓の達人Wii's sparkling notes are drawn with them.
+        ("enso_waiwai", "onp_synchro_don_1p", null, 1002),
+        ("enso_waiwai", "onp_synchro_katsu_1p", null, 1002),
         ("enso_system/common", "action_result", 14, 1000),
         ("enso_system/common", "lane_obi", 14, 507),
         ("enso_system/base1p", "gage_fire_1p", 14, 506),

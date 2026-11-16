@@ -31,6 +31,8 @@ public readonly record struct PlayableHitObject
         InRun = InRun,
         IsKo = IsKo,
         IsRare = IsRare,
+        IsGiant = IsGiant,
+        IsSparkle = IsSparkle,
         Branch = Branch,
         ScrollFrom = ScrollFrom + (startTime - StartTime),
     };
@@ -67,6 +69,18 @@ public readonly record struct PlayableHitObject
 
     /// <summary>A Waiwai rare (heart) note: played as its note, drawn with the collabo's rare art.</summary>
     public bool IsRare { get; init; }
+
+    /// <summary>
+    /// 太鼓の達人Wii's giant note (types 14/15): played as its big note, drawn much bigger and rolling down the lane.
+    /// Presentation only: not part of the chart hash.
+    /// </summary>
+    public bool IsGiant { get; init; }
+
+    /// <summary>
+    /// 太鼓の達人Wii's sparkling note (types 16-25, items in medleys): played as its note, drawn glowing (Waiwai's synchro
+    /// note art). Presentation only: not part of the chart hash.
+    /// </summary>
+    public bool IsSparkle { get; init; }
 
     /// <summary>The 譜面分岐 route this note belongs to; null: played on every route.</summary>
     public ChartBranch? Branch { get; init; }

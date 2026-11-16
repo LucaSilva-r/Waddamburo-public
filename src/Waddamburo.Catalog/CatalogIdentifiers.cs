@@ -7,6 +7,8 @@ public enum SongSourceKind
     Tja,
     OsuLazer,
     OsuStable,
+    /// <summary>Home console releases' songs (太鼓の達人Wii), a library of their own.</summary>
+    Console,
 }
 
 public static class SongSourceKinds
