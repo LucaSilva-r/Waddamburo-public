@@ -42,11 +42,18 @@ public sealed class WiiLibraryProvider : ISongCatalogProvider, ICatalogAssetReso
         foreach (var group in found.GroupBy(static entry => bareId(entry.Song.Key)))
         {
             var copies = group.ToList();
-            // Same charts on every disc: the newest disc's alone.
-            var same = true;
+            // Same charts on every disc: one copy, the newest disc's unless an older one draws giant or sparkling notes it
+            // leaves out.
+            var (same, keep, most) = (true, 0, 0);
             for (var index = 1; index < copies.Count && same; index++)
-                same = await samePlay(copies[0], copies[index], cancellationToken).ConfigureAwait(false);
-            foreach (var copy in same ? copies.Take(1) : copies)
+            {
+                var (equal, first, other) = await samePlay(copies[0], copies[index], cancellationToken).ConfigureAwait(false);
+                same = equal;
+                most = Math.Max(most, first);
+                if (other > most)
+                    (keep, most) = (index, other);
+            }
+            foreach (var copy in same ? [copies[keep]] : copies)
                 songs.Add((relabel(copy.Song, copy.Disc, same ? null : _discs[copy.Disc].Release), copy.Genre));
         }
         var categories = songs.GroupBy(static song => song.Genre ?? "")
@@ -101,10 +108,12 @@ public sealed class WiiLibraryProvider : ISongCatalogProvider, ICatalogAssetReso
         };
     }
 
-    // Each course both discs chart plays the same notes and rolls in the same order.
-    private async ValueTask<bool> samePlay((SongDescriptor Song, string? Genre, int Disc) first,
+    // Each course both discs chart plays the same notes and rolls in the same order; with how many giant or sparkling
+    // notes each copy draws (a disc can chart the same notes without them).
+    private async ValueTask<(bool Same, int First, int Second)> samePlay((SongDescriptor Song, string? Genre, int Disc) first,
         (SongDescriptor Song, string? Genre, int Disc) second, CancellationToken cancellationToken)
     {
+        var (firstSpecial, secondSpecial) = (0, 0);
         foreach (var chart in first.Song.Charts)
         {
             if (second.Song.Charts.FirstOrDefault(other => other.Course == chart.Course) is not { } other)
@@ -115,14 +124,16 @@ public sealed class WiiLibraryProvider : ISongCatalogProvider, ICatalogAssetReso
                 var b = await ((IPlayableChartProvider)_discs[second.Disc].Provider).LoadChartAsync(other.Key, other.ChartAsset, cancellationToken).ConfigureAwait(false);
                 if (!a.HitObjects.Select(static note => note.Kind).SequenceEqual(b.HitObjects.Select(static note => note.Kind))
                     || !a.LongNotes.Select(static note => note.Kind).SequenceEqual(b.LongNotes.Select(static note => note.Kind)))
-                    return false;
+                    return default;
+                firstSpecial += a.HitObjects.Count(static note => note.IsGiant || note.IsSparkle);
+                secondSpecial += b.HitObjects.Count(static note => note.IsGiant || note.IsSparkle);
             }
             catch (InvalidDataException)
             {
-                return false;
+                return default;
             }
         }
-        return true;
+        return (true, firstSpecial, secondSpecial);
     }
 
     // "wii1:anp" and "wiiu:anp" are one song id.

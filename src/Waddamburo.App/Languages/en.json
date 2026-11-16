@@ -499,6 +499,7 @@
   "service.add_official.hint": "ANOTHER RELEASE'S GAME DATA OR A NIJIIRO INSTALLATION, JOINED TO THE GAME'S OWN SONGS.",
   "service.rehash": "REHASH LIBRARY",
   "service.rehash.hint": "WORKS THE LIBRARY'S CHART HASHES OUT AGAIN (IN THE BACKGROUND).",
+  "library.left_out": "Library not loaded: {0} ({1}). Check its folder in Settings › Song libraries.",
   "service.not_loaded": "NOT LOADED: {0}",
   "service.default_in_green": "DEFAULT IN GREEN",
   "service.legend.cabinet": "UP/DOWN : CHOOSE   ENTER : ENTER",

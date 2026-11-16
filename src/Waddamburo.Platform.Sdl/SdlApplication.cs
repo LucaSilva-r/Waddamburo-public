@@ -480,11 +480,14 @@ public sealed unsafe partial class SdlApplication : IDisposable
     /// <summary>
     /// Rumbles controllers <paramref name="pads"/> (their numbers, 1 = the first connected; unknown ones are skipped):
     /// low- and high-frequency motor strength 0-1, for <paramref name="duration"/> (a newer rumble replaces it).
+    /// Nothing while the window is in the background.
     /// </summary>
     public void Rumble(IEnumerable<int> pads, float low, float high, TimeSpan duration)
     {
         ArgumentNullException.ThrowIfNull(pads);
         ensureOwnerThread();
+        if (!Focused)
+            return;
         static ushort strength(float value) => (ushort)(Math.Clamp(value, 0, 1) * ushort.MaxValue);
         foreach (var number in pads)
             if (number >= 1 && number <= _pads.Length && _pads[number - 1].Pad != IntPtr.Zero)
@@ -900,6 +903,9 @@ public sealed unsafe partial class SdlApplication : IDisposable
                     windowFocused = false;
                     Focused = false;
                     Recorder?.Event("window lost focus");
+                    foreach (var pad in _pads) // a rumble playing stops at once
+                        if (pad.Pad != IntPtr.Zero)
+                            SDL_RumbleGamepad((SDL_Gamepad*)pad.Pad, 0, 0, 0);
                     if (pointerReleased is not null)
                     {
                         SDL_CaptureMouse(false);

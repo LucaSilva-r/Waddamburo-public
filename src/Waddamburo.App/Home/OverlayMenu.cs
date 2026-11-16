@@ -294,8 +294,9 @@ internal sealed class OverlayMenu(SdlApplication application, string fontPath) :
                     if (index == selected && Editing && !red)
                         accent = Red;
                     var x = valueX ?? row.ValueX;
-                    // A plain information value (a count) is white; a setting's, or a {braced} part, takes the colour.
-                    foreach (var (part, coloured) in segments(value, whole: row.IsDefault is not null))
+                    // A plain information value (a count) is white; a setting's, a row's own colour (a folder left out) or a
+                    // {braced} part takes the colour.
+                    foreach (var (part, coloured) in segments(value, whole: row.IsDefault is not null || row.Colour is not null))
                         x = text(quads, part, x, y, coloured ? accent : row.Cyan ? Cyan : White);
                 }
                 y += spacing;

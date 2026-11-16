@@ -274,10 +274,11 @@ internal sealed class GameShell : IDisposable
         Application.Rumble(pads, rumble.Low, rumble.High, TimeSpan.FromMilliseconds(rumble.Ms));
     }
 
-    // The controllers to rumble for a side's player; none when vibration is off, in a replay or in autoplay.
+    // The controllers to rumble for a side's player; none when vibration is off, in a replay, in autoplay or the attract's
+    // demo play.
     private int[]? rumblePads(int side)
     {
-        if (Arcade.ControllerVibration == Waddamburo.Game.Flow.ControllerVibration.Off || Autoplay || _gameplay.Reviewing
+        if (Arcade.ControllerVibration == Waddamburo.Game.Flow.ControllerVibration.Off || Autoplay || _gameplay.Reviewing || _gameplay.Demo
             || (uint)side > 1)
             return null;
         return [.. Enumerable.Range(side * 4, 4).SelectMany(pad => Home.ControlBindings.Inputs(Arcade.Controls[pad]))
@@ -702,8 +703,13 @@ internal sealed class GameShell : IDisposable
                 () => _boot.Note(Strings.T("boot.building_cache"))));
             // Not fatal: the libraries that load are listed (the settings say what's wrong with the others).
             if (_libraries.Problems is { Count: > 0 } problems)
+            {
+                // A toast too: the boot's NG flashes by, and the library's other songs still list as if nothing were wrong.
+                foreach (var (folder, why) in problems)
+                    Sync.Notices.AddLocal(Strings.T("library.left_out", Path.GetFileName(Path.TrimEndingDirectorySeparator(folder)), why), NoticeSeverity.Critical);
                 _boot.Warn(problems.Count == 1 ? "1 library left out" : $"{problems.Count} libraries left out",
                     problems.Select(static problem => $"{problem.Folder}: {problem.Why}"));
+            }
             // The installations' folders are checked in the background after the start: a notice shows how far.
             if (_libraries.MetadataCache is { } metadataCache)
             {
@@ -1253,8 +1259,8 @@ internal sealed class GameShell : IDisposable
                     if (!keyboard.Presses.IsEmpty)
                         _sinceInput.Restart();
                     // The notice sidebar (live presses only reach this callback; not over a lane, nor while the
-                    // search field takes the letters).
-                    if (_notices is not null && !Scenes.OnLane && !_search.IsOpen && !Room.Typing && GameActions.Pressed(keyboard, GameAction.Notices))
+                    // search field takes the letters). The attract's demo play is not a song being played.
+                    if (_notices is not null && (!Scenes.OnLane || _gameplay.Demo) && !_search.IsOpen && !Room.Typing && GameActions.Pressed(keyboard, GameAction.Notices))
                         _notices.Toggle();
                     if (Arcade.Home || _service?.IsOpen != true)
                         flowOf(Active.Id).UpdateFrame(keyboard);
@@ -1672,7 +1678,7 @@ internal sealed class GameShell : IDisposable
         quads.AddRange(pill());
         if (_notices is not null)
             // A replay being watched shows its toasts (a report's answer, a sanction); a song being played holds them.
-            quads.AddRange(_notices.Quads(Scenes.OnLane && !(_gameplay.Reviewing && !_gameplay.Attempting)));
+            quads.AddRange(_notices.Quads(Scenes.OnLane && !_gameplay.Demo && !(_gameplay.Reviewing && !_gameplay.Attempting)));
         // Song search is a menu page: everything under it frosted, as the settings are.
         if (_search.IsOpen)
         {

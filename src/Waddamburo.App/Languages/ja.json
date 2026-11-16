@@ -499,6 +499,7 @@
   "service.add_official.hint": "別リリースのゲームデータかニジイロのインストールを、ゲームの曲に加えます。",
   "service.rehash": "ライブラリを再ハッシュ",
   "service.rehash.hint": "ライブラリの譜面ハッシュを計算し直します（バックグラウンドで）。",
+  "library.left_out": "ライブラリが読み込まれていません：{0}（{1}）。設定の曲ライブラリでフォルダを確認してください。",
   "service.not_loaded": "読み込まれていません：{0}",
   "service.default_in_green": "緑は初期設定",
   "service.legend.cabinet": "上下：選択　ENTER：決定",
