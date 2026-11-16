@@ -76,6 +76,9 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     /// <summary>The exclusive or ASIO output the game runs (its buffer setting and device or driver, the frames it took), or null.</summary>
     public static Func<(AudioOutputMode Mode, int Setting, string? Device, int Frames, int Rate)?>? OutputInUse { get; set; }
 
+    /// <summary>The running ASIO driver's outputs (mono channels); 0 before one ran.</summary>
+    public static int AsioOutputs { get; set; }
+
     /// <summary>The installed ASIO drivers' names (set once by the host).</summary>
     public static IReadOnlyList<string> AsioDrivers { get; set; } = [];
 
@@ -233,6 +236,11 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         {
             FormatFor = static s => s.AsioDriver ?? (AsioDrivers.Count == 0 ? T("settings.asio_driver.none") : T("settings.asio_driver.first")),
         }, Shown: static s => s.AudioOutput == AudioOutputMode.Asio),
+        // The pairs the running driver has (eight before one ran: up to outputs 15-16).
+        new(Setting: new(T("settings.asio_outputs"), static s => s.AsioOutputPair, static (s, v) => s with { AsioOutputPair = v },
+            static (value, step) => Math.Clamp(value + Math.Sign(step), 0, AsioOutputs >= 2 ? AsioOutputs / 2 - 1 : 7), 0,
+            static value => $"{value * 2 + 1}-{value * 2 + 2}", 63, Hint: T("settings.asio_outputs.hint")),
+            Shown: static s => s.AudioOutput == AudioOutputMode.Asio),
         new(Setting: new(T("settings.asio_buffer"), static s => Math.Max(0, Array.IndexOf(AsioBuffers, s.AsioBufferFrames)),
             static (s, v) => s with { AsioBufferFrames = AsioBuffers[v] },
             static (value, step) => value + Math.Sign(step), 0, static _ => "", AsioBuffers.Length - 1, Hint: T("settings.asio_buffer.hint"))
@@ -444,12 +452,13 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         var changed = now.AudioBufferFrames != _atStart.AudioBufferFrames || now.AudioOutput != _atStart.AudioOutput
             || now.AudioDevice != _atStart.AudioDevice || now.AudioExclusivePeriod != _atStart.AudioExclusivePeriod
             || now.AsioDriver != _atStart.AsioDriver || now.AsioBufferFrames != _atStart.AsioBufferFrames
+            || now.AsioOutputPair != _atStart.AsioOutputPair
             || now.TjaFolder != _atStart.TjaFolder || now.NijiiroFolder != _atStart.NijiiroFolder || now.OsuFolder != _atStart.OsuFolder || now.OsuStableFolder != _atStart.OsuStableFolder
             || now.StockFolders != _atStart.StockFolders
             || now.CacheFolder != _atStart.CacheFolder
             || now.Language != _atStart.Language || now.EnglishTitles != _atStart.EnglishTitles;
         return changed || _baked
-            ? $"{now.AudioBufferFrames}|{now.AudioOutput}|{now.AudioDevice}|{now.AudioExclusivePeriod}|{now.AsioDriver}|{now.AsioBufferFrames}|{now.TjaFolder}|{now.NijiiroFolder}|{now.StockFolders}|{now.OsuFolder}|{now.OsuStableFolder}|{now.CacheFolder}|{now.Language}|{now.EnglishTitles}|{_baked}" : "";
+            ? $"{now.AudioBufferFrames}|{now.AudioOutput}|{now.AudioDevice}|{now.AudioExclusivePeriod}|{now.AsioDriver}|{now.AsioBufferFrames}|{now.AsioOutputPair}|{now.TjaFolder}|{now.NijiiroFolder}|{now.StockFolders}|{now.OsuFolder}|{now.OsuStableFolder}|{now.CacheFolder}|{now.Language}|{now.EnglishTitles}|{_baked}" : "";
     }
 
     /// <summary>The choices shown (the pause choices, or a prompt's).</summary>

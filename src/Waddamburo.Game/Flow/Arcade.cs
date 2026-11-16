@@ -125,6 +125,8 @@ public sealed record ArcadeSettings
         # 0 = the driver's preferred size (set in its control panel), else the nearest size it allows.
         asio_driver =
         asio_buffer_frames = 0
+        # asio_output_pair: the outputs played on, 0 = 1-2, 1 = 3-4, and so on.
+        asio_output_pair = 0
 
         """,
         """
@@ -598,6 +600,9 @@ public sealed record ArcadeSettings
     /// <summary>The ASIO buffer in frames; 0 = the driver's preferred size.</summary>
     public int AsioBufferFrames { get; init; }
 
+    /// <summary>The ASIO outputs played on: 0 = 1-2, 1 = 3-4, and so on.</summary>
+    public int AsioOutputPair { get; init; }
+
     /// <summary>Two players' sounds panned to their own side; false: centred, shared.</summary>
     public bool StereoPanning { get; init; } = true;
 
@@ -871,6 +876,7 @@ public sealed record ArcadeSettings
                 "audio_exclusive_period" => settings with { AudioExclusivePeriod = integer(value, index, -1, 8192) },
                 "asio_driver" => settings with { AsioDriver = value.Length == 0 ? null : value },
                 "asio_buffer_frames" => settings with { AsioBufferFrames = integer(value, index, 0, 8192) },
+                "asio_output_pair" => settings with { AsioOutputPair = integer(value, index, 0, 63) },
                 "stereo_panning" => settings with { StereoPanning = boolean(value, index) },
                 "upscale" => settings with { Upscale = value.ToLowerInvariant() switch
                 {
@@ -1012,6 +1018,7 @@ public sealed record ArcadeSettings
             ["audio_exclusive_period"] = settings.AudioExclusivePeriod,
             ["asio_driver"] = settings.AsioDriver ?? "",
             ["asio_buffer_frames"] = settings.AsioBufferFrames,
+            ["asio_output_pair"] = settings.AsioOutputPair,
             ["stereo_panning"] = settings.StereoPanning ? "true" : "false",
             ["upscale"] = settings.Upscale.ToString().ToLowerInvariant(),
             ["upscale_threads"] = settings.UpscaleThreads,

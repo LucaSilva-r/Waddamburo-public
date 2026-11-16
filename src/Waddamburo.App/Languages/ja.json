@@ -151,6 +151,8 @@
   "settings.asio_driver.first": "最初のドライバ",
   "settings.asio_driver.none": "インストールなし",
   "settings.asio_driver.hint": "ゲームの音を出すASIOドライバ（オーディオインターフェース専用のもの、ASIO4ALLなど）。再起動後に反映されます。",
+  "settings.asio_outputs": "ASIO出力",
+  "settings.asio_outputs.hint": "ゲームの音を出すインターフェースの出力（例: 一部の機器ではヘッドホンが3-4）。再起動後に反映されます。",
   "settings.asio_buffer": "ASIOバッファ",
   "settings.asio_buffer.preferred": "ドライバの推奨値",
   "settings.asio_buffer.hint": "ドライバの推奨値はドライバのコントロールパネルで設定したサイズを使います。それ以外はドライバが使える最も近いサイズになります。再起動後に反映されます。",

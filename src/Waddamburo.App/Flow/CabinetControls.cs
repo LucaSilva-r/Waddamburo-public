@@ -99,7 +99,8 @@ internal sealed class CabinetControls(GameShell shell, InputLatches input, Actio
             || settings.CacheFolder != before.CacheFolder || settings.AudioBufferFrames != before.AudioBufferFrames
             || settings.AudioOutput != before.AudioOutput || settings.AudioDevice != before.AudioDevice
             || settings.AudioExclusivePeriod != before.AudioExclusivePeriod
-            || settings.AsioDriver != before.AsioDriver || settings.AsioBufferFrames != before.AsioBufferFrames)
+            || settings.AsioDriver != before.AsioDriver || settings.AsioBufferFrames != before.AsioBufferFrames
+            || settings.AsioOutputPair != before.AsioOutputPair)
         {
             Console.WriteLine("Service menu left: a setting read at start changed, restarting.");
             shell.RequestRestart();

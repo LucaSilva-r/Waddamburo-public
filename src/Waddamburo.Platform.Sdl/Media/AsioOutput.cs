@@ -40,6 +40,7 @@ public sealed unsafe class AsioOutput : IPullAudioOutput
     private Callbacks* _callbacks;
     private int _sampleType;
     private bool _outputReady, _started;
+    private int _outputPair;
     private readonly AutoResetEvent _reset = new(false);
     private float[] _samples = [];
     private long _submittedFrames;
@@ -56,10 +57,12 @@ public sealed unsafe class AsioOutput : IPullAudioOutput
 
     /// <summary>
     /// Loads the driver named <paramref name="driverName"/> (null or not installed: the first one) at 48 kHz when it
-    /// can (else at its own rate); <paramref name="bufferFrames"/> 0 = its preferred size, else the nearest it allows.
+    /// can (else at its own rate); <paramref name="bufferFrames"/> 0 = its preferred size, else the nearest it allows;
+    /// <paramref name="outputPair"/> the stereo pair played on (0 = outputs 1-2, 1 = 3-4; one past the driver's: 1-2).
     /// </summary>
-    public AsioOutput(string? driverName = null, int bufferFrames = 0)
+    public AsioOutput(string? driverName = null, int bufferFrames = 0, int outputPair = 0)
     {
+        _outputPair = outputPair;
         if (!Environment.Is64BitProcess)
             throw new PlatformNotSupportedException("ASIO needs the 64-bit game.");
         if (Interlocked.CompareExchange(ref _current, this, null) is not null)
@@ -82,6 +85,12 @@ public sealed unsafe class AsioOutput : IPullAudioOutput
     public int HardwareBufferFrames { get; private set; }
     public string Driver { get; private set; } = "asio";
     public ulong SubmittedFrames => (ulong)Interlocked.Read(ref _submittedFrames);
+
+    /// <summary>The driver's outputs (mono channels).</summary>
+    public int OutputCount { get; private set; }
+
+    /// <summary>The stereo pair played on (0 = outputs 1-2), after a missing one fell back.</summary>
+    public int OutputPair => _outputPair;
 
     /// <summary>The driver's output latency (its buffer included), as it reports it.</summary>
     public int OutputLatencyFrames { get; private set; }
@@ -120,6 +129,7 @@ public sealed unsafe class AsioOutput : IPullAudioOutput
         {
             _openFailure = exception;
             close();
+            CoUninitialize();
             _opened.Set();
             return;
         }
@@ -148,6 +158,9 @@ public sealed unsafe class AsioOutput : IPullAudioOutput
         }
         _stop.Wait();
         close();
+        // The thread leaves COM as it entered it: a driver can keep per-thread state until then (a game that hung on
+        // exit after ASIO4ALL was released).
+        CoUninitialize();
     }
 
     // Loads, sets up and starts the driver (again after a reset: at the rate the mix was built for).
@@ -177,6 +190,12 @@ public sealed unsafe class AsioOutput : IPullAudioOutput
             asio(call(_driver, 9, (nint)(&inputs), (nint)(&outputs)), "count the channels");
             if (outputs < Channels)
                 throw new InvalidOperationException($"The ASIO driver '{name}' has {outputs} output(s), the game needs two.");
+            OutputCount = outputs;
+            if ((_outputPair + 1) * Channels > outputs)
+            {
+                Console.Error.WriteLine($"Audio: the ASIO driver '{name}' has no outputs {_outputPair * 2 + 1}-{_outputPair * 2 + 2}, using 1-2.");
+                _outputPair = 0;
+            }
 
             // 48 kHz like the other outputs when the driver takes it; its own rate otherwise (the mix follows).
             double rate;
@@ -193,7 +212,7 @@ public sealed unsafe class AsioOutput : IPullAudioOutput
             HardwareBufferFrames = bufferSize(requestedFrames, minimum, maximum, preferred, granularity);
 
             var info = stackalloc ChannelInfo[1];
-            *info = new ChannelInfo { Channel = 0, IsInput = 0 };
+            *info = new ChannelInfo { Channel = _outputPair * Channels, IsInput = 0 };
             asio(call(_driver, 18, (nint)info), "read the output format");
             _sampleType = info->Type;
             if (sampleBytes(_sampleType) == 0)
@@ -201,7 +220,7 @@ public sealed unsafe class AsioOutput : IPullAudioOutput
 
             _buffers = (BufferInfo*)NativeMemory.AllocZeroed((nuint)(sizeof(BufferInfo) * Channels));
             for (var channel = 0; channel < Channels; channel++)
-                _buffers[channel] = new BufferInfo { IsInput = 0, Channel = channel };
+                _buffers[channel] = new BufferInfo { IsInput = 0, Channel = _outputPair * Channels + channel };
             _callbacks = (Callbacks*)NativeMemory.AllocZeroed((nuint)sizeof(Callbacks));
             _callbacks->BufferSwitch = &bufferSwitch;
             _callbacks->SampleRateChanged = &sampleRateChanged;
@@ -447,6 +466,9 @@ public sealed unsafe class AsioOutput : IPullAudioOutput
 
     [DllImport("ole32.dll")]
     private static extern int CoInitializeEx(nint reserved, uint model);
+
+    [DllImport("ole32.dll")]
+    private static extern void CoUninitialize();
 
     [DllImport("ole32.dll")]
     private static extern int CoCreateInstance(Guid* clsid, nint outer, uint context, Guid* iid, nint* instance);

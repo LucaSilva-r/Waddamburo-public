@@ -151,6 +151,8 @@
   "settings.asio_driver.first": "First installed",
   "settings.asio_driver.none": "None installed",
   "settings.asio_driver.hint": "The ASIO driver the game plays on (e.g. your interface's own, or ASIO4ALL). Applies after a restart.",
+  "settings.asio_outputs": "ASIO Outputs",
+  "settings.asio_outputs.hint": "The interface's outputs the game plays on (e.g. 3-4 for headphones on some interfaces). Applies after a restart.",
   "settings.asio_buffer": "ASIO Buffer",
   "settings.asio_buffer.preferred": "Driver preferred",
   "settings.asio_buffer.hint": "Driver preferred uses the size set in the driver's control panel; otherwise the nearest size the driver allows. Applies after a restart.",

@@ -999,12 +999,14 @@ internal sealed class GameShell : IDisposable
         {
             try
             {
-                var asio = new AsioOutput(Arcade.AsioDriver, Arcade.AsioBufferFrames);
+                var asio = new AsioOutput(Arcade.AsioDriver, Arcade.AsioBufferFrames, Arcade.AsioOutputPair);
+                Home.HomeMenu.AsioOutputs = asio.OutputCount;
                 var (setting, driver) = (Arcade.AsioBufferFrames, Arcade.AsioDriver);
                 Home.HomeMenu.OutputInUse = () => (AudioOutputMode.Asio, setting, driver, asio.HardwareBufferFrames, asio.Format.SampleRate);
                 Console.WriteLine($"Audio: {asio.Driver}, {asio.HardwareBufferFrames} frames "
                     + $"({1000.0 * asio.HardwareBufferFrames / asio.Format.SampleRate:0.##} ms) at {asio.Format.SampleRate} Hz, "
-                    + $"output latency {1000.0 * asio.OutputLatencyFrames / asio.Format.SampleRate:0.#} ms.");
+                    + $"output latency {1000.0 * asio.OutputLatencyFrames / asio.Format.SampleRate:0.#} ms, "
+                    + $"outputs {asio.OutputPair * 2 + 1}-{asio.OutputPair * 2 + 2} of {asio.OutputCount}.");
                 return asio;
             }
             catch (Exception exception) when (exception is InvalidOperationException or PlatformNotSupportedException)
