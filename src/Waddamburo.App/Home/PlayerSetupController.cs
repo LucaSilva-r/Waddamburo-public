@@ -50,7 +50,7 @@ internal sealed class PlayerSetupController : IDisposable
             {
                 if (_flow.IsOpen || shell.Active.Id != FlowScenes.Entry)
                     return;
-                beginSetup();
+                beginSetup(joined.Length > 0 ? joined[0] : 0);
                 _flow.Reopen(profiles, joined);
             });
             return true;
@@ -103,7 +103,7 @@ internal sealed class PlayerSetupController : IDisposable
             return;
         }
         shell.Sounds?.StopAll();
-        beginSetup();
+        beginSetup(side);
         setup.Open(side);
     }
 
@@ -112,7 +112,9 @@ internal sealed class PlayerSetupController : IDisposable
     private const int SetupIntroTicks = 90; // 1.5 s: the Don's entry motion (traced 0.85 s) and the boards
     private int _setupShownTicks;
 
-    private void beginSetup()
+    // The entry starts with the opening drum joined (DON_1P/_2P: the movie greets it, once); the host
+    // joins the other stand right after, the movie's way for a drum press (no greeting).
+    private void beginSetup(int side)
     {
         _setupShownTicks = 0;
         shell.Players.Reset();
@@ -121,7 +123,7 @@ internal sealed class PlayerSetupController : IDisposable
         Array.Fill(_swapAt, -1);
         Array.Fill(_revealAt, -1);
         shell.Hosts.EntrySetup = true;
-        shell.Hosts.EntryTrigger = 2;
+        shell.Hosts.EntryTrigger = side;
         shell.ResetIndicatorScene();
         shell.Scenes.Show(FlowScenes.Entry);
     }

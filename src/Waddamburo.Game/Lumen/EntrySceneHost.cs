@@ -169,6 +169,7 @@ public sealed class EntrySceneHost(IndicatorParts parts)
     public int? PreJoined { get; init; }
 
     private readonly bool[] _donHidden = new bool[2], _boardShown = new bool[2];
+    private bool _setupSecondJoined;
     // Home: a drum nobody plays after the setup; its stand (taiko_Np) goes as before any join (the movie starts it hidden).
     private readonly bool[] _standHidden = new bool[2];
     private readonly ScoreProfile?[] _setupProfiles = new ScoreProfile?[2];
@@ -259,7 +260,18 @@ public sealed class EntrySceneHost(IndicatorParts parts)
             return;
         _ticks++;
         if (SetupMode)
+        {
             _entry.TrySetInstanceAlpha("modeSelect", 0);
+            // The setup fakes both players: the movie joined the opening drum (its InitEntry greets it);
+            // the other stand joins as a drum press would (PlayerEntry.CoinEntry: no voice), not with a
+            // second greeting as DON_BOTH gave.
+            if (_joined.Count == 1 && !_setupSecondJoined)
+            {
+                _setupSecondJoined = true;
+                if (!_entry.TryCallScriptMethod("modeSelect.playerentry", "CoinEntry", [number(1 - _joined.First())]))
+                    Console.Error.WriteLine("Entry: no modeSelect.playerentry.CoinEntry to join the setup's other stand.");
+            }
+        }
         else if (_modeSelectFade >= 0)
         {
             _modeSelectFade++;
