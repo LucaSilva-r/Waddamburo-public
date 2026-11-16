@@ -8,8 +8,8 @@ using Waddamburo.Providers.Stock;
 namespace Waddamburo.App.Cli;
 
 /// <summary>
-/// --export-charts=FILE: every chart of the game's own data, of every other release in stock_folders and of every
-/// Nijiiro installation in nijiiro_folder (home mode or not), each install read on its own so every version of a chart
+/// --export-charts=FILE: every chart of the game's own data, of every other release in stock_folders (Wii and Wii U
+/// discs among them, as the WII/WII U library lists them) and of every Nijiiro installation in nijiiro_folder (home mode or not), each install read on its own so every version of a chart
 /// is there (once per song and hash), as gzipped JSON lines, one chart import each (<see cref="ChartUpload"/> plus its sha256), for TaikOnline's
 /// <c>php artisan app:import-waddamburo-charts</c>. A Nijiiro install may hold fan-made and other games' songs, so
 /// only exports of unmodified dumps count as official there (its --nijiiro-dumps); the rest still get their notes and songs.
@@ -25,6 +25,12 @@ internal static class ChartExport
             .. ArcadeSettings.Folders(arcade.NijiiroFolder).Select(folder => new NijiiroCatalogProvider(folder,
                 keys: NijiiroKeys.Parse(arcade.NijiiroDatatableKey, arcade.NijiiroFumenKey)))
                 .Where(static installed => installed.Problem is null),
+            .. ArcadeSettings.Folders(arcade.StockFolders) is var folders
+                && folders.Any(folder => WiiCatalogProvider.FindRoot(folder) is not null || WiiUCatalogProvider.FindRoot(folder) is not null)
+                ? [new ConsoleCatalogProvider(
+                    folders.Select(WiiUCatalogProvider.FindRoot).OfType<string>().Distinct().Select(static root => new WiiUCatalogProvider(root)),
+                    folders.Select(WiiCatalogProvider.FindRoot).OfType<string>().Distinct().Select(static root => new WiiCatalogProvider(root)))]
+                : Array.Empty<ISongCatalogProvider>(),
         ];
         var exported = 0;
         var skipped = 0;

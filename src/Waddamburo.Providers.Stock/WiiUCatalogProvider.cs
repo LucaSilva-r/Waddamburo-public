@@ -12,7 +12,7 @@ namespace Waddamburo.Providers.Stock;
 /// <c>Common/database/db_pack.drp</c>'s <c>musicinfo_db</c> (XML), charts from <c>wiiu/fumen/solo</c> and <c>duet</c>
 /// (the arcade fumen, big-endian), music from <c>wiiu/sound/SONG_&lt;ID&gt;.nus3bank</c> (DSP-ADPCM, vgmstream).
 /// A <c>ex_&lt;id&gt;</c> entry is the song's ura: its Oni chart is the base song's Ura course.
-/// In the CONSOLE library with 太鼓の達人Wii's songs (<see cref="WiiCatalogProvider"/>).
+/// In the WII/WII U library with 太鼓の達人Wii's songs (<see cref="WiiCatalogProvider"/>).
 /// </summary>
 public sealed partial class WiiUCatalogProvider : ISongCatalogProvider, ICatalogAssetResolver, IPlayableChartProvider
 {

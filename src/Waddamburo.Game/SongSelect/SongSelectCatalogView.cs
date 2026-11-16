@@ -310,13 +310,13 @@ public sealed class SongSelectCatalogView
 
     public SongSelectMode Mode { get; }
 
-    /// <summary>A library's folder colour: stock sky blue, custom TJA green, osu! pink, Nijiiro violet, console red.</summary>
+    /// <summary>A library's folder colour: stock sky blue, custom TJA green, osu! pink, Nijiiro violet, Wii/Wii U white.</summary>
     public static (byte R, byte G, byte B) LibraryTint(SongSourceKind library) => library switch
     {
         SongSourceKind.Tja => (130, 210, 60),
         SongSourceKind.OsuLazer or SongSourceKind.OsuStable => (255, 102, 171),
         SongSourceKind.Nijiiro => (170, 110, 255),
-        SongSourceKind.Console => (235, 80, 60),
+        SongSourceKind.Console => (255, 255, 255),
         _ => (60, 170, 240),
     };
 
@@ -462,7 +462,7 @@ public sealed class SongSelectCatalogView
         SongSourceKind.Tja => new FolderArt(FolderArtStyle.Tja, LibraryName(library),
             Japanese ? "じぶんの\n譜面で\nあそぼう!!" : "Play your\ncustom\ncharts!!"),
         SongSourceKind.Console => new FolderArt(FolderArtStyle.Original, LibraryName(library),
-            Japanese ? "家庭用の\n曲で\nあそぼう!!" : "Play the\nconsole\nsongs!!"),
+            Japanese ? "Wii・Wii Uの\n曲で\nあそぼう!!" : "Play the\nWii/Wii U\nsongs!!"),
         _ => null,
     };
 
@@ -486,7 +486,7 @@ public sealed class SongSelectCatalogView
         SongSourceKind.Tja => Japanese ? "創作譜面" : "CUSTOM TJA",
         SongSourceKind.OsuLazer => Japanese ? "osu!lazer" : "OSU! LAZER",
         SongSourceKind.OsuStable => Japanese ? "osu!stable" : "OSU! STABLE",
-        SongSourceKind.Console => Japanese ? "家庭用" : "CONSOLE",
+        SongSourceKind.Console => "WII/WII U",
         _ => library.ToString(),
     };
 

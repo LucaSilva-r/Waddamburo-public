@@ -6,7 +6,7 @@ namespace Waddamburo.Providers.Stock;
 /// <summary>
 /// The songs of a 太鼓の達人Wii (2008) disc the player extracted: the songs <c>sheet/musicinfo</c> lists, their 1P
 /// charts from <c>sheet/sht/bin</c>, stars and 配点 from <c>sheet/tuning</c>, music from <c>sound/SONG_&lt;ID&gt;.nub</c>
-/// (Nintendo DSP-ADPCM, decoded by vgmstream). The CONSOLE library (<see cref="SongSourceKind.Console"/>): ids
+/// (Nintendo DSP-ADPCM, decoded by vgmstream). The WII/WII U library (<see cref="SongSourceKind.Console"/>): ids
 /// overlap the arcade's (anp, natsu), and its scores count as custom songs'.
 /// </summary>
 public sealed partial class WiiCatalogProvider : ISongCatalogProvider, ICatalogAssetResolver, IPlayableChartProvider

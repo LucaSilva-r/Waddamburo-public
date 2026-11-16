@@ -7,7 +7,7 @@ public enum SongSourceKind
     Tja,
     OsuLazer,
     OsuStable,
-    /// <summary>Home console releases' songs (太鼓の達人Wii), a library of their own.</summary>
+    /// <summary>The Wii and Wii U releases' songs, the WII/WII U library.</summary>
     Console,
 }
 

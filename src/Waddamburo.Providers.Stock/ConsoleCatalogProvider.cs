@@ -3,7 +3,7 @@ using Waddamburo.Catalog;
 namespace Waddamburo.Providers.Stock;
 
 /// <summary>
-/// The CONSOLE library: the console discs' songs (<see cref="WiiCatalogProvider"/>, <see cref="WiiUCatalogProvider"/>)
+/// The WII/WII U library: the console discs' songs (<see cref="WiiCatalogProvider"/>, <see cref="WiiUCatalogProvider"/>)
 /// in one folder per genre. A song on several discs (same id) whose charts play the same (each shared course's notes
 /// and rolls, in order; the ports' timing floats differ) is listed once, from the newest disc (Wii U: ura, 44.1 kHz);
 /// one charted differently is listed per disc, its title marked with the release.

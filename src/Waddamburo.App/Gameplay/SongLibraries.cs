@@ -111,7 +111,7 @@ internal sealed class SongLibraries : IDisposable
             .ToList() : [];
         // The running game's data is Green, the newest release: it comes first whatever the others are.
         List<string> roots = [.. StockCatalogProvider.IsStockData(dataRoot) ? [dataRoot] : Array.Empty<string>(), .. others];
-        // Console discs (太鼓の達人Wii, Wii U) set among them: the CONSOLE library.
+        // Console discs (太鼓の達人Wii, Wii U) set among them: the WII/WII U library.
         var folders = arcade.Home ? ArcadeSettings.Folders(arcade.StockFolders) : [];
         List<WiiUCatalogProvider> wiiU = [.. folders.Select(WiiUCatalogProvider.FindRoot).OfType<string>()
             .Distinct(StringComparer.Ordinal).Select(static root => new WiiUCatalogProvider(root))];
