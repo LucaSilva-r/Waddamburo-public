@@ -225,8 +225,13 @@ public sealed class StockCatalogProviderTests
         Assert.Single((await warm.LoadChartAsync(chart.Key, chart.ChartAsset)).HitObjects);
         data.WriteBytes("fumen/tuning.bin", Tuning(("song", [("song1p_m", 9)])));
         File.SetLastWriteTimeUtc(Path.Combine(data.Path, "fumen", "tuning.bin"), DateTime.UtcNow.AddMinutes(1));
+        // An installation starts from its last inventory: a change shows once the background check has seen it.
+        Assert.Equal(8, Assert.Single(Assert.Single((await provider().ScanAsync(null, default)).Songs).Charts).Level);
+        await cache.Revalidations;
         Assert.Equal(9, Assert.Single(Assert.Single((await provider().ScanAsync(null, default)).Songs).Charts).Level);
         File.Delete(Path.Combine(data.Path, "fumen", "song", "solo", "song_m.bin"));
+        await provider().ScanAsync(null, default);
+        await cache.Revalidations;
         Assert.Empty((await provider().ScanAsync(null, default)).Songs);
     }
 

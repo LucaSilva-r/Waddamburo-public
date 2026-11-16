@@ -62,6 +62,23 @@ public sealed partial class CatalogMetadataCacheTests : IDisposable
     }
 
     [Fact]
+    public async Task InstallationsStartFromTheLastInventoryAndPickUpChangesOneStartLate()
+    {
+        var cache = new CatalogMetadataCache(Database);
+        CatalogMetadataScope Install() => cache.Open(Root, "v1", sourceTree: true);
+        using (Install()) { } // walked, inventory stored
+        var added = Path.Combine(Root, "new.txt");
+        File.WriteAllText(added, "new");
+        using (var second = Install())
+            Assert.False(second.Exists(added)); // the stored inventory, no walk
+        await cache.Revalidations;
+        using var third = Install();
+        Assert.True(third.Exists(added));
+        using var library = Open(); // user libraries are always walked
+        Assert.True(library.Exists(added));
+    }
+
+    [Fact]
     public void SourceTreesFollowLinksAndUserLibrariesDoNot()
     {
         if (OperatingSystem.IsWindows()) return; // links need a privilege there
