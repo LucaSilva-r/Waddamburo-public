@@ -28,9 +28,9 @@ dotnet build src/Waddamburo.Android -c Release \
 # -> src/Waddamburo.Android/bin/Release/net10.0-android/org.waddamburo.game-Signed.apk (debug-signed)
 ```
 
-The app runs on **CoreCLR** (`UseMonoRuntime=false`), experimental in .NET 10: Mono, even fully AOT compiled, ran the
-Lumen interpreter about 25 times slower than desktop (song select ~30 fps against ~50 on a Snapdragon 439).
-`-p:UseMonoRuntime=true` builds the Mono app (AOT compiled) for comparison.
+The app runs on **CoreCLR** (`UseMonoRuntime=false`), the same runtime as desktop; experimental on Android in .NET 10.
+Mono is not used: even fully AOT compiled it ran the Lumen interpreter about 25 times slower than desktop (song select
+~30 fps against ~50 on a Snapdragon 439).
 
 `Directory.Build.targets` makes every other project RID-agnostic: the Android build's per-RID pass expects its
 references built without an RID. Desktop publishes (`dotnet publish -r linux-x64`) produce the same files as before.

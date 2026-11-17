@@ -19,8 +19,8 @@
     <IsAotCompatible>false</IsAotCompatible>
   </PropertyGroup>
 
-  <!-- CoreCLR, as on desktop: on a Snapdragon 439 song select went from ~30 fps (Mono, fully AOT compiled) to about
-       60. Experimental in .NET 10 (warning XA1040), so Mono stays one property away: -p:UseMonoRuntime=true. -->
+  <!-- CoreCLR, the one runtime the game runs on everywhere: on a Snapdragon 439 song select went from ~30 fps (Mono,
+       fully AOT compiled) to about 50. Experimental on Android in .NET 10 (warning XA1040). -->
   <PropertyGroup>
     <UseMonoRuntime>false</UseMonoRuntime>
     <NoWarn>$(NoWarn);XA1040</NoWarn>
@@ -30,11 +30,6 @@
     <PublishTrimmed>true</PublishTrimmed>
     <TrimMode>partial</TrimMode>
     <DebugSymbols>false</DebugSymbols>
-  </PropertyGroup>
-  <!-- Mono needs its AOT compiler for usable speed (its JIT is far slower). -->
-  <PropertyGroup Condition="'$(Configuration)' == 'Release' and '$(UseMonoRuntime)' == 'true'">
-    <RunAOTCompilation>true</RunAOTCompilation>
-    <AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
   </PropertyGroup>
 
   <!-- Native libraries of the android-package CMake preset (native/CMakePresets.json). -->
