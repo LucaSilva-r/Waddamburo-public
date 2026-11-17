@@ -187,7 +187,8 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             },
             static (value, step) => value + Math.Sign(step), 0,
             static value => T(value switch { 0 => "settings.cache_folder.user", 1 => "settings.cache_folder.game", _ => "settings.cache_folder.custom" }),
-            2, Hint: T("settings.cache_folder.hint"))),
+            2, Hint: T("settings.cache_folder.hint")),
+            Shown: static _ => !PlatformInfo.IsMobile),
         new(T("section.volume")),
         new(Setting: volume("settings.master_volume", static s => s.MasterVolume, static (s, v) => s with { MasterVolume = v }, AudioBus.Bgm)),
         new(Setting: volume("settings.music_volume", static s => s.MusicVolume, static (s, v) => s with { MusicVolume = v }, AudioBus.Bgm)),
@@ -233,7 +234,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             static (value, step) => value + Math.Sign(step), 0, static _ => "", int.MaxValue, Hint: T("settings.audio_device.hint"))
         {
             FormatFor = static s => s.AudioDevice ?? T("settings.audio_device.default"),
-        }, Shown: static s => s.AudioOutput != AudioOutputMode.Asio),
+        }, Shown: static s => !PlatformInfo.IsMobile && s.AudioOutput != AudioOutputMode.Asio),
         // ASIO: the driver (0 = the first installed, then each; a saved one no longer installed listed last) and its buffer.
         new(Setting: new(T("settings.asio_driver"), static s => s.AsioDriver is { } name ? Array.IndexOf(asioDrivers(s), name) + 1 : 0,
             static (s, v) => asioDrivers(s) is var drivers && v == 0 || drivers.Length == 0 ? s with { AsioDriver = null }
@@ -287,8 +288,9 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             static (value, step) => value + Math.Sign(step), 0,
             static value => T(value switch { 0 => "value.off", 1 => "settings.fullscreen.borderless", _ => "settings.fullscreen.exclusive" }),
             ExclusiveAvailable ? 2 : 1,
-            Hint: T(ExclusiveAvailable ? "settings.fullscreen.hint_exclusive" : "settings.fullscreen.hint"))),
-        new(Shown: exclusive, Setting: new(T("settings.resolution"),
+            Hint: T(ExclusiveAvailable ? "settings.fullscreen.hint_exclusive" : "settings.fullscreen.hint")),
+            Shown: static _ => !PlatformInfo.IsMobile),
+        new(Shown: static s => !PlatformInfo.IsMobile && exclusive(s), Setting: new(T("settings.resolution"),
             static s => Array.IndexOf(resolutions, (s.FullscreenWidth, s.FullscreenHeight)) + 1,
             static (s, v) => (v = Math.Min(v, resolutions.Length)) == 0
                 ? s with { FullscreenWidth = 0, FullscreenHeight = 0, RefreshRate = 0 }
@@ -296,7 +298,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             static (value, step) => value + Math.Sign(step), 0,
             static value => value == 0 || value > resolutions.Length ? T("settings.resolution.native") : $"{resolutions[value - 1].Width}x{resolutions[value - 1].Height}",
             int.MaxValue, Hint: T("settings.resolution.hint"))),
-        new(Shown: static s => exclusive(s) && s.FullscreenWidth > 0, Setting: new(T("settings.refresh_rate"),
+        new(Shown: static s => !PlatformInfo.IsMobile && exclusive(s) && s.FullscreenWidth > 0, Setting: new(T("settings.refresh_rate"),
             static s => Array.IndexOf(rates(s), s.RefreshRate) + 1,
             static (s, v) => s with { RefreshRate = Math.Min(v, rates(s).Length) is var index and > 0 ? rates(s)[index - 1] : 0 },
             static (value, step) => value + Math.Sign(step), 0, static _ => "", int.MaxValue,
@@ -316,23 +318,26 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             Hint: T("settings.frame_limit.hint"))),
         new(Setting: new(T("settings.letterbox_size"), static s => s.LetterboxSize, static (s, v) => s with { LetterboxSize = v },
             static (value, step) => value + step, 20, static value => value == 100 ? T("value.off") : T("value.percent", value), 100,
-            Hint: T("settings.letterbox_size.hint"))),
-        new(Shown: static s => s.LetterboxSize < 100, Setting: new(T("settings.letterbox_x"), static s => s.LetterboxX,
+            Hint: T("settings.letterbox_size.hint")),
+            Shown: static _ => !PlatformInfo.IsMobile),
+        new(Shown: static s => !PlatformInfo.IsMobile && s.LetterboxSize < 100, Setting: new(T("settings.letterbox_x"), static s => s.LetterboxX,
             static (s, v) => s with { LetterboxX = v }, static (value, step) => value + step, 0, static value => T("value.percent", value), 100,
             Hint: T("settings.letterbox_x.hint"))),
-        new(Shown: static s => s.LetterboxSize < 100, Setting: new(T("settings.letterbox_y"), static s => s.LetterboxY,
+        new(Shown: static s => !PlatformInfo.IsMobile && s.LetterboxSize < 100, Setting: new(T("settings.letterbox_y"), static s => s.LetterboxY,
             static (s, v) => s with { LetterboxY = v }, static (value, step) => value + step, 0, static value => T("value.percent", value), 100,
             Hint: T("settings.letterbox_y.hint"))),
         new(T("section.graphics")),
         new(Setting: new(T("settings.upscale"), static s => (int)s.Upscale, static (s, v) => s with { Upscale = (UpscaleLevel)v },
             static (value, step) => value + Math.Sign(step), 0,
             static value => T(value switch { 0 => "value.off", 1 => "settings.upscale.text", _ => "settings.upscale.full" }), 2,
-            Hint: T("settings.upscale.hint"))),
+            Hint: T("settings.upscale.hint")),
+            Shown: static _ => !PlatformInfo.IsMobile),
         new(Setting: new(T("settings.background_upscaling"), static s => s.UpscaleThreads, static (s, v) => s with { UpscaleThreads = v },
             static (value, step) => value + Math.Sign(step), 0,
             static value => value == 0 ? T("value.off") : value == 1 ? T("settings.background_upscaling.one")
                 : T("settings.background_upscaling.many", value), UpscaleThreadsMaximum,
-            Hint: T("settings.background_upscaling.hint"))),
+            Hint: T("settings.background_upscaling.hint")),
+            Shown: static _ => !PlatformInfo.IsMobile),
         new(Setting: new(T("settings.long_titles"), static s => s.SquashTitles ? 1 : 0, static (s, v) => s with { SquashTitles = v != 0 },
             static (value, _) => 1 - value, 0, static value => T(value != 0 ? "settings.long_titles.squash" : "settings.long_titles.shrink"), 1,
             Hint: T("settings.long_titles.hint"))),
@@ -607,7 +612,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
                 case "menu.back": return Back();
             }
             _layoutPick = _layoutsNames[Selection - 1];
-            _choices = ["layouts.use", "layouts.edit", "layouts.remove", "menu.back"];
+            _choices = PlatformInfo.IsMobile ? ["layouts.use", "layouts.remove", "menu.back"] : ["layouts.use", "layouts.edit", "layouts.remove", "menu.back"];
             Selection = 0;
             return HomeMenuAction.None;
         }
@@ -648,7 +653,8 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     {
         var active = ActiveLayout();
         _layoutsNames = [.. LayoutNames()];
-        _choices = ["layouts.stock", .. _layoutsNames.Select(name => "=" + (name == active ? "● " : "") + name), "layouts.new", "menu.back"];
+        _choices = ["layouts.stock", .. _layoutsNames.Select(name => "=" + (name == active ? "● " : "") + name),
+            .. PlatformInfo.IsMobile ? (string[])[] : ["layouts.new"], "menu.back"]; // the layout editor is desktop-only (ImGui)
         Selection = active is null ? 0 : Math.Max(0, Array.IndexOf(_layoutsNames, active) + 1);
     }
 
@@ -657,7 +663,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         if (_removePrompt)
         {
             _removePrompt = false;
-            _choices = ["layouts.use", "layouts.edit", "layouts.remove", "menu.back"];
+            _choices = PlatformInfo.IsMobile ? ["layouts.use", "layouts.remove", "menu.back"] : ["layouts.use", "layouts.edit", "layouts.remove", "menu.back"];
             Selection = 2;
             return HomeMenuAction.None;
         }

@@ -318,7 +318,8 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
                     && section.Title != SoundSection && section.Title != AdvancedAudioSection && section.Title != SongsSection && section.Title != GraphicsSection)
                 .Select(section => new Row(upper(section.Title), Enter: () => open(Page.Section, section.Title))),
             new(S("service.drum_controls"), Enter: () => open(Page.Drums)),
-            new(S("service.song_libraries"), Enter: () => open(Page.Libraries)),
+            // A phone's libraries are its folders (Custom Songs, Arcade, Wii, Wii U): no folders to pick here.
+            .. PlatformInfo.IsMobile ? (Row[])[] : [new(S("service.song_libraries"), Enter: () => open(Page.Libraries))],
             .. _home ? (Row[])[] : [new(S("service.bookkeeping"), Enter: () => open(Page.Bookkeeping))],
             new(S("service.others"), Enter: () => open(Page.Others), Cyan: true), // the language is there // the language is there
             new(S("service.exit"), Gap: true, Enter: close),
@@ -394,7 +395,7 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
             new(S("service.version"), 400, () => SelfUpdate.WindowTitle, 560, Cyan: true),
             new(S("service.clock"), 400, () => DateTime.Now.ToString("yyyy/MM/dd ddd HH:mm:ss", CultureInfo.InvariantCulture).ToUpperInvariant(), 560, Cyan: true),
             .. shared(LanguageSection),
-            .. SwitchMode is null ? (Row[])[] :
+            .. SwitchMode is null || PlatformInfo.IsMobile ? (Row[])[] :
             [
                 new(S("service.game_mode"), 400, () => $"{{{S(_home ? "service.game_mode.home" : "service.game_mode.arcade")}}}", 560, Enter: confirmMode, Colour: static () => OverlayMenu.Green,
                     Hint: S("service.game_mode.hint")),
@@ -414,7 +415,7 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
             .. _home && _canCalibrate && section == TimingSection
                 ? [new Row(upper(Strings.T("settings.calibrate")), 400, Gap: true, Enter: () => run(HomeMenuAction.Calibrate),
                     Hint: Strings.T("settings.calibrate.hint"))] : (Row[])[],
-            .. _home && section == DisplaySection
+            .. _home && section == DisplaySection && !PlatformInfo.IsMobile
                 ? [new Row(upper(Strings.T("settings.bake")), 400, Gap: true, Enter: () => run(HomeMenuAction.BakeTextures),
                     Hint: Strings.T("settings.bake.hint")),
                     new Row(upper(Strings.T("settings.benchmark")), 400, Enter: () => run(HomeMenuAction.RunBenchmark),

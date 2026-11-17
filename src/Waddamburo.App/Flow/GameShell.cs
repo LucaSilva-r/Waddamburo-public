@@ -84,7 +84,9 @@ internal sealed class GameShell : IDisposable
     /// <summary>The effects editor on the playing chart, or (<paramref name="layout"/>) on the player's gameplay layout.</summary>
     public void OpenEffectsEditor(bool layout = false)
     {
-        if (_effectsEditor is null && (layout ? _gameplay.CanEditLayout : _gameplay.CanEditEffects) && _home.CloseForEffectsEditor())
+        // The editors draw with ImGui, which has no phone build (choosing a layout still works there).
+        if (_effectsEditor is null && !PlatformInfo.IsMobile && (layout ? _gameplay.CanEditLayout : _gameplay.CanEditEffects)
+            && _home.CloseForEffectsEditor())
         {
             _gameplay.BeginEffectsEditing(autoplay: layout);
             _effectsEditor = layout
