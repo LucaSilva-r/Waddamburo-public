@@ -200,7 +200,9 @@ public sealed class AudioEngine : IDisposable
         var rate = (double)device.Format.SampleRate;
         // At least two device periods: a device that pulls a whole period at once (Android) must find the next one
         // already queued.
-        var target = (ulong)Math.Max(MinimumQueuedFrames, 2 * device.HardwareBufferFrames);
+        // ponytail: phones queue 2048 (~43 ms): Android's mixer pulls 20 ms periods (more than SDL reports) and the
+        // mix thread oversleeps by a few ms there; use the real burst (AAudio framesPerBurst) once SDL exposes it.
+        var target = (ulong)Math.Max(PlatformInfo.IsMobile ? 2048 : MinimumQueuedFrames, 2 * device.HardwareBufferFrames);
         // The underrun trace: when the mix last queued, how much it left queued, the GC's pause total then.
         long lastQueued = 0, lastWake = Stopwatch.GetTimestamp();
         ulong queuedAfter = 0;
