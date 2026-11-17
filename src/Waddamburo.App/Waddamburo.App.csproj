@@ -39,6 +39,11 @@
     <EmbeddedResource Include="Benchmark/stress.tja" LogicalName="Waddamburo.Benchmark.stress.tja" />
   </ItemGroup>
 
+  <!-- Green's data file names (eng/green-data-list.py): the phone setup checks a copy against it (GreenData.cs). -->
+  <ItemGroup>
+    <EmbeddedResource Include="Resources/green/green-data.txt.gz" LogicalName="Waddamburo.GreenData.txt.gz" />
+  </ItemGroup>
+
   <!-- UI text per language (Strings.cs). -->
   <ItemGroup>
     <EmbeddedResource Include="Languages/*.json" LogicalName="Waddamburo.Languages.%(Filename)%(Extension)" />
