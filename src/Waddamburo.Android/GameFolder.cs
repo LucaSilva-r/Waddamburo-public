@@ -1,123 +1,99 @@
-using Android;
-using Android.App;
-using Android.Content;
-using Android.Content.PM;
-using Android.Provider;
-using Android.Widget;
+using Android.Media;
 
 namespace Waddamburo.Android;
 
 /// <summary>
-/// Where the user's game data (Green's USRDIR) is: asked for once with the system's folder picker, then remembered.
-/// ponytail: read as a plain path with "All files access" (fine sideloaded, not on the Play Store); the content-URI
-/// file layer replaces the permission, the picker stays.
+/// The game's folders in its own storage (Android/data/&lt;package&gt;/files: no permission needed, visible from a PC over
+/// USB), set up on every start: Green (the game data), Custom Songs (TJA), and Arcade, Wii, Wii U (one subfolder per
+/// release). Until Green holds the game data a dialog says where to copy it, and the game starts once it is there.
 /// </summary>
-internal sealed class GameFolder(Activity activity) : IDisposable
+internal sealed class GameFolder(Activity activity)
 {
-    private const int PickRequest = 7101, PermissionRequest = 7102;
-    private readonly SemaphoreSlim _answered = new(0);
-    private global::Android.Net.Uri? _picked;
+    public const string Green = "Green", CustomSongs = "Custom Songs";
+    private static readonly string[] Releases = ["Arcade", "Wii", "Wii U"];
 
-    private string RememberedFile => Path.Combine(activity.FilesDir!.AbsolutePath, "game-folder.txt");
+    private static readonly (string Folder, string Note)[] Notes =
+    [
+        (Green, "Copy the contents of Taiko no Tatsujin Green's USRDIR folder here (the data folder and the rest)."),
+        (CustomSongs, "Put TJA songs here, in folders as you like."),
+        ("Arcade", "Other arcade releases: one folder per release (its USRDIR contents)."),
+        ("Wii", "Wii releases: one folder per disc."),
+        ("Wii U", "Wii U releases: one folder per release (with its DLC)."),
+    ];
 
-    /// <summary>The game folder, asking for it (and for the permission to read it) until one is usable. Blocks: call
-    /// it from SDL's thread, never the UI thread.</summary>
+    /// <summary>Where the folders are (Android/data/&lt;package&gt;/files).</summary>
+    public string Root { get; } = activity.GetExternalFilesDir(null)!.AbsolutePath;
+
+    /// <summary>
+    /// Creates the folders and returns the game data folder, waiting (a dialog explaining where to copy it) until it
+    /// holds Green's data. Blocks: call it from SDL's thread, never the UI thread.
+    /// </summary>
     public string Resolve()
     {
-        // Development: data copied into the app's own files (adb, run-as) wins.
+        createFolders();
+        // Development: data copied into the app's private files (adb, run-as) wins, unless
+        // WADDAMBURO_SETUP_TEST=1 (the intent's env extra) shows the setup a new player sees.
         var copied = Path.Combine(activity.FilesDir!.AbsolutePath, "game");
-        if (IsGameFolder(copied))
+        if (isGameData(copied) && System.Environment.GetEnvironmentVariable("WADDAMBURO_SETUP_TEST") != "1")
             return copied;
-        ensureReadable();
-        if (File.Exists(RememberedFile) && File.ReadAllText(RememberedFile).Trim() is var remembered && IsGameFolder(remembered))
-            return remembered;
-        var first = true;
-        while (true)
+        AlertDialog? dialog = null;
+        try
         {
-            toast(first ? "Choose your Taiko no Tatsujin Green folder (USRDIR)."
-                : "That folder has no data/lumendata: choose Green's USRDIR folder.");
-            first = false;
-            _picked = null;
-            activity.RunOnUiThread(() => activity.StartActivityForResult(new Intent(Intent.ActionOpenDocumentTree), PickRequest));
-            _answered.Wait();
-            if (_picked is null || pathOf(_picked) is not { } path)
-                continue;
-            var root = IsGameFolder(path) ? path : Path.Combine(path, "USRDIR");
-            if (!IsGameFolder(root))
-                continue;
-            File.WriteAllText(RememberedFile, root);
-            return root;
-        }
-    }
-
-    /// <summary>Forget the folder: the next start asks again.</summary>
-    public void Forget() => File.Delete(RememberedFile);
-
-    public static bool IsGameFolder(string path) => Directory.Exists(Path.Combine(path, "data", "lumendata", "packed"));
-
-    public void OnActivityResult(int requestCode, Result resultCode, Intent? data)
-    {
-        if (requestCode != PickRequest)
-            return;
-        _picked = resultCode == Result.Ok ? data?.Data : null;
-        _answered.Release();
-    }
-
-    public void OnPermissionsResult(int requestCode)
-    {
-        if (requestCode == PermissionRequest)
-            _answered.Release();
-    }
-
-    /// <summary>Back from the system's settings (All files access): check again.</summary>
-    public void OnResume()
-    {
-        if (_waitingForSettings)
-        {
-            _waitingForSettings = false;
-            _answered.Release();
-        }
-    }
-
-    private volatile bool _waitingForSettings;
-
-    // Android 11+: All files access (a settings page); older: the storage permission (Android 10 also needs
-    // requestLegacyExternalStorage, in the manifest).
-    private void ensureReadable()
-    {
-        while (true)
-        {
-            if (OperatingSystem.IsAndroidVersionAtLeast(30))
+            string? found;
+            while ((found = findGameData()) is null)
             {
-                if (global::Android.OS.Environment.IsExternalStorageManager)
-                    return;
-                toast("Allow Waddamburo to read your game files (All files access).");
-                _waitingForSettings = true;
-                var settings = new Intent(Settings.ActionManageAppAllFilesAccessPermission,
-                    global::Android.Net.Uri.Parse("package:" + activity.PackageName));
-                activity.RunOnUiThread(() => activity.StartActivity(settings));
+                if (dialog is null)
+                    activity.RunOnUiThread(() =>
+                    {
+                        dialog = new AlertDialog.Builder(activity)
+                            .SetTitle("Copy the game data")!
+                            .SetMessage("Connect the phone to a PC and copy the contents of Taiko no Tatsujin Green's USRDIR "
+                                + $"folder into:\n\nAndroid/data/{activity.PackageName}/files/{Green}\n\n"
+                                + "The game starts as soon as the files are there.")!
+                            .SetCancelable(false)!
+                            .Create();
+                        dialog!.Show();
+                    });
+                Thread.Sleep(2000);
             }
-            else
-            {
-                if (activity.CheckSelfPermission(Manifest.Permission.ReadExternalStorage) == Permission.Granted)
-                    return;
-                activity.RunOnUiThread(() => activity.RequestPermissions([Manifest.Permission.ReadExternalStorage], PermissionRequest));
-            }
-            _answered.Wait();
+            return found;
+        }
+        finally
+        {
+            if (dialog is not null)
+                activity.RunOnUiThread(() => dialog.Dismiss());
         }
     }
 
-    // A picked tree's path: "primary:Games/USRDIR" is internal storage, "1234-ABCD:..." a memory card.
-    private static string? pathOf(global::Android.Net.Uri tree)
+    /// <summary>The release folders inside Arcade, Wii and Wii U (config.cfg's stock_folders tells them apart).</summary>
+    public IReadOnlyList<string> ReleaseFolders() =>
+        [.. Releases.Select(release => Path.Combine(Root, release)).Where(Directory.Exists).SelectMany(Directory.EnumerateDirectories)];
+
+    // Green itself, or a USRDIR copied in whole.
+    private string? findGameData()
     {
-        if (DocumentsContract.GetTreeDocumentId(tree) is not { } id || id.Split(':', 2) is not [var volume, var relative])
-            return null;
-        var root = volume == "primary" ? global::Android.OS.Environment.ExternalStorageDirectory!.AbsolutePath : $"/storage/{volume}";
-        return Path.Combine(root, relative);
+        var green = Path.Combine(Root, Green);
+        return isGameData(green) ? green : isGameData(Path.Combine(green, "USRDIR")) ? Path.Combine(green, "USRDIR") : null;
     }
 
-    public void Dispose() => _answered.Dispose();
+    private static bool isGameData(string path) => Directory.Exists(Path.Combine(path, "data", "lumendata", "packed"));
 
-    private void toast(string text) =>
-        activity.RunOnUiThread(() => Toast.MakeText(activity, text, ToastLength.Long)!.Show());
+    // The folders, each with a note of what goes in it. A PC sees only what the media scanner knows: the notes are
+    // registered, so the folders show up over USB.
+    private void createFolders()
+    {
+        List<string> created = [];
+        foreach (var (folder, note) in Notes)
+        {
+            var path = Path.Combine(Root, folder);
+            Directory.CreateDirectory(path);
+            var file = Path.Combine(path, "README.txt");
+            if (File.Exists(file))
+                continue;
+            File.WriteAllText(file, note + "\n");
+            created.Add(file);
+        }
+        if (created.Count > 0)
+            MediaScannerConnection.ScanFile(activity, [.. created], null, null);
+    }
 }

@@ -1,7 +1,5 @@
-using Android.App;
 using Android.Content;
 using Android.Content.PM;
-using Android.OS;
 using Android.Views;
 using Org.Libsdl.App;
 
@@ -23,7 +21,7 @@ public sealed class WaddamburoActivity : SDLActivity
 
     protected override string[] GetLibraries() => ["SDL3"];
 
-    protected override SDLSurface CreateSDLSurface(Context? context) => new GameSurface(context);
+    protected override SDLSurface CreateSDLSurface(Context? p0) => new GameSurface(p0);
 
     protected override void OnCreate(Bundle? savedInstanceState)
     {
@@ -34,23 +32,6 @@ public sealed class WaddamburoActivity : SDLActivity
         base.OnCreate(savedInstanceState);
     }
 
-    protected override void OnActivityResult(int requestCode, Result resultCode, Intent? data)
-    {
-        base.OnActivityResult(requestCode, resultCode, data);
-        _gameFolder?.OnActivityResult(requestCode, resultCode, data);
-    }
-
-    public override void OnRequestPermissionsResult(int requestCode, string[] permissions, Permission[] grantResults)
-    {
-        base.OnRequestPermissionsResult(requestCode, permissions, grantResults);
-        _gameFolder?.OnPermissionsResult(requestCode);
-    }
-
-    protected override void OnResume()
-    {
-        base.OnResume();
-        _gameFolder?.OnResume();
-    }
 
     protected override void Main()
     {
@@ -59,7 +40,10 @@ public sealed class WaddamburoActivity : SDLActivity
             if (pair.Split('=', 2) is [var key, var value])
                 System.Environment.SetEnvironmentVariable(key, value);
         Waddamburo.App.Boot.AppHome = Path.Combine(FilesDir!.AbsolutePath, "waddamburo");
-        string[] args = [$"--game-data={_gameFolder!.Resolve()}"];
+        var game = _gameFolder!.Resolve();
+        Waddamburo.App.Boot.TjaFolder = Path.Combine(_gameFolder.Root, GameFolder.CustomSongs);
+        Waddamburo.App.Boot.StockFolders = _gameFolder.ReleaseFolders();
+        string[] args = [$"--game-data={game}"];
         while (Waddamburo.App.Boot.Run(args) == Waddamburo.App.Boot.RestartExitCode)
         {
         }

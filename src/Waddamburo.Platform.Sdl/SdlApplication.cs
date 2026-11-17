@@ -75,6 +75,9 @@ public sealed unsafe partial class SdlApplication : IDisposable
             SDL_SetAppMetadata("Waddamburo", null, "waddamburo");
             // Fingers are the touch drum's: a tap must not also arrive as a mouse click (a don in menus).
             SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
+            // Landscape only (either way up): SDL otherwise lets a resizable window follow the phone into portrait.
+            if (PlatformInfo.IsMobile)
+                SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
             if (!SDL_Init(SDL_InitFlags.SDL_INIT_VIDEO))
                 throw sdlFailure("initialize SDL video");
             _sdlInitialized = true;

@@ -118,7 +118,7 @@ internal sealed class SongLibraries : IDisposable
     // The game's own songs, then (home mode) other releases' that it lacks, newest release first.
     private static ISongCatalogProvider[] stock(string dataRoot, ArcadeSettings arcade, List<(string, string)> problems, CatalogMetadataCache metadataCache)
     {
-        var others = arcade.Home ? ArcadeSettings.Folders(arcade.StockFolders)
+        var others = arcade.Home ? ArcadeSettings.Folders(arcade.StockFolders).Concat(Boot.StockFolders)
             .Where(static folder => WiiCatalogProvider.FindRoot(folder) is null && WiiUCatalogProvider.FindRoot(folder) is null)
             .Select(folder => StockCatalogProvider.FindDataRoot(folder) is { } root ? root : warnMissing(folder, problems))
             .OfType<string>()
@@ -129,7 +129,7 @@ internal sealed class SongLibraries : IDisposable
         // The running game's data is Green, the newest release: it comes first whatever the others are.
         List<string> roots = [.. StockCatalogProvider.IsStockData(dataRoot) ? [dataRoot] : Array.Empty<string>(), .. others];
         // Wii and Wii U discs set among them: the WII and WII U libraries.
-        var folders = arcade.Home ? ArcadeSettings.Folders(arcade.StockFolders) : [];
+        var folders = arcade.Home ? [.. ArcadeSettings.Folders(arcade.StockFolders), .. Boot.StockFolders] : Array.Empty<string>();
         List<WiiUCatalogProvider> wiiU = [.. folders.Select(WiiUCatalogProvider.FindRoot).OfType<string>()
             .Distinct(StringComparer.Ordinal).Select(static root => new WiiUCatalogProvider(root))];
         List<WiiCatalogProvider> wii = [.. folders.Select(WiiCatalogProvider.FindRoot).OfType<string>()

@@ -32,7 +32,7 @@ internal sealed record GameDataLayout(
 
         var lumen = Path.Combine(fullRoot, "data", "lumendata", "packed");
         var don = Path.Combine(fullRoot, "data", "don3d");
-        var tja = Path.Combine(fullRoot, "custom_songs");
+        var tja = Boot.TjaFolder ?? Path.Combine(fullRoot, "custom_songs");
         var sound = Path.Combine(fullRoot, "data", "sound");
         requireDirectory(lumen, "Lumen asset root");
         requireDirectory(don, "Don asset root");

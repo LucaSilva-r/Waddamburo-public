@@ -19,6 +19,13 @@ public static class Boot
     /// data: the app's private storage on a phone. Null on desktop (USRDIR/waddamburo).</summary>
     public static string? AppHome { get; set; }
 
+    /// <summary>The custom TJA folder when the app keeps its own (the phone's Custom Songs); null: USRDIR/custom_songs.</summary>
+    public static string? TjaFolder { get; set; }
+
+    /// <summary>Other releases' folders the app keeps (the phone's Arcade, Wii and Wii U subfolders), listed with
+    /// config.cfg's stock_folders.</summary>
+    public static IReadOnlyList<string> StockFolders { get; set; } = [];
+
     public static int Run(string[] args)
     {
 
