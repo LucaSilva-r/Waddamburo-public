@@ -37,7 +37,7 @@ internal sealed class ScoreSync : IDisposable
         _accounts = accounts;
         var cabinet = !arcade.Home && arcade is { Server: not null, CabinetToken: not null };
         // A cabinet's indicator also says whether the server takes its token.
-        Health = arcade.Server is { } healthServer
+        Health = UpdateGate.Server(arcade) is { } healthServer
             ? new ServerHealth(ScoreClient.CreateHttp(healthServer, arcade.ServerInsecure, arcade.Home ? null : arcade.CabinetToken), cabinet: !arcade.Home)
             : null;
         // ponytail: printed until the notice sidebar draws them.
@@ -49,11 +49,11 @@ internal sealed class ScoreSync : IDisposable
                 RefreshProfiles();
         };
         SetOnlineAccount(accounts?.Default?.Token);
-        if (arcade.Server is { } realtimeServer)
+        if (UpdateGate.Server(arcade) is { } realtimeServer)
             startRealtime(realtimeServer);
         Scores = (arcade.Home || cabinet) && scoresPath is not null ? new ScoreStore(scoresPath) : null;
         rescoreInBackground();
-        if (Scores is null || arcade.Server is not { } server)
+        if (Scores is null || UpdateGate.Server(arcade) is not { } server)
             return;
         _server = server;
         if (cabinet)
@@ -419,7 +419,7 @@ internal sealed class ScoreSync : IDisposable
     /// </summary>
     public void SetOnlineAccount(string? token)
     {
-        if (_arcade.Server is not { } server)
+        if (UpdateGate.Server(_arcade) is not { } server)
             return;
         NoticeClient? previous;
         lock (_onlineLock)

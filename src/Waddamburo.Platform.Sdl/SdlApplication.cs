@@ -54,6 +54,9 @@ public sealed unsafe partial class SdlApplication : IDisposable
     /// DID_ENTER_FOREGROUND never reached the event queue, which left the screen black.)</summary>
     public static void SurfaceReady() => Interlocked.Exchange(ref s_surfaceReady, 1);
 
+    /// <summary>Opens a web page in the system's browser (false when it can't).</summary>
+    public static bool OpenUrl(Uri url) => SDL_OpenURL(url.AbsoluteUri);
+
     /// <summary>SDL's clock (nanoseconds since start), the time base of <see cref="TouchHits"/>.</summary>
     public static ulong TicksNs => SDL_GetTicksNS();
     private readonly (SDL_JoystickID Id, IntPtr Pad)[] _pads = new (SDL_JoystickID, IntPtr)[MaximumPads];

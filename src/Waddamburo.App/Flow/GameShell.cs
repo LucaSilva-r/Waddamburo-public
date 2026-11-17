@@ -749,7 +749,7 @@ internal sealed class GameShell : IDisposable
             if (Sync.Online)
                 ChartHashes.HashLibraryInBackground(snapshot.Songs.Values);
             _danCourses = new DanCourses(snapshot, ChartHashes, options.ScoresPath is { } scores
-                ? Path.Combine(Path.GetDirectoryName(scores)!, "dan-courses.json") : null, Arcade.Server, Arcade.ServerInsecure);
+                ? Path.Combine(Path.GetDirectoryName(scores)!, "dan-courses.json") : null, Online.UpdateGate.Server(Arcade), Arcade.ServerInsecure);
 
             _boot.Begin("I/O");
             if (ApplyControls(warn: true) is { Count: > 0 } controls)
@@ -1754,6 +1754,13 @@ internal sealed class GameShell : IDisposable
             top.Add(Painter.Text(Strings.T("nightly.banner"), 640, 13, 468, 22));
         }
         var bannerY = BuildInfo.Nightly ? 28 : 0;
+        // A phone build left behind by a release: off TaikOnline until updated (the page opens from Settings › Others).
+        if (Online.UpdateGate.Newer is { } newer && Active.Id != FlowScenes.Gameplay)
+        {
+            top.Add(Painter.Rect(330, bannerY, 620, 26, new RenderColor(0.55f, 0.32f, 0.05f, 0.85f)));
+            top.Add(Painter.Text(Strings.T("update.banner", newer.Tag), 640, bannerY + 13, 608, 22));
+            bannerY += 28;
+        }
         if (uploadBanner() is { } uploadMessage)
         {
             top.Add(Painter.Rect(380, bannerY, 520, 26, new RenderColor(0.55f, 0.12f, 0.1f, 0.85f)));

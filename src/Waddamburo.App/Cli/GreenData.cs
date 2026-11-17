@@ -3,8 +3,8 @@ using System.IO.Compression;
 namespace Waddamburo.App.Cli;
 
 /// <summary>
-/// Whether a folder holds all of Green's game data: every file of the list made from the installed game
-/// (eng/green-data-list.py), by name only (language packs change sizes, not names). A copy still in progress or a
+/// Whether a folder holds all of Green's game data: every file its install manifest lists (hash/S111_00.md5, the
+/// release; eng/green-data-list.py), by name only (language packs change sizes, not names). A copy still in progress or a
 /// broken dump shows what is missing instead of failing at boot.
 /// </summary>
 public static class GreenData

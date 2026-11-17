@@ -153,7 +153,29 @@ internal static class SelfUpdate
         return true;
     }
 
-    private sealed record Release(string Tag, Uri Download, long Size, string? Digest);
+    private sealed record Release(string Tag, Uri Download, long Size, string? Digest, Uri? Page);
+
+    /// <summary>
+    /// A phone's release build: the newer release on GitHub (its tag and page, where the APK is downloaded and installed
+    /// by hand), or null (up to date, a development build, or no answer within a few seconds). Android has no updates in
+    /// place: the game says so instead (<see cref="Online.UpdateGate"/>).
+    /// </summary>
+    public static (string Tag, Uri Page)? NewerForPhone()
+    {
+        if (currentVersion() is not { } current)
+            return null;
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(4) };
+        http.DefaultRequestHeaders.UserAgent.ParseAdd($"Waddamburo/{current}");
+        try
+        {
+            return findNewer(http, current) is { Page: { } page } release ? (release.Tag, page) : null;
+        }
+        catch (Exception exception) when (isNetworkFailure(exception))
+        {
+            Console.Error.WriteLine($"Update check failed: {exception.Message}");
+            return null;
+        }
+    }
 
     private static Release? findNewer(HttpClient http, Version current)
     {
@@ -176,7 +198,8 @@ internal static class SelfUpdate
         if (!newer)
             return null;
         // A nightly's files are named apart, to sit beside the stable ones.
-        var assetName = (OperatingSystem.IsWindows(), nightly) switch
+        var assetName = OperatingSystem.IsAndroid() ? nightly ? "Waddamburo-nightly.apk" : "Waddamburo.apk"
+            : (OperatingSystem.IsWindows(), nightly) switch
         {
             (true, false) => "Waddamburo.exe",
             (true, true) => "Waddamburo-nightly.exe",
@@ -189,7 +212,8 @@ internal static class SelfUpdate
             return null;
         return new Release(tag, new Uri(asset.GetProperty("browser_download_url").GetString()!),
             asset.TryGetProperty("size", out var size) ? size.GetInt64() : 0,
-            asset.TryGetProperty("digest", out var digest) ? digest.GetString() : null);
+            asset.TryGetProperty("digest", out var digest) ? digest.GetString() : null,
+            newest.TryGetProperty("html_url", out var page) && Uri.TryCreate(page.GetString(), UriKind.Absolute, out var pageUri) ? pageUri : null);
     }
 
     private static async Task downloadAsync(HttpClient http, Release release, string installed, Action<int> progress, CancellationToken cancel)

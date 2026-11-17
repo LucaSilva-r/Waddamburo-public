@@ -606,7 +606,7 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
 
     private static string? serverOverride => Environment.GetEnvironmentVariable("WADDAMBURO_ONLINE_SERVER") is { Length: > 0 } other ? other : null;
 
-    private Uri? server() => serverOverride is { } other ? new Uri(other) : shell.Arcade.Server;
+    private Uri? server() => serverOverride is { } other ? new Uri(other) : Online.UpdateGate.Server(shell.Arcade);
 
     private bool insecureServer() => serverOverride is null && shell.Arcade.ServerInsecure;
 

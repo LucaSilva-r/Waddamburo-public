@@ -25,7 +25,7 @@ internal sealed class PlayerSetupController : IDisposable
     {
         this.shell = shell;
         _overlay = new EntrySetupOverlay(shell.Application, fontPath, shell.ResolveSurface);
-        _flow = new PlayerSetupFlow(accounts, shell.Arcade.Server, shell.Arcade.ServerInsecure, shell.Sync.ClientFor,
+        _flow = new PlayerSetupFlow(accounts, Online.UpdateGate.Server(shell.Arcade), shell.Arcade.ServerInsecure, shell.Sync.ClientFor,
             Path.Combine(Path.GetDirectoryName(scoresPath) ?? ".", "avatars"));
         _flow.Confirmed += joinSetupPlayers;
         _flow.Refused += () => shell.Sounds?.Frontend.PlayCue("SE_COM", 12); // SE_COM_COM_CARD_ERROR

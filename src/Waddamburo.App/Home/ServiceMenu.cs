@@ -393,6 +393,12 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
         Page.Others =>
         [
             new(S("service.version"), 400, () => SelfUpdate.WindowTitle, 560, Cyan: true),
+            // A phone build behind a release: the release page, where the new APK is (no updates in place there).
+            .. Online.UpdateGate.Newer is not { } newer ? (Row[])[] :
+            [
+                new(S("service.download_update"), 400, () => $"{{{newer.Tag}}}", 560, Colour: static () => OverlayMenu.Yellow,
+                    Enter: () => SdlApplication.OpenUrl(newer.Page), Hint: S("service.download_update.hint")),
+            ],
             new(S("service.clock"), 400, () => DateTime.Now.ToString("yyyy/MM/dd ddd HH:mm:ss", CultureInfo.InvariantCulture).ToUpperInvariant(), 560, Cyan: true),
             .. shared(LanguageSection),
             .. SwitchMode is null || PlatformInfo.IsMobile ? (Row[])[] :

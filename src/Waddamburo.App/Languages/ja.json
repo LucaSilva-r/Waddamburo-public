@@ -269,6 +269,7 @@
   "setup.pairing_failed": "ペアリングに失敗しました: {0}",
 
   "nightly.banner": "ナイトリー版はスコアをオンラインに保存しません！！",
+  "update.banner": "Waddamburo {0} が公開されました：オンラインで遊ぶには更新してください（設定 › その他）",
 
   "notices.title": "お知らせ",
   "notices.close_hint": "{0}で閉じる",
@@ -433,6 +434,8 @@
   "service.power_on_count": "起動回数",
   "service.bookkeeping_initialize": "ブックキーピング初期化",
   "service.version": "バージョン",
+  "service.download_update": "アップデートをダウンロード",
+  "service.download_update.hint": "ブラウザでリリースページを開きます。Waddamburo.apk をダウンロードして上書きインストールしてください（データはそのまま）。オンラインプレイは更新後に使えます。",
   "service.clock": "時計",
   "service.game_mode": "ゲームモード",
   "service.game_mode.home": "ホーム",

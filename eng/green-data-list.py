@@ -3,23 +3,26 @@
 
 Usage: eng/green-data-list.py <Green USRDIR> <out.txt.gz>
 
-Names only, no sizes or content: language packs and other mods change the files' sizes, never which files there are.
-Only the files as installed (their 2020-08-27 date) are listed, so backups and tool files added later are left out;
-a file some tools patch keeps its installed name and stays listed.
+From the game's own install manifest of the release, USRDIR/hash/S111_00.md5: what every Green has (S111_01 to _13
+are its updates, which add songs; an un-updated Green plays too). Names only, no hashes or sizes: language packs and
+other mods change files' contents, never which files there are; and a folder updated in place for years holds
+leftovers and tool files the manifest leaves out.
 """
-import datetime, gzip, os, sys
+import glob, gzip, os, sys
 
 usrdir, out = sys.argv[1], sys.argv[2]
-INSTALLED = datetime.date(2020, 8, 27)
-PATCHED = {"data/lumendata/packed/entry/packeddata.ddp", "data/config/S11100-1/chassisinfo.xml"}
-paths = []
-for folder, _, files in os.walk(os.path.join(usrdir, "data")):
-    for name in files:
-        full = os.path.join(folder, name)
-        path = os.path.relpath(full, usrdir).replace(os.sep, "/")
-        if path in PATCHED or datetime.date.fromtimestamp(os.stat(full).st_mtime) == INSTALLED:
-            paths.append(path)
-paths.sort()
+manifests = sorted(glob.glob(os.path.join(usrdir, "hash", "S111_00.md5")))
+if not manifests:
+    sys.exit(f"no hash/S111_00.md5 in {usrdir}")
+paths = set()
+for manifest in manifests:
+    with open(manifest, encoding="utf-8", errors="replace") as f:
+        for line in f:
+            parts = line.strip().split(None, 1)
+            # @-folders (lumendata/packed/@ASB) are variants the manifest lists and an updated Green no longer has.
+            if len(parts) == 2 and "/@" not in parts[1].replace("\\", "/"):
+                paths.add(parts[1].replace("\\", "/"))
+paths = sorted(paths)
 with gzip.open(out, "wt", encoding="utf-8", newline="\n") as f:
     f.writelines(path + "\n" for path in paths)
-print(f"{len(paths)} files")
+print(f"{len(paths)} files from {len(manifests)} manifests")

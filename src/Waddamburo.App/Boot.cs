@@ -198,6 +198,8 @@ public static class Boot
                 if (exportCharts is not null)
                     return ChartExport.Run(Path.GetFullPath(Path.Combine(layout.LumenRoot, "..", "..")), arcade, exportCharts);
                 var accounts = Waddamburo.Game.Scores.AccountBook.Load(layout.Home);
+                // Phones: a newer release keeps this build off TaikOnline until it is installed (no self-update there).
+                Waddamburo.App.Online.UpdateGate.Check();
                 if (login || logout)
                     return AccountCommands.Run(arcade, accounts, login);
                 if (parseOption(args, "--online-test=") is { } onlineRoom)

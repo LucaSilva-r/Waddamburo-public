@@ -269,6 +269,7 @@
   "setup.pairing_failed": "Pairing failed: {0}",
 
   "nightly.banner": "Nightly builds DO NOT save your scores online!!",
+  "update.banner": "Waddamburo {0} is out: update to play online (Settings › Others)",
 
   "notices.title": "Notices",
   "notices.close_hint": "{0} to close",
@@ -433,6 +434,8 @@
   "service.power_on_count": "POWER ON COUNT",
   "service.bookkeeping_initialize": "BOOKKEEPING INITIALIZE",
   "service.version": "VERSION",
+  "service.download_update": "DOWNLOAD UPDATE",
+  "service.download_update.hint": "Opens the release page in the browser: download Waddamburo.apk there and install it over this one (your data stays). Online play waits for it.",
   "service.clock": "CLOCK",
   "service.game_mode": "GAME MODE",
   "service.game_mode.home": "HOME",
