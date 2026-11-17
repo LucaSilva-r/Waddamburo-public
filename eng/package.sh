@@ -4,13 +4,14 @@
 #                                            self-extract on first run)
 #   out/package/Waddamburo-x86_64.AppImage  the Linux build
 #   out/package/licenses.zip                every license and notice both releases need
+#   out/package/Waddamburo.apk              the Android app (target android: needs the Android SDK, NDK and JDK)
 #   out/package/native-{win,linux}-x64.zip  the native libraries alone, for building from source
 #                                            without a C toolchain (eng/fetch-native.sh / .ps1)
 # Both are dropped into the game's USRDIR and find the game next to themselves.
 # Needs: .NET 10 SDK, CMake, Ninja, make, gcc, mingw-w64 gcc (x86_64-w64-mingw32-gcc).
 # On Windows it runs in an MSYS2 MINGW64 shell and builds the Windows release only (BUILDING.md).
 #
-# usage: eng/package.sh [linux|windows]   (default: both; windows on Windows)
+# usage: eng/package.sh [linux|windows|android]   (default: linux and windows; windows on Windows)
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -126,6 +127,38 @@ EOF
             "$appdir" "$out/Waddamburo-x86_64.AppImage" >/dev/null
         echo "$out/Waddamburo-x86_64.AppImage"
         echo "$out/licenses.zip"
+        ;;
+    android)
+        # Needs an Android SDK (ANDROID_HOME, default ~/Android/Sdk) with an NDK, JDK 17 or 21 (JAVA_HOME) and the
+        # .NET android workload (docs/development/android.md).
+        native android-package "$root/out/build/native/android-arm64/android-package/stage/Release/lib" android-arm64
+        # Android installs an update only over a lower versionCode: X.Y.Z -> X*1000000 + Y*10000 + Z*100, a nightly
+        # (newer than its X.Y.Z, older than the next) +50; development builds 1.
+        code=1
+        if [[ $version =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(-nightly)?$ ]]; then
+            code=$(( BASH_REMATCH[1] * 1000000 + BASH_REMATCH[2] * 10000 + BASH_REMATCH[3] * 100 + (${#BASH_REMATCH[4]} > 0 ? 50 : 0) ))
+        fi
+        # A nightly is an app of its own beside the stable one (as on desktop, where it keeps its own folder).
+        app=(); [[ $version == *-nightly ]] && app=(-p:ApplicationId=org.waddamburo.game.nightly -p:ApplicationTitle="Waddamburo Nightly")
+        # Releases are signed with the release key (every update must carry the same one, or Android refuses it):
+        # WADDAMBURO_ANDROID_KEYSTORE (a .jks file), _KEYSTORE_PASSWORD, _KEY_ALIAS. Without them, the debug key.
+        signing=()
+        if [[ -n ${WADDAMBURO_ANDROID_KEYSTORE:-} ]]; then
+            signing=(-p:AndroidKeyStore=true -p:AndroidSigningKeyStore="$WADDAMBURO_ANDROID_KEYSTORE"
+                -p:AndroidSigningStorePass=env:WADDAMBURO_ANDROID_KEYSTORE_PASSWORD
+                -p:AndroidSigningKeyPass=env:WADDAMBURO_ANDROID_KEYSTORE_PASSWORD
+                -p:AndroidSigningKeyAlias="${WADDAMBURO_ANDROID_KEY_ALIAS:-waddamburo}")
+        fi
+        java=(); [[ -n ${JAVA_HOME:-} ]] && java=(-p:JavaSdkDirectory="$JAVA_HOME")
+        rm -rf "$out/android"
+        dotnet publish src/Waddamburo.Android -c Release -f net10.0-android -o "$out/android" \
+            -p:AndroidSdkDirectory="${ANDROID_HOME:-$HOME/Android/Sdk}" "${java[@]}" \
+            -p:WaddamburoAndroidNativeDir="$root/out/build/native/android-arm64/android-package/stage/Release/lib" \
+            -p:Version="$version" -p:ApplicationDisplayVersion="${version%%-*}" -p:ApplicationVersion="$code" \
+            "${app[@]}" "${signing[@]}"
+        apk=$(ls "$out/android"/*-Signed.apk | head -1)
+        cp "$apk" "$out/Waddamburo.apk"
+        echo "$out/Waddamburo.apk"
         ;;
     *)
         echo "error: unknown target: $target" >&2

@@ -35,6 +35,18 @@ Mono is not used: even fully AOT compiled it ran the Lumen interpreter about 25 
 `Directory.Build.targets` makes every other project RID-agnostic: the Android build's per-RID pass expects its
 references built without an RID. Desktop publishes (`dotnet publish -r linux-x64`) produce the same files as before.
 
+## Releases
+
+`eng/package.sh android` builds `out/package/Waddamburo.apk` (and `native-android-arm64.zip`); the Release workflow
+runs it beside Windows and Linux and attaches the APK to the release, `Waddamburo-nightly.apk` to a nightly. A nightly is
+an app of its own (`org.waddamburo.game.nightly`, "Waddamburo Nightly") beside the stable one. The versionCode, which
+Android requires to grow with each update, is `X*1000000 + Y*10000 + Z*100` for X.Y.Z, +50 for its nightly.
+
+Every release must be signed with the same key, or Android refuses to install it over the previous one. The workflow
+takes it from two repository secrets: `ANDROID_KEYSTORE` (the .jks file, base64) and `ANDROID_KEYSTORE_PASSWORD`
+(alias `waddamburo`); without them the APK is debug-signed (a development build). Keep the keystore and its password
+somewhere safe: a lost key means players have to uninstall to take the next release.
+
 ## Storage
 
 No storage permission. The game data and libraries live in the app's own storage, which a PC sees over USB (MTP) as

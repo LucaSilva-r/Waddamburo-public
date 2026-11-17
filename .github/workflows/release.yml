@@ -1,4 +1,4 @@
-# Pushing a vX.Y.Z tag builds both releases and drafts a GitHub release with them; publishing
+# Pushing a vX.Y.Z tag builds the three releases (Windows, Linux, Android) and drafts a GitHub release with them; publishing
 # the draft is what makes installed copies update. Run it by hand (Actions > Release > Run
 # workflow) to only build and download the files from the run's artifacts, or with "nightly" ticked
 # to publish a nightly: version X.Y.Z-nightly (X.Y.Z the latest stable release), tagged with the short
@@ -52,6 +52,8 @@ jobs:
           # The exe does not depend on glibc; vgmstream needs a newer mingw GCC than 22.04's.
           - target: windows
             runner: ubuntu-24.04
+          - target: android
+            runner: ubuntu-24.04
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
@@ -77,13 +79,51 @@ jobs:
         timeout-minutes: 5
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends mingw-w64 ninja-build
 
+      # Android: JDK 21 (the runner's default Java is newer than the Android build tools take), the pinned NDK
+      # (kept between runs) and .NET's Android workload.
+      - uses: actions/setup-java@v5
+        if: matrix.target == 'android'
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: actions/cache@v4
+        if: matrix.target == 'android'
+        id: ndk
+        with:
+          path: ${{ env.ANDROID_HOME }}/ndk/29.0.14206865
+          key: android-ndk-29.0.14206865
+
+      - name: Install the Android NDK and workload
+        if: matrix.target == 'android'
+        run: |
+          if [ "${{ steps.ndk.outputs.cache-hit }}" != true ]; then
+            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" "ndk;29.0.14206865" > /dev/null
+          fi
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/29.0.14206865" >> "$GITHUB_ENV"
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends ninja-build
+          dotnet workload install android
+
       - name: Install bgfx's Linux build headers
         if: matrix.target == 'linux'
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libx11-dev libgl-dev libwayland-dev
 
+      # The release key (Android installs an update only when it carries the same one): a base64 .jks in the
+      # ANDROID_KEYSTORE secret, its password in ANDROID_KEYSTORE_PASSWORD. Without them the APK is debug-signed.
+      - name: Unpack the Android release key
+        if: matrix.target == 'android'
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+        run: |
+          if [ -n "$KEYSTORE" ]; then
+            echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/waddamburo.jks"
+            echo "WADDAMBURO_ANDROID_KEYSTORE=$RUNNER_TEMP/waddamburo.jks" >> "$GITHUB_ENV"
+          fi
+
       - name: Build
         env:
           WADDAMBURO_VERSION: ${{ needs.version.outputs.version }}
+          WADDAMBURO_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: eng/package.sh ${{ matrix.target }}
 
       - uses: actions/upload-artifact@v7
@@ -93,6 +133,7 @@ jobs:
           path: |
             out/package/Waddamburo.exe
             out/package/Waddamburo-x86_64.AppImage
+            out/package/Waddamburo.apk
             out/package/licenses.zip
             out/package/native-*.zip
 
@@ -110,7 +151,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: >
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft --generate-notes
-          --title "Waddamburo $GITHUB_REF_NAME" Waddamburo.exe Waddamburo-x86_64.AppImage licenses.zip native-*.zip
+          --title "Waddamburo $GITHUB_REF_NAME" Waddamburo.exe Waddamburo-x86_64.AppImage Waddamburo.apk licenses.zip native-*.zip
 
   nightly:
     if: github.ref_type != 'tag' && inputs.nightly
@@ -129,5 +170,7 @@ jobs:
         run: |
           mv Waddamburo.exe Waddamburo-nightly.exe
           mv Waddamburo-x86_64.AppImage Waddamburo-nightly-x86_64.AppImage
+          mv Waddamburo.apk Waddamburo-nightly.apk
           gh release create "${GITHUB_SHA::7}" --repo "$GITHUB_REPOSITORY" --prerelease --target "$GITHUB_SHA" --generate-notes \
-            --title "Waddamburo nightly ${GITHUB_SHA::7}" Waddamburo-nightly.exe Waddamburo-nightly-x86_64.AppImage licenses.zip native-*.zip
+            --title "Waddamburo nightly ${GITHUB_SHA::7}" Waddamburo-nightly.exe Waddamburo-nightly-x86_64.AppImage Waddamburo-nightly.apk \
+            licenses.zip native-*.zip

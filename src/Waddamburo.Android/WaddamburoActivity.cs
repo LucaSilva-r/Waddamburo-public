@@ -10,7 +10,7 @@ namespace Waddamburo.Android;
 /// boots the game exactly as the desktop executable does (Waddamburo.App.Boot), with the app's private storage
 /// as its home.
 /// </summary>
-[Activity(Label = "Waddamburo", MainLauncher = true, Exported = true, Theme = "@android:style/Theme.NoTitleBar.Fullscreen",
+[Activity(MainLauncher = true, Exported = true, Theme = "@android:style/Theme.NoTitleBar.Fullscreen",
     ScreenOrientation = ScreenOrientation.SensorLandscape, LaunchMode = LaunchMode.SingleInstance,
     ConfigurationChanges = ConfigChanges.Keyboard | ConfigChanges.KeyboardHidden | ConfigChanges.Navigation
         | ConfigChanges.Orientation | ConfigChanges.ScreenLayout | ConfigChanges.ScreenSize
