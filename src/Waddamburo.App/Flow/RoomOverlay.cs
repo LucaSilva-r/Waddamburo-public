@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using Waddamburo.App.Home;
 using Waddamburo.App.Presentation;
 using Waddamburo.App.Scenes;
 using Waddamburo.Game.Gameplay;
@@ -32,7 +33,8 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
     private static readonly TimeSpan RefreshEvery = TimeSpan.FromSeconds(5);
 
     private Prompt _prompt;
-    private string _typed = "";
+    private OverlayTextField _field = new();
+    private string _typed => _field.Text;
     private bool _panel;
     // The lobby and its text prompts in the overlay look (Home/OverlayMenu): the lobby's page, a prompt's on top of it.
     private Home.OverlayMenu? _menu;
@@ -468,12 +470,7 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
 
     private void typeInto(SdlKeyboardSnapshot keys, bool escape)
     {
-        var maximum = _prompt == Prompt.Code ? CodeLength : TextLength;
-        foreach (var letter in shell.Application.TakeTypedText())
-            if (_typed.Length < maximum && (_prompt != Prompt.Code || char.IsAsciiLetterOrDigit(letter)) && !char.IsControl(letter))
-                _typed += _prompt == Prompt.Code ? char.ToUpperInvariant(letter) : letter;
-        if (keys.IsDown(SdlKeyboardKey.Backspace) && _typed.Length > 0)
-            _typed = _typed[..StringInfo.ParseCombiningCharacters(_typed)[^1]];
+        _field.Edit(shell.Application.TakeTypedText(), keys);
         if (escape)
             closePrompt();
         else if (keys.IsDown(SdlKeyboardKey.Enter) && (_prompt != Prompt.Code || _typed.Length == CodeLength))
@@ -483,7 +480,10 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
     private void ask(Prompt prompt)
     {
         _prompt = prompt;
-        _typed = "";
+        // A room code: letters and digits, upper-cased.
+        _field = prompt == Prompt.Code
+            ? new OverlayTextField(CodeLength, static letter => char.IsAsciiLetterOrDigit(letter) ? char.ToUpperInvariant(letter) : null)
+            : new OverlayTextField(TextLength);
         shell.Application.TakeTypedText();
         shell.Application.StartTextInput();
     }
@@ -576,9 +576,9 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
 
     private (string Line, string Hint) promptText() => _prompt switch
     {
-        Prompt.RoomName => (T("online.type_name", _typed + "_"), T("online.name_hint")),
-        Prompt.NewPassword => (T("online.type_password", new string('*', _typed.Length) + "_"), T("online.password_hint")),
-        Prompt.JoinPassword => (T("online.type_password", new string('*', _typed.Length) + "_"), T("online.type_hint")),
+        Prompt.RoomName => (T("online.type_name", _field.Shown(typing: true)), T("online.name_hint")),
+        Prompt.NewPassword => (T("online.type_password", _field.Shown(typing: true, new string('*', _typed.Length))), T("online.password_hint")),
+        Prompt.JoinPassword => (T("online.type_password", _field.Shown(typing: true, new string('*', _typed.Length))), T("online.type_hint")),
         _ => (T("online.type_code", _typed.PadRight(CodeLength, '_')), T("online.type_hint")),
     };
 

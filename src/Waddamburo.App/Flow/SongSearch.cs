@@ -22,7 +22,7 @@ internal sealed class SongSearch(GameShell shell, SongCatalogSnapshot catalog) :
     private const int HistoryLength = 5, ShownCharacters = 60;
     private readonly OverlayMenu _menu = new(shell.Application, shell.Options.ServiceFontPath ?? shell.Options.FontPath);
     private string _query = "";
-    private int _caret, _tick;
+    private readonly OverlayTextField _field = new();
     private List<string> _history = [];
     // Enter came before the search of what is typed finished: open its results when they arrive.
     private bool _openWhenDone;
@@ -53,28 +53,17 @@ internal sealed class SongSearch(GameShell shell, SongCatalogSnapshot catalog) :
             open();
             return true;
         }
-        _tick++;
         _menu.Tick(SdlKeyboardSnapshot.Empty, SdlKeyboardSnapshot.Empty, false); // the selection's blink only
         if (escape || GameActions.Down(keys, GameAction.Search))
         {
             Close();
             return true;
         }
-        var typed = shell.Application.TakeTypedText();
-        if (typed.Length > 0)
-            edit(_query[.._caret] + typed + _query[_caret..], _caret + typed.Length);
-        // Whole characters (surrogate pairs, combining marks) at a time.
-        var starts = StringInfo.ParseCombiningCharacters(_query);
-        int before() => starts.LastOrDefault(start => start < _caret);
-        int after() => starts.FirstOrDefault(start => start > _caret, _query.Length);
-        if (keys.IsDown(SdlKeyboardKey.Backspace) && _caret > 0)
-            edit(_query[..before()] + _query[_caret..], before());
-        else if (keys.IsDown(SdlKeyboardKey.Delete) && _caret < _query.Length)
-            edit(_query[.._caret] + _query[after()..], _caret);
-        else if (keys.IsDown(SdlKeyboardKey.Left))
-            (_caret, _tick) = (before(), 0);
-        else if (keys.IsDown(SdlKeyboardKey.Right))
-            (_caret, _tick) = (after(), 0);
+        if (_field.Edit(shell.Application.TakeTypedText(), keys))
+        {
+            _menu.Selection = 0; // typing is in the field
+            search(_field.Text);
+        }
         else if (keys.IsDown(SdlKeyboardKey.Up) || keys.IsDown(SdlKeyboardKey.Down))
             recall(keys.IsDown(SdlKeyboardKey.Up) ? -1 : 1);
         else if (keys.IsDown(SdlKeyboardKey.Enter))
@@ -94,7 +83,8 @@ internal sealed class SongSearch(GameShell shell, SongCatalogSnapshot catalog) :
     private void open()
     {
         IsOpen = true;
-        (_query, _caret, _tick, _openWhenDone) = ("", 0, 0, false);
+        (_query, _openWhenDone) = ("", false);
+        _field.Set("");
         _result = new("", []);
         _crowns = shell.Hosts.Crowns?.Invoke(shell.Hosts.PlayerSide);
         _history = loadHistory();
@@ -114,12 +104,7 @@ internal sealed class SongSearch(GameShell shell, SongCatalogSnapshot catalog) :
     ];
 
     // The text with its cursor, which blinks (and shows at once after a key).
-    private string field()
-    {
-        var shown = _query.Replace('{', '(').Replace('}', ')'); // braces colour an overlay value
-        var caret = _tick % 36 < 24 ? "|" : " ";
-        return shown[.._caret] + caret + shown[_caret..];
-    }
+    private string field() => _field.Shown(typing: true);
 
     private string count()
     {
@@ -138,13 +123,6 @@ internal sealed class SongSearch(GameShell shell, SongCatalogSnapshot catalog) :
         (Strings.T("search.legend.crowns"), OverlayMenu.Cyan),
     ];
 
-    private void edit(string query, int caret)
-    {
-        (_caret, _tick) = (Math.Clamp(caret, 0, query.Length), 0);
-        _menu.Selection = 0; // typing is in the field
-        search(query);
-    }
-
     // ↑/↓: through the field and the last searches; a search reached fills the field (Enter opens it).
     private void recall(int step)
     {
@@ -155,8 +133,8 @@ internal sealed class SongSearch(GameShell shell, SongCatalogSnapshot catalog) :
         _menu.Selection = selection;
         if (selection > 0)
         {
-            (_caret, _tick) = (_history[selection - 1].Length, 0);
-            search(_history[selection - 1]);
+            _field.Set(_history[selection - 1]);
+            search(_field.Text);
         }
     }
 

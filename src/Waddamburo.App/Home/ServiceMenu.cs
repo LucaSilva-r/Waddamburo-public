@@ -187,22 +187,6 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
             }),
         ]));
 
-    // IMPORT FROM PC: where a PC's browser sends songs and other releases; they join on a restart.
-    private void openImport() => _menu.Push(new OverlayPage(() => S("service.import"),
-        () =>
-        [
-            new(S("service.import.restart"), Enter: () => run(HomeMenuAction.RestartGame)),
-            new(S("service.ok"), Gap: true, Enter: _menu.Pop),
-        ],
-        Body: () =>
-        [
-            (S("service.import.how"), OverlayMenu.White),
-            Boot.Receiver!.Addresses() is { Count: > 0 }
-                ? (string.Format(System.Globalization.CultureInfo.CurrentCulture, S("service.import.code"), Boot.Receiver.Code), OverlayMenu.Cyan)
-                : (S("service.import.offline"), OverlayMenu.Yellow),
-            (S("service.import.then"), OverlayMenu.White),
-        ]));
-
     // Home: a row that starts something of the home menu's; the menu closes for it.
     private void run(HomeMenuAction action)
     {
@@ -336,8 +320,9 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
             new(S("service.drum_controls"), Enter: () => open(Page.Drums)),
             // A phone's libraries are its folders (Custom Songs, Arcade, Wii, Wii U): no folders to pick here.
             .. PlatformInfo.IsMobile ? (Row[])[] : [new(S("service.song_libraries"), Enter: () => open(Page.Libraries))],
-            // ... filled from a PC instead: the import page's address.
-            .. Boot.Receiver is null ? (Row[])[] : [new(S("service.import"), Enter: openImport)],
+            // Songs between devices (home): this one sends, or receives while the page is open.
+            .. _home ? [new Row(S("transfer.send.title"), Enter: () => run(HomeMenuAction.SendSongs)),
+                new Row(S("transfer.receive.title"), Enter: () => run(HomeMenuAction.ReceiveSongs))] : (Row[])[],
             .. _home ? (Row[])[] : [new(S("service.bookkeeping"), Enter: () => open(Page.Bookkeeping))],
             new(S("service.others"), Enter: () => open(Page.Others), Cyan: true), // the language is there // the language is there
             new(S("service.exit"), Gap: true, Enter: close),

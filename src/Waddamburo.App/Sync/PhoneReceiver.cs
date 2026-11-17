@@ -24,7 +24,8 @@ public sealed class PhoneReceiver : IDisposable
     private readonly SongStore? _store;
     private SongOffer? _offer;
     private HashSet<string> _offered = [];
-    private const int MaxOfferBytes = 256 << 20;
+    private const int MaxOfferBytes = 256 << 20, MaxWrongCodes = 10;
+    private int _wrongCodes, _commits;
 
     /// <param name="root">The folder the targets are in (its free space is reported).</param>
     /// <param name="targets">Each target's folder: green (game data files), store (received songs, <see cref="SongStore"/>).</param>
@@ -51,6 +52,18 @@ public sealed class PhoneReceiver : IDisposable
 
     /// <summary>Songs taken by the last commit.</summary>
     public int Committed { get; private set; }
+
+    /// <summary>Commits so far (the screen says "done" when it grows).</summary>
+    public int Commits => Volatile.Read(ref _commits);
+
+    /// <summary>Bytes the last accepted offer lacked here (what is coming), and who offered it.</summary>
+    public (long Bytes, string From) Expected { get; private set; }
+
+    /// <summary>It stopped listening after too many wrong codes.</summary>
+    public bool LockedOut => Volatile.Read(ref _wrongCodes) >= MaxWrongCodes;
+
+    /// <summary>The device's name, as a PC lists it.</summary>
+    public string Name => _name;
 
     /// <summary>The code a PC must give (http://phone:port/code/), shown on the phone.</summary>
     public string Code { get; }
@@ -127,6 +140,9 @@ public sealed class PhoneReceiver : IDisposable
             var path = context.Request.Url!.AbsolutePath.Trim('/').Split('/', 2);
             if (path[0] != Code)
             {
+                // Ten wrong codes and it stops listening: a 4-digit code is guessable, not with ten tries.
+                if (Interlocked.Increment(ref _wrongCodes) >= MaxWrongCodes)
+                    _listener.Stop();
                 response.StatusCode = 404;
                 return;
             }
@@ -160,17 +176,26 @@ public sealed class PhoneReceiver : IDisposable
                     if (offer.Sizes.Keys.Any(static hash => !SongStore.IsHash(hash)) || offer.Songs.Any(row => row.Blobs().Any(hash => !offer.Sizes.ContainsKey(hash))))
                         throw new InvalidDataException("Malformed offer.");
                     var missing = offer.Sizes.Where(pair => !_store.Has(pair.Key)).ToList();
-                    if (Accept is { } accept && !accept(offer.Songs.Count, missing.Sum(static pair => pair.Value)))
+                    var bytes = missing.Sum(static pair => pair.Value);
+                    // 507: they don't fit (the sender says so); 403: the player said no.
+                    if (bytes > new DriveInfo(_root).AvailableFreeSpace)
+                    {
+                        response.StatusCode = 507;
+                        break;
+                    }
+                    if (Accept is { } accept && !accept(offer.Songs.Count, bytes))
                     {
                         response.StatusCode = 403;
                         break;
                     }
-                    (_offer, _offered) = (offer, [.. offer.Sizes.Keys]);
+                    (_offer, _offered, Expected) = (offer, [.. offer.Sizes.Keys], (bytes, offer.From ?? "?"));
+                    Interlocked.Exchange(ref _bytes, 0);
                     await write(response, "text/plain", string.Join('\n', missing.Select(static pair => pair.Key))).ConfigureAwait(false);
                     break;
                 }
                 case ("commit", "PUT") when _store is not null && _offer is { } accepted:
                     Committed = _store.Commit(accepted.Songs);
+                    Interlocked.Increment(ref _commits);
                     _offer = null;
                     await write(response, "text/plain", Committed.ToString(System.Globalization.CultureInfo.InvariantCulture)).ConfigureAwait(false);
                     break;

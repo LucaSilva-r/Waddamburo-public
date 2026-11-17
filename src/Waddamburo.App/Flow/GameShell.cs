@@ -417,6 +417,9 @@ internal sealed class GameShell : IDisposable
     private readonly ScoreListOverlay _scores;
     // Overlays that take the keyboard (topmost last) and the painter Waddamburo's own overlays draw with.
     public CustomUploadPrompt CustomUploadPrompt { get; }
+
+    /// <summary>Settings › Send to device / Receive from device.</summary>
+    public DeviceTransfer DeviceTransfer { get; }
     private readonly IInputOverlay[] _inputOverlays;
 
     /// <summary>Song Select's flow (an online host's cover is cancelled through it).</summary>
@@ -894,7 +897,8 @@ internal sealed class GameShell : IDisposable
             Room = new RoomOverlay(this, Painter);
             Match = new OnlineMatch(this);
             CustomUploadPrompt = new CustomUploadPrompt(this, options.ServiceFontPath ?? options.FontPath);
-            _inputOverlays = [_search, _scores, Room, CustomUploadPrompt];
+            DeviceTransfer = new DeviceTransfer(this, _libraries.Snapshot, dataRoot);
+            _inputOverlays = [_search, _scores, Room, CustomUploadPrompt, DeviceTransfer];
             Reload = new SongSelectReload(this);
             var entry = new EntryFlow(this);
             var ending = new CreditEndFlow(this, _gameplay);
@@ -1706,7 +1710,7 @@ internal sealed class GameShell : IDisposable
             quads.AddRange(players(scene, interpolation));
         }
         foreach (var overlay in _inputOverlays)
-            if (overlay != _search)
+            if (overlay != _search && overlay != DeviceTransfer)
                 quads.AddRange(overlay.Quads());
         quads.AddRange(indicatorQuads(true));
         quads.AddRange(pill());
@@ -1718,6 +1722,12 @@ internal sealed class GameShell : IDisposable
         {
             frosted = quads.Count;
             quads.AddRange(_search.Quads());
+        }
+        // Send/Receive too (a settings page).
+        if (DeviceTransfer.IsOpen)
+        {
+            frosted = quads.Count;
+            quads.AddRange(DeviceTransfer.Quads());
         }
         // Sign in's overlay as well: a menu page over the frosted entry.
         if (_playerSetup is { SignInOpen: true })
@@ -1907,7 +1917,8 @@ internal sealed class GameShell : IDisposable
         DonRenderer?.Dispose();
         Bake?.Stop(); // it upscales through the tool disposed next
         SceneTextures.Upscaler?.Dispose();
-        CustomUploadPrompt.Dispose(); // both own an OverlayMenu, whose textures go through Application
+        CustomUploadPrompt.Dispose();
+        DeviceTransfer.Dispose(); // both own an OverlayMenu, whose textures go through Application
         Room.Dispose();
         Application.Dispose();
         _libraries.Dispose();

@@ -15,7 +15,7 @@ public sealed record PhoneFile(string Target, string Path, long Size, Func<Task<
 /// What a sender offers: the rows, and every blob they need with its size. <see cref="Format"/> is the rows' format: a
 /// receiver of another one refuses the offer (it would drop what it doesn't know, quietly).
 /// </summary>
-public sealed record SongOffer(int Format, List<StoredSong> Songs, Dictionary<string, long> Sizes)
+public sealed record SongOffer(int Format, List<StoredSong> Songs, Dictionary<string, long> Sizes, string? From = null)
 {
     /// <summary>Bump whenever <see cref="StoredSong"/> or <see cref="StoredChart"/> changes.</summary>
     public const int Current = 1;
@@ -96,10 +96,12 @@ public static class PhoneSync
         CancellationToken cancellationToken = default)
     {
         var offer = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new SongOffer(SongOffer.Current, [.. rows],
-            rows.SelectMany(static row => row.Blobs()).Distinct().ToDictionary(hash => hash, hash => blobs[hash].Size)), SyncJson.Default.SongOffer);
+            rows.SelectMany(static row => row.Blobs()).Distinct().ToDictionary(hash => hash, hash => blobs[hash].Size), Boot.DeviceName), SyncJson.Default.SongOffer);
         using var answer = await http.PutAsync(new Uri(phone, "offer"), new ByteArrayContent(offer), cancellationToken).ConfigureAwait(false);
         if (answer.StatusCode == HttpStatusCode.Forbidden)
             throw new HttpRequestException("The device refused the songs.");
+        if (answer.StatusCode == HttpStatusCode.InsufficientStorage)
+            throw new HttpRequestException("They don't fit on the device: send fewer songs.");
         if (answer.StatusCode == HttpStatusCode.Conflict)
             throw new HttpRequestException("The device runs another Waddamburo version: update both to the same release.");
         answer.EnsureSuccessStatusCode();

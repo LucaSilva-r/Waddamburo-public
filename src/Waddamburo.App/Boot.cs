@@ -26,8 +26,12 @@ public static class Boot
     /// config.cfg's stock_folders.</summary>
     public static IReadOnlyList<string> StockFolders { get; set; } = [];
 
-    /// <summary>What another Waddamburo sends songs and game data to this device with (a phone's); null: none.</summary>
-    public static Sync.PhoneReceiver? Receiver { get; set; }
+    /// <summary>This device's name as others list it (a phone sets its model).</summary>
+    public static string DeviceName { get; set; } = Environment.MachineName;
+
+    /// <summary>What Receive takes and where (Sync.PhoneReceiver.Targets on a phone, with Green); null: the received
+    /// songs folder alone.</summary>
+    public static IReadOnlyDictionary<string, string>? ReceiveTargets { get; set; }
 
     /// <summary>Where songs other devices sent are kept (<see cref="Sync.SongStore"/>); the game's home's songs folder
     /// when not set (a phone sets its own).</summary>

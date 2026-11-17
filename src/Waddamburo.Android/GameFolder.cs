@@ -47,7 +47,9 @@ internal sealed class GameFolder(Activity activity)
         if (Waddamburo.App.Cli.GreenData.Missing(gameRoot(green)) is [])
             return verified(gameRoot(green));
 
-        var server = Server;
+        // Listening only while the setup waits (Settings › Receive from device listens on its own later); the
+        // player is setting up, so what a PC sends is taken without asking.
+        using var server = new PhoneReceiver(Root, PhoneReceiver.Targets(Root), DeviceName);
         AlertDialog? dialog = null;
         TextView? text = null;
         var startAnyway = 0;
@@ -94,12 +96,8 @@ internal sealed class GameFolder(Activity activity)
     }
 
     // One for the process (the activity may be created again): the import page stays up while the app runs.
-    private static PhoneReceiver? s_server;
-
-    /// <summary>What a PC sends with (started on first use).</summary>
-    public PhoneReceiver Server => s_server ??= new PhoneReceiver(Root, PhoneReceiver.Targets(Root), DeviceName);
-
-    private static string DeviceName => global::Android.OS.Build.Model ?? "Android";
+    /// <summary>How other devices list this one.</summary>
+    public static string DeviceName => global::Android.OS.Build.Model ?? "Android";
 
     private string verified(string root)
     {
@@ -114,8 +112,9 @@ internal sealed class GameFolder(Activity activity)
         return "1. Connect the phone to a PC with a USB cable and turn on USB tethering (Settings › Hotspot). "
             + "Wi-Fi works too, much slower.\n\n"
             + "2. On the PC, open Waddamburo: Settings › Send to device. Pick "
-            + $"\"{DeviceName}\" and enter the code\n\n        {server.Code}\n\n"
-            + "3. Leave Green ticked (your other libraries too, if you like). If the copy stops, send again: it goes on where it stopped.\n\n"
+            + $"\"{DeviceName}\" and type the code\n\n        {server.Code}\n\n"
+            + "3. Leave Green game data on; type a search in Songs to bring songs too (* for all). "
+            + "If the copy stops, send again: it goes on where it stopped.\n\n"
             + $"Or copy USRDIR's contents into Android/data/{activity.PackageName}/files/{Green} yourself.\n\n"
             + (files > 0 ? $"Received {files:N0} files ({bytes / 1048576:N0} MB). " : "")
             + $"Missing: {missing:N0} of {Waddamburo.App.Cli.GreenData.FileCount:N0} files. The game starts by itself once they are all here.";
