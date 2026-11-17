@@ -30,7 +30,8 @@ internal static class SongLoudness
     public static float Volume(CatalogAssetRouter assets, CatalogAssetKey asset, SdlAudioFormat format,
         CancellationToken cancellationToken = default)
     {
-        if (asset.Provider.Value == "stock")
+        // Received stock songs too: under the stock library's id when it has one, else their own (Sync.StoredSongsProvider).
+        if (asset.Provider.Value is "stock" or "received-stock")
             return stockGain(assets, asset, cancellationToken);
         // ponytail: keyed by the provider's id, so a TJA whose audio file is swapped keeps its old level; clear the cache then.
         var key = $"{asset.Provider.Value}/{asset.StableId}";
