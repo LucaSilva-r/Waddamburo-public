@@ -1,4 +1,5 @@
 using Android.App;
+using Android.Content;
 using Android.Content.PM;
 using Android.OS;
 using Android.Views;
@@ -18,6 +19,8 @@ namespace Waddamburo.Android;
         | ConfigChanges.SmallestScreenSize | ConfigChanges.Touchscreen | ConfigChanges.UiMode)]
 public sealed class WaddamburoActivity : SDLActivity
 {
+    private GameFolder? _gameFolder;
+
     protected override string[] GetLibraries() => ["SDL3"];
 
     protected override void OnCreate(Bundle? savedInstanceState)
@@ -25,7 +28,26 @@ public sealed class WaddamburoActivity : SDLActivity
         // The default current directory is '/', which differs between devices: use the app's own.
         System.Environment.CurrentDirectory = FilesDir!.AbsolutePath;
         Window?.AddFlags(WindowManagerFlags.KeepScreenOn);
+        _gameFolder = new GameFolder(this);
         base.OnCreate(savedInstanceState);
+    }
+
+    protected override void OnActivityResult(int requestCode, Result resultCode, Intent? data)
+    {
+        base.OnActivityResult(requestCode, resultCode, data);
+        _gameFolder?.OnActivityResult(requestCode, resultCode, data);
+    }
+
+    public override void OnRequestPermissionsResult(int requestCode, string[] permissions, Permission[] grantResults)
+    {
+        base.OnRequestPermissionsResult(requestCode, permissions, grantResults);
+        _gameFolder?.OnPermissionsResult(requestCode);
+    }
+
+    protected override void OnResume()
+    {
+        base.OnResume();
+        _gameFolder?.OnResume();
     }
 
     protected override void Main()
@@ -35,10 +57,7 @@ public sealed class WaddamburoActivity : SDLActivity
             if (pair.Split('=', 2) is [var key, var value])
                 System.Environment.SetEnvironmentVariable(key, value);
         Waddamburo.App.Boot.AppHome = Path.Combine(FilesDir!.AbsolutePath, "waddamburo");
-        // ponytail: M1 dev shortcut, the game data copied into the app's private files/game (adb push to
-        // /data/local/tmp, then run-as cp); the document picker (content URIs) replaces it.
-        var game = Path.Combine(FilesDir!.AbsolutePath, "game");
-        string[] args = [$"--game-data={game}"];
+        string[] args = [$"--game-data={_gameFolder!.Resolve()}"];
         while (Waddamburo.App.Boot.Run(args) == Waddamburo.App.Boot.RestartExitCode)
         {
         }
