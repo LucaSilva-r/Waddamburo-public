@@ -38,11 +38,15 @@ internal sealed record GameDataLayout(
         requireDirectory(don, "Don asset root");
         requireDirectory(sound, "sound root");
 
-        var stableHome = Path.Combine(fullRoot, "waddamburo");
-        moveIntoHome(fullRoot, stableHome);
-        var home = BuildInfo.Nightly ? Path.Combine(fullRoot, "waddamburo-nightly") : stableHome;
+        // On a phone the game folder is the user's (read through the document picker): Waddamburo's own files go
+        // to the app's private storage instead.
+        var stableHome = Boot.AppHome ?? Path.Combine(fullRoot, "waddamburo");
+        if (Boot.AppHome is null)
+            moveIntoHome(fullRoot, stableHome);
+        var home = BuildInfo.Nightly && Boot.AppHome is null ? Path.Combine(fullRoot, "waddamburo-nightly") : stableHome;
         if (home != stableHome && !Directory.Exists(home))
             seedNightly(stableHome, home);
+        Directory.CreateDirectory(home);
         // The user's font when they supplied one, else the bundled one; the bundled fonts draw what it lacks.
         var bundled = BundledFonts.Extract(Path.Combine(home, "fonts"));
         var font = fontOverride is null ? findTitleFont(fullRoot) ?? bundled.Title : Path.GetFullPath(fontOverride);

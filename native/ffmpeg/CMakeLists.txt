@@ -13,7 +13,23 @@ cmake_host_system_information(RESULT _ffmpeg_jobs QUERY NUMBER_OF_LOGICAL_CORES)
 set(_ffmpeg_platform_options --arch=x86_64 --disable-x86asm)
 set(_ffmpeg_configure_command <SOURCE_DIR>/configure)
 
-if(MINGW AND CMAKE_CROSSCOMPILING)
+if(ANDROID)
+  # NDK clang wrappers carry the target and API level; NEON assembly stays on.
+  set(_ndk_bin "${ANDROID_TOOLCHAIN_ROOT}/bin")
+  set(_ffmpeg_platform_options
+    --enable-cross-compile
+    --target-os=android
+    --arch=aarch64
+    --cc=${_ndk_bin}/aarch64-linux-android${ANDROID_NATIVE_API_LEVEL}-clang
+    --cxx=${_ndk_bin}/aarch64-linux-android${ANDROID_NATIVE_API_LEVEL}-clang++
+    --ar=${_ndk_bin}/llvm-ar
+    --nm=${_ndk_bin}/llvm-nm
+    --ranlib=${_ndk_bin}/llvm-ranlib
+    --strip=${_ndk_bin}/llvm-strip
+    --enable-pthreads
+    --enable-pic
+    --pkg-config=pkg-config)
+elseif(MINGW AND CMAKE_CROSSCOMPILING)
   if(CMAKE_HOST_WIN32)
     # MSYS2: Windows cannot run the configure script itself.
     find_program(WADDAMBURO_BASH_EXECUTABLE NAMES bash REQUIRED)

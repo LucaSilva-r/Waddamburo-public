@@ -124,6 +124,18 @@
       }
     },
     {
+      "name": "android-package",
+      "displayName": "Android arm64 release libraries (NDK cross build on Linux)",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/../out/build/native/android-arm64/${presetName}",
+      "toolchainFile": "${sourceDir}/cmake/android-arm64.cmake",
+      "cacheVariables": {
+        "BUILD_TESTING": false,
+        "CMAKE_BUILD_TYPE": "Release",
+        "WADDAMBURO_PACKAGE": true
+      }
+    },
+    {
       "name": "windows-debug",
       "displayName": "Windows x64 Debug",
       "inherits": "windows-base",
@@ -182,6 +194,7 @@
     { "name": "linux-audio-complete", "configurePreset": "linux-audio-complete" },
     { "name": "linux-package", "configurePreset": "linux-package" },
     { "name": "windows-package", "configurePreset": "windows-package" },
+    { "name": "android-package", "configurePreset": "android-package" },
     { "name": "windows-debug", "configurePreset": "windows-debug" },
     { "name": "windows-release", "configurePreset": "windows-release" },
     { "name": "windows-sanitize", "configurePreset": "windows-sanitize" },

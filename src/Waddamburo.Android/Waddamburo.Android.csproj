@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-android</TargetFramework>
+    <SupportedOSPlatformVersion>26</SupportedOSPlatformVersion>
+    <OutputType>Exe</OutputType>
+    <RuntimeIdentifier>android-arm64</RuntimeIdentifier>
+    <RuntimeIdentifiers>android-arm64</RuntimeIdentifiers>
+    <ApplicationId>org.waddamburo.game</ApplicationId>
+    <ApplicationTitle>Waddamburo</ApplicationTitle>
+    <ApplicationVersion>1</ApplicationVersion>
+    <ApplicationDisplayVersion>$(Version.Split('-')[0])</ApplicationDisplayVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- The game references the desktop executable project (Waddamburo.App) as a library. -->
+    <ValidateExecutableReferencesMatchSelfContained>false</ValidateExecutableReferencesMatchSelfContained>
+    <!-- ponytail: no trimming until the reflection users (Realm, JSON, SQLite) are checked on Android. -->
+    <PublishTrimmed>false</PublishTrimmed>
+    <AndroidLinkMode>None</AndroidLinkMode>
+    <AndroidPackageFormat>apk</AndroidPackageFormat>
+    <IsAotCompatible>false</IsAotCompatible>
+  </PropertyGroup>
+
+  <!-- Native libraries of the android-package CMake preset (native/CMakePresets.json). -->
+  <PropertyGroup>
+    <WaddamburoAndroidNativeDir Condition="'$(WaddamburoAndroidNativeDir)' == ''">$(MSBuildThisFileDirectory)../../out/build/native/android-arm64/android-package/stage/Release/lib</WaddamburoAndroidNativeDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <AndroidNativeLibrary Include="$(WaddamburoAndroidNativeDir)/*.so" Abi="arm64-v8a" />
+  </ItemGroup>
+  <Target Name="WaddamburoRequireAndroidNatives" BeforeTargets="Build">
+    <Error Condition="!Exists('$(WaddamburoAndroidNativeDir)/libbgfx.so')"
+           Text="Build the native libraries first: cd native &amp;&amp; cmake --preset android-package &amp;&amp; cmake --build --preset android-package" />
+  </Target>
+
+  <ItemGroup>
+    <AndroidResource Include="../../eng/packaging/waddamburo.png" Link="Resources/drawable/icon.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Waddamburo.App/Waddamburo.App.csproj" />
+  </ItemGroup>
+
+</Project>

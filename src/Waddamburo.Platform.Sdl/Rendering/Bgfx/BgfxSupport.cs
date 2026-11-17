@@ -83,7 +83,7 @@ namespace Waddamburo.Platform.Sdl.Rendering
         /// for BC1/BC3 gains nothing over decoding them ourselves; BC7 counts it, as before).
         /// </summary>
         public static bool Supports(TextureBlockFormat format) =>
-            (bgfx.get_caps()->formats[(int)bgfxFormat(format)] & (uint)(format == TextureBlockFormat.Bc7
+            (bgfx.get_caps()->formats[(int)bgfxFormat(format)] & (uint)(format == TextureBlockFormat.Bc7 && !PlatformInfo.IsMobile
                 ? bgfx.CapsFormatFlags.Texture2d | bgfx.CapsFormatFlags.Texture2dEmulated
                 : bgfx.CapsFormatFlags.Texture2d)) != 0;
 
@@ -173,6 +173,8 @@ namespace Waddamburo.Platform.Sdl.Rendering
                 "gles" or "opengles" => bgfx.RendererType.OpenGLES,
                 "d3d11" => bgfx.RendererType.Direct3D11,
                 "metal" => bgfx.RendererType.Metal,
+                // ponytail: GLES on Android until Vulkan is tried on real phones (renderer = vulkan to test).
+                _ when OperatingSystem.IsAndroid() => bgfx.RendererType.OpenGLES,
                 _ => bgfx.RendererType.Count,
             };
             // Diagnostic: WADDAMBURO_PRESENT_MODE=immediate or mailbox renders uncapped (no vsync).
@@ -254,6 +256,8 @@ namespace Waddamburo.Platform.Sdl.Rendering
             var properties = SDL_GetWindowProperties(window);
             if (OperatingSystem.IsWindows())
                 init->swapChain.nwh = (void*)SDL_GetPointerProperty(properties, SDL_PROP_WINDOW_WIN32_HWND_POINTER, IntPtr.Zero);
+            else if (OperatingSystem.IsAndroid())
+                init->swapChain.nwh = (void*)SDL_GetPointerProperty(properties, SDL_PROP_WINDOW_ANDROID_WINDOW_POINTER, IntPtr.Zero);
             else if (OperatingSystem.IsMacOS())
                 init->swapChain.nwh = (void*)SDL_GetPointerProperty(properties, SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, IntPtr.Zero);
             else if (SDL_GetCurrentVideoDriver() == "wayland")
