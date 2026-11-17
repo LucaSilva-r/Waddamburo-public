@@ -861,7 +861,7 @@ internal sealed class GameShell : IDisposable
                 ? support.GetValueOrDefault(song.Key.StableId) ?? [0, 0, 0, 0]
                 : [.. Enumerable.Range(0, 4).Select(course => course > 0 && song.Charts.Any(chart => chart.Course == (TaikoCourse)course) ? 3 : 0)];
             if (Arcade.Home && Options.Accounts is { } setupBook)
-                _playerSetup = new PlayerSetupController(this, setupBook, options.FontPath, options.ScoresPath);
+                _playerSetup = new PlayerSetupController(this, setupBook, options.FontPath, options.ServiceFontPath ?? options.FontPath, options.ScoresPath);
             // The settings file sits in USRDIR/waddamburo, the caches under it unless cache_folder moves them.
             var cacheRoot = options.ArcadePath is { } settings
                 ? ArcadeSettings.CacheRoot(Path.GetDirectoryName(Path.GetFullPath(settings))!, Arcade.CacheFolder) : null;
@@ -1719,6 +1719,12 @@ internal sealed class GameShell : IDisposable
             frosted = quads.Count;
             quads.AddRange(_search.Quads());
         }
+        // Sign in's overlay as well: a menu page over the frosted entry.
+        if (_playerSetup is { SignInOpen: true })
+        {
+            frosted = quads.Count;
+            quads.AddRange(_playerSetup.SignInQuads());
+        }
         // The frame reads the reused list without a copy: valid until the next one (the presenter detaches what it holds).
         var result = RenderFrame.Shared(RenderColor.Black, quads, (double)scene.StageWidth / scene.StageHeight,
             blurredQuads: frosted, backdropBrightness: HomeControls.BackdropBrightness);
@@ -1781,7 +1787,8 @@ internal sealed class GameShell : IDisposable
         // controller still reaches every menu.
         Application.TouchDrumEnabled = Arcade.TouchDrum != TouchDrumMode.Off;
         // Player setup is played with the drum itself (rims choose, the face picks): not an overlay here.
-        Application.OverlayOpen = HomeMenuOpen || _service is { IsOpen: true } || _inputOverlays.Any(static overlay => overlay.IsOpen);
+        Application.OverlayOpen = HomeMenuOpen || _service is { IsOpen: true } || _inputOverlays.Any(static overlay => overlay.IsOpen)
+            || _playerSetup is { SignInOpen: true };
         Application.TouchSearch = !Application.OverlayOpen && Active.Id == FlowScenes.SongSelect;
         Application.TouchKeyboard = PlatformInfo.IsMobile && _search.IsOpen;
         if (PlatformInfo.IsMobile || Application.TouchActive)

@@ -20,11 +20,16 @@ internal sealed class PlayerSetupController : IDisposable
     private readonly GameShell shell;
     private readonly PlayerSetupFlow _flow;
     private readonly EntrySetupOverlay _overlay;
+    private readonly OverlayMenu _signIn;
 
-    public PlayerSetupController(GameShell shell, AccountBook accounts, string fontPath, string? scoresPath)
+    public PlayerSetupController(GameShell shell, AccountBook accounts, string fontPath, string menuFontPath, string? scoresPath)
     {
         this.shell = shell;
         _overlay = new EntrySetupOverlay(shell.Application, fontPath, shell.ResolveSurface);
+        _signIn = new OverlayMenu(shell.Application, menuFontPath)
+        {
+            Sound = don => shell.Sounds?.Bank.Play("SE_COM", don ? 0 : 3, Waddamburo.Platform.Sdl.Media.AudioBus.DrumHit, trace: false),
+        };
         _flow = new PlayerSetupFlow(accounts, Online.UpdateGate.Server(shell.Arcade), shell.Arcade.ServerInsecure, shell.Sync.ClientFor,
             Path.Combine(Path.GetDirectoryName(scoresPath) ?? ".", "avatars"));
         _flow.Confirmed += joinSetupPlayers;
@@ -59,6 +64,16 @@ internal sealed class PlayerSetupController : IDisposable
             return true;
         }
         var open = _flow.IsOpen;
+        // Sign in waiting for the website: its overlay takes the keys (Escape cancels it, not the setup).
+        if (open && _flow.SignIn is { } signIn)
+        {
+            if (!_signIn.IsOpen)
+                openSignIn(signIn);
+            _signIn.Tick(keys, keys, keys.IsDown(SdlKeyboardKey.Escape));
+            keys = SdlKeyboardSnapshot.Empty;
+        }
+        else if (_signIn.IsOpen)
+            _signIn.Close();
         _flow.Tick(open ? keys : SdlKeyboardSnapshot.Empty);
         if (open && _flow.IsOpen && shell.Active.Id == FlowScenes.Entry && shell.Hosts.Entry is { SetupMode: true } entry)
         {
@@ -90,6 +105,7 @@ internal sealed class PlayerSetupController : IDisposable
     {
         _flow.Dispose();
         _overlay.Dispose();
+        _signIn.Dispose();
     }
 
     /// <summary>A drum hit in the attract loop opens the player setup (that drum starts on the default account).</summary>
@@ -198,6 +214,29 @@ internal sealed class PlayerSetupController : IDisposable
         }
         return _setupArrows;
     }
+
+    // The settings menu's modal look: what to do in the browser, the code for another device, the browser again.
+    private void openSignIn(PendingSignIn signIn)
+    {
+        var page = $"{signIn.Url.Host}{signIn.Url.AbsolutePath}";
+        var code = $"{signIn.Code[..3]}-{signIn.Code[3..]}";
+        _signIn.Open(new OverlayPage(() => Strings.T("signin.title"), () =>
+            [new(Strings.T("signin.open_browser"), Enter: () => SdlApplication.OpenUrl(signIn.Url)),
+                new(Strings.T("signin.cancel"), Enter: _flow.CancelSignIn)],
+            Centred: true, Modal: true, Back: _flow.CancelSignIn, Body: () =>
+            [(Strings.T(signIn.BrowserOpened ? "signin.browser_opened" : "signin.no_browser"), OverlayMenu.White),
+                (Strings.T("signin.approve"), OverlayMenu.White),
+                ("", OverlayMenu.White),
+                (Strings.T("signin.other_device", page), OverlayMenu.White),
+                (code, OverlayMenu.Yellow),
+                (Strings.T("signin.expires", Math.Max(0, (int)(signIn.Deadline - DateTime.UtcNow).TotalSeconds)), OverlayMenu.White)]),
+            home: true);
+    }
+
+    /// <summary>The sign-in overlay is open: the shell frosts everything under it, as under the settings.</summary>
+    public bool SignInOpen => _signIn.IsOpen;
+
+    public IEnumerable<RenderQuad> SignInQuads() => shell.Unsqueezed(_signIn.Quads(), centred: true);
 
     /// <summary>Home players' names over the entry's boards, and the setup's arrows and option text.</summary>
     public IEnumerable<RenderQuad> Quads(float interpolation)
