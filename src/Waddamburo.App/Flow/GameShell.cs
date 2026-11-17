@@ -1352,7 +1352,32 @@ internal sealed class GameShell : IDisposable
 
     // One 60 Hz tick: the input first (back to the attract loop, coins, the home controls, the player
     // setup, the quick restart), then the active scene, the overlays, and a pending scene switch.
+    // Diagnostic: WADDAMBURO_TICK_STATS=1 prints the game logic's average time and allocation per tick every 600 ticks,
+    // with the scene (the Lumen runtime's before/after measure).
+    private static readonly bool s_tickStats = Environment.GetEnvironmentVariable("WADDAMBURO_TICK_STATS") == "1";
+    private long _tickStatsTicks, _tickStatsBytes;
+
     private void tick(SdlKeyboardSnapshot keyboard)
+    {
+        if (!s_tickStats)
+        {
+            tickOnce(keyboard);
+            return;
+        }
+        var start = Stopwatch.GetTimestamp();
+        var allocated = GC.GetAllocatedBytesForCurrentThread();
+        tickOnce(keyboard);
+        _tickStatsTicks += Stopwatch.GetTimestamp() - start;
+        _tickStatsBytes += GC.GetAllocatedBytesForCurrentThread() - allocated;
+        if (Tick % 600 == 0)
+        {
+            Console.WriteLine(FormattableString.Invariant(
+                $"Tick stats at {Tick} ({Active.Id}): {Stopwatch.GetElapsedTime(0, _tickStatsTicks).TotalMilliseconds / 600:F3} ms, {_tickStatsBytes / 600 / 1024.0:F1} KiB per tick."));
+            _tickStatsTicks = _tickStatsBytes = 0;
+        }
+    }
+
+    private void tickOnce(SdlKeyboardSnapshot keyboard)
     {
         Tick++;
         updateRumbles();

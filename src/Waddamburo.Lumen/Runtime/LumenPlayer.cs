@@ -1168,9 +1168,27 @@ public sealed class LumenPlayer
         return processed;
     }
 
+    private List<DisplayInstance>? _enterFrameScratch;
+
     private void dispatchEnterFrameHandlers(DisplayInstance? subtree = null)
     {
-        var instances = new List<DisplayInstance>();
+        // One list reused tick after tick (a handler that dispatches again, re-entering, takes a fresh one).
+        var instances = _enterFrameScratch ?? [];
+        _enterFrameScratch = null;
+        instances.Clear();
+        try
+        {
+            dispatchEnterFrameHandlers(subtree, instances);
+        }
+        finally
+        {
+            instances.Clear();
+            _enterFrameScratch = instances;
+        }
+    }
+
+    private void dispatchEnterFrameHandlers(DisplayInstance? subtree, List<DisplayInstance> instances)
+    {
         collectInstancesPostOrder(subtree ?? _root, instances);
         if (instances.Count > _limits.MaxPendingActions)
         {
@@ -2013,9 +2031,11 @@ public sealed class LumenPlayer
         }
         if (target is DisplayInstance instance)
         {
-            var child = instance.Children.Values.FirstOrDefault(candidate => candidate.Name == name && !candidate.Removed);
-            if (child is not null)
-                return new Avm1Lookup(true, child);
+            // Every member read on a clip checks its children first: an index loop, no closure or enumerator.
+            var children = instance.Children.Values;
+            for (var index = 0; index < children.Count; index++)
+                if (children[index] is { Removed: false } child && child.Name == name)
+                    return new Avm1Lookup(true, child);
             if (instance.Variables.TryGetValue(name, out var value))
                 return new Avm1Lookup(true, value);
             if (instance.ScriptPrototype?.GetProperty(name) is { Found: true } inherited)
@@ -2728,22 +2748,25 @@ public sealed class LumenPlayer
         }
     }
 
+    // The tree walks run every tick over every clip: index loops (SortedList's enumerators are heap objects).
     private static void collectPlayingInstances(DisplayInstance instance, List<DisplayInstance> destination)
     {
         if (instance.Removed)
             return;
         if (instance.Frame >= 0)
             destination.Add(instance);
-        foreach (var child in instance.Children.Values)
-            collectPlayingInstances(child, destination);
+        var children = instance.Children.Values;
+        for (var index = 0; index < children.Count; index++)
+            collectPlayingInstances(children[index], destination);
     }
 
     private static void collectInstancesPostOrder(DisplayInstance instance, List<DisplayInstance> destination)
     {
         if (instance.Removed)
             return;
-        foreach (var child in instance.Children.Values.Reverse())
-            collectInstancesPostOrder(child, destination);
+        var children = instance.Children.Values;
+        for (var index = children.Count - 1; index >= 0; index--)
+            collectInstancesPostOrder(children[index], destination);
         destination.Add(instance);
     }
 
@@ -2754,8 +2777,9 @@ public sealed class LumenPlayer
         instance.PreviousTransform = instance.Transform;
         instance.PreviousMultiply = instance.Color.Multiply;
         instance.PreviousVisible = instance.Visible;
-        foreach (var child in instance.Children.Values)
-            snapshotInstances(child);
+        var children = instance.Children.Values;
+        for (var index = 0; index < children.Count; index++)
+            snapshotInstances(children[index]);
     }
 
     private static void resetInterpolation(DisplayInstance instance)

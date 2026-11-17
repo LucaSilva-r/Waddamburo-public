@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Waddamburo.Formats.Lmb;
 using System.Globalization;
 
@@ -40,7 +41,8 @@ internal static class Avm1Interpreter
         Avm1ExecutionContext context,
         out bool resultingPlaying)
     {
-        var registers = Enumerable.Repeat<object?>(Avm1Undefined.Instance, limits.MaxRegisters).ToArray();
+        using var registerLease = Avm1ScratchPool.RentRegisters(limits.MaxRegisters);
+        var registers = registerLease.Registers;
         return tryExecute(
             code,
             strings,
@@ -70,7 +72,8 @@ internal static class Avm1Interpreter
             returnValue = Avm1Undefined.Instance;
             return Avm1ExecutionStatus.RegisterLimit;
         }
-        var registers = Enumerable.Repeat<object?>(Avm1Undefined.Instance, limits.MaxRegisters).ToArray();
+        using var registerLease = Avm1ScratchPool.RentRegisters(limits.MaxRegisters);
+        var registers = registerLease.Registers;
         var nextRegister = 1;
         var argumentArray = new Avm1ArrayObject(arguments);
         var superValue = new Avm1SuperValue(
@@ -152,6 +155,24 @@ internal static class Avm1Interpreter
             out returnValue);
     }
 
+    // The index of the instruction at pc, or -1.
+    private static int findInstruction(ImmutableArray<Avm1Instruction> instructions, int pc)
+    {
+        int low = 0, high = instructions.Length - 1;
+        while (low <= high)
+        {
+            var middle = (low + high) >>> 1;
+            var offset = instructions[middle].Offset;
+            if (offset == pc)
+                return middle;
+            if (offset < pc)
+                low = middle + 1;
+            else
+                high = middle - 1;
+        }
+        return -1;
+    }
+
     private static Avm1ExecutionStatus tryExecute(
         Avm1CodeBlock code,
         IReadOnlyList<LmbString> strings,
@@ -167,8 +188,12 @@ internal static class Avm1Interpreter
         if (!isSupported(code))
             return Avm1ExecutionStatus.Unsupported;
 
-        var instructions = code.Instructions.ToDictionary(instruction => instruction.Offset);
-        var stack = new List<object?>();
+        // The instructions are in offset order: the next one is usually the following entry, a jump binary-searches
+        // (a dictionary built per call cost more than the script itself).
+        var instructions = code.Instructions;
+        var index = 0;
+        using var stackLease = Avm1ScratchPool.RentStack();
+        var stack = stackLease.Stack;
         var playing = initialPlaying;
         var pc = code.Offset;
         for (var remaining = limits.MaxInstructionsPerAction; remaining > 0; remaining--)
@@ -178,8 +203,13 @@ internal static class Avm1Interpreter
                 resultingPlaying = playing;
                 return Avm1ExecutionStatus.Success;
             }
-            if (!instructions.TryGetValue(pc, out var instruction))
-                return Avm1ExecutionStatus.InvalidControlFlow;
+            if (index >= instructions.Length || instructions[index].Offset != pc)
+            {
+                index = findInstruction(instructions, pc);
+                if (index < 0)
+                    return Avm1ExecutionStatus.InvalidControlFlow;
+            }
+            var instruction = instructions[index];
 
             var next = checked(pc + instruction.Length);
             context.InstructionOffset = pc;
@@ -533,6 +563,7 @@ internal static class Avm1Interpreter
                     break;
             }
             pc = next;
+            index++;
         }
         return Avm1ExecutionStatus.InstructionLimit;
     }
