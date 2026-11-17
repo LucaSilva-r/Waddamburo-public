@@ -13,9 +13,14 @@ internal sealed class Avm1Undefined
 
 internal sealed class Avm1LexicalScope(Avm1LexicalScope? parent = null)
 {
+    private static int s_nextId;
     private readonly Dictionary<string, object?> _values = new(StringComparer.Ordinal);
 
     public Avm1LexicalScope? Parent { get; } = parent;
+
+    /// <summary>A cheap hash for the pending-write keys: a scope is made per function call and hashed at once, and an
+    /// object's first identity hash takes the runtime's slow path.</summary>
+    public int Id { get; } = Interlocked.Increment(ref s_nextId);
 
     public bool ContainsOwn(string name) => _values.ContainsKey(name);
 

@@ -197,7 +197,12 @@ internal sealed class Avm1ExecutionContext(
 
     private readonly record struct MemberKey(object? Target, string Name);
     private readonly record struct DisplayKey(object Parent, long Depth);
-    private readonly record struct LexicalKey(Avm1LexicalScope Scope, string Name);
+    private readonly record struct LexicalKey(Avm1LexicalScope Scope, string Name)
+    {
+        public bool Equals(LexicalKey other) => ReferenceEquals(Scope, other.Scope) && string.Equals(Name, other.Name, StringComparison.Ordinal);
+
+        public override int GetHashCode() => HashCode.Combine(Scope.Id, string.GetHashCode(Name, StringComparison.Ordinal));
+    }
 }
 
 internal readonly record struct Avm1Lookup(bool Found, object? Value);

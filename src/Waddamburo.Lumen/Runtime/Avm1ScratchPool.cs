@@ -8,15 +8,23 @@ namespace Waddamburo.Lumen.Runtime;
 /// </summary>
 internal static class Avm1ScratchPool
 {
-    [ThreadStatic] private static Stack<object?[]>? s_registers;
+    // One pool per register count (each script's register file is sized to what it references).
+    [ThreadStatic] private static Dictionary<int, Stack<object?[]>>? s_registers;
     [ThreadStatic] private static Stack<List<object?>>? s_stacks;
 
     public static RegisterLease RentRegisters(int count)
     {
-        var pool = s_registers ??= new();
-        var registers = pool.TryPop(out var reused) && reused.Length == count ? reused : new object?[count];
+        var registers = pool(count).TryPop(out var reused) ? reused : new object?[count];
         Array.Fill(registers, Avm1Undefined.Instance);
         return new RegisterLease(registers);
+    }
+
+    private static Stack<object?[]> pool(int count)
+    {
+        var pools = s_registers ??= [];
+        if (!pools.TryGetValue(count, out var pool))
+            pools[count] = pool = new();
+        return pool;
     }
 
     public static StackLease RentStack() => new((s_stacks ??= new()).TryPop(out var reused) ? reused : []);
@@ -28,7 +36,7 @@ internal static class Avm1ScratchPool
         public void Dispose()
         {
             Array.Clear(Registers); // keep nothing alive from the finished call
-            (s_registers ??= new()).Push(Registers);
+            pool(Registers.Length).Push(Registers);
         }
     }
 

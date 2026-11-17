@@ -41,7 +41,7 @@ internal static class Avm1Interpreter
         Avm1ExecutionContext context,
         out bool resultingPlaying)
     {
-        using var registerLease = Avm1ScratchPool.RentRegisters(limits.MaxRegisters);
+        using var registerLease = Avm1ScratchPool.RentRegisters(Math.Min(limits.MaxRegisters, facts(code).Registers));
         var registers = registerLease.Registers;
         return tryExecute(
             code,
@@ -72,7 +72,13 @@ internal static class Avm1Interpreter
             returnValue = Avm1Undefined.Instance;
             return Avm1ExecutionStatus.RegisterLimit;
         }
-        using var registerLease = Avm1ScratchPool.RentRegisters(limits.MaxRegisters);
+        // The register file covers what the function can touch: its declared count, its parameters' registers, the
+        // preloaded ones (this, arguments, super, _root, _parent, _global after register 0) and its body's.
+        var registerCount = Math.Max(Math.Max(definition.RegisterCount, facts(function.Body).Registers), 8);
+        foreach (var parameter in definition.Parameters)
+            if (parameter.Register is { } parameterRegister)
+                registerCount = Math.Max(registerCount, parameterRegister + 1);
+        using var registerLease = Avm1ScratchPool.RentRegisters(Math.Min(limits.MaxRegisters, registerCount));
         var registers = registerLease.Registers;
         var nextRegister = 1;
         var argumentArray = new Avm1ArrayObject(arguments);
@@ -576,9 +582,30 @@ internal static class Avm1Interpreter
         return true;
     }
 
-    private static bool isSupported(Avm1CodeBlock code) =>
-        code.Instructions.Any(instruction => instruction.Opcode == 0x00)
-        && code.Instructions.All(isSupportedInstruction);
+    private static bool isSupported(Avm1CodeBlock code) => facts(code).Supported;
+
+    // What every execution of a code block would otherwise work out again: whether it runs, and the registers it
+    // can reference (StoreRegister, register pushes), so the register file is that small.
+    private sealed record CodeFacts(bool Supported, int Registers);
+
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Avm1CodeBlock, CodeFacts> s_facts = [];
+
+    private static CodeFacts facts(Avm1CodeBlock code) => s_facts.GetValue(code, static code =>
+    {
+        var registers = 0;
+        foreach (var instruction in code.Instructions)
+        {
+            if (instruction.Operand is Avm1RegisterOperand store)
+                registers = Math.Max(registers, store.Register + 1);
+            else if (instruction.Operand is Avm1PushOperand push)
+                foreach (var value in push.Values)
+                    if (value is Avm1PushRegisterValue pushed)
+                        registers = Math.Max(registers, pushed.Register + 1);
+        }
+        return new CodeFacts(
+            code.Instructions.Any(instruction => instruction.Opcode == 0x00) && code.Instructions.All(isSupportedInstruction),
+            registers);
+    });
 
     private static bool isSupportedInstruction(Avm1Instruction instruction) =>
         instruction.Opcode switch
