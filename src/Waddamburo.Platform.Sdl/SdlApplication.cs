@@ -37,8 +37,8 @@ public sealed unsafe partial class SdlApplication : IDisposable
     /// <summary>A text field is open (search): the keyboard button shows or hides the screen keyboard.</summary>
     public bool TouchKeyboard { get; set; }
 
-    /// <summary>An overlay that takes the controls is open (settings, pause, search, scores, an online room, player
-    /// setup): touches press its buttons (<see cref="TouchDrum.HitMenu"/>), not the drum, and a controller's B closes it.
+    /// <summary>An overlay that takes the controls is open (settings, pause, search, scores, an online room): touches
+    /// press its buttons (<see cref="TouchDrum.HitMenu"/>), not the drum, and a controller's B closes it.
     /// </summary>
     public bool OverlayOpen { get; set; }
 

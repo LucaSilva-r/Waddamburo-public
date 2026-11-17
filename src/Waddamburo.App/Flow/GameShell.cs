@@ -1769,12 +1769,12 @@ internal sealed class GameShell : IDisposable
         }
         top.AddRange(_performance.Quads());
         // Touch screens: the menu's buttons while an overlay that takes the controls is open (settings, pause, search,
-        // scores, an online room, player setup), else the drum and, in Song Select, the search button. The back button
+        // scores, an online room), else the drum and, in Song Select, the search button. The back button
         // always: touch_drum (auto: until a controller or keys play; off) governs the drum alone, so a player without a
         // controller still reaches every menu.
         Application.TouchDrumEnabled = Arcade.TouchDrum != TouchDrumMode.Off;
-        Application.OverlayOpen = HomeMenuOpen || _service is { IsOpen: true } || _playerSetup is { IsOpen: true }
-            || _inputOverlays.Any(static overlay => overlay.IsOpen);
+        // Player setup is played with the drum itself (rims choose, the face picks): not an overlay here.
+        Application.OverlayOpen = HomeMenuOpen || _service is { IsOpen: true } || _inputOverlays.Any(static overlay => overlay.IsOpen);
         Application.TouchSearch = !Application.OverlayOpen && Active.Id == FlowScenes.SongSelect;
         Application.TouchKeyboard = PlatformInfo.IsMobile && _search.IsOpen;
         if (PlatformInfo.IsMobile || Application.TouchActive)
