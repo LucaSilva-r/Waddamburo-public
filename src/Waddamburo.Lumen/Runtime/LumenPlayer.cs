@@ -11,7 +11,7 @@ namespace Waddamburo.Lumen.Runtime;
 /// render snapshots, and executes the bounded AVM subset used by initialized
 /// timelines.
 /// </summary>
-public sealed class LumenPlayer
+public sealed class LumenPlayer : IAvm1Host
 {
     private const float TranslationCutThreshold = 200f;
     private const float ColorCutThreshold = 0.3f;
@@ -532,18 +532,32 @@ public sealed class LumenPlayer
     /// Reads a script variable or named clip by dotted path from the root (e.g. "main.isAllEnd"), as the game
     /// polls movie state. Null when any step is missing.
     /// </summary>
+    private readonly Dictionary<string, string[]> _scriptPaths = new(StringComparer.Ordinal);
+
+    private static DisplayInstance? childNamed(DisplayInstance instance, string name)
+    {
+        var children = instance.Children.Values;
+        for (var index = 0; index < children.Count; index++)
+            if (children[index].Name == name)
+                return children[index];
+        return null;
+    }
+
     public object? ReadScriptValue(string path)
     {
         ArgumentNullException.ThrowIfNull(path);
-        var parts = path.Split('.');
+        // Hosts read the same paths every tick: split once.
+        if (!_scriptPaths.TryGetValue(path, out var parts))
+            _scriptPaths[path] = parts = path.Split('.');
         // "_global.x" starts at the script globals, anything else at the root timeline.
-        object? value = parts[0] == "_global" ? _globals.GetValueOrDefault("_global") : _root;
-        foreach (var part in parts[0] == "_global" ? parts[1..] : parts)
+        var global = parts[0] == "_global";
+        object? value = global ? _globals.GetValueOrDefault("_global") : _root;
+        for (var index = global ? 1 : 0; index < parts.Length; index++)
         {
+            var part = parts[index];
             value = value switch
             {
-                DisplayInstance instance => instance.Variables.GetValueOrDefault(part)
-                    ?? instance.Children.Values.FirstOrDefault(child => child.Name == part),
+                DisplayInstance instance => instance.Variables.GetValueOrDefault(part) ?? childNamed(instance, part),
                 Avm1ArrayObject array => array.GetIndexedProperty(part).Value,
                 Avm1Object script => script.Properties.GetValueOrDefault(part),
                 Dictionary<string, object?> globals => globals.GetValueOrDefault(part),
@@ -1273,423 +1287,450 @@ public sealed class LumenPlayer
         Avm1ExecutionContext? parentContext,
         Avm1LexicalScope? lexicalScope,
         object? thisValue,
-        object? timelineTarget)
+        object? timelineTarget) =>
+        // One object per script call: the callbacks are this player's (IAvm1Host), the call's own state rides on the
+        // context (a closure and eleven delegates per call were most of a song select tick's garbage).
+        new(this, instance, thisValue, lexicalScope, timelineTarget, parentContext);
+
+    Avm1Lookup IAvm1Host.ReadVariable(Avm1ExecutionContext context, string name)
     {
-        Avm1ExecutionContext? context = null;
-        context = new Avm1ExecutionContext(
-            name =>
+        var instance = (DisplayInstance)context.Owner;
+        var thisValue = context.ThisValue;
+        if (name == "this")
+            return new Avm1Lookup(true, thisValue);
+        if (name == "_root" || name == "_level0")
+            return new Avm1Lookup(true, _root);
+        if (name == "_parent")
+            return new Avm1Lookup(instance.Parent is not null, instance.Parent);
+        if (name == "_global")
+            return new Avm1Lookup(true, _globals);
+        var lexical = context.GetLexicalVariable(name);
+        if (lexical.Found)
+            return lexical;
+        var instanceMember = context.GetMember(instance, name);
+        return instanceMember.Found
+            ? instanceMember
+            : context.GetMember(_globals, name);
+    }
+
+    void IAvm1Host.WriteVariable(Avm1ExecutionContext context, string name, object? value)
+    {
+        var instance = (DisplayInstance)context.Owner;
+        instance.Variables[name] = value;
+    }
+
+    Avm1Lookup IAvm1Host.ReadMember(Avm1ExecutionContext context, object? target, string name)
+    {
+        var parentContext = context.TransactionParent;
+        return parentContext?.GetMember(target, name) ?? readMember(target, name);
+    }
+
+    void IAvm1Host.WriteMember(Avm1ExecutionContext context, object? target, string name, object? value)
+    {
+        var parentContext = context.TransactionParent;
+        if (parentContext is null)
+            writeMember(target, name, value);
+        else
+            parentContext.SetMember(target, name, value);
+    }
+
+    Avm1Lookup IAvm1Host.CallFunction(Avm1ExecutionContext context, string name, IReadOnlyList<object?> arguments)
+    {
+        var instance = (DisplayInstance)context.Owner;
+        var candidate = context.GetVariable(name);
+        if (candidate.Found && candidate.Value is Avm1FunctionValue function)
+            return invokeFunction(instance, function, instance, arguments, context);
+        if (candidate.Found && candidate.Value is Avm1MethodWrapper wrapper)
+            return wrapper.Invoke(instance, arguments);
+        if (candidate.Found && candidate.Value is Avm1NativeFunction nativeFunction)
+            return invokeHost(instance, nativeFunction, arguments);
+        if (name == "ASSetPropFlags")
+            return new Avm1Lookup(true, Avm1Undefined.Instance);
+        // Boolean(x) as a conversion function (attract title polls its stream this way).
+        if (name == "Boolean")
+            return new Avm1Lookup(true, arguments.Count > 0 && toBoolean(arguments[0]));
+        reportOnce(
+            "LUM_AVM_CALL_UNRESOLVED",
+            instance.CharacterId,
+            instance.Frame,
+            $"AVM function '{name}' is not registered; undefined was returned.");
+        return default;
+    }
+
+    Avm1Lookup IAvm1Host.CallMethod(Avm1ExecutionContext context, object? target, string name, IReadOnlyList<object?> arguments, int instructionOffset)
+    {
+        var instance = (DisplayInstance)context.Owner;
+        if (ReferenceEquals(target, _externalInterface) && name == "addCallback")
+        {
+            if (arguments.Count >= 3
+                && arguments[0] is string callbackName
+                && arguments[2] is Avm1FunctionValue callbackFunction)
             {
-                if (name == "this")
-                    return new Avm1Lookup(true, thisValue);
-                if (name == "_root" || name == "_level0")
-                    return new Avm1Lookup(true, _root);
-                if (name == "_parent")
-                    return new Avm1Lookup(instance.Parent is not null, instance.Parent);
-                if (name == "_global")
-                    return new Avm1Lookup(true, _globals);
-                var lexical = context!.GetLexicalVariable(name);
-                if (lexical.Found)
-                    return lexical;
-                var instanceMember = context!.GetMember(instance, name);
-                return instanceMember.Found
-                    ? instanceMember
-                    : context.GetMember(_globals, name);
-            },
-            (name, value) => instance.Variables[name] = value,
-            (target, name) => parentContext?.GetMember(target, name) ?? readMember(target, name),
-            (target, name, value) =>
+                context.OnCommit(() => _callbacks[callbackName] = new CallbackRegistration(
+                    instance,
+                    arguments[1],
+                    callbackFunction));
+                return new Avm1Lookup(true, true);
+            }
+            return new Avm1Lookup(true, false);
+        }
+        if (name == "toString" && target is null or bool or double or string or Avm1Undefined)
+            return new Avm1Lookup(true, toAvmString(target));
+        if (target is string text && name == "charAt")
+        {
+            var index = arguments.Count > 0 ? (int)toNumber(arguments[0]) : 0;
+            return new Avm1Lookup(
+                true,
+                (uint)index < (uint)text.Length ? text[index].ToString() : string.Empty);
+        }
+        if (target is string codeText && name == "charCodeAt")
+        {
+            var index = arguments.Count > 0 ? (int)toNumber(arguments[0]) : 0;
+            return new Avm1Lookup(
+                true,
+                (uint)index < (uint)codeText.Length ? (double)codeText[index] : double.NaN);
+        }
+        if (target is Avm1ArrayObject array && name == "push")
+        {
+            var lengthLookup = context.GetMember(array, "length");
+            var length = lengthLookup.Found ? toNumber(lengthLookup.Value) : 0;
+            if (!double.IsFinite(length)
+                || length < 0
+                || length != Math.Truncate(length)
+                || length > _limits.MaxStackValues - arguments.Count)
             {
-                if (parentContext is null)
-                    writeMember(target, name, value);
-                else
-                    parentContext.SetMember(target, name, value);
-            },
-            (name, arguments) =>
+                return new Avm1Lookup(true, double.NaN);
+            }
+
+            var start = (int)length;
+            for (var index = 0; index < arguments.Count; index++)
+                context.SetMember(array, (start + index).ToString(System.Globalization.CultureInfo.InvariantCulture), arguments[index]);
+            var newLength = (double)(start + arguments.Count);
+            context.SetMember(array, "length", newLength);
+            return new Avm1Lookup(true, newLength);
+        }
+        if (target is Avm1ArrayObject listArray && name is "pop" or "shift" or "join")
+        {
+            var lengthLookup = context.GetMember(listArray, "length");
+            var length = lengthLookup.Found ? toNumber(lengthLookup.Value) : 0;
+            var count = double.IsFinite(length) && length > 0 ? (int)length : 0;
+            string key(int index) => index.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            if (name == "join")
             {
-                var candidate = context!.GetVariable(name);
-                if (candidate.Found && candidate.Value is Avm1FunctionValue function)
-                    return invokeFunction(instance, function, instance, arguments, context);
-                if (candidate.Found && candidate.Value is Avm1MethodWrapper wrapper)
-                    return wrapper.Invoke(instance, arguments);
-                if (candidate.Found && candidate.Value is Avm1NativeFunction nativeFunction)
-                    return invokeHost(instance, nativeFunction, arguments);
-                if (name == "ASSetPropFlags")
-                    return new Avm1Lookup(true, Avm1Undefined.Instance);
-                // Boolean(x) as a conversion function (attract title polls its stream this way).
-                if (name == "Boolean")
-                    return new Avm1Lookup(true, arguments.Count > 0 && toBoolean(arguments[0]));
+                var separator = arguments.Count > 0 && arguments[0] is not Avm1Undefined ? toAvmString(arguments[0]) : ",";
+                return new Avm1Lookup(true, string.Join(separator, Enumerable.Range(0, count).Select(index =>
+                    context.GetMember(listArray, key(index)) is { Found: true, Value: not (null or Avm1Undefined) } item
+                        ? toAvmString(item.Value) : "")));
+            }
+            if (count == 0)
+                return new Avm1Lookup(true, Avm1Undefined.Instance);
+            object? removed;
+            if (name == "pop")
+                removed = context.GetMember(listArray, key(count - 1)).Value;
+            else
+            {
+                removed = context.GetMember(listArray, key(0)).Value;
+                for (var index = 1; index < count; index++)
+                    context.SetMember(listArray, key(index - 1), context.GetMember(listArray, key(index)).Value);
+            }
+            context.SetMember(listArray, "length", (double)(count - 1));
+            return new Avm1Lookup(true, removed ?? Avm1Undefined.Instance);
+        }
+        if (target is MovieClipLoaderObject loader && name == "addListener"
+            && arguments.Count > 0 && arguments[0] is Avm1Object listener)
+        {
+            loader.Listeners.Add(listener);
+            return new Avm1Lookup(true, true);
+        }
+        if (target is MovieClipLoaderObject clipLoader && name == "loadClip" && arguments.Count >= 2
+            && arguments[0] is string url && arguments[1] is DisplayInstance loadTarget)
+        {
+            if (MovieLoader?.Invoke(url) is not { } loaded)
+            {
+                reportOnce("LUM_AVM_LOADCLIP_UNRESOLVED", instance.CharacterId, instance.Frame,
+                    $"MovieClipLoader.loadClip could not resolve '{url}'.");
+                return new Avm1Lookup(true, false);
+            }
+            loadTarget.LoadedMovie = loaded;
+            _loadedClips.Add(loadTarget);
+            foreach (var each in clipLoader.Listeners)
+                _pendingLoadInits.Add((each, loadTarget));
+            return new Avm1Lookup(true, true);
+        }
+        if (target is DisplayInstance { LoadedMovie: { } loadedMovie } && name.Length != 0
+            && context.GetMember(target, name).Value is not (Avm1FunctionValue or Avm1NativeFunction or Avm1MethodWrapper))
+        {
+            var forwarded = callLoadedMovie(loadedMovie.Player, name, arguments);
+            if (forwarded.Found)
+                return forwarded;
+        }
+        if (target is DisplayInstance depthTarget && name == "getNextHighestDepth")
+        {
+            var nextDepth = context.GetNextHighestDepth(depthTarget, depthTarget.Children.Keys);
+            return new Avm1Lookup(true, (double)nextDepth);
+        }
+        if (target is DisplayInstance depthInstance && name == "getDepth")
+            return new Avm1Lookup(true, (double)depthInstance.Depth);
+        if (target is DisplayInstance swapInstance
+            && name == "swapDepths"
+            && arguments.Count > 0)
+        {
+            var destination = arguments[0] is DisplayInstance other
+                ? other.Depth
+                : tryAvmDepth(arguments[0], out var numericDepth)
+                    ? numericDepth
+                    : long.MinValue;
+            if (destination != long.MinValue)
+                swapDepth(swapInstance, destination);
+            return new Avm1Lookup(true, Avm1Undefined.Instance);
+        }
+        if (target is DisplayInstance removeInstance && name == "removeMovieClip")
+        {
+            scheduleRemoval(context, removeInstance);
+            return new Avm1Lookup(true, Avm1Undefined.Instance);
+        }
+        if (target is DisplayInstance emptyParent
+            && name == "createEmptyMovieClip"
+            && arguments.Count >= 2
+            && arguments[0] is string emptyName
+            && tryAvmDepth(arguments[1], out var emptyDepth))
+        {
+            var empty = new DisplayInstance(uint.MaxValue, emptyParent.HierarchyDepth + 1, emptyParent)
+            {
+                Name = emptyName,
+                Depth = emptyDepth,
+            };
+            context.SetTransientMember(emptyParent, emptyName, empty);
+            context.SetTransientChild(emptyParent, emptyDepth, empty);
+            context.OnCommit(() => placeScriptChild(emptyParent, empty));
+            return new Avm1Lookup(true, empty);
+        }
+        if (target is DisplayInstance attachTarget
+            && name == "attachMovie"
+            && arguments.Count >= 3
+            && arguments[0] is string linkageName
+            && arguments[1] is string instanceName
+            && tryAvmDepth(arguments[2], out var attachDepth))
+        {
+            var exported = _movie.Sprites
+                .Select(sprite => _sprites[sprite.CharacterId])
+                .FirstOrDefault(timeline => timeline.ExportName == linkageName);
+            if (exported.ExportName is null)
+            {
                 reportOnce(
-                    "LUM_AVM_CALL_UNRESOLVED",
+                    "LUM_AVM_ATTACH_EXPORT_NOT_FOUND",
                     instance.CharacterId,
                     instance.Frame,
-                    $"AVM function '{name}' is not registered; undefined was returned.");
-                return default;
-            },
-            (target, name, arguments, instructionOffset) =>
+                    $"MovieClip.attachMovie could not resolve exported symbol '{linkageName}'.");
+                return new Avm1Lookup(true, Avm1Undefined.Instance);
+            }
+
+            var attached = new DisplayInstance(
+                exported.CharacterId,
+                attachTarget.HierarchyDepth + 1,
+                attachTarget)
             {
-                if (ReferenceEquals(target, _externalInterface) && name == "addCallback")
-                {
-                    if (arguments.Count >= 3
-                        && arguments[0] is string callbackName
-                        && arguments[2] is Avm1FunctionValue callbackFunction)
-                    {
-                        context!.OnCommit(() => _callbacks[callbackName] = new CallbackRegistration(
-                            instance,
-                            arguments[1],
-                            callbackFunction));
-                        return new Avm1Lookup(true, true);
-                    }
-                    return new Avm1Lookup(true, false);
-                }
-                if (name == "toString" && target is null or bool or double or string or Avm1Undefined)
-                    return new Avm1Lookup(true, toAvmString(target));
-                if (target is string text && name == "charAt")
-                {
-                    var index = arguments.Count > 0 ? (int)toNumber(arguments[0]) : 0;
-                    return new Avm1Lookup(
-                        true,
-                        (uint)index < (uint)text.Length ? text[index].ToString() : string.Empty);
-                }
-                if (target is string codeText && name == "charCodeAt")
-                {
-                    var index = arguments.Count > 0 ? (int)toNumber(arguments[0]) : 0;
-                    return new Avm1Lookup(
-                        true,
-                        (uint)index < (uint)codeText.Length ? (double)codeText[index] : double.NaN);
-                }
-                if (target is Avm1ArrayObject array && name == "push")
-                {
-                    var lengthLookup = context!.GetMember(array, "length");
-                    var length = lengthLookup.Found ? toNumber(lengthLookup.Value) : 0;
-                    if (!double.IsFinite(length)
-                        || length < 0
-                        || length != Math.Truncate(length)
-                        || length > _limits.MaxStackValues - arguments.Count)
-                    {
-                        return new Avm1Lookup(true, double.NaN);
-                    }
-
-                    var start = (int)length;
-                    for (var index = 0; index < arguments.Count; index++)
-                        context.SetMember(array, (start + index).ToString(System.Globalization.CultureInfo.InvariantCulture), arguments[index]);
-                    var newLength = (double)(start + arguments.Count);
-                    context.SetMember(array, "length", newLength);
-                    return new Avm1Lookup(true, newLength);
-                }
-                if (target is Avm1ArrayObject listArray && name is "pop" or "shift" or "join")
-                {
-                    var lengthLookup = context!.GetMember(listArray, "length");
-                    var length = lengthLookup.Found ? toNumber(lengthLookup.Value) : 0;
-                    var count = double.IsFinite(length) && length > 0 ? (int)length : 0;
-                    string key(int index) => index.ToString(System.Globalization.CultureInfo.InvariantCulture);
-                    if (name == "join")
-                    {
-                        var separator = arguments.Count > 0 && arguments[0] is not Avm1Undefined ? toAvmString(arguments[0]) : ",";
-                        return new Avm1Lookup(true, string.Join(separator, Enumerable.Range(0, count).Select(index =>
-                            context.GetMember(listArray, key(index)) is { Found: true, Value: not (null or Avm1Undefined) } item
-                                ? toAvmString(item.Value) : "")));
-                    }
-                    if (count == 0)
-                        return new Avm1Lookup(true, Avm1Undefined.Instance);
-                    object? removed;
-                    if (name == "pop")
-                        removed = context.GetMember(listArray, key(count - 1)).Value;
-                    else
-                    {
-                        removed = context.GetMember(listArray, key(0)).Value;
-                        for (var index = 1; index < count; index++)
-                            context.SetMember(listArray, key(index - 1), context.GetMember(listArray, key(index)).Value);
-                    }
-                    context.SetMember(listArray, "length", (double)(count - 1));
-                    return new Avm1Lookup(true, removed ?? Avm1Undefined.Instance);
-                }
-                if (target is MovieClipLoaderObject loader && name == "addListener"
-                    && arguments.Count > 0 && arguments[0] is Avm1Object listener)
-                {
-                    loader.Listeners.Add(listener);
-                    return new Avm1Lookup(true, true);
-                }
-                if (target is MovieClipLoaderObject clipLoader && name == "loadClip" && arguments.Count >= 2
-                    && arguments[0] is string url && arguments[1] is DisplayInstance loadTarget)
-                {
-                    if (MovieLoader?.Invoke(url) is not { } loaded)
-                    {
-                        reportOnce("LUM_AVM_LOADCLIP_UNRESOLVED", instance.CharacterId, instance.Frame,
-                            $"MovieClipLoader.loadClip could not resolve '{url}'.");
-                        return new Avm1Lookup(true, false);
-                    }
-                    loadTarget.LoadedMovie = loaded;
-                    _loadedClips.Add(loadTarget);
-                    foreach (var each in clipLoader.Listeners)
-                        _pendingLoadInits.Add((each, loadTarget));
-                    return new Avm1Lookup(true, true);
-                }
-                if (target is DisplayInstance { LoadedMovie: { } loadedMovie } && name.Length != 0
-                    && context!.GetMember(target, name).Value is not (Avm1FunctionValue or Avm1NativeFunction or Avm1MethodWrapper))
-                {
-                    var forwarded = callLoadedMovie(loadedMovie.Player, name, arguments);
-                    if (forwarded.Found)
-                        return forwarded;
-                }
-                if (target is DisplayInstance depthTarget && name == "getNextHighestDepth")
-                {
-                    var nextDepth = context!.GetNextHighestDepth(depthTarget, depthTarget.Children.Keys);
-                    return new Avm1Lookup(true, (double)nextDepth);
-                }
-                if (target is DisplayInstance depthInstance && name == "getDepth")
-                    return new Avm1Lookup(true, (double)depthInstance.Depth);
-                if (target is DisplayInstance swapInstance
-                    && name == "swapDepths"
-                    && arguments.Count > 0)
-                {
-                    var destination = arguments[0] is DisplayInstance other
-                        ? other.Depth
-                        : tryAvmDepth(arguments[0], out var numericDepth)
-                            ? numericDepth
-                            : long.MinValue;
-                    if (destination != long.MinValue)
-                        swapDepth(swapInstance, destination);
-                    return new Avm1Lookup(true, Avm1Undefined.Instance);
-                }
-                if (target is DisplayInstance removeInstance && name == "removeMovieClip")
-                {
-                    scheduleRemoval(context!, removeInstance);
-                    return new Avm1Lookup(true, Avm1Undefined.Instance);
-                }
-                if (target is DisplayInstance emptyParent
-                    && name == "createEmptyMovieClip"
-                    && arguments.Count >= 2
-                    && arguments[0] is string emptyName
-                    && tryAvmDepth(arguments[1], out var emptyDepth))
-                {
-                    var empty = new DisplayInstance(uint.MaxValue, emptyParent.HierarchyDepth + 1, emptyParent)
-                    {
-                        Name = emptyName,
-                        Depth = emptyDepth,
-                    };
-                    context!.SetTransientMember(emptyParent, emptyName, empty);
-                    context.SetTransientChild(emptyParent, emptyDepth, empty);
-                    context.OnCommit(() => placeScriptChild(emptyParent, empty));
-                    return new Avm1Lookup(true, empty);
-                }
-                if (target is DisplayInstance attachTarget
-                    && name == "attachMovie"
-                    && arguments.Count >= 3
-                    && arguments[0] is string linkageName
-                    && arguments[1] is string instanceName
-                    && tryAvmDepth(arguments[2], out var attachDepth))
-                {
-                    var exported = _movie.Sprites
-                        .Select(sprite => _sprites[sprite.CharacterId])
-                        .FirstOrDefault(timeline => timeline.ExportName == linkageName);
-                    if (exported.ExportName is null)
-                    {
-                        reportOnce(
-                            "LUM_AVM_ATTACH_EXPORT_NOT_FOUND",
-                            instance.CharacterId,
-                            instance.Frame,
-                            $"MovieClip.attachMovie could not resolve exported symbol '{linkageName}'.");
-                        return new Avm1Lookup(true, Avm1Undefined.Instance);
-                    }
-
-                    var attached = new DisplayInstance(
-                        exported.CharacterId,
-                        attachTarget.HierarchyDepth + 1,
-                        attachTarget)
-                    {
-                        Name = instanceName,
-                        Depth = attachDepth,
-                    };
-                    if (arguments.Count >= 4 && arguments[3] is Avm1Object initialValues)
-                    {
-                        foreach (var (propertyName, propertyValue) in initialValues.Properties)
-                            writeMember(attached, propertyName, propertyValue);
-                    }
-                    enterFrame(attached, 0, queueActions: true);
-                    if (_classes.TryGetValue(linkageName, out var attachedClass))
-                        constructInstance(attached, attachedClass);
-                    context!.SetTransientMember(attachTarget, instanceName, attached);
-                    context.SetTransientChild(attachTarget, attachDepth, attached);
-                    context.OnCommit(() => placeScriptChild(attachTarget, attached));
-                    return new Avm1Lookup(true, attached);
-                }
-                if (target is DisplayInstance targetInstance && name is "play" or "stop")
-                {
-                    if (ReferenceEquals(targetInstance, instance))
-                        context!.PendingPlayback = name == "play";
-                    targetInstance.Playing = name == "play";
-                    return new Avm1Lookup(true, Avm1Undefined.Instance);
-                }
-                if (target is DisplayInstance jumpTarget
-                    && name is "gotoAndPlay" or "gotoAndStop"
-                    && arguments.Count > 0)
-                {
-                    if (tryResolveTimelineFrame(jumpTarget, arguments[0], out var targetFrame))
-                    {
-                        if (ReferenceEquals(jumpTarget, instance))
-                            context!.PendingPlayback = name == "gotoAndPlay";
-                        jumpInstance(jumpTarget, targetFrame, name == "gotoAndPlay");
-                    }
-                    else
-                        reportOnce(
-                            "LUM_AVM_GOTO_INVALID",
-                            instance.CharacterId,
-                            instance.Frame,
-                            $"Movie clip method '{name}' on character {jumpTarget.CharacterId} "
-                            + $"instance '{jumpTarget.Name}' could not resolve target '{toAvmString(arguments[0])}'; "
-                            + $"available labels: {string.Join(", ", _sprites[jumpTarget.CharacterId].Labels.Keys.Order(StringComparer.Ordinal))}.");
-                    return new Avm1Lookup(true, Avm1Undefined.Instance);
-                }
-                if (name.Length == 0 && target is Avm1Object)
-                    return new Avm1Lookup(true, Avm1Undefined.Instance);
-                if (name == "registerClass"
-                    && ReferenceEquals(target, _globals["Object"])
-                    && arguments.Count >= 2
-                    && arguments[0] is string exportName
-                    && arguments[1] is Avm1FunctionValue registeredClass)
-                {
-                    context!.OnCommit(() => registerClass(exportName, registeredClass));
-                    return new Avm1Lookup(true, true);
-                }
-                var receiver = target is Avm1SuperValue super ? super.ThisValue : target;
-                var candidate = name.Length == 0
-                    ? target is Avm1SuperValue superTarget
-                        ? superTarget.Level?.GetProperty("__constructor__") ?? default
-                        : new Avm1Lookup(target is Avm1FunctionValue, target)
-                    : context!.GetMember(target, name);
-                if (candidate.Found && candidate.Value is Avm1FunctionValue function)
-                    return invokeFunction(instance, function, receiver, arguments, context);
-                if (candidate.Found && candidate.Value is Avm1MethodWrapper wrapper)
-                    return wrapper.Invoke(receiver, arguments);
-                if (candidate.Found && candidate.Value is Avm1NativeFunction nativeFunction)
-                    return invokeHost(instance, nativeFunction, arguments);
-                if (target is Avm1SuperValue && name.Length == 0)
-                    return new Avm1Lookup(true, Avm1Undefined.Instance);
+                Name = instanceName,
+                Depth = attachDepth,
+            };
+            if (arguments.Count >= 4 && arguments[3] is Avm1Object initialValues)
+            {
+                foreach (var (propertyName, propertyValue) in initialValues.Properties)
+                    writeMember(attached, propertyName, propertyValue);
+            }
+            enterFrame(attached, 0, queueActions: true);
+            if (_classes.TryGetValue(linkageName, out var attachedClass))
+                constructInstance(attached, attachedClass);
+            context.SetTransientMember(attachTarget, instanceName, attached);
+            context.SetTransientChild(attachTarget, attachDepth, attached);
+            context.OnCommit(() => placeScriptChild(attachTarget, attached));
+            return new Avm1Lookup(true, attached);
+        }
+        if (target is DisplayInstance targetInstance && name is "play" or "stop")
+        {
+            if (ReferenceEquals(targetInstance, instance))
+                context.PendingPlayback = name == "play";
+            targetInstance.Playing = name == "play";
+            return new Avm1Lookup(true, Avm1Undefined.Instance);
+        }
+        if (target is DisplayInstance jumpTarget
+            && name is "gotoAndPlay" or "gotoAndStop"
+            && arguments.Count > 0)
+        {
+            if (tryResolveTimelineFrame(jumpTarget, arguments[0], out var targetFrame))
+            {
+                if (ReferenceEquals(jumpTarget, instance))
+                    context.PendingPlayback = name == "gotoAndPlay";
+                jumpInstance(jumpTarget, targetFrame, name == "gotoAndPlay");
+            }
+            else
                 reportOnce(
-                    "LUM_AVM_METHOD_UNRESOLVED",
+                    "LUM_AVM_GOTO_INVALID",
                     instance.CharacterId,
                     instance.Frame,
-                    $"AVM method '{name}' at action offset 0x{instructionOffset:X} is not registered on {describeAvmType(target)}; undefined was returned.");
+                    $"Movie clip method '{name}' on character {jumpTarget.CharacterId} "
+                    + $"instance '{jumpTarget.Name}' could not resolve target '{toAvmString(arguments[0])}'; "
+                    + $"available labels: {string.Join(", ", _sprites[jumpTarget.CharacterId].Labels.Keys.Order(StringComparer.Ordinal))}.");
+            return new Avm1Lookup(true, Avm1Undefined.Instance);
+        }
+        if (name.Length == 0 && target is Avm1Object)
+            return new Avm1Lookup(true, Avm1Undefined.Instance);
+        if (name == "registerClass"
+            && ReferenceEquals(target, _globals["Object"])
+            && arguments.Count >= 2
+            && arguments[0] is string exportName
+            && arguments[1] is Avm1FunctionValue registeredClass)
+        {
+            context.OnCommit(() => registerClass(exportName, registeredClass));
+            return new Avm1Lookup(true, true);
+        }
+        var receiver = target is Avm1SuperValue super ? super.ThisValue : target;
+        var candidate = name.Length == 0
+            ? target is Avm1SuperValue superTarget
+                ? superTarget.Level?.GetProperty("__constructor__") ?? default
+                : new Avm1Lookup(target is Avm1FunctionValue, target)
+            : context.GetMember(target, name);
+        if (candidate.Found && candidate.Value is Avm1FunctionValue function)
+            return invokeFunction(instance, function, receiver, arguments, context);
+        if (candidate.Found && candidate.Value is Avm1MethodWrapper wrapper)
+            return wrapper.Invoke(receiver, arguments);
+        if (candidate.Found && candidate.Value is Avm1NativeFunction nativeFunction)
+            return invokeHost(instance, nativeFunction, arguments);
+        if (target is Avm1SuperValue && name.Length == 0)
+            return new Avm1Lookup(true, Avm1Undefined.Instance);
+        reportOnce(
+            "LUM_AVM_METHOD_UNRESOLVED",
+            instance.CharacterId,
+            instance.Frame,
+            $"AVM method '{name}' at action offset 0x{instructionOffset:X} is not registered on {describeAvmType(target)}; undefined was returned.");
+        return default;
+    }
+
+    Avm1Lookup IAvm1Host.ConstructObject(Avm1ExecutionContext context, string name, IReadOnlyList<object?> arguments)
+    {
+        var instance = (DisplayInstance)context.Owner;
+        var candidate = context.GetVariable(name);
+        Avm1Object value;
+        if (name == "Array")
+        {
+            if (arguments.Count == 1
+                && toNumber(arguments[0]) is var requestedLength
+                && double.IsFinite(requestedLength)
+                && requestedLength >= 0
+                && requestedLength == Math.Truncate(requestedLength)
+                && requestedLength <= _limits.MaxStackValues)
+            {
+                value = new Avm1ArrayObject(
+                    Enumerable.Repeat<object?>(Avm1Undefined.Instance, (int)requestedLength).ToArray());
+            }
+            else
+                value = new Avm1ArrayObject(arguments);
+        }
+        else if (candidate.Value is MovieClipLoaderConstructor)
+            return new Avm1Lookup(true, new MovieClipLoaderObject());
+        else
+            value = new Avm1Object();
+        value.Properties["__constructor__"] = name;
+        value.Properties["__arguments__"] = new Avm1ArrayObject(arguments);
+        if (candidate.Found && candidate.Value is Avm1FunctionValue constructor)
+        {
+            value.Prototype = constructor.GetProperty("prototype").Value as Avm1Object;
+            if (!invokeFunction(instance, constructor, value, arguments, context).Found)
                 return default;
-            },
-            (name, arguments) =>
+        }
+        return new Avm1Lookup(true, value);
+    }
+
+    void IAvm1Host.GotoLabel(Avm1ExecutionContext context, string label)
+    {
+        var instance = (DisplayInstance)context.Owner;
+        var timeline = _sprites[instance.CharacterId];
+        if (timeline.Labels.TryGetValue(label, out var frame))
+            jumpInstance(instance, frame, context.PendingPlayback ?? instance.Playing);
+        else
+            reportOnce(
+                "LUM_AVM_GOTO_INVALID",
+                instance.CharacterId,
+                instance.Frame,
+                $"Timeline action could not resolve label '{label}'.");
+    }
+
+    Avm1Lookup IAvm1Host.CloneSprite(Avm1ExecutionContext context, object? source, string name, int depth)
+    {
+        if (source is not DisplayInstance sourceInstance
+            || sourceInstance.Parent is not DisplayInstance parent
+            || depth < 0)
+            return default;
+        var clone = cloneInstance(sourceInstance, parent, name);
+        clone.Depth = depth;
+        context.SetTransientMember(parent, name, clone);
+        context.SetTransientChild(parent, depth, clone);
+        context.OnCommit(() =>
+        {
+            var targetDepth = (long)depth;
+            if (parent.Children.TryGetValue(targetDepth, out var replaced))
+                replaced.Removed = true;
+            parent.Children[targetDepth] = clone;
+        });
+        return new Avm1Lookup(true, clone);
+    }
+
+    void IAvm1Host.RemoveSprite(Avm1ExecutionContext context, object? target)
+    {
+        if (target is not DisplayInstance targetInstance
+            || targetInstance.Parent is null)
+            return;
+        scheduleRemoval(context, targetInstance);
+    }
+
+    void IAvm1Host.GotoFrame(Avm1ExecutionContext context, object? value, bool play, int bias)
+    {
+        var instance = (DisplayInstance)context.Owner;
+        var target = instance;
+        if (value is string pathAndFrame && pathAndFrame.LastIndexOf(':') is var separator && separator >= 0)
+        {
+            var path = pathAndFrame[..separator];
+            target = path.StartsWith('/') ? _root : instance;
+            foreach (var part in path.Split('/', StringSplitOptions.RemoveEmptyEntries))
             {
-                var candidate = context!.GetVariable(name);
-                Avm1Object value;
-                if (name == "Array")
-                {
-                    if (arguments.Count == 1
-                        && toNumber(arguments[0]) is var requestedLength
-                        && double.IsFinite(requestedLength)
-                        && requestedLength >= 0
-                        && requestedLength == Math.Truncate(requestedLength)
-                        && requestedLength <= _limits.MaxStackValues)
-                    {
-                        value = new Avm1ArrayObject(
-                            Enumerable.Repeat<object?>(Avm1Undefined.Instance, (int)requestedLength).ToArray());
-                    }
-                    else
-                        value = new Avm1ArrayObject(arguments);
-                }
-                else if (candidate.Value is MovieClipLoaderConstructor)
-                    return new Avm1Lookup(true, new MovieClipLoaderObject());
-                else
-                    value = new Avm1Object();
-                value.Properties["__constructor__"] = name;
-                value.Properties["__arguments__"] = new Avm1ArrayObject(arguments);
-                if (candidate.Found && candidate.Value is Avm1FunctionValue constructor)
-                {
-                    value.Prototype = constructor.GetProperty("prototype").Value as Avm1Object;
-                    if (!invokeFunction(instance, constructor, value, arguments, context).Found)
-                        return default;
-                }
-                return new Avm1Lookup(true, value);
-            },
-            label =>
-            {
-                var timeline = _sprites[instance.CharacterId];
-                if (timeline.Labels.TryGetValue(label, out var frame))
-                    jumpInstance(instance, frame, context!.PendingPlayback ?? instance.Playing);
-                else
-                    reportOnce(
-                        "LUM_AVM_GOTO_INVALID",
-                        instance.CharacterId,
-                        instance.Frame,
-                        $"Timeline action could not resolve label '{label}'.");
-            },
-            (source, name, depth) =>
-            {
-                if (source is not DisplayInstance sourceInstance
-                    || sourceInstance.Parent is not DisplayInstance parent
-                    || depth < 0)
-                    return default;
-                var clone = cloneInstance(sourceInstance, parent, name);
-                clone.Depth = depth;
-                context!.SetTransientMember(parent, name, clone);
-                context.SetTransientChild(parent, depth, clone);
-                context!.OnCommit(() =>
-                {
-                    var targetDepth = (long)depth;
-                    if (parent.Children.TryGetValue(targetDepth, out var replaced))
-                        replaced.Removed = true;
-                    parent.Children[targetDepth] = clone;
-                });
-                return new Avm1Lookup(true, clone);
-            },
-            target =>
-            {
-                if (target is not DisplayInstance targetInstance
-                    || targetInstance.Parent is null)
+                target = part is ".." or "_parent" ? target?.Parent
+                    : target?.Children.Values.FirstOrDefault(child => !child.Removed && child.Name == part);
+                if (target is null)
                     return;
-                scheduleRemoval(context!, targetInstance);
-            },
-            lexicalScope,
-            timelineTarget,
-            parentContext,
-            parentContext is null ? null : parentContext.OnCommit,
-            (value, play, bias) =>
-            {
-                var target = instance;
-                if (value is string pathAndFrame && pathAndFrame.LastIndexOf(':') is var separator && separator >= 0)
-                {
-                    var path = pathAndFrame[..separator];
-                    target = path.StartsWith('/') ? _root : instance;
-                    foreach (var part in path.Split('/', StringSplitOptions.RemoveEmptyEntries))
-                    {
-                        target = part is ".." or "_parent" ? target?.Parent
-                            : target?.Children.Values.FirstOrDefault(child => !child.Removed && child.Name == part);
-                        if (target is null)
-                            return;
-                    }
-                    value = pathAndFrame[(separator + 1)..];
-                }
-                if (_sprites.TryGetValue(target.CharacterId, out var targetTimeline)
-                    && tryResolveTimelineFrame(target, value, out var frame)
-                    && frame + bias < targetTimeline.Frames.Length)
-                {
-                    if (ReferenceEquals(target, instance))
-                        context!.PendingPlayback = play;
-                    jumpInstance(target, frame + bias, play);
-                }
-            },
-            (command, argument) => HostCommand?.Invoke(command, argument),
-            (target, name, arguments) =>
-            {
-                var candidate = string.IsNullOrEmpty(name) ? new Avm1Lookup(true, target) : context!.GetMember(target, name);
-                if (candidate.Value is ColorTransformConstructor)
-                    return new Avm1Lookup(true, createColorTransform(arguments));
-                if (candidate.Value is not Avm1FunctionValue constructor)
-                {
-                    reportOnce("LUM_AVM_CONSTRUCTOR_UNRESOLVED", instance.CharacterId, instance.Frame,
-                        $"AVM constructor '{name}' is not registered.");
-                    return default;
-                }
-                var value = new Avm1Object { Prototype = constructor.GetProperty("prototype").Value as Avm1Object };
-                value.Properties["__constructor__"] = constructor;
-                return invokeFunction(instance, constructor, value, arguments, context).Found
-                    ? new Avm1Lookup(true, value) : default;
-            });
-        return context;
+            }
+            value = pathAndFrame[(separator + 1)..];
+        }
+        if (_sprites.TryGetValue(target.CharacterId, out var targetTimeline)
+            && tryResolveTimelineFrame(target, value, out var frame)
+            && frame + bias < targetTimeline.Frames.Length)
+        {
+            if (ReferenceEquals(target, instance))
+                context.PendingPlayback = play;
+            jumpInstance(target, frame + bias, play);
+        }
+    }
+
+    void IAvm1Host.HostCommand(Avm1ExecutionContext context, string command, string argument)
+    {
+        HostCommand?.Invoke(command, argument);
+    }
+
+    Avm1Lookup IAvm1Host.ConstructMethod(Avm1ExecutionContext context, object? target, string name, IReadOnlyList<object?> arguments)
+    {
+        var instance = (DisplayInstance)context.Owner;
+        var candidate = string.IsNullOrEmpty(name) ? new Avm1Lookup(true, target) : context.GetMember(target, name);
+        if (candidate.Value is ColorTransformConstructor)
+            return new Avm1Lookup(true, createColorTransform(arguments));
+        if (candidate.Value is not Avm1FunctionValue constructor)
+        {
+            reportOnce("LUM_AVM_CONSTRUCTOR_UNRESOLVED", instance.CharacterId, instance.Frame,
+                $"AVM constructor '{name}' is not registered.");
+            return default;
+        }
+        var value = new Avm1Object { Prototype = constructor.GetProperty("prototype").Value as Avm1Object };
+        value.Properties["__constructor__"] = constructor;
+        return invokeFunction(instance, constructor, value, arguments, context).Found
+            ? new Avm1Lookup(true, value) : default;
     }
 
     private static void placeScriptChild(DisplayInstance parent, DisplayInstance child)

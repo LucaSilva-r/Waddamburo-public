@@ -1099,7 +1099,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         // Each spine is one of the 13 recycled boards; its own folder names it (scoped native fill).
         for (var board = 0; board < Boards.Length; board++)
         {
-            if (_player.ReadScriptValue($"_global.CppConnection.resource.musicboardList.{board}.musicInfo.genreIndex")
+            if (_player.ReadScriptValue(BoardGenrePaths[board])
                     is not double shown || (int)shown == _boardFolders[board])
                 continue;
             _boardFolders[board] = (int)shown;
@@ -1127,6 +1127,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         "musicBoard_right4_", "musicBoard_right5_", "musicBoard_right6_",
     ];
     private readonly int[] _boardFolders = [.. Enumerable.Repeat(-1, 13)];
+    // Read every tick: built once.
+    private static readonly string[] BoardGenrePaths = [.. Enumerable.Range(0, 13).Select(static board =>
+        string.Create(System.Globalization.CultureInfo.InvariantCulture, $"_global.CppConnection.resource.musicboardList.{board}.musicInfo.genreIndex"))];
     private int _polledCursor = -1;
 
     private LumenHostValue notifyGenreFolder(LumenHostCall call)
