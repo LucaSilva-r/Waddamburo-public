@@ -23,6 +23,8 @@ public sealed class WaddamburoActivity : SDLActivity
 
     protected override string[] GetLibraries() => ["SDL3"];
 
+    protected override SDLSurface CreateSDLSurface(Context? context) => new GameSurface(context);
+
     protected override void OnCreate(Bundle? savedInstanceState)
     {
         // The default current directory is '/', which differs between devices: use the app's own.

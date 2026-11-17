@@ -28,6 +28,18 @@ public sealed unsafe partial class SdlApplication : IDisposable
     /// <summary>When each <see cref="TouchDrum.Hit"/> code was last touched (SDL nanoseconds), for the drum's flash.</summary>
     public ulong[] TouchHits { get; } = new ulong[TouchDrum.Back + 1];
 
+    /// <summary>
+    /// Android's UI thread, before the window's surface is destroyed (the app goes to the background): stops rendering
+    /// and waits for the frames in flight. The game renders again once SDL reports the app back in the foreground.
+    /// </summary>
+    public static void SurfaceDestroying() => BgfxSupport.SurfaceDestroying();
+
+    private static int s_surfaceReady;
+
+    /// <summary>Android's UI thread, once a (new) surface is ready: the game thread renders again, onto it. (SDL's
+    /// DID_ENTER_FOREGROUND never reached the event queue, which left the screen black.)</summary>
+    public static void SurfaceReady() => Interlocked.Exchange(ref s_surfaceReady, 1);
+
     /// <summary>SDL's clock (nanoseconds since start), the time base of <see cref="TouchHits"/>.</summary>
     public static ulong TicksNs => SDL_GetTicksNS();
     private readonly (SDL_JoystickID Id, IntPtr Pad)[] _pads = new (SDL_JoystickID, IntPtr)[MaximumPads];
@@ -899,6 +911,11 @@ public sealed unsafe partial class SdlApplication : IDisposable
         _quitRequested = false;
         while (running && !_quitRequested && (frameLimit is null || renderedFrames < frameLimit))
         {
+            if (Interlocked.Exchange(ref s_surfaceReady, 0) == 1)
+            {
+                BgfxSupport.SurfaceReturned();
+                _renderer!.SurfaceLost();
+            }
             while (_injected.TryDequeue(out var injected))
                 pendingPresses.Add(new SdlKeyPress(injected, TimeSpan.FromTicks(checked((long)(SDL_GetTicksNS() / 100)))));
             var performanceActive = performanceVisible?.Invoke() == true;
@@ -1021,8 +1038,6 @@ public sealed unsafe partial class SdlApplication : IDisposable
                     else if (!currentEvent.key.repeat)
                         press(input, currentEvent.key.timestamp);
                 }
-                else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_DID_ENTER_FOREGROUND)
-                    _renderer!.SurfaceLost(); // Android destroyed the surface while in the background
                 else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_FINGER_DOWN)
                 {
                     TouchActive = true;

@@ -226,8 +226,40 @@ namespace Waddamburo.Platform.Sdl.Rendering
         public static void Frame()
         {
             lock (s_pendingLock)
+            {
+                if (s_surfaceGone)
+                    return; // the window is gone (Android, in the background): nothing may render
                 s_pendingFrames++;
+            }
             _ = bgfx.frame(0);
+        }
+
+        private static bool s_surfaceGone;
+
+        /// <summary>
+        /// Android is about to destroy the window's surface (its UI thread, before it does): no frame is submitted from
+        /// now on, and this returns once the render thread has finished the ones it had (at most a second). A frame drawn
+        /// into a destroyed surface hung the GPU (Adreno), and Android killed the game.
+        /// </summary>
+        public static void SurfaceDestroying()
+        {
+            lock (s_pendingLock)
+                s_surfaceGone = true;
+            var deadline = Environment.TickCount64 + 1000;
+            while (Environment.TickCount64 < deadline)
+            {
+                lock (s_pendingLock)
+                    if (s_pendingFrames == 0)
+                        return;
+                Thread.Sleep(1);
+            }
+        }
+
+        /// <summary>The surface is back: frames go out again (the caller resets bgfx onto it).</summary>
+        public static void SurfaceReturned()
+        {
+            lock (s_pendingLock)
+                s_surfaceGone = false;
         }
 
         /// <summary>
@@ -240,7 +272,8 @@ namespace Waddamburo.Platform.Sdl.Rendering
             get
             {
                 lock (s_pendingLock)
-                    return s_pendingFrames <= ((ResetFlags & (uint)bgfx.ResetFlags.Vsync) != 0 ? MaxFrameLatency - 1 : 1);
+                    return !s_surfaceGone
+                        && s_pendingFrames <= ((ResetFlags & (uint)bgfx.ResetFlags.Vsync) != 0 ? MaxFrameLatency - 1 : 1);
             }
         }
 
