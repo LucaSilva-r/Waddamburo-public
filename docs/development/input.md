@@ -50,9 +50,11 @@ The drum navigates every menu (rims move, centre picks), and so do the usual con
   Left/Up and Right/Down are the rims, Enter the centre, of player 1's drum (player 2's when they
   play alone). The Escape menu reads the arrows and Enter itself.
 - Controllers, `pad_menus = gamepad` (the default): outside a song and in the Escape menu
-  (`SdlApplication.MenuInput`), the D-pad is the rims, the bottom button the centre, and the right
-  button or Start is Escape; `pad1` drives player 1's drum and `pad2` player 2's. The bound pads
-  count on the gameplay lane only.
+  (`SdlApplication.MenuInput`), the D-pad is the rims, the bottom button the centre, Start is Escape
+  (the menu) and the right button goes back out of an overlay (settings, search, scores, an online room:
+  `SdlApplication.OverlayOpen`), nothing on a game screen; `pad1` drives player 1's drum and `pad2`
+  player 2's. The bound pads count on the gameplay lane only. On Android a controller's unhandled right
+  button also arrives as the system Back key: while a controller is connected the system Back is ignored.
 - `pad_menus = drum` (In Menus: Drum on the Controller page): for a drum that shows up as a
   controller, whose buttons are its pads: the bindings apply everywhere.
 

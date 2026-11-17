@@ -1768,8 +1768,28 @@ internal sealed class GameShell : IDisposable
             top.Add(Painter.Text(Strings.T("song_select.no_music"), 640, bannerY + 13, 508, 22));
         }
         top.AddRange(_performance.Quads());
-        if (Application.TouchActive && Arcade.TouchDrum)
-            top.AddRange(TouchDrumOverlay.Quads(Painter, Application.TouchHits, SdlApplication.TicksNs));
+        // Touch screens: the menu's buttons while an overlay that takes the controls is open (settings, pause, search,
+        // scores, an online room, player setup), else the drum and, in Song Select, the search button. The back button
+        // always: touch_drum (auto: until a controller or keys play; off) governs the drum alone, so a player without a
+        // controller still reaches every menu.
+        Application.TouchDrumEnabled = Arcade.TouchDrum != TouchDrumMode.Off;
+        Application.OverlayOpen = HomeMenuOpen || _service is { IsOpen: true } || _playerSetup is { IsOpen: true }
+            || _inputOverlays.Any(static overlay => overlay.IsOpen);
+        Application.TouchSearch = !Application.OverlayOpen && Active.Id == FlowScenes.SongSelect;
+        Application.TouchKeyboard = PlatformInfo.IsMobile && _search.IsOpen;
+        if (PlatformInfo.IsMobile || Application.TouchActive)
+        {
+            var (hits, now) = (Application.TouchHits, SdlApplication.TicksNs);
+            if (Application.OverlayOpen)
+                top.AddRange(TouchDrumOverlay.MenuQuads(Painter, hits, now));
+            if (Application.TouchKeyboard)
+                top.Add(TouchDrumOverlay.KeyboardQuad(Painter, hits, now));
+            else if (Arcade.TouchDrum == TouchDrumMode.On || Arcade.TouchDrum == TouchDrumMode.Auto && Application.TouchActive)
+                top.AddRange(TouchDrumOverlay.Quads(Painter, hits, now));
+            if (Application.TouchSearch)
+                top.Add(TouchDrumOverlay.SearchQuad(Painter, hits, now));
+            top.Add(TouchDrumOverlay.BackQuad(Painter, hits, now));
+        }
         if (top.Count == 0)
             return frame;
         return new RenderFrame(frame.ClearColor, frame.Quads.AddRange(top), frame.ContentAspectRatio)

@@ -46,8 +46,12 @@ internal sealed class OverlayMenu(SdlApplication application, string fontPath) :
 {
     public static readonly RenderColor White = new(1, 1, 1, 1), Red = new(0.92f, 0.05f, 0.05f, 1),
         Green = new(0.1f, 0.92f, 0.1f, 1), Yellow = new(0.95f, 0.92f, 0.1f, 1), Cyan = new(0.05f, 0.85f, 0.9f, 1);
-    // Stage units (1280x720): the cabinet's 1080p layout at two thirds.
-    private const float FontSize = 20, Half = 10.6f, RowSpacing = 30, FirstRow = 150;
+    // Stage units (1280x720): the cabinet's 1080p layout at two thirds; a phone's small screen gets it a quarter larger
+    // (wrapped lines take fewer characters to stay on the screen).
+    private static readonly float Zoom = PlatformInfo.IsMobile ? 1.25f : 1;
+    private static readonly float FontSize = 20 * Zoom, Half = 10.6f * Zoom, RowSpacing = 30 * Zoom;
+    private static readonly int Wrap = (int)(100 / Zoom);
+    private const float FirstRow = 150;
     // The cursor's cycle in ticks (measured on the cabinet: 36 frames at 60 Hz), red for the first half.
     private const int BlinkTicks = 36;
 
@@ -230,9 +234,9 @@ internal sealed class OverlayMenu(SdlApplication application, string fontPath) :
             // The message's lines (each wrapped), the title above them, then a window of the choices around the
             // selection (a long list, the public rooms, scrolls with arrows at its ends).
             var lines = page.Body?.Invoke() is { } body
-                ? body.SelectMany(line => wrapped(upper(line.Text), 100).Select(part => (Text: part, line.Colour))).Take(8).ToList()
+                ? body.SelectMany(line => wrapped(upper(line.Text), Wrap).Select(part => (Text: part, line.Colour))).Take(8).ToList()
                 : page.Message?.Invoke() is { } message
-                    ? message.Split('\n').SelectMany(line => wrapped(upper(line), 100)).Take(5).Select(static part => (Text: part, Colour: White)).ToList()
+                    ? message.Split('\n').SelectMany(line => wrapped(upper(line), Wrap)).Take(5).Select(static part => (Text: part, Colour: White)).ToList()
                     : [];
             var titleY = lines.Count > 2 ? 120 : 200f;
             centred(quads, upper(page.Title()), titleY, White);
@@ -262,6 +266,29 @@ internal sealed class OverlayMenu(SdlApplication application, string fontPath) :
             var slots = rows.Length + rows.Skip(1).Count(static row => row.Gap);
             var bottom = rows.Any(static row => row.Hint.Length > 0) ? 560 : 610;
             var spacing = Math.Min(RowSpacing, (bottom - FirstRow) / (float)Math.Max(1, slots - 1));
+            // A phone's larger text can't close up that far: there the page scrolls instead, a window of rows around the
+            // selection (the desktop keeps its cabinet look).
+            var scroll = 0f;
+            var scrolling = Zoom > 1 && spacing < FontSize * 1.2f;
+            if (scrolling)
+            {
+                spacing = FontSize * 1.2f;
+                float at = 0, selectedAt = 0;
+                for (var index = 0; index < rows.Length; index++)
+                {
+                    if (rows[index].Gap && index > 0)
+                        at += spacing;
+                    if (index == selected)
+                        selectedAt = at;
+                    at += spacing;
+                }
+                var window = bottom - FirstRow;
+                scroll = Math.Clamp(selectedAt - window / 2, 0, Math.Max(0, at - spacing - window));
+                if (scroll > 0)
+                    centred(quads, "▲", FirstRow - spacing * 0.8f, White);
+                if (scroll < at - spacing - window)
+                    centred(quads, "▼", bottom + spacing * 0.9f, White);
+            }
             var values = rows.Select(static row => row.Value?.Invoke()).ToArray();
             var (shift, valueX, blockWidth) = page.Fixed ? (0f, (float?)null, float.MaxValue) : block(rows, values);
             if (!page.Fixed)
@@ -273,12 +300,17 @@ internal sealed class OverlayMenu(SdlApplication application, string fontPath) :
                     _placedValueX = Math.Max(_placedValueX, x - shift);
                 (shift, valueX) = (_placedShift, valueX is null ? null : _placedValueX + _placedShift);
             }
-            var y = FirstRow;
+            var y = FirstRow - scroll;
             for (var index = 0; index < rows.Length; index++)
             {
                 var row = rows[index];
                 if (row.Gap && index > 0)
                     y += spacing;
+                if (scrolling && (y < FirstRow - 1 || y > bottom + 1))
+                {
+                    y += spacing;
+                    continue;
+                }
                 // EXIT rows are red (blinking white when selected); cyan rows are information or, as OTHERS, the language.
                 // ponytail: EXIT known by its label; a row flag if a page names its way out otherwise.
                 var exit = row.Label == ExitLabel;
@@ -304,7 +336,7 @@ internal sealed class OverlayMenu(SdlApplication application, string fontPath) :
             // The selected row's hint, in up to two lines.
             if (selected >= 0 && rows[selected].Hint is { Length: > 0 } hint)
             {
-                var lines = wrapped(hint, 100);
+                var lines = wrapped(hint, Wrap);
                 for (var line = 0; line < Math.Min(2, lines.Count); line++)
                     centred(quads, lines[line], 616 + line * 26, White); // a free line under the rows (the EXIT)
             }

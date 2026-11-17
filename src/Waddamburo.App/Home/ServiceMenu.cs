@@ -442,7 +442,7 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
         Page.Drums =>
         [
             new(S("service.player"), 400, () => $"{{{_player + 1}P}}", 640, _ => _player = 1 - _player, () => true),
-            new(S("service.device"), 400, () => $"{{{Devices[_device]}}}", 640, step => _device = wrap(_device, step, 0, 2), () => true),
+            new(S("service.device"), 400, () => $"{{{Devices[_device]}}}", 640, step => _device = wrap(_device, step, 0, PlatformInfo.IsMobile ? 1 : 2), () => true),
             // A drum pad takes up to eight keys: four on its row, the rest on the line under it (kept even when empty,
             // so the page doesn't move as keys come and go).
             .. PadNames.Concat(buttonNames).SelectMany((name, pad) => (Row[])[new Row(name, 400,
@@ -462,6 +462,18 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
                 })}}}", 640,
                 Step: step => set(s => s with { ControllerVibration = (ControllerVibration)wrap((int)s.ControllerVibration, step, 0, 3) }),
                 IsDefault: () => _settings.ControllerVibration == Defaults.ControllerVibration, Gap: true, Hint: S("service.vibration.hint")),
+            // Touch screens: the on-screen drum (and the menus' touch buttons); Auto hides it while a controller plays.
+            .. !PlatformInfo.IsMobile ? (Row[])[] :
+            [
+                new(S("settings.touch_drum"), 400, () => $"{{{S(_settings.TouchDrum switch
+                    {
+                        TouchDrumMode.On => "service.on",
+                        TouchDrumMode.Off => "service.off",
+                        _ => "service.auto",
+                    })}}}", 640,
+                    Step: step => set(s => s with { TouchDrum = (TouchDrumMode)wrap((int)s.TouchDrum, step, 0, 2) }),
+                    IsDefault: () => _settings.TouchDrum == Defaults.TouchDrum, Hint: S("settings.touch_drum.hint")),
+            ],
             new(S("service.io_test"), 400, Enter: () => open(Page.Io)),
             new(S("service.exit"), 400, Gap: true, Enter: _menu.Pop),
         ],

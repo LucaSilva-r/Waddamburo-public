@@ -36,6 +36,9 @@ internal sealed class PlayerSetupController : IDisposable
         };
     }
 
+    /// <summary>The player setup is showing (it takes the controls).</summary>
+    public bool IsOpen => _flow.IsOpen;
+
     /// <summary>
     /// One tick, before the scene: Tab in the entry reopens the setup with the current players (true:
     /// the tick stops there). While open the setup takes the drums: <paramref name="keys"/> comes back empty.

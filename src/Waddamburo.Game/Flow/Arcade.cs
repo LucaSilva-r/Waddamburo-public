@@ -11,6 +11,10 @@ public enum TimingIndicator { Off, GoodBad, Always }
 /// </summary>
 public enum ControllerVibration { Off, BigNotes, AllNotes, EveryHit }
 
+/// <summary>The on-screen drum on touch screens (config.cfg touch_drum): Auto hides it while a controller is connected
+/// or keys are played.</summary>
+public enum TouchDrumMode { Auto, On, Off }
+
 /// <summary>
 /// Cabinet settings (the original's service-menu options plus Waddamburo's own), read from
 /// config.cfg: <c>key = value</c> lines, <c>#</c> comments. The file carries
@@ -191,8 +195,8 @@ public sealed record ArcadeSettings
         p2_left_don = x, pad2:dpad_down, pad2:dpad_right, pad2:left_stick
         p2_right_don = c, pad2:south, pad2:west, pad2:right_stick
         p2_right_ka = v, pad2:east, pad2:right_shoulder, pad2:right_trigger
-        # pad_menus: gamepad = in the menus a controller's D-pad moves, its bottom button picks and its
-        # right button or Start is Escape, and the pads above count in songs only; drum = a drum that
+        # pad_menus: gamepad = in the menus a controller's D-pad moves, its bottom button picks, Start opens
+        # the menu and its right button goes back, and the pads above count in songs only; drum = a drum that
         # shows up as a controller: the pads above everywhere.
         pad_menus = gamepad
         # fast_song_scroll: in song select the list keeps up with quick rim hits and the mouse wheel, and
@@ -468,8 +472,8 @@ public sealed record ArcadeSettings
     /// <summary>In the menus the mouse wheel is the rims (replays: it seeks) and a left click a don.</summary>
     public bool MouseControls { get; init; } = true;
 
-    /// <summary>The on-screen drum on touch screens (shown once a finger touches the screen).</summary>
-    public bool TouchDrum { get; init; } = true;
+    /// <summary>The on-screen drum and the menus' touch buttons on touch screens.</summary>
+    public TouchDrumMode TouchDrum { get; init; } = TouchDrumMode.Auto;
 
     /// <summary>Discord shows what the player is doing (home mode, while Discord runs).</summary>
     public bool DiscordPresence { get; init; } = true;
@@ -952,7 +956,13 @@ public sealed record ArcadeSettings
                 "dev_autoplay" => settings with { DevAutoplay = boolean(value, index) },
                 "dev_no_focus_pause" => settings with { DevNoFocusPause = boolean(value, index) },
                 "mouse_controls" => settings with { MouseControls = boolean(value, index) },
-                "touch_drum" => settings with { TouchDrum = boolean(value, index) },
+                "touch_drum" => settings with { TouchDrum = value.ToLowerInvariant() switch
+                {
+                    "auto" => TouchDrumMode.Auto,
+                    "on" or "true" => TouchDrumMode.On,
+                    "off" or "false" => TouchDrumMode.Off,
+                    _ => throw new InvalidDataException($"{FileName} line {index}: touch_drum is auto, on or off, not '{value}'."),
+                } },
                 "custom_upload_notice_seen" => settings with { CustomUploadNoticeSeen = boolean(value, index) },
                 "upload_custom_songs" => settings with { UploadCustomSongs = boolean(value, index) },
                 "upload_banner" => settings with { UploadBanner = boolean(value, index) },
@@ -1077,7 +1087,7 @@ public sealed record ArcadeSettings
             ["dev_autoplay"] = settings.DevAutoplay ? "true" : "false",
             ["dev_no_focus_pause"] = settings.DevNoFocusPause ? "true" : "false",
             ["mouse_controls"] = settings.MouseControls ? "true" : "false",
-            ["touch_drum"] = settings.TouchDrum ? "true" : "false",
+            ["touch_drum"] = settings.TouchDrum switch { TouchDrumMode.On => "on", TouchDrumMode.Off => "off", _ => "auto" },
             ["custom_upload_notice_seen"] = settings.CustomUploadNoticeSeen ? "true" : "false",
             ["upload_custom_songs"] = settings.UploadCustomSongs ? "true" : "false",
             ["upload_banner"] = settings.UploadBanner ? "true" : "false",

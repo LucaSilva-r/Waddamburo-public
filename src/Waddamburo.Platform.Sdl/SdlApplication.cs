@@ -26,7 +26,21 @@ public sealed unsafe partial class SdlApplication : IDisposable
     public bool TouchActive { get; private set; } = PlatformInfo.IsMobile;
 
     /// <summary>When each <see cref="TouchDrum.Hit"/> code was last touched (SDL nanoseconds), for the drum's flash.</summary>
-    public ulong[] TouchHits { get; } = new ulong[TouchDrum.Back + 1];
+    public ulong[] TouchHits { get; } = new ulong[TouchDrum.Codes];
+
+    /// <summary>Touches play the drum (touch_drum = off: only the back, menu and search buttons answer).</summary>
+    public bool TouchDrumEnabled { get; set; } = true;
+
+    /// <summary>Song select: the search button (Tab) answers too.</summary>
+    public bool TouchSearch { get; set; }
+
+    /// <summary>A text field is open (search): the keyboard button shows or hides the screen keyboard.</summary>
+    public bool TouchKeyboard { get; set; }
+
+    /// <summary>An overlay that takes the controls is open (settings, pause, search, scores, an online room, player
+    /// setup): touches press its buttons (<see cref="TouchDrum.HitMenu"/>), not the drum, and a controller's B closes it.
+    /// </summary>
+    public bool OverlayOpen { get; set; }
 
     /// <summary>
     /// Android's UI thread, before the window's surface is destroyed (the app goes to the background): stops rendering
@@ -81,6 +95,11 @@ public sealed unsafe partial class SdlApplication : IDisposable
             if (!SDL_Init(SDL_InitFlags.SDL_INIT_VIDEO))
                 throw sdlFailure("initialize SDL video");
             _sdlInitialized = true;
+            // A Steam Controller without the Steam client stays in its keyboard-and-mouse mode (B is Escape): then SDL
+            // drives it itself, as a controller. With Steam running, Steam's virtual controller is the one to use
+            // (SDL opening the real one too would play every press twice).
+            if (PlatformInfo.IsMobile || !steamRunning())
+                SDL_SetHint("SDL_JOYSTICK_HIDAPI_STEAM", "1");
             // Controllers are optional: without the subsystem the keyboard still plays.
             if (!SDL_InitSubSystem(SDL_InitFlags.SDL_INIT_GAMEPAD))
                 Console.Error.WriteLine($"Controllers unavailable: {SDL_GetError()}");
@@ -117,6 +136,19 @@ public sealed unsafe partial class SdlApplication : IDisposable
         {
             disposeNativeResources();
             throw;
+        }
+    }
+
+    // ponytail: the client's process by name, checked once at start; Steam started later keeps both controllers.
+    private static bool steamRunning()
+    {
+        try
+        {
+            return System.Diagnostics.Process.GetProcessesByName("steam").Length > 0;
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or PlatformNotSupportedException)
+        {
+            return true; // unknown: leave the controller to Steam
         }
     }
 
@@ -523,6 +555,16 @@ public sealed unsafe partial class SdlApplication : IDisposable
                 SDL_RumbleGamepad((SDL_Gamepad*)_pads[number - 1].Pad, strength(low), strength(high), (uint)duration.TotalMilliseconds);
     }
 
+    // The touch keyboard button: hides the screen keyboard (the list under it shows; typing stays on for a physical
+    // keyboard's keys) or brings it back.
+    private void toggleScreenKeyboard()
+    {
+        if (SDL_ScreenKeyboardShown(_window))
+            SDL_StopTextInput(_window);
+        else if (_textInput)
+            SDL_StartTextInput(_window);
+    }
+
     public void StartTextInput()
     {
         ensureOwnerThread();
@@ -624,9 +666,13 @@ public sealed unsafe partial class SdlApplication : IDisposable
         if (input.Kind is not (SdlInputKind.PadButton or SdlInputKind.PadTrigger))
             return null;
         var button = (SDL_GamepadButton)input.Code;
-        if (input.Kind == SdlInputKind.PadButton
-            && button is SDL_GamepadButton.SDL_GAMEPAD_BUTTON_EAST or SDL_GamepadButton.SDL_GAMEPAD_BUTTON_START)
+        // Start opens the menu; B goes back out of an overlay only (on a game screen Escape opens the settings, which B
+        // did by surprise).
+        if (input.Kind == SdlInputKind.PadButton && (button == SDL_GamepadButton.SDL_GAMEPAD_BUTTON_START
+            || button == SDL_GamepadButton.SDL_GAMEPAD_BUTTON_EAST && OverlayOpen))
             return SdlKeyboardKey.Escape;
+        if (input.Kind == SdlInputKind.PadButton && button == SDL_GamepadButton.SDL_GAMEPAD_BUTTON_EAST)
+            return null;
         if (input.Device == 2)
             return input.Kind != SdlInputKind.PadButton ? null : button switch
             {
@@ -697,7 +743,15 @@ public sealed unsafe partial class SdlApplication : IDisposable
     private int? _soleDrum;
 
     private SdlKeyboardKey? translateInput(SdlInput input) => input.Kind == SdlInputKind.Touch
-        ? input.Code == TouchDrum.Back ? SdlKeyboardKey.Escape : SdlInputBindings.Pads[input.Code]
+        ? input.Code switch
+        {
+            TouchDrum.Back => SdlKeyboardKey.Escape,
+            TouchDrum.Up => SdlKeyboardKey.Up,
+            TouchDrum.Down => SdlKeyboardKey.Down,
+            TouchDrum.Ok => SdlKeyboardKey.Enter,
+            TouchDrum.Search => SdlKeyboardKey.Tab,
+            _ => SdlInputBindings.Pads[input.Code],
+        }
         : _menuInput && PadsAsGamepad && input.Device != 0 ? menuButton(input)
         // In songs a controller is its drum only (its buttons are the keyboard's there).
         : _bindings.Pad(input) ?? (input.Device == 0 ? _bindings.Button(input) : null) ?? input.Kind switch
@@ -764,9 +818,10 @@ public sealed unsafe partial class SdlApplication : IDisposable
         int width, height;
         var stage = _renderer!.StageViewport;
         if (!SDL_GetWindowSizeInPixels(_window, &width, &height) || stage.Width <= 0 || stage.Height <= 0)
-            return TouchDrum.Hit(x, y);
-        return TouchDrum.Hit((x * width - stage.X) / stage.Width, (y * height - stage.Y) / stage.Height,
-            (float)stage.Width / stage.Height);
+            return OverlayOpen ? TouchDrum.HitMenu(x, y, keyboard: TouchKeyboard) : TouchDrum.Hit(x, y, search: TouchSearch);
+        float stageX = (x * width - stage.X) / stage.Width, stageY = (y * height - stage.Y) / stage.Height;
+        var aspect = (float)stage.Width / stage.Height;
+        return OverlayOpen ? TouchDrum.HitMenu(stageX, stageY, aspect, TouchKeyboard) : TouchDrum.Hit(stageX, stageY, aspect, TouchSearch);
     }
 
     private int padNumber(SDL_JoystickID id) => Array.FindIndex(_pads, pad => pad.Pad != IntPtr.Zero && pad.Id == id) + 1;
@@ -790,6 +845,7 @@ public sealed unsafe partial class SdlApplication : IDisposable
         if (free >= 0 && padNumber(which) == 0 && SDL_OpenGamepad(which) is var pad && pad is not null)
         {
             _pads[free] = (which, (IntPtr)pad);
+            TouchActive = false; // a controller to play with: the touch drum gets out of the way (a touch brings it back)
             Console.WriteLine($"Controller pad{free + 1}: {SDL_GetGamepadName(pad)}");
         }
     }
@@ -1036,6 +1092,10 @@ public sealed unsafe partial class SdlApplication : IDisposable
                     or (uint)SDL_EventType.SDL_EVENT_KEY_UP)
                 {
                     var input = new SdlInput(SdlInputKind.Key, (int)currentEvent.key.scancode);
+                    // Android turns a controller's unhandled B into its Back key as well: with a controller connected the
+                    // system Back is ignored (B played a ka and opened the menu at once); Start and the touch Back remain.
+                    if (currentEvent.key.scancode == SDL_Scancode.SDL_SCANCODE_AC_BACK && _pads.Any(static pad => pad.Pad != IntPtr.Zero))
+                        continue;
                     if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_KEY_UP)
                         inputUp(input);
                     else if (!currentEvent.key.repeat)
@@ -1045,6 +1105,15 @@ public sealed unsafe partial class SdlApplication : IDisposable
                 {
                     TouchActive = true;
                     var code = touchCode(currentEvent.tfinger.x, currentEvent.tfinger.y);
+                    // The buttons always answer (a player without a controller must reach the menus); the drum may be off.
+                    if (code < 0 || !OverlayOpen && code < TouchDrum.Back && !TouchDrumEnabled)
+                        continue;
+                    if (code == TouchDrum.Keyboard)
+                    {
+                        TouchHits[code] = currentEvent.tfinger.timestamp;
+                        toggleScreenKeyboard();
+                        continue;
+                    }
                     var slot = 1;
                     while (_fingers.Values.Any(held => held.Device == slot))
                         slot++;
