@@ -47,9 +47,8 @@ internal sealed class GameFolder(Activity activity)
                     {
                         dialog = new AlertDialog.Builder(activity)
                             .SetTitle("Copy the game data")!
-                            .SetMessage("Connect the phone to a PC and copy the contents of Taiko no Tatsujin Green's USRDIR "
-                                + $"folder into:\n\nAndroid/data/{activity.PackageName}/files/{Green}\n\n"
-                                + "The game starts as soon as the files are there.")!
+                            .SetMessage($"From a PC, copy Green's USRDIR contents into Android/data/{activity.PackageName}/files/{Green}. "
+                                + "The game starts once they are there.")!
                             .SetCancelable(false)!
                             .Create();
                         dialog!.Show();
