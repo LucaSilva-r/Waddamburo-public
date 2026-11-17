@@ -37,7 +37,7 @@ public sealed class WaddamburoActivity : SDLActivity
     {
         // Diagnostics: the desktop's WADDAMBURO_* environment variables, as `adb shell am start ... --es env "K=V;K=V"`.
         foreach (var pair in (Intent?.GetStringExtra("env") ?? "").Split(';', StringSplitOptions.RemoveEmptyEntries))
-            if (pair.Split('=', 2) is [var key, var value])
+            if (pair.Split('=', 2) is [var key, var value] && key.StartsWith("WADDAMBURO_", StringComparison.Ordinal))
                 System.Environment.SetEnvironmentVariable(key, value);
         Waddamburo.App.Boot.AppHome = Path.Combine(FilesDir!.AbsolutePath, "waddamburo");
         var game = _gameFolder!.Resolve();

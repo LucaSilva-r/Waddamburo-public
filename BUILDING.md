@@ -147,6 +147,11 @@ The Windows libraries are built with mingw-w64, the same compiler as the release
 
 Run the `cmake --build` line again after changing native code.
 
+### Android
+
+The Android app has its own toolchain (Android SDK and NDK, JDK 21, .NET's Android workload) and build steps: see
+[docs/development/android.md](docs/development/android.md).
+
 ## Release files (`eng/package.sh`)
 
 `eng/package.sh` builds what is published on the

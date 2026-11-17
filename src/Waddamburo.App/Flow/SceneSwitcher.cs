@@ -147,6 +147,9 @@ internal sealed class SceneSwitcher(
         }
     }
 
+    // Mono (an Android build with UseMonoRuntime) lacks some of the GC settings tidyMemory uses.
+    private static readonly bool s_mono = Type.GetType("Mono.RuntimeStructs") is not null;
+
     // The old scene's archives and decoded pixels are large-object garbage the GC neither compacts
     // nor returns on its own, so the heap only grew across songs. The loading frame is still up.
     // Only when there is much to give back: a collection costs 50-90 ms and most switches now free little.
@@ -156,12 +159,13 @@ internal sealed class SceneSwitcher(
     // ponytail: 128 MiB grown since the last clean-up (garbage and all); tune if RSS creeps.
     private void tidyMemory()
     {
-        // Android's runtime (Mono) has no latency modes, no LOH compaction setting and no aggressive collection.
-        var coreClr = !OperatingSystem.IsAndroid();
+        // Mono (an Android build with UseMonoRuntime) has no latency modes, no LOH compaction setting and no aggressive
+        // collection; CoreCLR has them everywhere.
+        var coreClr = !s_mono;
         if (coreClr)
             System.Runtime.GCSettings.LatencyMode = OnLane
                 ? System.Runtime.GCLatencyMode.SustainedLowLatency
-            : System.Runtime.GCLatencyMode.Interactive;
+                : System.Runtime.GCLatencyMode.Interactive;
         if ((!OnLane || covering()) && GC.GetTotalMemory(false) - _liveAfterCollect > 128L << 20)
         {
             if (coreClr)

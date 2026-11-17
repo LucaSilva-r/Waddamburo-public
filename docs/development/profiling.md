@@ -61,6 +61,9 @@ every half-second; the overlay does not upload a new texture for each refresh.
 Repeated movies in one scene report `reused` when the archive buffer came from
 that scene's load scope. `WADDAMBURO_HITCH_TRACE` reports update
 and render portions of frames over 40 ms. Both are diagnostic environment flags.
+`WADDAMBURO_TICK_STATS=1` prints the game logic's average time and allocation per tick every 600 ticks, with the
+scene: the before/after measure for the Lumen runtime (song select was 0.50 ms and 584 KiB per tick before its
+allocation work, 0.26 ms and 85 KiB after, on desktop).
 The final `Profile exit` line runs a full collection to estimate retained managed
 memory after the session.
 Do not commit logs from a user-owned game session to this repository.

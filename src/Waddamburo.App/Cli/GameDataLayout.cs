@@ -38,8 +38,8 @@ internal sealed record GameDataLayout(
         requireDirectory(don, "Don asset root");
         requireDirectory(sound, "sound root");
 
-        // On a phone the game folder is the user's (read through the document picker): Waddamburo's own files go
-        // to the app's private storage instead.
+        // On a phone the game folder is one the player fills (from a PC): Waddamburo's own files go to the app's
+        // private storage instead.
         var stableHome = Boot.AppHome ?? Path.Combine(fullRoot, "waddamburo");
         if (Boot.AppHome is null)
             moveIntoHome(fullRoot, stableHome);
