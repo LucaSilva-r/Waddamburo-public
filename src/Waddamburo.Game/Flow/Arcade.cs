@@ -52,11 +52,6 @@ public sealed record ArcadeSettings
     // Version 14's languages: the system's (Japanese or English), for the menus and the song titles alike.
     private const string LanguagePlaceholder = "{language}", TitleLanguagePlaceholder = "{title_language}";
 
-    private const string AudioBufferPlaceholder = "{audio_buffer_frames}";
-
-    /// <summary>The shared output's default period: phones' audio stacks need a longer one than a PC's.</summary>
-    public static int DefaultAudioBufferFrames => OperatingSystem.IsAndroid() || OperatingSystem.IsIOS() ? 1024 : 256;
-
     /// <summary>Settings added in each version (index = version - 1), as they are appended to older files.</summary>
     private static readonly string[] Additions =
     [
@@ -91,7 +86,7 @@ public sealed record ArcadeSettings
         # input_offset_ms: raise it when your hits are judged late (the drum or keyboard lags).
         input_offset_ms = 0
         # audio_buffer_frames: the shared output's period, applied at start. Lower = less delay; too low crackles.
-        audio_buffer_frames = {audio_buffer_frames}
+        audio_buffer_frames = 256
 
         """,
         """
@@ -591,7 +586,7 @@ public sealed record ArcadeSettings
     public int InputOffsetMs { get; init; }
 
     /// <summary>The shared output's device period requested at start (SDL may choose another).</summary>
-    public int AudioBufferFrames { get; init; } = DefaultAudioBufferFrames;
+    public int AudioBufferFrames { get; init; } = 256;
 
     /// <summary>Shared (SDL) or, on Windows, WASAPI exclusive output.</summary>
     public AudioOutputMode AudioOutput { get; init; }
@@ -765,8 +760,7 @@ public sealed record ArcadeSettings
         """ + placeholders(string.Concat(Additions), "home");
 
     private static string placeholders(string text, string mode) => text.Replace(ModePlaceholder, mode)
-        .Replace(LanguagePlaceholder, SystemLanguage).Replace(TitleLanguagePlaceholder, SystemLanguage == "ja" ? "japanese" : "english")
-        .Replace(AudioBufferPlaceholder, DefaultAudioBufferFrames.ToString(CultureInfo.InvariantCulture));
+        .Replace(LanguagePlaceholder, SystemLanguage).Replace(TitleLanguagePlaceholder, SystemLanguage == "ja" ? "japanese" : "english");
 
     /// <summary>Reads the file, writing the defaults first when it does not exist and upgrading an older one.</summary>
     public static ArcadeSettings LoadOrCreate(string path)
