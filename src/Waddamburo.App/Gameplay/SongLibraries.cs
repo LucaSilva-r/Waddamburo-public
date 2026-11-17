@@ -61,6 +61,31 @@ internal sealed class SongLibraries : IDisposable
     public static SongLibraries Load(string dataRoot, ArcadeSettings arcade, string defaultTjaFolder, Action<int>? percent = null,
         Action? building = null)
     {
+        try
+        {
+            return load(dataRoot, arcade, defaultTjaFolder, percent, building);
+        }
+        catch (EmptyCatalogException)
+        {
+            // The cache's inventories can be from before the songs were there (a phone's copy still running when the
+            // game first started): they are walked again only after a start succeeds. Once, from scratch.
+            var cacheFolder = Path.GetDirectoryName(VgmstreamCli.CacheDirectory)!;
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            foreach (var file in Directory.EnumerateFiles(cacheFolder, "catalog-metadata-v2.db*"))
+            {
+                try { File.Delete(file); }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { }
+            }
+            Console.WriteLine("No songs found with the catalog cache: scanning again without it.");
+            return load(dataRoot, arcade, defaultTjaFolder, percent, building);
+        }
+    }
+
+    private sealed class EmptyCatalogException(string message) : InvalidOperationException(message);
+
+    private static SongLibraries load(string dataRoot, ArcadeSettings arcade, string defaultTjaFolder, Action<int>? percent,
+        Action? building)
+    {
         var tja = arcade.TjaFolder ?? defaultTjaFolder;
         var cacheFolder = Path.GetDirectoryName(VgmstreamCli.CacheDirectory)!;
         // v1's rowid tables were read with a seek per row; v2 starts clean (the cache is disposable).
@@ -106,7 +131,7 @@ internal sealed class SongLibraries : IDisposable
         if (snapshot.Categories.IsEmpty)
         {
             libraries.Dispose();
-            throw new InvalidOperationException(snapshot.Diagnostics.FirstOrDefault(static diagnostic => diagnostic.Severity == CatalogDiagnosticSeverity.Error)?.Message
+            throw new EmptyCatalogException(snapshot.Diagnostics.FirstOrDefault(static diagnostic => diagnostic.Severity == CatalogDiagnosticSeverity.Error)?.Message
                 ?? "No song provider discovered any browsable categories.");
         }
         Console.WriteLine($"Catalog revision {snapshot.Revision}: {snapshot.Categories.Length} categories.");
