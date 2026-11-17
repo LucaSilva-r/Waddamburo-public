@@ -51,6 +51,7 @@ ExternalProject_Add(waddamburo_bgfx_build
   DOWNLOAD_DIR "${CMAKE_SOURCE_DIR}/../out/downloads"
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE
   SOURCE_DIR "${CMAKE_SOURCE_DIR}/../out/source/bgfx.cmake"
+  PATCH_COMMAND "${CMAKE_COMMAND}" -DSOURCE_DIR=<SOURCE_DIR> -P "${CMAKE_CURRENT_SOURCE_DIR}/android-surface.cmake"
   BINARY_DIR "${_bgfx_root}/build"
   CMAKE_ARGS
     ${_toolchain_args}

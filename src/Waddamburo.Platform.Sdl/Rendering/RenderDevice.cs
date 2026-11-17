@@ -288,6 +288,10 @@ internal sealed unsafe class RenderDevice : IDisposable
                 formatDepthStencil = bgfx.TextureFormat.D24S8,
                 depth = BgfxSupport.InvalidTexture,
                 maxFrameLatency = BgfxSupport.MaxFrameLatency,
+                // Android made the window again (back from the background): bgfx's surface moves onto it (patched bgfx).
+                nwh = _surfaceLost && OperatingSystem.IsAndroid()
+                    ? (void*)SDL_GetPointerProperty(SDL_GetWindowProperties(_window), SDL_PROP_WINDOW_ANDROID_WINDOW_POINTER, IntPtr.Zero)
+                    : null,
             };
             // BGFX_RESET_INTERNAL_FORCE: Android's EGL surface is made again on the window (bgfx GlContext::resize).
             bgfx.reset(BgfxSupport.ResetFlags | (_surfaceLost ? 0x80000000u : 0), &swapChain);
