@@ -1,13 +1,14 @@
 using Android.Content;
 using Android.Media;
 using Android.Views;
+using Waddamburo.App.Sync;
 
 namespace Waddamburo.Android;
 
 /// <summary>
 /// The game's folders in its own storage (Android/data/&lt;package&gt;/files: no permission needed, visible from a PC over
 /// USB), set up on every start: Green (the game data), Custom Songs (TJA), and Arcade, Wii, Wii U (one subfolder per
-/// release). Until Green holds the game data the setup screen says how to send it (<see cref="UploadServer"/>) and the
+/// release). Until Green holds the game data the setup screen says how to send it (<see cref="PhoneReceiver"/>) and the
 /// game starts once the copy is complete.
 /// </summary>
 internal sealed class GameFolder(Activity activity)
@@ -18,7 +19,8 @@ internal sealed class GameFolder(Activity activity)
     private static readonly (string Folder, string Note)[] Notes =
     [
         (Green, "Copy the contents of Taiko no Tatsujin Green's USRDIR folder here (the data folder and the rest)."),
-        (CustomSongs, "Put TJA songs here, in folders as you like."),
+        (CustomSongs, "One folder per category (its name is the category's), song folders with their TJA inside."),
+        ("Songs", "Songs other Waddamburos sent (Settings › Receive). The game keeps these: don't edit them."),
         ("Arcade", "Other arcade releases: one folder per release (its USRDIR contents)."),
         ("Wii", "Wii releases: one folder per disc."),
         ("Wii U", "Wii U releases: one folder per release (with its DLC)."),
@@ -45,11 +47,7 @@ internal sealed class GameFolder(Activity activity)
         if (Waddamburo.App.Cli.GreenData.Missing(gameRoot(green)) is [])
             return verified(gameRoot(green));
 
-        using var server = new UploadServer(new Dictionary<string, string>
-        {
-            ["green"] = green,
-            ["songs"] = Path.Combine(Root, CustomSongs),
-        });
+        var server = Server;
         AlertDialog? dialog = null;
         TextView? text = null;
         var startAnyway = 0;
@@ -95,30 +93,41 @@ internal sealed class GameFolder(Activity activity)
         }
     }
 
+    // One for the process (the activity may be created again): the import page stays up while the app runs.
+    private static PhoneReceiver? s_server;
+
+    /// <summary>What a PC sends with (started on first use).</summary>
+    public PhoneReceiver Server => s_server ??= new PhoneReceiver(Root, PhoneReceiver.Targets(Root), DeviceName);
+
+    private static string DeviceName => global::Android.OS.Build.Model ?? "Android";
+
     private string verified(string root)
     {
         File.WriteAllText(VerifiedMarker, root);
         return root;
     }
 
-    private string setupMessage(UploadServer server, int missing)
+    private string setupMessage(PhoneReceiver server, int missing)
     {
-        var addresses = server.Addresses();
         var (files, bytes) = server.Received;
         // USB tethering first: about ten times Wi-Fi's speed on a budget phone (25 against 3 MB/s measured).
-        var send = "1. Connect the phone to a PC with a USB cable and turn on USB tethering (Settings › Hotspot). "
-            + "Wi-Fi works too, much slower.\n"
-            + (addresses.Count == 0 ? "" : $"\n2. On the PC, open:\n{string.Join("\n", addresses)}\n\n");
-        return send
-            + (addresses.Count == 0 ? "\n" : "3. Choose Green's USRDIR folder on that page. If the copy stops, choose it again: it goes on where it stopped.\n\n")
+        return "1. Connect the phone to a PC with a USB cable and turn on USB tethering (Settings › Hotspot). "
+            + "Wi-Fi works too, much slower.\n\n"
+            + "2. On the PC, open Waddamburo: Settings › Send to device. Pick "
+            + $"\"{DeviceName}\" and enter the code\n\n        {server.Code}\n\n"
+            + "3. Leave Green ticked (your other libraries too, if you like). If the copy stops, send again: it goes on where it stopped.\n\n"
             + $"Or copy USRDIR's contents into Android/data/{activity.PackageName}/files/{Green} yourself.\n\n"
             + (files > 0 ? $"Received {files:N0} files ({bytes / 1048576:N0} MB). " : "")
             + $"Missing: {missing:N0} of {Waddamburo.App.Cli.GreenData.FileCount:N0} files. The game starts by itself once they are all here.";
     }
 
-    /// <summary>The release folders inside Arcade, Wii and Wii U (config.cfg's stock_folders tells them apart).</summary>
+    /// <summary>The release folders inside Arcade, Wii and Wii U (config.cfg's stock_folders tells them apart). A Wii U
+    /// import holds the game's folder with its update and DLC beside it (where they are looked for): that one level
+    /// deeper is listed too (an update or DLC folder alone is no disc and is passed over).</summary>
     public IReadOnlyList<string> ReleaseFolders() =>
-        [.. Releases.Select(release => Path.Combine(Root, release)).Where(Directory.Exists).SelectMany(Directory.EnumerateDirectories)];
+        [.. Releases.Select(release => Path.Combine(Root, release)).Where(Directory.Exists).SelectMany(Directory.EnumerateDirectories),
+            .. Directory.Exists(Path.Combine(Root, "Wii U"))
+                ? Directory.EnumerateDirectories(Path.Combine(Root, "Wii U")).SelectMany(Directory.EnumerateDirectories) : []];
 
     // Green itself, or a USRDIR copied in whole.
     private static string gameRoot(string green) =>

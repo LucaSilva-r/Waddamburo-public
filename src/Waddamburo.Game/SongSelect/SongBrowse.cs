@@ -77,14 +77,15 @@ public sealed record SongBrowse(SongGroupMode Group = SongGroupMode.Title, SongS
     /// subtitles, artist, mapper or (game songs) music id, as written or with their kana in romaji (<see cref="Romaji"/>), and every filter holds
     /// (<see cref="Filter"/>: <c>stars&gt;=8</c>, <c>oni&gt;=9</c>, <c>ura&gt;0</c>, <c>bpm&gt;180</c>, <c>length&lt;2:30</c>,
     /// <c>artist=</c>, <c>mapper=</c>, <c>title=</c>, and with <paramref name="crownOf"/> the player's crowns: <c>crown=fc</c>,
-    /// <c>oni=notcleared</c>; <c>source=osu,tja</c>).
+    /// <c>oni=notcleared</c>; <c>source=osu,tja</c>; with <paramref name="categoriesOf"/> the song's folders: <c>category=anime</c>).
     /// Filters and words all have to hold (a comma list in one filter is any of its values).
     /// </summary>
-    public static bool Matches(SongDescriptor song, string query, Func<SongChartDescriptor, Scores.TaikoCrown>? crownOf = null)
+    public static bool Matches(SongDescriptor song, string query, Func<SongChartDescriptor, Scores.TaikoCrown>? crownOf = null,
+        Func<SongDescriptor, IEnumerable<string>>? categoriesOf = null)
     {
         ArgumentNullException.ThrowIfNull(song);
         var tokens = query.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        var filters = tokens.Select(token => (Token: token, Holds: Filter(token, crownOf))).ToArray();
+        var filters = tokens.Select(token => (Token: token, Holds: Filter(token, crownOf, categoriesOf))).ToArray();
         var words = filters.Where(static filter => filter.Holds is null).Select(static filter => filter.Token).ToArray();
         if (tokens.Length == 0 || !filters.All(filter => filter.Holds?.Invoke(song) ?? true))
             return false;
@@ -109,7 +110,8 @@ public sealed record SongBrowse(SongGroupMode Group = SongGroupMode.Title, SongS
     /// (easy, normal, hard, oni, ura) that course's (a song without the course never matches). Length in seconds or m:ss. Crowns (with
     /// <paramref name="crownOf"/>): <c>crown</c> any chart's, a course name that course's; notcleared, cleared, fc, dondaful.
     /// </summary>
-    public static Func<SongDescriptor, bool>? Filter(string token, Func<SongChartDescriptor, Scores.TaikoCrown>? crownOf = null)
+    public static Func<SongDescriptor, bool>? Filter(string token, Func<SongChartDescriptor, Scores.TaikoCrown>? crownOf = null,
+        Func<SongDescriptor, IEnumerable<string>>? categoriesOf = null)
     {
         ArgumentNullException.ThrowIfNull(token);
         var at = token.IndexOfAny(['=', ':', '>', '<']);
@@ -150,6 +152,11 @@ public sealed record SongBrowse(SongGroupMode Group = SongGroupMode.Title, SongS
             "artist" => song => contains(song.Artist),
             "mapper" or "creator" or "charter" => song => contains(song.Creator),
             "title" => song => contains(song.Title.Primary) || contains(song.Title.English) || contains(song.Title.Japanese),
+            // category=anime: a folder the song is in, by (part of) its name; a comma list is any of them.
+            "category" or "genre" or "folder" when categoriesOf is not null && op is "=" or ":" =>
+                song => categoriesOf(song).Any(name => value.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                    .Any(wanted => name.Contains(wanted, StringComparison.OrdinalIgnoreCase)
+                        || Romaji.Fold(Romaji.FromKana(name)).Contains(Romaji.Fold(wanted), StringComparison.Ordinal))),
             // source=osu,tja: any of the listed libraries (osu = lazer and stable).
             "source" or "src" or "library" when op is "=" or ":" && sources(value) is { Count: > 0 } wanted =>
                 song => wanted.Contains(song.Key.Source),

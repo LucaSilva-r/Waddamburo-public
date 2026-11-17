@@ -19,6 +19,11 @@ internal sealed class SongLibraries : IDisposable
 
     private SongLibraries(ISongCatalogProvider[] providers, Action<int>? percent)
     {
+        // Songs other devices sent (Sync.SongStore) join the library of their source, or make one.
+        var received = Boot.ReceivedSongsFolder is { } folder ? Sync.StoredSongsProvider.For(new Sync.SongStore(folder)) : [];
+        providers = [.. providers.Select(provider => received.FirstOrDefault(stored => stored.Source == provider.Source) is { } stored
+                ? new Sync.OverlayCatalogProvider(provider, stored) : provider),
+            .. received.Where(stored => providers.All(provider => provider.Source != stored.Source))];
         Providers = providers;
         _catalog = new GlobalSongCatalog(providers);
         Snapshot = _catalog.RefreshAsync(percent is null ? null : new ScanPercent(providers.Length, percent)).AsTask().GetAwaiter().GetResult();

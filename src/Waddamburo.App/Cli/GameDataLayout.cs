@@ -238,12 +238,21 @@ internal sealed record GameDataLayout(
     public static (int Order, string? Name) ReleaseOf(string dataRoot)
     {
         var sfo = Path.Combine(dataRoot, "..", "..", "PARAM.SFO");
-        if (!File.Exists(sfo) || sfoTitle(File.ReadAllBytes(sfo)) is not { } title
+        return File.Exists(sfo) ? ReleaseOfSfo(File.ReadAllBytes(sfo)) : (-1, null);
+    }
+
+    /// <summary>The release a PARAM.SFO's contents name (see <see cref="ReleaseOf"/>); Green is the last one.</summary>
+    public static (int Order, string? Name) ReleaseOfSfo(byte[] sfo)
+    {
+        if (sfoTitle(sfo) is not { } title
             || System.Text.RegularExpressions.Regex.Match(title, @"\(([A-Z0-9-]+)\)\s*$") is not { Success: true } code
             || Array.FindIndex(Releases, release => release.Code == code.Groups[1].Value) is not (>= 0 and var order))
             return (-1, null);
         return (order, Releases[order].Name);
     }
+
+    /// <summary>The number of releases <see cref="ReleaseOfSfo"/> knows (Green's order is one less).</summary>
+    public static int ReleaseCount => Releases.Length;
 
     // Waddamburo runs Green (S111) only. The game folder (USRDIR's parent) names its release in PARAM.SFO;
     // without one (USRDIR copied on its own) nothing is checked. Downloads often hold an older release

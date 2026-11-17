@@ -56,16 +56,21 @@ No storage permission. The game data and libraries live in the app's own storage
 |---|---|
 | `Green/` | Green's USRDIR contents (or the USRDIR folder itself) |
 | `Custom Songs/` | TJA library (`Boot.TjaFolder`) |
+| `Songs/` | songs other devices sent (`Sync/SongStore`: `songs.json` + `blobs/`) |
 | `Arcade/`, `Wii/`, `Wii U/` | one subfolder per release, added to `stock_folders` (`Boot.StockFolders`) |
 
 Settings, scores and caches go to the app's private files (`Boot.AppHome`). Uninstalling asks whether to keep the data
 (`hasFragileUserData`).
 
 Until `Green/` holds every file of Green's list (`GreenData`, file names from `eng/green-data-list.py`; sizes are not
-compared, language packs change them), the setup screen runs an **upload page** (`UploadServer`, port 8380, a 4-digit
-code in the address): a PC's browser opens it over USB tethering (~25 MB/s on a Redmi 8) or Wi-Fi (~3 MB/s), picks
-USRDIR and sends what the phone lacks, small files batched; a file takes its name only once complete, so a copy resumes.
-**Start anyway** appears once the boot's essentials are in. A complete copy is remembered (`files/green-verified`).
+compared, language packs change them), the setup screen shows the phone's name and a 4-digit code: Waddamburo on a PC
+sends Green to it over USB tethering (~25 MB/s on a Redmi 8) or Wi-Fi (~3 MB/s) through the receiver
+(`Sync/PhoneReceiver`, port 8380, UDP discovery on the same port), only what the phone lacks; a file takes its name only
+once complete, so a copy resumes. **Start anyway** appears once the boot's essentials are in. A complete copy is
+remembered (`files/green-verified`). Or the player copies USRDIR's contents into `Green/` over USB.
+
+Songs travel the same way, as rows and content-addressed blobs in `Songs/` (`Boot.ReceivedSongsFolder`): see
+[song-sync-plan.md](song-sync-plan.md). `Arcade/`, `Wii/`, `Wii U/` stay for releases copied by hand.
 
 ## Lifecycle
 

@@ -26,6 +26,13 @@ public static class Boot
     /// config.cfg's stock_folders.</summary>
     public static IReadOnlyList<string> StockFolders { get; set; } = [];
 
+    /// <summary>What another Waddamburo sends songs and game data to this device with (a phone's); null: none.</summary>
+    public static Sync.PhoneReceiver? Receiver { get; set; }
+
+    /// <summary>Where songs other devices sent are kept (<see cref="Sync.SongStore"/>); the game's home's songs folder
+    /// when not set (a phone sets its own).</summary>
+    public static string? ReceivedSongsFolder { get; set; }
+
     public static int Run(string[] args)
     {
 
@@ -70,6 +77,11 @@ public static class Boot
             var login = args.Contains("--login", StringComparer.Ordinal);
             var logout = args.Contains("--logout", StringComparer.Ordinal);
             var exportCharts = parseOption(args, "--export-charts=");
+            // Send from the console: --send-to-phone=CODE[@ADDRESS] [--query="source=wiiu category=anime"] [--send-green];
+            // --phone-receiver=DIR acts as a phone (DIR laid out as its game folder), to test it.
+            var sendToPhone = parseOption(args, "--send-to-phone=");
+            if (parseOption(args, "--phone-receiver=") is { } receiverRoot)
+                return Sync.PhoneCommands.Receive(receiverRoot);
             var autoplay = args.Contains("--autoplay", StringComparer.Ordinal);
             var recordPerformance = args.Contains("--benchmark-record", StringComparer.Ordinal);
             var benchmark = args.Contains("--benchmark", StringComparer.Ordinal) ? BenchmarkMode.Quit
@@ -135,7 +147,7 @@ public static class Boot
                 if (seekFrame is not null || !callbackInvocations.IsEmpty)
                     throw new ArgumentException("--seek-frame and --invoke are unavailable during normal boot.");
 
-                var consoleTool = login || logout || exportCharts is not null
+                var consoleTool = login || logout || exportCharts is not null || sendToPhone is not null
                     || args.Any(static arg => arg.StartsWith("--online-test", StringComparison.Ordinal)
                         || arg.StartsWith("--upscale-textures", StringComparison.Ordinal));
                 startingUp = !consoleTool && screenshotPath is null && frameLimit is null && tickLimit is null;
@@ -197,6 +209,12 @@ public static class Boot
                 // One-off: every stock and Nijiiro chart, hashed, for the server to import as ranked (see ChartExport).
                 if (exportCharts is not null)
                     return ChartExport.Run(Path.GetFullPath(Path.Combine(layout.LumenRoot, "..", "..")), arcade, exportCharts);
+                ReceivedSongsFolder ??= Path.Combine(layout.Home, "songs");
+                if (sendToPhone is not null)
+                    return Sync.PhoneCommands.Send(sendToPhone, args.Contains("--send-green", StringComparer.Ordinal) && parseOption(args, "--query=") is null
+                            ? null : parseOption(args, "--query=") ?? "",
+                        args.Contains("--send-green", StringComparer.Ordinal), Path.Combine(layout.Root, "data"),
+                        () => Gameplay.SongLibraries.Load(Path.Combine(layout.Root, "data"), arcade, layout.TjaRoot));
                 var accounts = Waddamburo.Game.Scores.AccountBook.Load(layout.Home);
                 // Phones: a newer release keeps this build off TaikOnline until it is installed (no self-update there).
                 Waddamburo.App.Online.UpdateGate.Check();

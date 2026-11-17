@@ -42,10 +42,13 @@ public sealed class WaddamburoActivity : SDLActivity
         Waddamburo.App.Boot.AppHome = Path.Combine(FilesDir!.AbsolutePath, "waddamburo");
         var game = _gameFolder!.Resolve();
         Waddamburo.App.Boot.TjaFolder = Path.Combine(_gameFolder.Root, GameFolder.CustomSongs);
-        Waddamburo.App.Boot.StockFolders = _gameFolder.ReleaseFolders();
+        var server = _gameFolder.Server;
+        Waddamburo.App.Boot.Receiver = server;
+        Waddamburo.App.Boot.ReceivedSongsFolder = Path.Combine(_gameFolder.Root, "Songs");
         string[] args = [$"--game-data={game}"];
-        while (Waddamburo.App.Boot.Run(args) == Waddamburo.App.Boot.RestartExitCode)
-        {
-        }
+        // Read again on a restart: a release imported since joins.
+        do
+            Waddamburo.App.Boot.StockFolders = _gameFolder.ReleaseFolders();
+        while (Waddamburo.App.Boot.Run(args) == Waddamburo.App.Boot.RestartExitCode);
     }
 }
