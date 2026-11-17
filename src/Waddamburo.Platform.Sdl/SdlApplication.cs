@@ -18,6 +18,18 @@ public sealed unsafe partial class SdlApplication : IDisposable
     private readonly HashSet<SdlKeyboardKey> _pressedKeys = [];
     // The physical inputs held down; _pressedKeys is what they translate to.
     private readonly HashSet<SdlInput> _heldInputs = [];
+    // Fingers on the touch drum: the input each went down as (its slot keeps two fingers on one pad apart).
+    private readonly Dictionary<SDL_FingerID, SdlInput> _fingers = [];
+
+    /// <summary>Whether the touch drum shows: a finger touched the screen since the last key or controller press
+    /// (always at first on a phone).</summary>
+    public bool TouchActive { get; private set; } = PlatformInfo.IsMobile;
+
+    /// <summary>When each <see cref="TouchDrum.Hit"/> code was last touched (SDL nanoseconds), for the drum's flash.</summary>
+    public ulong[] TouchHits { get; } = new ulong[TouchDrum.Back + 1];
+
+    /// <summary>SDL's clock (nanoseconds since start), the time base of <see cref="TouchHits"/>.</summary>
+    public static ulong TicksNs => SDL_GetTicksNS();
     private readonly (SDL_JoystickID Id, IntPtr Pad)[] _pads = new (SDL_JoystickID, IntPtr)[MaximumPads];
     private readonly MidiInput _midi = new();
     private SdlInputBindings _bindings = SdlInputBindings.Keyboard;
@@ -49,6 +61,8 @@ public sealed unsafe partial class SdlApplication : IDisposable
         {
             // Linux: the app id is the Wayland app_id / X11 class, which desktops match to waddamburo.desktop.
             SDL_SetAppMetadata("Waddamburo", null, "waddamburo");
+            // Fingers are the touch drum's: a tap must not also arrive as a mouse click (a don in menus).
+            SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
             if (!SDL_Init(SDL_InitFlags.SDL_INIT_VIDEO))
                 throw sdlFailure("initialize SDL video");
             _sdlInitialized = true;
@@ -61,7 +75,7 @@ public sealed unsafe partial class SdlApplication : IDisposable
                 : 0;
             if (resizable)
                 windowFlags |= SDL_WindowFlags.SDL_WINDOW_RESIZABLE;
-            if (fullscreen)
+            if (fullscreen || PlatformInfo.IsMobile) // a phone's window is the screen (immersive: no system bars)
                 windowFlags |= SDL_WindowFlags.SDL_WINDOW_FULLSCREEN;
             _window = SDL_CreateWindow(
                 title,
@@ -219,7 +233,7 @@ public sealed unsafe partial class SdlApplication : IDisposable
         // Null: borderless (the desktop's mode).
         if (!SDL_SetWindowFullscreenMode(_window, exclusive ? &mode : null))
             Console.Error.WriteLine($"Fullscreen mode not applied: {SDL_GetError()}");
-        SDL_SetWindowFullscreen(_window, display.Fullscreen);
+        SDL_SetWindowFullscreen(_window, display.Fullscreen || PlatformInfo.IsMobile);
     }
 
     /// <summary>What the game renders with and on, for a performance report.</summary>
@@ -667,7 +681,9 @@ public sealed unsafe partial class SdlApplication : IDisposable
 
     private int? _soleDrum;
 
-    private SdlKeyboardKey? translateInput(SdlInput input) => _menuInput && PadsAsGamepad && input.Device != 0 ? menuButton(input)
+    private SdlKeyboardKey? translateInput(SdlInput input) => input.Kind == SdlInputKind.Touch
+        ? input.Code == TouchDrum.Back ? SdlKeyboardKey.Escape : SdlInputBindings.Pads[input.Code]
+        : _menuInput && PadsAsGamepad && input.Device != 0 ? menuButton(input)
         // In songs a controller is its drum only (its buttons are the keyboard's there).
         : _bindings.Pad(input) ?? (input.Device == 0 ? _bindings.Button(input) : null) ?? input.Kind switch
     {
@@ -725,6 +741,17 @@ public sealed unsafe partial class SdlApplication : IDisposable
     {
         if (_heldInputs.Remove(input))
             refreshPressedKeys();
+    }
+
+    // A finger's place in the window (0-1) on the touch drum, through the stage's last viewport.
+    private int touchCode(float x, float y)
+    {
+        int width, height;
+        var stage = _renderer!.StageViewport;
+        if (!SDL_GetWindowSizeInPixels(_window, &width, &height) || stage.Width <= 0 || stage.Height <= 0)
+            return TouchDrum.Hit(x, y);
+        return TouchDrum.Hit((x * width - stage.X) / stage.Width, (y * height - stage.Y) / stage.Height,
+            (float)stage.Width / stage.Height);
     }
 
     private int padNumber(SDL_JoystickID id) => Array.FindIndex(_pads, pad => pad.Pad != IntPtr.Zero && pad.Id == id) + 1;
@@ -850,6 +877,9 @@ public sealed unsafe partial class SdlApplication : IDisposable
         var pendingPresses = new List<SdlKeyPress>();
         void press(SdlInput input, ulong timestamp)
         {
+            if (input.Kind is SdlInputKind.PadButton or SdlInputKind.PadTrigger
+                || input is { Kind: SdlInputKind.Key, Code: not (int)SDL_Scancode.SDL_SCANCODE_AC_BACK })
+                TouchActive = false; // played with keys or a controller: the drum gets out of the way
             if (inputDown(input) is not { } key)
                 return;
             if (key == SdlKeyboardKey.F5)
@@ -899,6 +929,7 @@ public sealed unsafe partial class SdlApplication : IDisposable
                 else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_WINDOW_FOCUS_LOST)
                 {
                     _heldInputs.Clear();
+                    _fingers.Clear();
                     _pressedKeys.Clear();
                     windowFocused = false;
                     Focused = false;
@@ -989,6 +1020,25 @@ public sealed unsafe partial class SdlApplication : IDisposable
                         inputUp(input);
                     else if (!currentEvent.key.repeat)
                         press(input, currentEvent.key.timestamp);
+                }
+                else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_DID_ENTER_FOREGROUND)
+                    _renderer!.SurfaceLost(); // Android destroyed the surface while in the background
+                else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_FINGER_DOWN)
+                {
+                    TouchActive = true;
+                    var code = touchCode(currentEvent.tfinger.x, currentEvent.tfinger.y);
+                    var slot = 1;
+                    while (_fingers.Values.Any(held => held.Device == slot))
+                        slot++;
+                    var input = new SdlInput(SdlInputKind.Touch, code, slot);
+                    _fingers[currentEvent.tfinger.fingerID] = input;
+                    TouchHits[code] = currentEvent.tfinger.timestamp;
+                    press(input, currentEvent.tfinger.timestamp);
+                }
+                else if (currentEvent.type is (uint)SDL_EventType.SDL_EVENT_FINGER_UP or (uint)SDL_EventType.SDL_EVENT_FINGER_CANCELED)
+                {
+                    if (_fingers.Remove(currentEvent.tfinger.fingerID, out var input))
+                        inputUp(input);
                 }
                 else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_GAMEPAD_ADDED)
                     addPad(currentEvent.gdevice.which);
@@ -1258,7 +1308,7 @@ public sealed unsafe partial class SdlApplication : IDisposable
         SDL_Keycode.SDLK_TAB => SdlKeyboardKey.Tab,
         SDL_Keycode.SDLK_DELETE => SdlKeyboardKey.Delete,
         SDL_Keycode.SDLK_RETURN => SdlKeyboardKey.Enter,
-        SDL_Keycode.SDLK_ESCAPE => SdlKeyboardKey.Escape,
+        SDL_Keycode.SDLK_ESCAPE or SDL_Keycode.SDLK_AC_BACK => SdlKeyboardKey.Escape, // Android's back
         SDL_Keycode.SDLK_LSHIFT or SDL_Keycode.SDLK_RSHIFT => SdlKeyboardKey.Shift,
         SDL_Keycode.SDLK_SPACE => SdlKeyboardKey.Space,
         SDL_Keycode.SDLK_PAGEUP => SdlKeyboardKey.PageUp,

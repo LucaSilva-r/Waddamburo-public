@@ -14,6 +14,9 @@ public enum SdlInputKind
     PadTrigger,
     /// <summary>A MIDI note-on from any device (Code: the note number).</summary>
     Midi,
+    /// <summary>A finger on the touch drum (Code: a <see cref="TouchDrum.Hit"/> code; Device: the finger's slot, so
+    /// two fingers on one pad hit twice). Never bound, never written to config.cfg.</summary>
+    Touch,
 }
 
 /// <summary>
@@ -30,6 +33,7 @@ public readonly record struct SdlInput(SdlInputKind Kind, int Code, int Device =
         SdlInputKind.Key => name((SDL_Scancode)Code, ScancodePrefix),
         SdlInputKind.PadButton => $"pad{Device}:{name((SDL_GamepadButton)Code, ButtonPrefix)}",
         SdlInputKind.PadTrigger => $"pad{Device}:{name((SDL_GamepadAxis)Code, AxisPrefix)}",
+        SdlInputKind.Touch => string.Create(CultureInfo.InvariantCulture, $"touch:{Code}"),
         _ => string.Create(CultureInfo.InvariantCulture, $"midi:{Code}"),
     };
 

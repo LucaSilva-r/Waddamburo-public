@@ -82,6 +82,8 @@
   "settings.show_oni.hint": "曲選択: おにコースを最初から表示します。オフ: オリジナルどおり、右のふちを連打するとおにが現れます。",
   "settings.mouse_controls": "マウス操作",
   "settings.mouse_controls.hint": "メニューでマウスホイールがふちのように動き（曲、エントリー、難易度、設定。リプレイではシーク）、左クリックが面になります。オフ：マウスは何もしません。",
+  "settings.touch_drum": "タッチ太鼓",
+  "settings.touch_drum.hint": "画面下の太鼓：面はドン、それ以外はカッ。左上のボタンでメニュー。キーやコントローラーで遊ぶ間は隠れます。",
   "custom_upload.title": "カスタム曲のアップロード",
   "custom_upload.message": "カスタム曲のスコアと譜面は、スコア計算のためTaikOnlineに自動送信されます。譜面を制作中の場合、送信を希望しないこともあるかもしれません。",
   "custom_upload.marker": "TJA・osu!stableでは、曲のフォルダに拡張子なしのdonotuploadファイルを置くと、その中とサブフォルダの譜面は送信されません。osu!lazerでは下の設定をご利用ください。",

@@ -30,10 +30,14 @@ public sealed class WaddamburoActivity : SDLActivity
 
     protected override void Main()
     {
+        // Diagnostics: the desktop's WADDAMBURO_* environment variables, as `adb shell am start ... --es env "K=V;K=V"`.
+        foreach (var pair in (Intent?.GetStringExtra("env") ?? "").Split(';', StringSplitOptions.RemoveEmptyEntries))
+            if (pair.Split('=', 2) is [var key, var value])
+                System.Environment.SetEnvironmentVariable(key, value);
         Waddamburo.App.Boot.AppHome = Path.Combine(FilesDir!.AbsolutePath, "waddamburo");
-        // ponytail: M1 dev shortcut, the game data adb-pushed to Android/data/<package>/files/game; the document
-        // picker (content URIs) replaces it.
-        var game = Path.Combine(GetExternalFilesDir(null)!.AbsolutePath, "game");
+        // ponytail: M1 dev shortcut, the game data copied into the app's private files/game (adb push to
+        // /data/local/tmp, then run-as cp); the document picker (content URIs) replaces it.
+        var game = Path.Combine(FilesDir!.AbsolutePath, "game");
         string[] args = [$"--game-data={game}"];
         while (Waddamburo.App.Boot.Run(args) == Waddamburo.App.Boot.RestartExitCode)
         {

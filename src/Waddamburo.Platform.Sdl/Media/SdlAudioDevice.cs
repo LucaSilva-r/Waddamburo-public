@@ -72,6 +72,8 @@ public sealed unsafe class SdlAudioDevice : IAudioOutput
                 hardwareSpecification.channels);
             HardwareBufferFrames = hardwareBufferFrames;
             Driver = SDL_GetCurrentAudioDriver() ?? "unknown";
+            Console.WriteLine(FormattableString.Invariant(
+                $"SDL audio: {Driver}, {sampleRate} Hz requested, device {HardwareFormat.SampleRate} Hz x{HardwareFormat.Channels}, {HardwareBufferFrames} frames."));
         }
         catch
         {

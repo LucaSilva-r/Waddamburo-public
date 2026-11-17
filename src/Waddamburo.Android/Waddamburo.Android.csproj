@@ -13,11 +13,22 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- The game references the desktop executable project (Waddamburo.App) as a library. -->
     <ValidateExecutableReferencesMatchSelfContained>false</ValidateExecutableReferencesMatchSelfContained>
-    <!-- ponytail: no trimming until the reflection users (Realm, JSON, SQLite) are checked on Android. -->
-    <PublishTrimmed>false</PublishTrimmed>
-    <AndroidLinkMode>None</AndroidLinkMode>
     <AndroidPackageFormat>apk</AndroidPackageFormat>
+    <!-- Self-contained APKs (adb install), not Fast Deployment's separately pushed assemblies. -->
+    <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
     <IsAotCompatible>false</IsAotCompatible>
+  </PropertyGroup>
+
+  <!-- Release: every assembly compiled ahead of time (Mono's JIT is far too slow on phones), signed with the debug
+       key until a release key exists. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <RunAOTCompilation>true</RunAOTCompilation>
+    <!-- AOT needs the trimmer; partial: only the framework's assemblies are trimmed, the game's stay whole
+         (reflection users: Realm, JSON, SQLite). -->
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>partial</TrimMode>
+    <AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
+    <DebugSymbols>false</DebugSymbols>
   </PropertyGroup>
 
   <!-- Native libraries of the android-package CMake preset (native/CMakePresets.json). -->

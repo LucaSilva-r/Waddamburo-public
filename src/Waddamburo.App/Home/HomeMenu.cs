@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using Waddamburo.Game.Flow;
+using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Media;
 using Waddamburo.Providers.Stock;
 using static Waddamburo.App.Strings;
@@ -155,8 +156,12 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         new(Setting: toggle("settings.random_song_folder", static s => s.RandomSongFolder, static (s, v) => s with { RandomSongFolder = v })),
         new(Setting: toggle("settings.autoplay", static s => s.Autoplay, static (s, v) => s with { Autoplay = v })),
         new(Setting: toggle("settings.arcade_hud", static s => s.ArcadeHud, static (s, v) => s with { ArcadeHud = v })),
-        new(Setting: toggle("settings.mouse_controls", static s => s.MouseControls, static (s, v) => s with { MouseControls = v })),
-        new(Setting: toggle("settings.discord_presence", static s => s.DiscordPresence, static (s, v) => s with { DiscordPresence = v })),
+        new(Setting: toggle("settings.mouse_controls", static s => s.MouseControls, static (s, v) => s with { MouseControls = v }),
+            Shown: static _ => !PlatformInfo.IsMobile),
+        new(Setting: toggle("settings.touch_drum", static s => s.TouchDrum, static (s, v) => s with { TouchDrum = v }),
+            Shown: static _ => PlatformInfo.IsMobile),
+        new(Setting: toggle("settings.discord_presence", static s => s.DiscordPresence, static (s, v) => s with { DiscordPresence = v }),
+            Shown: static _ => !PlatformInfo.IsMobile),
         new(Setting: toggle("settings.upload_custom_songs", static s => s.UploadCustomSongs, static (s, v) => s with { UploadCustomSongs = v })),
         new(Setting: toggle("settings.upload_banner", static s => s.UploadBanner, static (s, v) => s with { UploadBanner = v })),
         new(Setting: new(T("settings.gameplay_skin"), skinIndex,

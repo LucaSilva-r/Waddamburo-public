@@ -245,6 +245,12 @@ internal sealed unsafe class RenderDevice : IDisposable
 
     public RenderViewport StageViewport { get; private set; }
 
+    private bool _surfaceLost;
+
+    /// <summary>The window's surface was destroyed and made again (Android, back from the background): the next
+    /// frame resets bgfx onto the new one.</summary>
+    public void SurfaceLost() => _surfaceLost = true;
+
     public RenderRectangle? StageRegion { get; set; }
 
     /// <summary>
@@ -267,7 +273,8 @@ internal sealed unsafe class RenderDevice : IDisposable
             throw new InvalidOperationException($"Failed to query the window pixel size: {SDL_GetError()}");
         var width = (uint)Math.Max(1, pixelWidth);
         var height = (uint)Math.Max(1, pixelHeight);
-        if (width != _width || height != _height || _resetFlags != BgfxSupport.ResetFlags || _frameLatency != BgfxSupport.MaxFrameLatency)
+        if (width != _width || height != _height || _resetFlags != BgfxSupport.ResetFlags || _frameLatency != BgfxSupport.MaxFrameLatency
+            || _surfaceLost)
         {
             _frameLatency = BgfxSupport.MaxFrameLatency;
             _width = width;
@@ -282,7 +289,9 @@ internal sealed unsafe class RenderDevice : IDisposable
                 depth = BgfxSupport.InvalidTexture,
                 maxFrameLatency = BgfxSupport.MaxFrameLatency,
             };
-            bgfx.reset(BgfxSupport.ResetFlags, &swapChain);
+            // BGFX_RESET_INTERNAL_FORCE: Android's EGL surface is made again on the window (bgfx GlContext::resize).
+            bgfx.reset(BgfxSupport.ResetFlags | (_surfaceLost ? 0x80000000u : 0), &swapChain);
+            _surfaceLost = false;
         }
 
         // A prepass draws only what this frame shows (an off-screen Don costs ~5 ms on integrated GPUs).
@@ -350,7 +359,9 @@ internal sealed unsafe class RenderDevice : IDisposable
             bgfx.set_view_rect(PresentView, (short)viewport.X, (short)viewport.Y, (ushort)viewport.Width, (ushort)viewport.Height, 0, 1);
             bgfx.set_view_scissor(PresentView, (ushort)viewport.X, (ushort)viewport.Y, (ushort)viewport.Width, (ushort)viewport.Height);
             bgfx.set_view_mode(PresentView, bgfx.ViewMode.Sequential);
-            fullscreen(PresentView, _stage!.Color, _blurProgram!.Value, 0, 0, 1, blend: false);
+            // ponytail: phones copy with the quad shader (one fetch, not the blur's five: 11.5 ms -> a few on a Mali-G57
+            // at 1920x1200); the desktop keeps the blur's copy until the two are compared there.
+            fullscreen(PresentView, _stage!.Color, PlatformInfo.IsMobile ? _quadProgram : _blurProgram!.Value, 0, 0, 1, blend: false);
         }
 
         if (ImGuiLayer is { } gui)

@@ -12,7 +12,7 @@ public sealed class AudioEngine : IDisposable
 {
     private const int RenderFrames = 128;
     // ~21 ms at 48 kHz: rides out the GC's own pauses while scenes load (8-20 ms traced); drum hits skip it.
-    private const int TargetQueuedFrames = 1024;
+    private const int MinimumQueuedFrames = 1024;
 
     private IAudioOutput _device;
     private CancellationTokenSource _cancellation = new();
@@ -198,6 +198,9 @@ public sealed class AudioEngine : IDisposable
     {
         var samples = new float[RenderFrames * device.Format.Channels];
         var rate = (double)device.Format.SampleRate;
+        // At least two device periods: a device that pulls a whole period at once (Android) must find the next one
+        // already queued.
+        var target = (ulong)Math.Max(MinimumQueuedFrames, 2 * device.HardwareBufferFrames);
         // The underrun trace: when the mix last queued, how much it left queued, the GC's pause total then.
         long lastQueued = 0, lastWake = Stopwatch.GetTimestamp();
         ulong queuedAfter = 0;
@@ -207,7 +210,7 @@ public sealed class AudioEngine : IDisposable
         {
             while (!_cancellation.IsCancellationRequested)
             {
-                if (device.QueuedFrames >= TargetQueuedFrames)
+                if (device.QueuedFrames >= target)
                 {
                     lastWake = Stopwatch.GetTimestamp();
                     Thread.Sleep(1);

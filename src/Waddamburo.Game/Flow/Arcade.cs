@@ -52,6 +52,11 @@ public sealed record ArcadeSettings
     // Version 14's languages: the system's (Japanese or English), for the menus and the song titles alike.
     private const string LanguagePlaceholder = "{language}", TitleLanguagePlaceholder = "{title_language}";
 
+    private const string AudioBufferPlaceholder = "{audio_buffer_frames}";
+
+    /// <summary>The shared output's default period: phones' audio stacks need a longer one than a PC's.</summary>
+    public static int DefaultAudioBufferFrames => OperatingSystem.IsAndroid() || OperatingSystem.IsIOS() ? 1024 : 256;
+
     /// <summary>Settings added in each version (index = version - 1), as they are appended to older files.</summary>
     private static readonly string[] Additions =
     [
@@ -86,7 +91,7 @@ public sealed record ArcadeSettings
         # input_offset_ms: raise it when your hits are judged late (the drum or keyboard lags).
         input_offset_ms = 0
         # audio_buffer_frames: the shared output's period, applied at start. Lower = less delay; too low crackles.
-        audio_buffer_frames = 256
+        audio_buffer_frames = {audio_buffer_frames}
 
         """,
         """
@@ -468,6 +473,9 @@ public sealed record ArcadeSettings
     /// <summary>In the menus the mouse wheel is the rims (replays: it seeks) and a left click a don.</summary>
     public bool MouseControls { get; init; } = true;
 
+    /// <summary>The on-screen drum on touch screens (shown once a finger touches the screen).</summary>
+    public bool TouchDrum { get; init; } = true;
+
     /// <summary>Discord shows what the player is doing (home mode, while Discord runs).</summary>
     public bool DiscordPresence { get; init; } = true;
 
@@ -583,7 +591,7 @@ public sealed record ArcadeSettings
     public int InputOffsetMs { get; init; }
 
     /// <summary>The shared output's device period requested at start (SDL may choose another).</summary>
-    public int AudioBufferFrames { get; init; } = 256;
+    public int AudioBufferFrames { get; init; } = DefaultAudioBufferFrames;
 
     /// <summary>Shared (SDL) or, on Windows, WASAPI exclusive output.</summary>
     public AudioOutputMode AudioOutput { get; init; }
@@ -757,7 +765,8 @@ public sealed record ArcadeSettings
         """ + placeholders(string.Concat(Additions), "home");
 
     private static string placeholders(string text, string mode) => text.Replace(ModePlaceholder, mode)
-        .Replace(LanguagePlaceholder, SystemLanguage).Replace(TitleLanguagePlaceholder, SystemLanguage == "ja" ? "japanese" : "english");
+        .Replace(LanguagePlaceholder, SystemLanguage).Replace(TitleLanguagePlaceholder, SystemLanguage == "ja" ? "japanese" : "english")
+        .Replace(AudioBufferPlaceholder, DefaultAudioBufferFrames.ToString(CultureInfo.InvariantCulture));
 
     /// <summary>Reads the file, writing the defaults first when it does not exist and upgrading an older one.</summary>
     public static ArcadeSettings LoadOrCreate(string path)
@@ -949,6 +958,7 @@ public sealed record ArcadeSettings
                 "dev_autoplay" => settings with { DevAutoplay = boolean(value, index) },
                 "dev_no_focus_pause" => settings with { DevNoFocusPause = boolean(value, index) },
                 "mouse_controls" => settings with { MouseControls = boolean(value, index) },
+                "touch_drum" => settings with { TouchDrum = boolean(value, index) },
                 "custom_upload_notice_seen" => settings with { CustomUploadNoticeSeen = boolean(value, index) },
                 "upload_custom_songs" => settings with { UploadCustomSongs = boolean(value, index) },
                 "upload_banner" => settings with { UploadBanner = boolean(value, index) },
@@ -1073,6 +1083,7 @@ public sealed record ArcadeSettings
             ["dev_autoplay"] = settings.DevAutoplay ? "true" : "false",
             ["dev_no_focus_pause"] = settings.DevNoFocusPause ? "true" : "false",
             ["mouse_controls"] = settings.MouseControls ? "true" : "false",
+            ["touch_drum"] = settings.TouchDrum ? "true" : "false",
             ["custom_upload_notice_seen"] = settings.CustomUploadNoticeSeen ? "true" : "false",
             ["upload_custom_songs"] = settings.UploadCustomSongs ? "true" : "false",
             ["upload_banner"] = settings.UploadBanner ? "true" : "false",

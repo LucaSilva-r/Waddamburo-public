@@ -156,15 +156,19 @@ internal sealed class SceneSwitcher(
     // ponytail: 128 MiB grown since the last clean-up (garbage and all); tune if RSS creeps.
     private void tidyMemory()
     {
-        System.Runtime.GCSettings.LatencyMode = OnLane
-            ? System.Runtime.GCLatencyMode.SustainedLowLatency
+        // Android's runtime (Mono) has no latency modes, no LOH compaction setting and no aggressive collection.
+        var coreClr = !OperatingSystem.IsAndroid();
+        if (coreClr)
+            System.Runtime.GCSettings.LatencyMode = OnLane
+                ? System.Runtime.GCLatencyMode.SustainedLowLatency
             : System.Runtime.GCLatencyMode.Interactive;
         if ((!OnLane || covering()) && GC.GetTotalMemory(false) - _liveAfterCollect > 128L << 20)
         {
-            System.Runtime.GCSettings.LargeObjectHeapCompactionMode = System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
+            if (coreClr)
+                System.Runtime.GCSettings.LargeObjectHeapCompactionMode = System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
             // The collection stops the audio mix thread too: queue past it (it took up to 75 ms traced).
             shell.Audio?.FillAhead(TimeSpan.FromMilliseconds(150));
-            GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+            GC.Collect(GC.MaxGeneration, coreClr ? GCCollectionMode.Aggressive : GCCollectionMode.Forced, blocking: true, compacting: true);
             _liveAfterCollect = GC.GetTotalMemory(false);
         }
         // Into a lane under the rainbow: a background collection instead (a few ms of pauses), which frees

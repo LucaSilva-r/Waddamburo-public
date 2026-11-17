@@ -800,6 +800,9 @@ internal sealed class GameShell : IDisposable
                 Online = () => Room?.Session?.Link is { State: Waddamburo.Game.Online.PeerLinkState.Direct or Waddamburo.Game.Online.PeerLinkState.Relayed } link
                     ? (link.State == Waddamburo.Game.Online.PeerLinkState.Relayed, link.RoundTrip) : null,
             };
+            // ponytail: phones have no F5 yet; development builds start with the performance overlay on there.
+            if (PlatformInfo.IsMobile && BuildInfo.Dev)
+                _performance.Toggle();
             _timingMarks = new TimingMarkOverlay(Application);
             Painter = new OverlayPainter(Application, options.FontPath, asynchronous: !Headless);
             Book = Bookkeeping.Load(options.ArcadePath is { } settingsPath
@@ -1738,6 +1741,8 @@ internal sealed class GameShell : IDisposable
             top.Add(Painter.Text(Strings.T("song_select.no_music"), 640, bannerY + 13, 508, 22));
         }
         top.AddRange(_performance.Quads());
+        if (Application.TouchActive && Arcade.TouchDrum)
+            top.AddRange(TouchDrumOverlay.Quads(Painter, Application.TouchHits, SdlApplication.TicksNs));
         if (top.Count == 0)
             return frame;
         return new RenderFrame(frame.ClearColor, frame.Quads.AddRange(top), frame.ContentAspectRatio)
