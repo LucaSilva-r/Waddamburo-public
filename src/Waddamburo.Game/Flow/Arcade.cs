@@ -43,7 +43,7 @@ public enum UpscaleLevel
     Full,
 }
 
-public sealed record ArcadeSettings
+public sealed partial record ArcadeSettings
 {
     public const string FileName = "config.cfg";
 
@@ -829,158 +829,7 @@ public sealed record ArcadeSettings
             var value = line[(separator + 1)..].Trim();
             settings = key switch
             {
-                "free_play" => settings with { FreePlay = boolean(value, index) },
-                "credits_per_coin" => settings with { CreditsPerCoin = count(value, index, 1) },
-                "credits_1p" => settings with { CreditsOnePlayer = count(value, index, 1) },
-                "credits_2p" => settings with { CreditsTwoPlayers = count(value, index, 1) },
-                "songs_per_session" => settings with { SongsPerSession = count(value, index, 1) },
-                "server" => settings with { Server = value.Length == 0 ? null : server(value, index) },
-                "server_insecure" => settings with { ServerInsecure = boolean(value, index) },
-                "cabinet_token" => settings with { CabinetToken = value.Length == 0 ? null : value },
-                "config_version" => settings with { Version = count(value, index, 0) },
-                "fullscreen" => settings with { Fullscreen = boolean(value, index) },
-                "vsync" => settings with { Vsync = boolean(value, index) },
-                "frame_latency" => settings with { FrameLatency = integer(value, index, 1, 3) },
-                "dan_series" => settings with { DanSeries = value },
-                "fps_cap" => settings with { FpsCap = integer(value, index, 0, 10000) },
-                "fullscreen_mode" => settings with { ExclusiveFullscreen = value.ToLowerInvariant() switch
-                {
-                    "borderless" => false,
-                    "exclusive" => true,
-                    _ => throw new InvalidDataException($"{FileName} line {index}: fullscreen_mode is borderless or exclusive, not '{value}'."),
-                } },
-                "fullscreen_resolution" => resolution(value, index) is var (width, height)
-                    ? settings with { FullscreenWidth = width, FullscreenHeight = height } : settings,
-                "refresh_rate" => settings with { RefreshRate = integer(value, index, 0, 1000) },
-                "letterbox_size" => settings with { LetterboxSize = integer(value, index, 20, 100) },
-                "letterbox_x" => settings with { LetterboxX = integer(value, index, 0, 100) },
-                "letterbox_y" => settings with { LetterboxY = integer(value, index, 0, 100) },
-                "console" => settings with { ShowConsole = boolean(value, index) },
-                "auto_update" => settings with { AutoUpdate = boolean(value, index) },
-                "title_language" => settings with { EnglishTitles = value.ToLowerInvariant() switch
-                {
-                    "english" => true,
-                    "japanese" => false,
-                    _ => throw new InvalidDataException($"{FileName} line {index}: title_language is english or japanese, not '{value}'."),
-                } },
-                "language" => settings with { Language = value.Length > 0 ? value.ToLowerInvariant() : SystemLanguage },
-                "master_volume" => settings with { MasterVolume = integer(value, index, 0, 100) },
-                "music_volume" => settings with { MusicVolume = integer(value, index, 0, 100) },
-                "drum_volume" => settings with { DrumVolume = integer(value, index, 0, 100) },
-                "effects_volume" => settings with { EffectsVolume = integer(value, index, 0, 100) },
-                "voice_volume" => settings with { VoiceVolume = integer(value, index, 0, 100) },
-                "menu_volume" => settings with { MenuVolume = integer(value, index, 0, 100) },
-                "attract_volume" => settings with { AttractVolume = integer(value, index, 0, 100) },
-                "audio_offset_ms" => settings with { AudioOffsetMs = integer(value, index, -1000, 1000) },
-                "input_offset_ms" => settings with { InputOffsetMs = integer(value, index, -1000, 1000) },
-                "audio_buffer_frames" => settings with { AudioBufferFrames = integer(value, index, 16, 8192) },
-                // audio_exclusive: before audio_output (true = exclusive).
-                "audio_exclusive" => boolean(value, index) ? settings with { AudioOutput = AudioOutputMode.Exclusive } : settings,
-                "audio_output" => settings with { AudioOutput = value.ToLowerInvariant() switch
-                {
-                    "shared" => AudioOutputMode.Shared,
-                    "exclusive" => AudioOutputMode.Exclusive,
-                    "asio" => AudioOutputMode.Asio,
-                    _ => throw new InvalidDataException($"{FileName} line {index}: audio_output is shared, exclusive or asio, not '{value}'."),
-                } },
-                "audio_device" => settings with { AudioDevice = value.Length == 0 ? null : value },
-                "audio_exclusive_period" => settings with { AudioExclusivePeriod = integer(value, index, -1, 8192) },
-                "asio_driver" => settings with { AsioDriver = value.Length == 0 ? null : value },
-                "asio_buffer_frames" => settings with { AsioBufferFrames = integer(value, index, 0, 8192) },
-                "asio_output_pair" => settings with { AsioOutputPair = integer(value, index, 0, 63) },
-                "stereo_panning" => settings with { StereoPanning = boolean(value, index) },
-                "upscale" => settings with { Upscale = value.ToLowerInvariant() switch
-                {
-                    "off" => UpscaleLevel.Off,
-                    "text" => UpscaleLevel.Text,
-                    "full" => UpscaleLevel.Full,
-                    _ => throw new InvalidDataException($"{FileName} line {index}: upscale is off, text or full, not '{value}'."),
-                } },
-                // Before upscale: on or off (off kept the game drawn at the screen's resolution). The next save renames it.
-                "upscale_textures" => settings with { Upscale = boolean(value, index) ? UpscaleLevel.Full : UpscaleLevel.Text },
-                "upscale_threads" => settings with { UpscaleThreads = integer(value, index, 0, 1024) },
-                "squash_titles" => settings with { SquashTitles = boolean(value, index) },
-                "mute_in_background" => settings with { MuteInBackground = boolean(value, index) },
-                "drum_sound_in_songs" => settings with { DrumSoundInSongs = boolean(value, index) },
-                "controller_vibration" => settings with { ControllerVibration = value.ToLowerInvariant() switch
-                {
-                    "off" or "false" => ControllerVibration.Off,
-                    "big" or "true" => ControllerVibration.BigNotes,
-                    "notes" => ControllerVibration.AllNotes,
-                    "all" => ControllerVibration.EveryHit,
-                    _ => throw new InvalidDataException($"{FileName} line {index}: controller_vibration is off, big, notes or all, not '{value}'."),
-                } },
-                "online_warning_accepted" => settings with { OnlineWarningAccepted = boolean(value, index) },
-                "share_warning_accepted" => settings with { ShareWarningAccepted = boolean(value, index) },
-                // ponytail: '#' starts a comment, so a folder path cannot contain one.
-                "tja_folder" => settings with { TjaFolder = value.Length == 0 ? null : value },
-                "layout" => settings with { Layout = value.Length == 0 ? null : value },
-                "layout_2p" => settings with { Layout2P = value.Length == 0 ? null : value },
-                "nijiiro_folder" => settings with { NijiiroFolder = value.Length == 0 ? null : value },
-                "nijiiro_datatable_key" => settings with { NijiiroDatatableKey = value },
-                "nijiiro_fumen_key" => settings with { NijiiroFumenKey = value },
-                "stock_folders" => settings with { StockFolders = value.Length == 0 ? null : value },
-                "osu_folder" => settings with { OsuFolder = value.Length == 0 ? null : value },
-                "osu_stable_folder" => settings with { OsuStableFolder = value.Length == 0 ? null : value },
-                "cache_folder" => settings with { CacheFolder = value.Length == 0 ? null : value },
-                "osu_group" => settings with { OsuBrowse = settings.OsuBrowse with
-                {
-                    Group = Enum.TryParse<SongSelect.SongGroupMode>(value, true, out var group) ? group : settings.OsuBrowse.Group,
-                } },
-                "osu_sort" => settings with { OsuBrowse = settings.OsuBrowse with
-                {
-                    Sort = Enum.TryParse<SongSelect.SongSortMode>(value, true, out var sort) ? sort : settings.OsuBrowse.Sort,
-                } },
-                "renderer" => settings with { Renderer = value.ToLowerInvariant() switch
-                {
-                    "auto" => null,
-                    "vulkan" or "gles" or "opengl" or "d3d11" or "metal" => value.ToLowerInvariant(),
-                    _ => throw new InvalidDataException($"{FileName} line {index}: renderer is auto, vulkan, gles, opengl, d3d11 or metal, not '{value}'."),
-                } },
-                "mode" => settings with { Home = value.ToLowerInvariant() switch
-                {
-                    "home" => true,
-                    "arcade" => false,
-                    _ => throw new InvalidDataException($"{FileName} line {index}: mode is home or arcade, not '{value}'."),
-                } },
-                "drum_debounce_ms" => settings with { DrumDebounceMs = integer(value, index, 0, 100) },
-                "retry_hold_ms" => settings with { RetryHoldMs = integer(value, index, 0, 1000) },
-                "record_performance" => settings with { RecordPerformance = boolean(value, index) },
-                "fast_song_scroll" => settings with { FastSongScroll = boolean(value, index) },
-                "show_oni" => settings with { ShowOni = boolean(value, index) },
-                "random_song_folder" => settings with { RandomSongFolder = boolean(value, index) },
-                "autoplay" => settings with { Autoplay = boolean(value, index) },
-                "arcade_hud" => settings with { ArcadeHud = boolean(value, index) },
-                "tutorial_seen" => settings with { TutorialSeen = boolean(value, index) },
-                "timer_freeze" => settings with { TimerFreeze = boolean(value, index) },
-                "dev_autoplay" => settings with { DevAutoplay = boolean(value, index) },
-                "dev_no_focus_pause" => settings with { DevNoFocusPause = boolean(value, index) },
-                "mouse_controls" => settings with { MouseControls = boolean(value, index) },
-                "touch_drum" => settings with { TouchDrum = value.ToLowerInvariant() switch
-                {
-                    "auto" => TouchDrumMode.Auto,
-                    "on" or "true" => TouchDrumMode.On,
-                    "off" or "false" => TouchDrumMode.Off,
-                    _ => throw new InvalidDataException($"{FileName} line {index}: touch_drum is auto, on or off, not '{value}'."),
-                } },
-                "custom_upload_notice_seen" => settings with { CustomUploadNoticeSeen = boolean(value, index) },
-                "upload_custom_songs" => settings with { UploadCustomSongs = boolean(value, index) },
-                "upload_banner" => settings with { UploadBanner = boolean(value, index) },
-                "discord_presence" => settings with { DiscordPresence = boolean(value, index) },
-                "gameplay_skin" => settings with { GameplaySkin = value.Length > 0 ? value : "auto" },
-                "timing_indicator" => settings with { TimingIndicator = value.ToLowerInvariant() switch
-                {
-                    "off" => TimingIndicator.Off,
-                    "good_bad" => TimingIndicator.GoodBad,
-                    "always" => TimingIndicator.Always,
-                    _ => throw new InvalidDataException($"{FileName} line {index}: timing_indicator is off, good_bad or always, not '{value}'."),
-                } },
-                "pad_menus" => settings with { PadMenusAsDrum = value.ToLowerInvariant() switch
-                {
-                    "gamepad" => false,
-                    "drum" => true,
-                    _ => throw new InvalidDataException($"{FileName} line {index}: pad_menus is gamepad or drum, not '{value}'."),
-                } },
+                _ when KeysByName.TryGetValue(key, out var known) => known.Read(settings, value, index),
                 _ when Array.IndexOf(ButtonKeys, key) is var button and >= 0 => settings with
                 {
                     Buttons = settings.Buttons.With(button, string.Join(", ",
@@ -1019,100 +868,10 @@ public sealed record ArcadeSettings
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         ArgumentNullException.ThrowIfNull(settings);
-        var values = new Dictionary<string, object>
-        {
-            ["master_volume"] = settings.MasterVolume,
-            ["music_volume"] = settings.MusicVolume,
-            ["drum_volume"] = settings.DrumVolume,
-            ["effects_volume"] = settings.EffectsVolume,
-            ["voice_volume"] = settings.VoiceVolume,
-            ["menu_volume"] = settings.MenuVolume,
-            ["attract_volume"] = settings.AttractVolume,
-            ["audio_offset_ms"] = settings.AudioOffsetMs,
-            ["input_offset_ms"] = settings.InputOffsetMs,
-            ["audio_buffer_frames"] = settings.AudioBufferFrames,
-            ["audio_output"] = settings.AudioOutput.ToString().ToLowerInvariant(),
-            ["audio_device"] = settings.AudioDevice ?? "",
-            ["audio_exclusive_period"] = settings.AudioExclusivePeriod,
-            ["asio_driver"] = settings.AsioDriver ?? "",
-            ["asio_buffer_frames"] = settings.AsioBufferFrames,
-            ["asio_output_pair"] = settings.AsioOutputPair,
-            ["stereo_panning"] = settings.StereoPanning ? "true" : "false",
-            ["upscale"] = settings.Upscale.ToString().ToLowerInvariant(),
-            ["upscale_threads"] = settings.UpscaleThreads,
-            ["squash_titles"] = settings.SquashTitles ? "true" : "false",
-            ["mute_in_background"] = settings.MuteInBackground ? "true" : "false",
-            ["drum_sound_in_songs"] = settings.DrumSoundInSongs ? "true" : "false",
-            ["controller_vibration"] = settings.ControllerVibration switch
-            {
-                ControllerVibration.Off => "off",
-                ControllerVibration.AllNotes => "notes",
-                ControllerVibration.EveryHit => "all",
-                _ => "big",
-            },
-            ["online_warning_accepted"] = settings.OnlineWarningAccepted ? "true" : "false",
-            ["share_warning_accepted"] = settings.ShareWarningAccepted ? "true" : "false",
-            ["tja_folder"] = settings.TjaFolder ?? "",
-            ["layout"] = settings.Layout ?? "",
-            ["layout_2p"] = settings.Layout2P ?? "",
-            ["nijiiro_folder"] = settings.NijiiroFolder ?? "",
-            ["nijiiro_datatable_key"] = settings.NijiiroDatatableKey,
-            ["nijiiro_fumen_key"] = settings.NijiiroFumenKey,
-            ["stock_folders"] = settings.StockFolders ?? "",
-            ["osu_folder"] = settings.OsuFolder ?? "",
-            ["osu_stable_folder"] = settings.OsuStableFolder ?? "",
-            ["cache_folder"] = settings.CacheFolder ?? "",
-            ["osu_group"] = settings.OsuBrowse.Group.ToString().ToLowerInvariant(),
-            ["osu_sort"] = settings.OsuBrowse.Sort.ToString().ToLowerInvariant(),
-            ["fullscreen"] = settings.Fullscreen ? "true" : "false",
-            ["vsync"] = settings.Vsync ? "true" : "false",
-            ["frame_latency"] = settings.FrameLatency,
-            ["fps_cap"] = settings.FpsCap,
-            ["fullscreen_mode"] = settings.ExclusiveFullscreen ? "exclusive" : "borderless",
-            ["fullscreen_resolution"] = settings.FullscreenWidth == 0 ? "native" : $"{settings.FullscreenWidth}x{settings.FullscreenHeight}",
-            ["refresh_rate"] = settings.RefreshRate,
-            ["letterbox_size"] = settings.LetterboxSize,
-            ["letterbox_x"] = settings.LetterboxX,
-            ["letterbox_y"] = settings.LetterboxY,
-            ["drum_debounce_ms"] = settings.DrumDebounceMs,
-            ["retry_hold_ms"] = settings.RetryHoldMs,
-            ["record_performance"] = settings.RecordPerformance ? "true" : "false",
-            ["fast_song_scroll"] = settings.FastSongScroll ? "true" : "false",
-            ["show_oni"] = settings.ShowOni ? "true" : "false",
-            ["random_song_folder"] = settings.RandomSongFolder ? "true" : "false",
-            ["autoplay"] = settings.Autoplay ? "true" : "false",
-            ["arcade_hud"] = settings.ArcadeHud ? "true" : "false",
-            ["tutorial_seen"] = settings.TutorialSeen ? "true" : "false",
-            ["timer_freeze"] = settings.TimerFreeze ? "true" : "false",
-            ["dev_autoplay"] = settings.DevAutoplay ? "true" : "false",
-            ["dev_no_focus_pause"] = settings.DevNoFocusPause ? "true" : "false",
-            ["mouse_controls"] = settings.MouseControls ? "true" : "false",
-            ["touch_drum"] = settings.TouchDrum switch { TouchDrumMode.On => "on", TouchDrumMode.Off => "off", _ => "auto" },
-            ["custom_upload_notice_seen"] = settings.CustomUploadNoticeSeen ? "true" : "false",
-            ["upload_custom_songs"] = settings.UploadCustomSongs ? "true" : "false",
-            ["upload_banner"] = settings.UploadBanner ? "true" : "false",
-            ["discord_presence"] = settings.DiscordPresence ? "true" : "false",
-            ["gameplay_skin"] = settings.GameplaySkin,
-            ["timing_indicator"] = settings.TimingIndicator switch
-            {
-                TimingIndicator.Off => "off",
-                TimingIndicator.Always => "always",
-                _ => "good_bad",
-            },
-            ["pad_menus"] = settings.PadMenusAsDrum ? "drum" : "gamepad",
-            ["language"] = settings.Language,
-            ["title_language"] = settings.EnglishTitles ? "english" : "japanese",
-        };
-        if (cabinet)
-        {
-            values["free_play"] = settings.FreePlay ? "true" : "false";
-            values["credits_per_coin"] = settings.CreditsPerCoin;
-            values["credits_1p"] = settings.CreditsOnePlayer;
-            values["credits_2p"] = settings.CreditsTwoPlayers;
-            values["songs_per_session"] = settings.SongsPerSession;
-        }
-        if (mode)
-            values["mode"] = settings.Home ? "home" : "arcade";
+        var values = new Dictionary<string, object>();
+        foreach (var key in Keys)
+            if (key.Write is { } write && (key.Saved == Saved.Menu || key.Saved == Saved.Cabinet && cabinet || key.Saved == Saved.Mode && mode))
+                values[key.Name] = write(settings);
         for (var pad = 0; pad < ControlKeys.Length; pad++)
             values[ControlKeys[pad]] = settings.Controls[pad];
         for (var button = 0; button < ButtonKeys.Length; button++)
@@ -1121,8 +880,7 @@ public sealed record ArcadeSettings
         for (var index = 0; index < lines.Length; index++)
             foreach (var (key, value) in values)
                 // upscale_textures (on/off) became upscale, audio_exclusive audio_output: their lines are rewritten in place.
-                if (isKey(lines[index], key) || key == "upscale" && isKey(lines[index], "upscale_textures")
-                    || key == "audio_output" && isKey(lines[index], "audio_exclusive"))
+                if (isKey(lines[index], key) || KeysByName.TryGetValue(key, out var known) && known.Replaces is { } older && isKey(lines[index], older))
                 {
                     lines[index] = string.Create(CultureInfo.InvariantCulture, $"{key} = {value}");
                     values.Remove(key);
@@ -1169,54 +927,4 @@ public sealed record ArcadeSettings
         int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var number) && number >= minimum
             ? number
             : throw new InvalidDataException($"{FileName} line {line}: '{value}' must be a whole number of at least {minimum}.");
-}
-
-/// <summary>
-/// The cabinet's credit counter: a coin is credited the moment it arrives (its sound is queued
-/// separately by the host); credits only go when a player joins. It lives for the whole process:
-/// nothing but a restart resets it.
-/// </summary>
-public sealed class CoinBank(ArcadeSettings settings)
-{
-    public ArcadeSettings Settings { get; } = settings ?? throw new ArgumentNullException(nameof(settings));
-
-    public int Credits { get; private set; }
-
-    public void InsertCoin() => Credits += Settings.CreditsPerCoin;
-
-    /// <summary>The credits are service credits (the counter shows its service text) until they are used up.</summary>
-    public bool Service { get; private set; }
-
-    /// <summary>
-    /// The service switch (traced session-service-coin): one more service credit; the first one replaces whatever
-    /// coins were inserted (1 coin, then service: 1 service credit). It isn't a coin: the bookkeeping doesn't count it.
-    /// </summary>
-    public void ServiceCredit()
-    {
-        if (!Service)
-            (Credits, Service) = (0, true);
-        Credits++;
-    }
-
-    /// <summary>The credits inserted are dropped (the service menu opening).</summary>
-    public void Clear() => (Credits, Service) = (0, false);
-
-    /// <summary>What the next player to join pays: one player's price, or the rest of the two-player price.</summary>
-    public int JoinCost(int joinedPlayers) => joinedPlayers == 0
-        ? Settings.CreditsOnePlayer
-        : Settings.CreditsTwoPlayers - Settings.CreditsOnePlayer;
-
-    /// <summary>Credits still missing for the next join (0 when affordable).</summary>
-    public int Missing(int joinedPlayers) => Math.Max(0, JoinCost(joinedPlayers) - Credits);
-
-    public bool TryJoin(int joinedPlayers)
-    {
-        var cost = JoinCost(joinedPlayers);
-        if (Credits < cost)
-            return false;
-        Credits -= cost;
-        if (Credits == 0)
-            Service = false;
-        return true;
-    }
 }
