@@ -14,23 +14,6 @@ internal sealed class PlayerSession(GameShell shell)
     /// <summary>The credit's joined drums (0 left, 1 right).</summary>
     public SortedSet<int> JoinedSides { get; } = [];
 
-    /// <summary>Songs played this credit.</summary>
-    // A new credit (0) offers the tutorial again.
-    public int SongsPlayed
-    {
-        get;
-        set
-        {
-            field = value;
-            if (value == 0)
-            {
-                shell.Hosts.TutorialSeen = false;
-                shell.Hosts.WaiwaiTutorialSeen = false;
-                shell.Hosts.AiTutorialSeen = false;
-            }
-        }
-    }
-
     // The drum's own player while a replay shows another's (restored back in Song Select).
     private (int Side, ScoreProfile? Profile)? _watchedOver;
 
@@ -52,7 +35,10 @@ internal sealed class PlayerSession(GameShell shell)
         shell.Room?.Leave();
         // A credit starts with guests (default Dons), with the website's current looks once they attach.
         if (!shell.Arcade.Home)
-            shell.Hosts.ForgetLastSong();
+        {
+            shell.SelectMemory.ForgetLastSong();
+            shell.Hosts.SongSelect?.ForgetPicked();
+        }
         Array.Clear(TaikoGuest.Profiles);
         Array.Clear(TaikoGuest.Options);
         Array.Clear(TaikoGuest.Tones);
@@ -95,14 +81,14 @@ internal sealed class PlayerSession(GameShell shell)
     public void PlayOnlineAsTwoPlayers(bool on)
     {
         OnlineTwoPlayers = on;
-        shell.Hosts.TwoPlayers = on || JoinedSides.Count == 2;
+        shell.Credit.TwoPlayers = on || JoinedSides.Count == 2;
         if (shell.Don is not null)
-            shell.Don.GameplaySide = on ? 0 : shell.Hosts.PlayerSide;
+            shell.Don.GameplaySide = on ? 0 : shell.Credit.PlayerSide;
     }
 
     /// <summary>The sides Song Select shows a player on: the joined ones, and an online partner's.</summary>
-    public int[] SongSelectSides => [.. (JoinedSides.Count == 0 ? [shell.Hosts.PlayerSide] : JoinedSides)
-        .Concat(shell.Hosts.PartnerSide is { } partner ? [partner] : []).Distinct()];
+    public int[] SongSelectSides => [.. (JoinedSides.Count == 0 ? [shell.Credit.PlayerSide] : JoinedSides)
+        .Concat(shell.Credit.PartnerSide is { } partner ? [partner] : []).Distinct()];
 
     /// <summary>AI-don's whole costume (traced cos_149000).</summary>
     private const int AiDonCostume = 149;
@@ -110,8 +96,8 @@ internal sealed class PlayerSession(GameShell shell)
     /// <summary>The entry's mode select picked the credit's mode: AI battle or the normal song select.</summary>
     public void ChooseMode(bool aiBattle)
     {
-        var changed = shell.Hosts.AiBattle != aiBattle;
-        shell.Hosts.AiBattle = aiBattle;
+        var changed = shell.Credit.AiBattle != aiBattle;
+        shell.Credit.AiBattle = aiBattle;
         // AI battle is one drum's: a lone right-drum player plays as player 1 (the recomp: movie player 0, the top
         // lane, the left drum's sounds), their drum read as the left one; the other drum is AI-don's and does nothing.
         var move = aiBattle && JoinedSides is { Count: 1, Min: 1 };
@@ -125,7 +111,7 @@ internal sealed class PlayerSession(GameShell shell)
         // A new credit in the same mode: the other drum's look may have been reset since (a new entry).
         if (!changed && !aiBattle) return;
         // The other drum's Don is AI-don (traced: Don slot p1 in the whole costume cos_149000, from song select on).
-        var other = 1 - (JoinedSides.Count > 0 ? JoinedSides.Min : shell.Hosts.PlayerSide); // apply() sets PlayerSide below
+        var other = 1 - (JoinedSides.Count > 0 ? JoinedSides.Min : shell.Credit.PlayerSide); // apply() sets PlayerSide below
         if (aiBattle)
         {
             shell.Don?.SetLook(other, null);
@@ -160,18 +146,18 @@ internal sealed class PlayerSession(GameShell shell)
     {
         var two = JoinedSides.Count == 2;
         var first = JoinedSides.Count == 0 ? 0 : JoinedSides.Min;
-        shell.Hosts.PlayerSide = first;
-        shell.Hosts.TwoPlayers = two;
+        shell.Credit.PlayerSide = first;
+        shell.Credit.TwoPlayers = two;
         // Two players start in Waiwai's song select (traced); one player only has the normal one.
-        shell.Hosts.Waiwai = two && !shell.Hosts.AiBattle;
+        shell.Credit.Waiwai = two && !shell.Credit.AiBattle;
         if (shell.Indicators is { } indicators)
         {
             indicators.Side = first;
             indicators.TwoPlayers = two;
             indicators.AnyJoined = JoinedSides.Count > 0;
-            indicators.AiBattle = shell.Hosts.AiBattle;
+            indicators.AiBattle = shell.Credit.AiBattle;
         }
         if (shell.Don is not null) shell.Don.GameplaySide = first;
-        shell.Catalog.Replace(FlowScenes.SongSelectScene(SongSelectSides, shell.Hosts.Waiwai, shell.Hosts.AiBattle));
+        shell.Catalog.Replace(FlowScenes.SongSelectScene(SongSelectSides, shell.Credit.Waiwai, shell.Credit.AiBattle));
     }
 }

@@ -207,8 +207,8 @@ internal sealed class GameShell : IDisposable
         string[] modes =
         [
             Arcade.Home ? "home" : "arcade",
-            .. Hosts.AiBattle ? ["AI battle"] : Array.Empty<string>(),
-            .. Hosts.Waiwai ? ["Waiwai"] : Array.Empty<string>(),
+            .. Credit.AiBattle ? ["AI battle"] : Array.Empty<string>(),
+            .. Credit.Waiwai ? ["Waiwai"] : Array.Empty<string>(),
             .. gameplay?.Demo == true ? ["attract demo"] : Array.Empty<string>(),
             .. gameplay is not null && Autoplay ? ["autoplay"] : Array.Empty<string>(),
             .. gameplay is not null && DevAutoplay ? ["dev autoplay"] : Array.Empty<string>(),
@@ -268,7 +268,7 @@ internal sealed class GameShell : IDisposable
 
     private void rumble(int? lane, (float Low, float High, int Ms) rumble)
     {
-        var side = lane ?? Hosts.PlayerSide;
+        var side = lane ?? Credit.PlayerSide;
         if (rumblePads(side) is not { Length: > 0 } pads)
             return;
         var strength = Math.Max(rumble.Low, rumble.High);
@@ -295,7 +295,7 @@ internal sealed class GameShell : IDisposable
 
     private void rumbleShape(int? lane, double seconds, Func<float, (float Low, float High)> shape)
     {
-        var side = lane ?? Hosts.PlayerSide;
+        var side = lane ?? Credit.PlayerSide;
         if (rumblePads(side) is { Length: > 0 } pads)
             _rumbles.Add((side, pads, System.Diagnostics.Stopwatch.GetTimestamp(), seconds, shape));
     }
@@ -390,6 +390,12 @@ internal sealed class GameShell : IDisposable
     /// <summary>Who is playing this credit (joined drums, songs played, a replay's player, online two-player).</summary>
     public PlayerSession Players { get; }
 
+    /// <summary>The credit's mode, players and what a play hands its results (see <see cref="CreditSession"/>).</summary>
+    public CreditSession Credit { get; } = new();
+
+    /// <summary>Where the next Song Select starts.</summary>
+    public SongSelectMemory SelectMemory { get; private set; } = null!;
+
     private readonly SongLibraries _libraries;
     private IAudioOutput? _audioDevice;
     private readonly LumenGameSceneLoader _loader;
@@ -406,7 +412,7 @@ internal sealed class GameShell : IDisposable
 
     /// <summary>The AI battle player's standing (the playing drum's player; at home a guest is this PC's).</summary>
     public Waddamburo.Game.Scores.AiProgress AiStanding() =>
-        (TaikoGuest.Profiles[Hosts.PlayerSide] ?? (Arcade.Home ? Waddamburo.Game.Scores.ScoreProfile.LocalGuest : null)) is { } profile
+        (TaikoGuest.Profiles[Credit.PlayerSide] ?? (Arcade.Home ? Waddamburo.Game.Scores.ScoreProfile.LocalGuest : null)) is { } profile
             && Sync.Scores is { } scores ? scores.AiProgress(profile.Baid) : Waddamburo.Game.Scores.AiProgress.None;
 
     /// <summary>AI battle's rank ladder (the installation's ghostinfo.xml).</summary>
@@ -525,7 +531,7 @@ internal sealed class GameShell : IDisposable
     // centre (player 1's, or player 2's when they play alone; the revival is always driven as player 1's).
     private SdlKeyboardSnapshot menuKeys(SdlKeyboardSnapshot keys)
     {
-        var drum = Hosts.PlayerSide == 1 && !Hosts.TwoPlayers && Active.Id != FlowScenes.Retry ? 4 : 0;
+        var drum = Credit.PlayerSide == 1 && !Credit.TwoPlayers && Active.Id != FlowScenes.Retry ? 4 : 0;
         Application.ClickPad = drum + 1;
         IEnumerable<SdlKeyboardKey> drumToo(SdlKeyboardKey key) => key switch
         {
@@ -865,7 +871,10 @@ internal sealed class GameShell : IDisposable
             _boot.Begin("MOVIES");
             var flow = new GameFlowSession();
             Catalog = createSceneCatalog(options.StartScene);
+            SelectMemory = new SongSelectMemory(snapshot, () => Arcade);
             Hosts = createHosts(flow, snapshot, diagnosticResult);
+            if (Options.StartScene is StartScene.DaniResultFail or StartScene.DaniResultClear)
+                Credit.DanResult = diagnosticDan(Options.StartScene == StartScene.DaniResultClear);
             // Stock songs as supportinfo.xml lists them; any other song three steps below each course it has.
             // ponytail: three everywhere for custom songs, whether or not simplifying changes their charts.
             Hosts.SupportCounts = song => song.Key.Source == SongSourceKind.Stock
@@ -984,15 +993,15 @@ internal sealed class GameShell : IDisposable
                     ? Environment.GetEnvironmentVariable("WADDAMBURO_RESULT_PLAYERS") == "2" ? [diagnostic, diagnostic] : [diagnostic]
                     : [],
             () => Arcade,
-            Coins)
+            Coins,
+            Credit,
+            SelectMemory)
         {
             WaiwaiOutcome = () => Gameplay.WaiwaiOutcome ?? _diagnosticWaiwai,
-            DanBests = () => TaikoGuest.Profiles[Hosts!.PlayerSide] is { } player && Sync.Scores is { } scores
+            DanBests = () => TaikoGuest.Profiles[Credit.PlayerSide] is { } player && Sync.Scores is { } scores
                 ? scores.DanBests(player.Baid) : new Dictionary<string, int>(),
-            DanResult = Options.StartScene is StartScene.DaniResultFail or StartScene.DaniResultClear
-                ? diagnosticDan(Options.StartScene == StartScene.DaniResultClear) : null,
             Rankings = Sync.Online ? new SongRankings(Sync.RankingClient, ChartHashes) : null,
-            SongsStarted = () => Players.SongsPlayed,
+            SongsStarted = () => Credit.SongsPlayed,
             AiPanels = () => AiStanding() is var (points, wins, _)
                 ? new(AiRanks.RankOf(points), AiRanks.PointsToNextRank(points), wins, Waddamburo.Game.Gameplay.AiBattleRanks.WinsToNextReward(wins), Waddamburo.Game.Lumen.AiBattlePanels.NewPlayer.Tension)
                 : Waddamburo.Game.Lumen.AiBattlePanels.NewPlayer,
@@ -1208,7 +1217,7 @@ internal sealed class GameShell : IDisposable
         };
         if (Options.StartScene == StartScene.DaniGameOver)
             Catalog.Replace(FlowScenes.DaniGameOver);
-        if (Options.StartScene == StartScene.WaiwaiTutorial) Hosts.Waiwai = true;
+        if (Options.StartScene == StartScene.WaiwaiTutorial) Credit.Waiwai = true;
         if (Options.StartScene is StartScene.AiSongSelect or StartScene.AiTutorial)
             Players.ChooseMode(aiBattle: true);
         _boot?.Begin("SYSTEM SETUP");
@@ -1226,7 +1235,7 @@ internal sealed class GameShell : IDisposable
             Console.WriteLine($"Showing {Active.Id} at launch.");
             _indicators = new SystemIndicators((LumenGameSceneInstance)_loader
                 .LoadAsync(SystemIndicators.Definition(new SceneId("system-indicators")), CancellationToken.None)
-                .AsTask().GetAwaiter().GetResult()) { Coins = Coins, HideCoinType = () => HideArcadeHud, AiBattle = Hosts.AiBattle };
+                .AsTask().GetAwaiter().GetResult()) { Coins = Coins, HideCoinType = () => HideArcadeHud, AiBattle = Credit.AiBattle };
             _home.LoadResume(_loader);
             Hosts.LayerLoading = host =>
             {
@@ -1235,7 +1244,7 @@ internal sealed class GameShell : IDisposable
                 if (host is "song-select" && Players.OnlineTwoPlayers)
                     Players.PlayOnlineAsTwoPlayers(false);
                 if (host is "result" or "retry" or GameplaySceneComposition.StaticHostId)
-                    Don.MapPlayerZero = Hosts.PlayerSide == 1 && !Hosts.TwoPlayers;
+                    Don.MapPlayerZero = Credit.PlayerSide == 1 && !Credit.TwoPlayers;
                 else if (host is "player-entry" or "song-select" or "gameover" or "tutorial" or "dani-select")
                     Don.MapPlayerZero = false;
             };
@@ -1516,7 +1525,7 @@ internal sealed class GameShell : IDisposable
         SongSelectFlow.AbandonCover();
         Don?.SetDialogDon(false);
         Players.Reset();
-        Players.SongsPlayed = 0; // a new credit starts at the first song
+        Credit.SongsPlayed = 0; // a new credit starts at the first song
         Scenes.Show(FlowScenes.Logo);
         return true;
     }
@@ -1565,7 +1574,7 @@ internal sealed class GameShell : IDisposable
         Overlay.Clear();
         Don?.SetDialogDon(false);
         Players.Reset();
-        Players.SongsPlayed = 0;
+        Credit.SongsPlayed = 0;
         _returnToAttract = false;
         Coins?.Clear();
         Scenes.Show(FlowScenes.Logo);
@@ -1850,7 +1859,7 @@ internal sealed class GameShell : IDisposable
         if (!Arcade.UploadBanner || _gameplay.Demo) return _uploadBanner = null;
         if (auto) return _uploadBanner = "custom_upload.banner_auto";
         var source = song?.Descriptor.Key.Source ?? request?.Song.Source
-            ?? (Active.Id == FlowScenes.SongSelect ? Hosts.Library : (SongSourceKind?)null);
+            ?? (Active.Id == FlowScenes.SongSelect ? SelectMemory.Library : (SongSourceKind?)null);
         if (source is not (SongSourceKind.Tja or SongSourceKind.OsuLazer or SongSourceKind.OsuStable))
             return _uploadBanner = null;
         if (!Arcade.UploadCustomSongs) return _uploadBanner = "custom_upload.banner_all";

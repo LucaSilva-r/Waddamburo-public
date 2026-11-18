@@ -85,7 +85,7 @@ internal sealed class SongSearch(GameShell shell, SongCatalogSnapshot catalog) :
         (_query, _openWhenDone) = ("", false);
         _field.Set("");
         _result = new("", []);
-        _crowns = shell.Hosts.Crowns?.Invoke(shell.Hosts.PlayerSide);
+        _crowns = shell.Hosts.Crowns?.Invoke(shell.Credit.PlayerSide);
         _history = loadHistory();
         _page ??= new(static () => Strings.T("search.title"), rows, Footer: legend);
         _menu.Open(_page, home: true);
@@ -143,7 +143,7 @@ internal sealed class SongSearch(GameShell shell, SongCatalogSnapshot catalog) :
         Console.WriteLine($"Search '{results.Query}': {results.Songs.Count} songs.");
         remember(results.Query);
         Close();
-        shell.Reload.Start(() => shell.Hosts.Search = results);
+        shell.Reload.Start(() => shell.SelectMemory.Search = results);
     }
 
     // The search goes first in the history, once (a search picked again moves up); the last five are kept.
@@ -188,7 +188,7 @@ internal sealed class SongSearch(GameShell shell, SongCatalogSnapshot catalog) :
         bool stale() => Volatile.Read(ref _generation) != generation;
         var crowns = _crowns;
         // Waiwai's folder lists only songs it has a composition for (SongSelectCatalogView): the count says the same.
-        var waiwai = shell.Hosts.Waiwai;
+        var waiwai = shell.Credit.Waiwai;
         _ = Task.Run(() =>
         {
             try

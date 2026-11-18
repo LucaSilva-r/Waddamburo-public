@@ -78,7 +78,7 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, 
         if (keys.IsDown(SdlKeyboardKey.Down))
             _selection = Math.Min(Math.Max(0, rows.Count - 1), _selection + 1);
         // AI battle: the leaderboard only (its gameplay is AI-don's two lanes, a replay is one player's).
-        if (GameActions.Down(keys, GameAction.Confirm) && _selection < rows.Count && !shell.Hosts.AiBattle)
+        if (GameActions.Down(keys, GameAction.Confirm) && _selection < rows.Count && !shell.Credit.AiBattle)
         {
             var play = rows[_selection];
             TaikoReplay? local;
@@ -96,7 +96,7 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, 
     private bool open()
     {
         // Replays are one player's: not in two-player, duet or Waiwai.
-        if (!shell.Arcade.Home || shell.Hosts.TwoPlayers || shell.Hosts.Waiwai
+        if (!shell.Arcade.Home || shell.Credit.TwoPlayers || shell.Credit.Waiwai
             || shell.Active.Id != FlowScenes.SongSelect || shell.PlayRequests.Pending is not null
             || shell.Hosts.SongSelect?.SongUnderCursor is not { } song)
             return false;
@@ -104,7 +104,7 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, 
         _charts = [.. song.Descriptor.Charts.Where(static chart => chart.Course is not null).OrderBy(static chart => chart.Course)];
         if (_charts.Length == 0)
             return false;
-        _profile = TaikoGuest.Profiles[shell.Hosts.PlayerSide] ?? ScoreProfile.LocalGuest;
+        _profile = TaikoGuest.Profiles[shell.Credit.PlayerSide] ?? ScoreProfile.LocalGuest;
         _client = _profile?.Token is { } token ? shell.Sync.ClientFor(token) : null;
         var crowns = _profile is { } profile && shell.Sync.Scores is { } scores ? scores.Crowns(profile.Baid) : [];
         var played = Array.FindLastIndex(_charts, chart => crowns.ContainsKey(chart.Key.ToString()));
@@ -172,7 +172,7 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, 
         var replay = download.Result;
         var chart = _charts[_chart];
         var request = new PlayRequest(shell.Hosts.SongSelect!.CatalogRevision, _song!.Descriptor.Key, _song.Descriptor.AudioAsset,
-            [new PlayerChartRequest(shell.Hosts.PlayerSide == 1 ? LocalPlayerSlot.PlayerTwo : LocalPlayerSlot.PlayerOne,
+            [new PlayerChartRequest(shell.Credit.PlayerSide == 1 ? LocalPlayerSlot.PlayerTwo : LocalPlayerSlot.PlayerOne,
                 chart.Key, chart.ChartAsset, chart.Course!.Value) { Options = TaikoPlayOptions.FromBits(replay.Play.Options) }])
         {
             Seed = replay.Play.Seed,
@@ -244,7 +244,7 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, 
                 quads.AddRange(row(rows[index], y + (RowHeight - 4) / 2));
             }
         }
-        quads.Add(painter.Text(shell.Hosts.AiBattle ? T("score_list.keys_no_replay", GameActions.Name(GameAction.Scores))
+        quads.Add(painter.Text(shell.Credit.AiBattle ? T("score_list.keys_no_replay", GameActions.Name(GameAction.Scores))
             : T("score_list.keys", GameActions.Name(GameAction.Confirm), GameActions.Name(GameAction.Scores)), Left + Width / 2, Top + Height - 26, Width - 60, 22, tint: (170, 175, 190)));
         return quads;
     }

@@ -185,17 +185,17 @@ internal sealed class AttractFlow(GameShell shell, GameplayFlow gameplay, string
         if (Shell.TakeCardFailure())
         {
             Shell.Sounds?.StopAll();
-            Shell.Hosts.EntryTrigger = 3;
+            Shell.Credit.EntryTrigger = 3;
             Shell.Players.Reset();
-            Shell.Hosts.EntryCardRejected = true;
+            Shell.Credit.EntryCardRejected = true;
             Shell.Scenes.Show(FlowScenes.Entry);
         }
         else if (Shell.TakeCard() is { } card)
         {
             Shell.Sounds?.StopAll();
-            Shell.Hosts.EntryTrigger = 4;
+            Shell.Credit.EntryTrigger = 4;
             Shell.Players.Reset();
-            Shell.Hosts.EntryCard = card;
+            Shell.Credit.EntryCard = card;
             Shell.Scenes.Show(FlowScenes.Entry);
         }
         // Home: the drum opens the player setup, which starts the entry itself.
@@ -210,7 +210,7 @@ internal sealed class AttractFlow(GameShell shell, GameplayFlow gameplay, string
                 Shell.Sounds?.Attract.PlayExit();
             // SCENE_TRIGGER_COIN (3), or _DON_1P (0) / _DON_2P (1) for the drum hit: the entry then
             // joins that drum's player (the right one plays as P2).
-            Shell.Hosts.EntryTrigger = coinStart ? 3 : input.DrumSide ?? 0;
+            Shell.Credit.EntryTrigger = coinStart ? 3 : input.DrumSide ?? 0;
             Shell.Players.Reset();
             if (!coinStart)
                 Shell.Players.Join(input.DrumSide ?? 0);

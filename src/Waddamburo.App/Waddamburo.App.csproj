@@ -75,4 +75,7 @@
     <Error Condition="'@(_ImGuiBundle)' == ''" Text="The Windows bundle is missing the ImGui cimgui.dll runtime." />
     <Error Condition="'$(IncludeNativeLibrariesForSelfExtract)' != 'true'" Text="The Windows bundle must self-extract native libraries, including cimgui.dll." />
   </Target>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Waddamburo.App.Tests" />
+  </ItemGroup>
 </Project>

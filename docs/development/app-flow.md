@@ -44,5 +44,8 @@ use black throughout the app.
 `eng/flow-smoke.sh <game-root> <out>` walks every start scene and a scripted song headless, then plays
 once per mode (`--flow-smoke=normal|two-players|waiwai|ai-battle|dan|review|training|demo`, plus an
 online echo), and writes `transitions.txt` (scene changes with their ticks, and each play's
-`Play results:` line). Run it before and after a change and diff the two: a refactor should not move
-a tick or a score. Review and training follow the real frame clock, so their ticks are left out.
+`Play results:` line). Run it before and after a change and compare the two with
+`eng/flow-smoke-compare.py before/transitions.txt after/transitions.txt`: a refactor should not
+change a scene or a score. Ticks may move by one or two (the loop drops ticks while a scene loads),
+so the compare allows ±3; review and training follow the real frame clock, so their ticks are left
+out. Runs go four at a time (about 10 minutes).

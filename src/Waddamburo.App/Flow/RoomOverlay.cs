@@ -120,7 +120,7 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
     {
         open();
         _relayout = true;
-        shell.Hosts.ReturnToOnline();
+        shell.SelectMemory.ReturnToOnline();
     }
 
     private void open()
@@ -418,7 +418,7 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
         // Someone came: shown at once on the side waiting for them. Someone left: Song Select lays itself out again
         // (once the lobby is gone, see listDanDojo).
         if (partner is not null && shell.Hosts.SongSelect is { } songSelect)
-            songSelect.ShowPartner(shell.Hosts.PartnerSide);
+            songSelect.ShowPartner(shell.Credit.PartnerSide);
         else
             (_relayout, _partnerLeft) = (true, true);
     }
@@ -462,7 +462,7 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
         shell.Don?.SetLook(side, partner?.Look);
         // The side the player didn't join on (a host on the right drum has their partner on the left). Set before the
         // reload: it lays Song Select out for these sides as it starts.
-        shell.Hosts.PartnerSide = partner is null ? null : side;
+        shell.Credit.PartnerSide = partner is null ? null : side;
         if (shell.Indicators is { } indicators)
             indicators.Partner = partner is not null;
     }

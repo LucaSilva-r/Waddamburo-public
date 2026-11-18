@@ -18,8 +18,9 @@ internal enum FlowSmokeMode { Off, Normal, TwoPlayers, Waiwai, AiBattle, Dan, Re
 /// </summary>
 internal sealed class FlowSmokeRun(GameShell shell, GameplayFlow gameplay, SongSelectFlow songSelect, FlowSmokeMode mode, string? title)
 {
-    // Song Select settles (its list, the dan catalogue) before the request.
-    private const int SettleTicks = 120, GiveUpTicks = 3600;
+    // Song Select settles (its list, the dan catalogue) before the request, which goes at a fixed tick so a slow
+    // load (the dan catalogue on a fresh folder) doesn't move the whole run.
+    private const int SettleTicks = 120, RequestTick = 600, GiveUpTicks = 3600;
 
     private int _readyTicks;
     private bool _requested, _practising;
@@ -54,12 +55,12 @@ internal sealed class FlowSmokeRun(GameShell shell, GameplayFlow gameplay, SongS
                 fail("Song Select (and the dan catalogue) never got ready");
             return;
         }
-        if (++_readyTicks < SettleTicks)
+        if (++_readyTicks < SettleTicks || shell.Tick < RequestTick)
             return;
         _requested = true;
         if (mode == FlowSmokeMode.Dan)
         {
-            var (_, courses) = shell.Hosts.Dan!.Boards(shell.Hosts.DanSeries, null);
+            var (_, courses) = shell.Hosts.Dan!.Boards(shell.Credit.DanSeries, null);
             if (courses.FirstOrDefault(static course => course is not null) is not { } course)
             {
                 fail("no playable dan course");
@@ -74,7 +75,7 @@ internal sealed class FlowSmokeRun(GameShell shell, GameplayFlow gameplay, SongS
         {
             shell.Players.Join(0);
             shell.Players.Join(1);
-            shell.Hosts.Waiwai = mode == FlowSmokeMode.Waiwai;
+            shell.Credit.Waiwai = mode == FlowSmokeMode.Waiwai;
         }
         var songs = shell.SongCatalog.Categories.SelectMany(static category => category.Songs)
             .Where(song => mode != FlowSmokeMode.Waiwai || song.Descriptor.WaiwaiComposition is not null)

@@ -109,25 +109,21 @@ its own (`CourseSong`, `CourseHold`, `AiPrior`, `AiUploads`, `Echo`…).
 
 ### 2.2 `CreditSession`: one owner for the credit
 
-```csharp
-// Flow/CreditSession.cs
-internal sealed class CreditSession
-{
-    public CreditMode Mode { get; set; }          // Normal, Waiwai, AiBattle, Dan
-    public CreditPlayers Players { get; }         // joined sides, side, partner, entry trigger (from PlayerSession + Hosts)
-    public int SongsPlayed { get; set; }
-    public TutorialsSeen Tutorials { get; set; }
-    public SceneHandoff Handoff { get; set; }     // the last play's payload: result, AI outcome, dan result, Waiwai outcome
-    public void Reset();                          // the one place a credit ends
-}
-```
+`Flow/CreditSession.cs` (built in phase 1) is plain data with no shell: `Mode` (`CreditMode`: Normal,
+Waiwai, AiBattle; `Waiwai` and `AiBattle` are views of it, so both can never hold), the players' sides
+(`PlayerSide`, `TwoPlayers`, `PartnerSide`), `SongsPlayed` (0 offers the tutorials again), the
+tutorials watched, what the next entry starts from (`EntryTrigger`, `EntryRejoined`, `EntrySetup`,
+`EntryCard`), the dan series and challenge, and what a finished play hands its results (`AiOutcome`,
+`AiNumbers`, `AiSectionBest`, `DanResult`). A separate `SceneHandoff` class was not worth it: those
+four sit in their own section. `Shell.Hosts.AiBattle` is now `Shell.Credit.AiBattle`.
 
-`Handoff` is written by a mode's `End` and read by the result hosts; nothing else carries results
-between scenes. `PlayerSession` merges into `CreditPlayers`. `Shell.Hosts.AiBattle` becomes
-`Credit.Mode == CreditMode.AiBattle`.
+`PlayerSession` keeps the behaviour (joining, guests, watching a replay, swapping sides for AI
+battle) and writes the credit's state into `CreditSession`. Folding it in fully waits for phase 4,
+when the modes take over what it decides.
 
-`SongSelectMemory` (library, osu! browse, focus, search, last pick, online song) is a separate class:
-it outlives credits at home and is cleared by `CreditSession.Reset` in arcade.
+`Flow/SongSelectMemory.cs` (library, osu! browse, focus, search, last pick, online song, and
+`Start(view, picked)`: where the cursor starts) outlives credits at home; a cabinet's new credit calls
+`ForgetLastSong`.
 
 ### 2.3 `LayerHostFactory` becomes a factory
 
@@ -153,8 +149,8 @@ The constructor's service construction moves to a static `GameServices.Create(op
 record. GameShell keeps the loop, the active scene, `Tick`, and the composition.
 
 **Access rule for flows.** Flows may use services through `Shell` (audio, sounds, scenes, overlay,
-catalog). They may not hold or write another flow's state; shared state goes in `CreditSession`,
-`SongSelectMemory` or `SceneHandoff`. We will not replace `Shell` with constructor injection
+catalog). They may not hold or write another flow's state; shared state goes in `CreditSession`
+or `SongSelectMemory`. We will not replace `Shell` with constructor injection
 everywhere: that only renames the bag. The state rule is what removes the spaghetti.
 
 ### 2.5 Mechanical cleanups
@@ -175,13 +171,13 @@ and it is cohesive, so this is last and only if time allows.
 
 ## 3. Phases
 
-Each phase is its own commit series on `main`, contains no feature work, and ends with an empty diff
-on the phase 0 runs and green tests.
+Each phase is its own commit series on `main`, contains no feature work, and ends with
+`eng/flow-smoke-compare.py` reporting the same on the phase 0 runs, and green tests.
 
 | # | Phase | Exit criterion |
 |---|---|---|
-| 0 | **Safety net.** *Done 2026-11-18.* `flow-smoke.sh` also runs one play per mode through the real flows (`--flow-smoke=<mode>`, `FlowSmokeRun`): normal, two players, Waiwai, AI battle, dan, online echo (`WADDAMBURO_ONLINE_ECHO`, the partner's lane only; a real online match is checked by hand), review, training and the attract demo, each logging a `Play results:` line. The plays run on a scratch game folder with the real data linked in, with no music and seeded random picks so headless time follows the ticks. It runs locally on the user's game data before each phase is merged (not in public CI). | Two runs of the same build give identical output (checked for the normal play; the long modes are checked by the first before/after diff). |
-| 1 | **`CreditSession` + `SongSelectMemory` + `SceneHandoff`.** Move state out of `LayerHostFactory` and `PlayerSession`; repoint every use. Add `tests/Waddamburo.App.Tests` (`InternalsVisibleTo`) with unit tests for `Reset` and mode switches. | `LayerHostFactory` has no public settable state. |
+| 0 | **Safety net.** *Done 2026-11-18.* `flow-smoke.sh` also runs one play per mode through the real flows (`--flow-smoke=<mode>`, `FlowSmokeRun`): normal, two players, Waiwai, AI battle, dan, online echo (`WADDAMBURO_ONLINE_ECHO`, the partner's lane only; a real online match is checked by hand), review, training and the attract demo, each logging a `Play results:` line. The plays run on a scratch game folder with the real data linked in, with no music and seeded random picks so headless time follows the ticks. It runs locally on the user's game data before each phase is merged (not in public CI). | Two runs of the same build compare the same with `eng/flow-smoke-compare.py`: scenes and results exactly, ticks within ±3 (the loop drops a tick or two while loading, so exact ticks are not reproducible). |
+| 1 | **`CreditSession` + `SongSelectMemory`.** *Done 2026-11-18.* State moved out of `LayerHostFactory` and `PlayerSession`, every use repointed (`Shell.Credit`, `Shell.SelectMemory`). `tests/Waddamburo.App.Tests` (`InternalsVisibleTo`) tests the mode flags and the new-credit tutorial reset. | `LayerHostFactory` keeps no credit or song select state; what it still has settable are services and callbacks (coins, dan catalogue, result and entry callbacks), phase 2's. |
 | 2 | **`LoadedHosts`; factory takes `Func<ArcadeSettings>`.** Delete the `Func<bool>` shims. | Factory constructor ≤ 8 parameters, no `init` funcs. |
 | 3 | **Lane drivers.** Autoplay, AI bot, echo, replay out of `GameplayFlow`. | No `_play.Autoplay/AiBot/Echo` in `GameplayFlow`. |
 | 4 | **Play modes.** Dan, AI battle, Waiwai, demo, normal; `Enter`, `Tick`, `end`, `saveScore`, `saveCourse` dispatch to the mode. | Mode-branch count in `GameplayFlow` under 15 (from 131); `Play` under 15 fields. |
