@@ -60,13 +60,24 @@ layouts, kusudama, timeline, review, voiding, autoplay, echo, match, squeeze and
 Today every play-time branch mixes two independent questions:
 
 - **Mode**: what the play is for. It picks the charts, whether and how it saves, what the results
-  scene receives, what restart means. Normal (1P/2P), Waiwai, AI battle, dan course, attract demo.
+  scene receives, what restart means. Normal (1P/2P), Waiwai, AI battle, dan course, training,
+  attract demo.
 - **Lane driver**: where a lane's hits come from. Local drum, autoplay, AI bot, online echo,
-  recorded replay (review), training.
+  recorded replay (review).
 
-Demo is Normal with an autoplay driver and no save. Online is Normal with an echo driver on the
-partner's lane. Review is any mode with replay drivers and saving off. Splitting the two removes
-most of the 131 branches: a mode never asks about review, a driver never asks about dan.
+Demo is Normal with an autoplay driver and no save. Review is any mode with replay drivers and
+saving off. Splitting the two removes most of the 131 branches: a mode never asks about review, a
+driver never asks about dan.
+
+**Online** (decided) is Normal with a fake second player: the partner's lane is an `EchoDriver`,
+while the credit stays a single-player credit for its own rules (one joined side, only the local
+lane saves, single-player kusudama → balloons on the partner's lane). The one thing online adds to
+Normal is the end: results wait for the partner's and show both, synchronised. That is an
+`IPlayMode.End` option on `NormalPlay` (an `OnlineLink` it is given), not a mode of its own.
+
+**Training** (decided) is a mode, `TrainingPlay`: it owns a looping, speed-changing clock and
+section restarts, never saves and has no results. It reuses the review clock that
+`TrainingSession` shares with `ReviewSession` today.
 
 ```csharp
 // Flow/Play/IPlayMode.cs
@@ -87,9 +98,10 @@ internal interface ILaneDriver
 }
 ```
 
-Modes: `NormalPlay`, `WaiwaiPlay`, `AiBattlePlay`, `DanCoursePlay`, `DemoPlay`. Drivers:
-`DrumDriver`, `AutoplayDriver`, `AiBotDriver`, `EchoDriver`, `ReplayDriver`. `ReviewSession` and
-`TrainingSession` already exist and become the clock owner plus replay drivers.
+Modes: `NormalPlay` (with an optional `OnlineLink`), `WaiwaiPlay`, `AiBattlePlay`,
+`DanCoursePlay`, `TrainingPlay`, `DemoPlay`. Drivers: `DrumDriver`, `AutoplayDriver`,
+`AiBotDriver`, `EchoDriver`, `ReplayDriver`. `ReviewSession` becomes the review clock plus replay
+drivers; `TrainingSession` becomes `TrainingPlay`.
 
 `GameplayFlow` keeps only what every play has: the clock and audio, rainbow reveal, shutter,
 pause, quick restart, the editor hooks. `Play` shrinks to those fields; each mode and driver owns
@@ -168,7 +180,7 @@ on the phase 0 runs and green tests.
 
 | # | Phase | Exit criterion |
 |---|---|---|
-| 0 | **Safety net.** Extend `flow-smoke.sh` with the modes it does not reach: AI battle song, dan course, Waiwai 2P, a replay review, the attract demo, a 2P normal play. Record the final score and replay hash per play run (`--play` already plays deterministically). Add `tests/Waddamburo.App.Tests` with `InternalsVisibleTo` for the pure classes extracted later. | Two runs of the same build give identical output. |
+| 0 | **Safety net.** Extend `flow-smoke.sh` with the modes it does not reach: AI battle song, dan course, Waiwai 2P, training, a replay review, the attract demo, a 2P normal play. Online needs a partner, so it is checked by hand. It runs locally on the user's game data before each phase is merged (not in public CI). Record the final score and replay hash per play run (`--play` already plays deterministically). Add `tests/Waddamburo.App.Tests` with `InternalsVisibleTo` for the pure classes extracted later. | Two runs of the same build give identical output. |
 | 1 | **`CreditSession` + `SongSelectMemory` + `SceneHandoff`.** Move state out of `LayerHostFactory` and `PlayerSession`; repoint every use. Unit tests for `Reset` and mode switches. | `LayerHostFactory` has no public settable state. |
 | 2 | **`LoadedHosts`; factory takes `Func<ArcadeSettings>`.** Delete the `Func<bool>` shims. | Factory constructor ≤ 8 parameters, no `init` funcs. |
 | 3 | **Lane drivers.** Autoplay, AI bot, echo, replay out of `GameplayFlow`. | No `_play.Autoplay/AiBot/Echo` in `GameplayFlow`. |
@@ -180,13 +192,11 @@ on the phase 0 runs and green tests.
 Phases 1–2 unblock everything else and are the cheapest. Phases 3–4 matter most. Phase 5 is
 easiest once 1–4 have removed the state GameShell is holding for others.
 
-## 4. Open questions
+## 4. Decisions
 
-1. **Online play**: is it a mode (its own saving and result rules) or Normal plus an echo driver?
-   The code treats it as the latter; `OnlineMatch` saving rules decide.
-2. **Training/practice**: driver or mode? It changes the clock (loops, speed), not the rules, so
-   it is proposed as part of the review clock.
-3. **Phase 0 in CI**: flow-smoke needs the user's game data, so it can't run in public CI. Run it
-   locally before each phase merge, or on a private runner?
+1. **Online play** is Normal with a fake second player (an echo lane) and a synchronised result
+   screen; the credit stays single-player for its own rules (2026-11-18).
+2. **Training** is a mode (2026-11-18).
+3. **Phase 0** runs locally on the user's game data, before each phase is merged; not in CI.
 4. **Docs**: `app-flow.md` gets rewritten at the end of phase 5; this file is deleted then (its
    result is the code).
