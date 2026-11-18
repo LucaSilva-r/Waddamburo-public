@@ -28,6 +28,10 @@ ExternalProject_Add(waddamburo_vgmstream_build
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE
   SOURCE_DIR "${_vgmstream_source}"
   BINARY_DIR "${_vgmstream_build}"
+  # Upstream globs the codec helpers into its static archive even with USE_G7221 off.
+  PATCH_COMMAND "${CMAKE_COMMAND}" -E rm -f
+    <SOURCE_DIR>/src/coding/libs/g7221_lib.c
+    <SOURCE_DIR>/src/coding/libs/g7221_aes.c
   CMAKE_ARGS
     ${_toolchain_args}
     -DCMAKE_BUILD_TYPE=Release

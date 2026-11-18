@@ -117,7 +117,8 @@ The optional vgmstream integration in `native/media/src/media.c` is original wra
 code written against vgmstream's public `libvgmstream` API. The dependency recipe in
 `native/vgmstream/` is original Waddamburo build configuration against upstream
 vgmstream commit `09c9f40caae4747e44b6a993b3d5b654cef4d1f7`. It downloads the
-unmodified upstream archive, builds it with G.719 and G.722.1 disabled, and vendors no source. Container
+upstream archive by hash, excludes the two Siren 14 helper sources from the extracted
+build, and disables G.719 and G.722.1. No vgmstream source is vendored. Container
 selection uses filename extensions and public library behavior. The public decode
 regression uses a project-authored, silent synthetic BNSF/IS22 fixture. Private game
 audio was used only for local compatibility checks; no sample, hash, path, capture,
