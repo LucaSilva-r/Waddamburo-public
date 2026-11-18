@@ -486,7 +486,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     /// <paramref name="reviewing"/>: a replay or practice is on: restarting plays the song for real.
     /// <paramref name="reportable"/>: another player's downloaded replay: its player can be reported.
     /// <paramref name="noResume"/>: a dan course: its pause can't be resumed, only restarted or left.
-    /// <paramref name="quit"/>: home, outside a song (the demo play counts as the attract): the game can be closed.
+    /// <paramref name="quit"/>: desktop home mode can close the game outside a song (including the attract demo).
     /// <paramref name="layout"/>: the song can open the layout editor (a local single-player song).
     /// </remarks>
     public void Open(bool gameplay, bool attract = false, bool songSelect = false, bool replayable = false, bool reviewing = false,
@@ -511,7 +511,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             _choices = [.. _choices[..^1], "online.leave", _choices[^1]];
         else if (inRoom)
             _choices = ["menu.resume", "menu.settings", "online.leave"];
-        if (quit && !gameplay)
+        if (quit && !gameplay && !PlatformInfo.IsMobile)
             _choices = [.. _choices, "menu.quit_game"];
         IsOpen = true;
         Selection = 0;

@@ -609,6 +609,9 @@ internal sealed class GameShell : IDisposable
 
     public static int Run(GameOptions options)
     {
+        // Mobile starts a new shell in the same process after an explicit restart.
+        RestartRequested = false;
+        RestartArguments = [];
         GameShell? shell = null;
         try
         {
