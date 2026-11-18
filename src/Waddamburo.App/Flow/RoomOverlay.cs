@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Globalization;
 using Waddamburo.App.Home;
 using Waddamburo.App.Presentation;
 using Waddamburo.App.Scenes;
