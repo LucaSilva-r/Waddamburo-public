@@ -95,7 +95,7 @@ internal sealed class AttractFlow(GameShell shell, GameplayFlow gameplay, string
                 Shell.Scenes.Show(next);
             }
         }
-        else if (Shell.Hosts.Attract?.Finished == true)
+        else if (Shell.Loaded.Attract?.Finished == true)
         {
             var current = Shell.Active.Id;
             // Releases with an opening movie play it as the title (their exe's attract table).

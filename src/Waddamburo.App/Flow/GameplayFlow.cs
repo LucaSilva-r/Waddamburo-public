@@ -206,8 +206,8 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         // An online lane has no player of its own here: it plays with the other player's options, which an echo copies.
         var players = request.Players.Length < _sourceCharts.Length ? [.. request.Players, request.Players[0]] : request.Players.ToArray();
         // AI battle's support menu: a level below いつもの is the course's chart simplified (both lanes play it).
-        var pick = Shell.Credit.AiBattle && _sourceCharts.Length == 2 && _play.Review is null ? Shell.Hosts.SongSelect?.SupportLevel ?? 0 : 0;
-        var offered = Shell.Hosts.SongSelect?.ShownSupportCounts.ElementAtOrDefault((int)players[0].Course) ?? 0;
+        var pick = Shell.Credit.AiBattle && _sourceCharts.Length == 2 && _play.Review is null ? Shell.Loaded.SongSelect?.SupportLevel ?? 0 : 0;
+        var offered = Shell.Loaded.SongSelect?.ShownSupportCounts.ElementAtOrDefault((int)players[0].Course) ?? 0;
         var supportLevel = Waddamburo.Game.Lumen.SongSelectHostBinding.SupportPick(ChartSimplifier.LevelOf(players[0].Course), offered, pick);
         _play.Intermediate = pick > 0 && ChartSimplifier.SourceCourse(supportLevel) == players[0].Course;
         if (_play.Intermediate)

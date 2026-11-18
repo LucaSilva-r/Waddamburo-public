@@ -2,7 +2,6 @@ using Waddamburo.App.Scenes;
 using Waddamburo.Catalog;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Gameplay;
-using Waddamburo.Game.SongSelect;
 
 namespace Waddamburo.App.Flow;
 
@@ -48,7 +47,7 @@ internal sealed class FlowSmokeRun(GameShell shell, GameplayFlow gameplay, SongS
                 _practising = gameplay.TryStartPractice();
             return;
         }
-        if (shell.Active.Id != FlowScenes.SongSelect || shell.Hosts.SongSelect is null
+        if (shell.Active.Id != FlowScenes.SongSelect || shell.Loaded.SongSelect is null
             || mode == FlowSmokeMode.Dan && shell.Hosts.Dan?.Ready != true)
         {
             if (shell.Tick > GiveUpTicks)

@@ -131,7 +131,7 @@ It keeps `Create(SceneLayerDefinition)` and the private host builders. It reads 
 `SongSelectMemory` and one `Func<ArcadeSettings>`; the `Func<bool>` shims go. The loaded binding
 handles move to `LoadedHosts` (a plain class the factory fills as it builds: `SongSelect`, `Entry`,
 `Retry`, `GameOver`, `DaniSelect`, `WaiwaiResult`, `AiRemind`…), so flows poll `Shell.Loaded.Retry`
-instead of the factory.
+instead of the factory. (done in phase 2)
 
 ### 2.4 GameShell becomes setup plus loop
 
@@ -178,7 +178,7 @@ Each phase is its own commit series on `main`, contains no feature work, and end
 |---|---|---|
 | 0 | **Safety net.** *Done 2026-11-18.* `flow-smoke.sh` also runs one play per mode through the real flows (`--flow-smoke=<mode>`, `FlowSmokeRun`): normal, two players, Waiwai, AI battle, dan, online echo (`WADDAMBURO_ONLINE_ECHO`, the partner's lane only; a real online match is checked by hand), review, training and the attract demo, each logging a `Play results:` line. The plays run on a scratch game folder with the real data linked in, with no music and seeded random picks so headless time follows the ticks. It runs locally on the user's game data before each phase is merged (not in public CI). | Two runs of the same build compare the same with `eng/flow-smoke-compare.py`: scenes and results exactly, ticks within ±3 (the loop drops a tick or two while loading, so exact ticks are not reproducible). |
 | 1 | **`CreditSession` + `SongSelectMemory`.** *Done 2026-11-18.* State moved out of `LayerHostFactory` and `PlayerSession`, every use repointed (`Shell.Credit`, `Shell.SelectMemory`). `tests/Waddamburo.App.Tests` (`InternalsVisibleTo`) tests the mode flags and the new-credit tutorial reset. | `LayerHostFactory` keeps no credit or song select state; what it still has settable are services and callbacks (coins, dan catalogue, result and entry callbacks), phase 2's. |
-| 2 | **`LoadedHosts`; factory takes `Func<ArcadeSettings>`.** Delete the `Func<bool>` shims. | Factory constructor ≤ 8 parameters, no `init` funcs. |
+| 2 | **`LoadedHosts`; settings read directly.** *Done 2026-11-18.* The movies' hosts the flows poll (`SongSelect`, `Entry`, `Retry`, …) are `Shell.Loaded`; the entry passthroughs are gone. The `Func<bool>` settings shims and `SongsStarted` are gone: the factory reads `arcade` and `credit`. The ≤ 8 constructor parameters target was dropped: the remaining score, profile and callback funcs would only move into a bag. Callbacks wired after the system indicators exist (`LayerLoading`, `EntryJoined`, `CardDialog`, `ReturnToAttract`) stay settable: wiring them earlier would run them on the first scene's load. | Flows poll no movie host through the factory; no settings shim left. |
 | 3 | **Lane drivers.** Autoplay, AI bot, echo, replay out of `GameplayFlow`. | No `_play.Autoplay/AiBot/Echo` in `GameplayFlow`. |
 | 4 | **Play modes.** Dan, AI battle, Waiwai, demo, normal; `Enter`, `Tick`, `end`, `saveScore`, `saveCourse` dispatch to the mode. | Mode-branch count in `GameplayFlow` under 15 (from 131); `Play` under 15 fields. |
 | 5 | **GameShell split.** `InputStack`, `FrameComposer`, `RumbleController`, `AudioOutputHost`, `PresenceReporter`, `GameServices`, `DiagnosticsOptions`. | `GameShell.cs` under 600 lines; `tickOnce` under 40. |

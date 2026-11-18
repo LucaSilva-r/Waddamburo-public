@@ -375,6 +375,9 @@ internal sealed class GameShell : IDisposable
     public PlayRequestState PlayRequests { get; } = new();
     public SceneCatalog Catalog { get; }
     public LayerHostFactory Hosts { get; }
+
+    /// <summary>The hosts of the movies on stage, which the flows poll.</summary>
+    public LoadedHosts Loaded { get; } = new();
     public GameFlowCoordinator Coordinator { get; }
     public IntermissionOverlay Overlay { get; }
 
@@ -995,21 +998,16 @@ internal sealed class GameShell : IDisposable
             () => Arcade,
             Coins,
             Credit,
-            SelectMemory)
+            SelectMemory,
+            Loaded)
         {
             WaiwaiOutcome = () => Gameplay.WaiwaiOutcome ?? _diagnosticWaiwai,
             DanBests = () => TaikoGuest.Profiles[Credit.PlayerSide] is { } player && Sync.Scores is { } scores
                 ? scores.DanBests(player.Baid) : new Dictionary<string, int>(),
             Rankings = Sync.Online ? new SongRankings(Sync.RankingClient, ChartHashes) : null,
-            SongsStarted = () => Credit.SongsPlayed,
             AiPanels = () => AiStanding() is var (points, wins, _)
                 ? new(AiRanks.RankOf(points), AiRanks.PointsToNextRank(points), wins, Waddamburo.Game.Gameplay.AiBattleRanks.WinsToNextReward(wins), Waddamburo.Game.Lumen.AiBattlePanels.NewPlayer.Tension)
                 : Waddamburo.Game.Lumen.AiBattlePanels.NewPlayer,
-            ShowOni = () => Arcade.ShowOni,
-            RandomSongFolder = () => Arcade.RandomSongFolder,
-            HideArcadeHud = () => HideArcadeHud,
-            TimerFreeze = () => Arcade.TimerFreeze,
-            HomeTutorialSeen = () => Arcade.Home && Arcade.TutorialSeen,
             CopyrightPages = _copyright.Pages,
             Best = index => (uint)index < (uint)Bests.Length ? Bests[index] : null,
             Placement = index => (uint)index < (uint)Placements.Length ? Placements[index] : null,
@@ -1802,7 +1800,7 @@ internal sealed class GameShell : IDisposable
         }
         // A song without its music (a withdrawn one whose newer data kept only a placeholder): no preview, a silent play.
         if (Active.Id == FlowScenes.SongSelect
-            && (Hosts.SongSelect?.CourseSelectSong ?? Hosts.SongSelect?.SongUnderCursor) is { Descriptor.AudioAsset: null })
+            && (Loaded.SongSelect?.CourseSelectSong ?? Loaded.SongSelect?.SongUnderCursor) is { Descriptor.AudioAsset: null })
         {
             top.Add(Painter.Rect(380, bannerY, 520, 26, new RenderColor(0.45f, 0.32f, 0.05f, 0.85f)));
             top.Add(Painter.Text(Strings.T("song_select.no_music"), 640, bannerY + 13, 508, 22));
@@ -1848,7 +1846,7 @@ internal sealed class GameShell : IDisposable
     private string? uploadBanner()
     {
         var song = Active.Id == FlowScenes.SongSelect
-            ? Hosts.SongSelect?.CourseSelectSong ?? Hosts.SongSelect?.SongUnderCursor : null;
+            ? Loaded.SongSelect?.CourseSelectSong ?? Loaded.SongSelect?.SongUnderCursor : null;
         var request = Active.Id == FlowScenes.Gameplay || Active.Id == FlowScenes.Result ? _gameplay.CurrentRequest : null;
         var auto = (Autoplay || DevAutoplay) && (Active.Id == FlowScenes.SongSelect || Active.Id == FlowScenes.Gameplay || Active.Id == FlowScenes.Result);
         var context = $"{Active.Id}:{song?.Descriptor.Key}:{request?.Song}:{Arcade.UploadCustomSongs}:{Arcade.UploadBanner}:{auto}:{_gameplay.Demo}";
@@ -1897,18 +1895,18 @@ internal sealed class GameShell : IDisposable
         // a time.
         var entry = flowOf(Active.Id) is EntryFlow;
         pairing.Accepting = Active.Id != FlowScenes.Boot && flowOf(Active.Id) is AttractFlow or GameplayFlow { Demo: true }
-            || entry && !Hosts.EntryCardPending;
+            || entry && !(Loaded.Entry?.CardBusy == true);
         if (entry && pairing.TakeCardFailure())
-            Hosts.RejectEntryCard();
+            Loaded.Entry?.RejectCard();
         if (entry && pairing.TakeCard() is { } card)
         {
             // A card already on a drum: the game reads it and refuses it (このデータはすでに読みこんでいます).
             if (TaikoGuest.Profiles.Any(profile => profile?.Baid == card.Baid))
             {
                 Console.WriteLine($"Pairing: {card.Name} (baid {card.Baid}) is already playing; the card was refused.");
-                Hosts.RefuseEntryCard();
+                Loaded.Entry?.RefuseCardInUse();
             }
-            else if (!Hosts.InsertEntryCard(card))
+            else if (Loaded.Entry?.InsertCard(card) != true)
                 Console.WriteLine("Pairing: the entry is busy with another card; this one was dropped.");
         }
         pairing.UpdatePill(_pill);

@@ -98,7 +98,7 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, 
         // Replays are one player's: not in two-player, duet or Waiwai.
         if (!shell.Arcade.Home || shell.Credit.TwoPlayers || shell.Credit.Waiwai
             || shell.Active.Id != FlowScenes.SongSelect || shell.PlayRequests.Pending is not null
-            || shell.Hosts.SongSelect?.SongUnderCursor is not { } song)
+            || shell.Loaded.SongSelect?.SongUnderCursor is not { } song)
             return false;
         _song = song;
         _charts = [.. song.Descriptor.Charts.Where(static chart => chart.Course is not null).OrderBy(static chart => chart.Course)];
@@ -171,7 +171,7 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, 
         }
         var replay = download.Result;
         var chart = _charts[_chart];
-        var request = new PlayRequest(shell.Hosts.SongSelect!.CatalogRevision, _song!.Descriptor.Key, _song.Descriptor.AudioAsset,
+        var request = new PlayRequest(shell.Loaded.SongSelect!.CatalogRevision, _song!.Descriptor.Key, _song.Descriptor.AudioAsset,
             [new PlayerChartRequest(shell.Credit.PlayerSide == 1 ? LocalPlayerSlot.PlayerTwo : LocalPlayerSlot.PlayerOne,
                 chart.Key, chart.ChartAsset, chart.Course!.Value) { Options = TaikoPlayOptions.FromBits(replay.Play.Options) }])
         {
@@ -181,14 +181,14 @@ internal sealed class ScoreListOverlay(GameShell shell, OverlayPainter painter, 
                 PlayId = replay.Play.LocalOnly ? null : replay.Play.PlayId, // not on the server: nothing to report
             },
         };
-        shell.Hosts.SongSelect!.KeepOptions(); // your options, for when Song Select comes back
+        shell.Loaded.SongSelect!.KeepOptions(); // your options, for when Song Select comes back
         if (!shell.PlayRequests.TryRequestPlay(request))
         {
             _error = T("score_list.replay_failed", "busy");
             return;
         }
         // Back from the replay, Song Select opens on this song again (as after a play).
-        shell.Hosts.SongSelect!.RememberCurrentSong();
+        shell.Loaded.SongSelect!.RememberCurrentSong();
         Console.WriteLine($"Watching {replay.Play.Name}'s {replay.Play.Score} on {chart.Key}.");
         IsOpen = false;
     }

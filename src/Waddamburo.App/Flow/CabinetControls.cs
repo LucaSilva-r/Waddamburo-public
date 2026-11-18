@@ -154,6 +154,6 @@ internal sealed class CabinetControls(GameShell shell, InputLatches input, Actio
     {
         shell.Indicators?.CoinsChanged();
         if (shell.Active.Id == FlowScenes.Entry)
-            shell.Hosts.EntryCoinsChanged();
+            shell.Loaded.Entry?.CoinsChanged();
     }
 }

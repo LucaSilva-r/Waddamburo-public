@@ -168,7 +168,7 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
                 return true;
             }
             // A hit on the Online spine: the lobby, without the movie ever deciding the spine.
-            if (shell.Active.Id != FlowScenes.SongSelect || shell.Reload.Busy || shell.Hosts.SongSelect?.OnlineSpineUnderCursor != true
+            if (shell.Active.Id != FlowScenes.SongSelect || shell.Reload.Busy || shell.Loaded.SongSelect?.OnlineSpineUnderCursor != true
                 || !decidePressed(keys))
                 return false;
             open();
@@ -417,7 +417,7 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
         showPartnerAs(partner);
         // Someone came: shown at once on the side waiting for them. Someone left: Song Select lays itself out again
         // (once the lobby is gone, see listDanDojo).
-        if (partner is not null && shell.Hosts.SongSelect is { } songSelect)
+        if (partner is not null && shell.Loaded.SongSelect is { } songSelect)
             songSelect.ShowPartner(shell.Credit.PartnerSide);
         else
             (_relayout, _partnerLeft) = (true, true);

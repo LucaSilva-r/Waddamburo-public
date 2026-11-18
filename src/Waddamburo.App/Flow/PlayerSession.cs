@@ -37,7 +37,7 @@ internal sealed class PlayerSession(GameShell shell)
         if (!shell.Arcade.Home)
         {
             shell.SelectMemory.ForgetLastSong();
-            shell.Hosts.SongSelect?.ForgetPicked();
+            shell.Loaded.SongSelect?.ForgetPicked();
         }
         Array.Clear(TaikoGuest.Profiles);
         Array.Clear(TaikoGuest.Options);

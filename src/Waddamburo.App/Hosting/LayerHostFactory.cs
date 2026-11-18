@@ -5,7 +5,6 @@ using Waddamburo.App.Online;
 using Waddamburo.App.Presentation;
 using Waddamburo.App.Scenes;
 using Waddamburo.Catalog;
-using Waddamburo.Game.Dan;
 using Waddamburo.Game.Don;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Gameplay;
@@ -37,12 +36,12 @@ internal sealed class LayerHostFactory(
     Func<ArcadeSettings> arcadeSettings,
     CoinBank? coins,
     CreditSession credit,
-    SongSelectMemory memory) : ILumenLayerHostFactory
+    SongSelectMemory memory,
+    LoadedHosts loaded) : ILumenLayerHostFactory
 {
     // Live: the service menu changes settings (e.g. songs per session) while the game runs.
     private ArcadeSettings arcade => arcadeSettings();
 
-    private EntrySceneHost? _entry;
     private int _entryPrevious;
 
     /// <summary>The cabinet's coins (null on free play); replaced when the service menu changes the coin settings.</summary>
@@ -62,8 +61,6 @@ internal sealed class LayerHostFactory(
 
     public Func<int, Waddamburo.Game.Scores.RankingPlacement?>? Placement { get; init; }
 
-    /// <summary>Songs started this credit (song select shows the next one's number).</summary>
-    public Func<int>? SongsStarted { get; init; }
 
     /// <summary>AI battle's song select panels: the player's rank, points to the next, wins, wins to the next reward.</summary>
     public Func<AiBattlePanels>? AiPanels { get; init; }
@@ -73,24 +70,15 @@ internal sealed class LayerHostFactory(
 
 
 
-    /// <summary>The loaded entry's host (null outside the entry).</summary>
-    public EntrySceneHost? Entry => _entry;
 
 
-    /// <summary>A card read during entry; false when no entry runs or one is already pending.</summary>
-    public bool InsertEntryCard(ScoreProfile card) => _entry?.InsertCard(card) == true;
 
     /// <summary>The entry gives up (see EntrySceneHost.ReturnToAttract).</summary>
     public Action? ReturnToAttract { get; set; }
 
-    /// <summary>A card rejected during entry: the red band.</summary>
-    public void RejectEntryCard() => _entry?.RejectCard();
 
 
-    /// <summary>The entry is reading a card or waiting for a drum to take it.</summary>
-    public bool EntryCardPending => _entry?.CardBusy == true;
 
-    public bool RefuseEntryCard() => _entry?.RefuseCardInUse() == true;
 
     /// <summary>The name of an account chosen for a drum before the entry (its board shows it at the join).</summary>
     public Func<int, string?>? PlayerName { get; init; }
@@ -113,8 +101,6 @@ internal sealed class LayerHostFactory(
 
 
 
-    /// <summary>The tutorial was watched this credit: Song Select drops its folder.</summary>
-    public ModeTutorialHostBinding? ModeTutorial { get; private set; }
 
     /// <summary>The dan dojo's courses (null: no such folder in this run).</summary>
     public DanCourses? Dan { get; set; }
@@ -124,28 +110,17 @@ internal sealed class LayerHostFactory(
     /// <summary>The player's best result per course hash, for the course list's stamps.</summary>
     public Func<IReadOnlyDictionary<string, int>>? DanBests { get; set; }
 
-    /// <summary>The course list on screen.</summary>
-    public DaniSelectHostBinding? DaniSelect { get; private set; }
 
-    /// <summary>The course behind each of its boards (null: the back board).</summary>
-    public IReadOnlyList<DanCourseStatus?> DanBoards { get; private set; } = [];
 
-    /// <summary>The live show_oni setting (the Settings menu changes it while the game runs).</summary>
-    public Func<bool>? ShowOni { get; init; }
 
-    /// <summary>The settings' random-song spine (the movie's roll folder) is on.</summary>
-    public Func<bool>? RandomSongFolder { get; init; }
 
-    /// <summary>Home without the arcade HUD: the timer and song number are hidden.</summary>
-    public Func<bool>? HideArcadeHud { get; init; }
 
-    /// <summary>The live timer freeze setting: timers show but never run out.</summary>
-    public Func<bool>? TimerFreeze { get; init; }
 
-    private bool counting => countdown && TimerFreeze?.Invoke() != true;
+    // Home without the arcade HUD: the timer and song number are hidden.
+    private bool hideArcadeHud => arcade.Home && !arcade.ArcadeHud;
 
-    /// <summary>Home: the tutorial was watched once (kept in config.cfg); song select no longer offers it.</summary>
-    public Func<bool>? HomeTutorialSeen { get; init; }
+    private bool counting => countdown && !arcade.TimerFreeze;
+
 
     /// <summary>The boot's music credit pages there are (the copyright NUT's).</summary>
     public int CopyrightPages { get; init; }
@@ -172,20 +147,10 @@ internal sealed class LayerHostFactory(
 
     // --- The loaded hosts the flow polls ---
 
-    /// <summary>The loaded song select's host (its mode switch).</summary>
-    public SongSelectHostBinding? SongSelect { get; private set; }
 
-    /// <summary>The loaded Waiwai results' host (null for normal results).</summary>
-    public WaiwaiResultHostBinding? WaiwaiResult { get; private set; }
 
-    /// <summary>The loaded revival scene's host (its outcome).</summary>
-    public RetryGameHostBinding? Retry { get; private set; }
 
-    /// <summary>The loaded game-over scene's host.</summary>
-    public GameOverHostBinding? GameOver { get; private set; }
 
-    /// <summary>The loaded attract movie's host.</summary>
-    public AttractHostBinding? Attract { get; private set; }
 
     /// <summary>What follows the results (see <see cref="TaikoCredit"/>).</summary>
     // Home: an endless credit, song after song, no revival and no end message.
@@ -195,9 +160,7 @@ internal sealed class LayerHostFactory(
     private int endMessage => arcade.Home ? 0 : TaikoCredit.EndMessage(songInfo().Stage,
         [.. playResults().Select(play => play.Cleared)], arcade.SongsPerSession);
 
-    public void EntryCoinsChanged() => _entry?.CoinsChanged();
 
-    public void AdvanceEntry() => _entry?.Advance();
 
     // --- Host construction ---
 
@@ -207,8 +170,8 @@ internal sealed class LayerHostFactory(
         // A front-end scene movie starts the indicator parts its following layers attach to.
         if (layer.HostId == "player-entry")
         {
-            _parts = new IndicatorParts(IndicatorPartsScene.Entry, counting) { ShowCounter = HideArcadeHud?.Invoke() != true };
-            _entry = new EntrySceneHost(_parts)
+            _parts = new IndicatorParts(IndicatorPartsScene.Entry, counting) { ShowCounter = !hideArcadeHud };
+            loaded.Entry = new EntrySceneHost(_parts)
             {
                 Coins = Coins,
                 PlayVoice = sounds is null ? null : sounds.Frontend.PlayEntryVoice,
@@ -229,25 +192,25 @@ internal sealed class LayerHostFactory(
             credit.EntryRejoined = null;
             credit.EntryCard = null;
             if (credit.EntryCardRejected)
-                _entry.RejectCard();
+                loaded.Entry!.RejectCard();
             credit.EntryCardRejected = false;
-            _entry.PlayerJoined += player => EntryJoined?.Invoke(player);
+            loaded.Entry!.PlayerJoined += player => EntryJoined?.Invoke(player);
         }
         else if (layer.HostId == "song-select")
         {
             // time_counter has art for songs 1-4 (red when final); home's endless credit stays on 1.
-            var next = arcade.Home ? 1 : (SongsStarted?.Invoke() ?? 0) + 1;
+            var next = arcade.Home ? 1 : credit.SongsPlayed + 1;
             _parts = new IndicatorParts(IndicatorPartsScene.SongSelect, counting)
             {
                 MusicNumber = Math.Min(next, 4),
                 AiPanels = credit.AiBattle ? AiPanels?.Invoke() ?? AiBattlePanels.NewPlayer : AiBattlePanels.NewPlayer,
                 FinalStage = !arcade.Home && next >= arcade.SongsPerSession,
-                ShowCounter = HideArcadeHud?.Invoke() != true,
+                ShowCounter = !hideArcadeHud,
             };
         }
         return layer.HostId switch
         {
-            "player-entry" => entryHost(_entry!),
+            "player-entry" => entryHost(loaded.Entry!),
             IndicatorParts.HostId => partHost(_parts
                 ?? throw new InvalidOperationException("Indicator part loaded without its scene movie."),
                 Path.GetFileNameWithoutExtension(layer.MovieId)),
@@ -274,7 +237,7 @@ internal sealed class LayerHostFactory(
             "tutorial" => tutorialHost(),
             "waiwai-tutorial" => modeTutorialHost(false),
             "ai-tutorial" => modeTutorialHost(true),
-            "ai-tutorial-timer" => new LumenLayerHost(null, movie => ModeTutorial?.AttachTimer(movie)),
+            "ai-tutorial-timer" => new LumenLayerHost(null, movie => loaded.ModeTutorial?.AttachTimer(movie)),
             "dani-select" => daniSelectHost(),
             "gameover" => gameOverHost(),
             "attract" => attractHost(),
@@ -340,16 +303,16 @@ internal sealed class LayerHostFactory(
         var view = new SongSelectCatalogView(catalog, credit.Waiwai ? SongSelectMode.Waiwai : SongSelectMode.Normal,
             modeSwitch: credit.TwoPlayers, library: linked.Length > 0 && memory.OnlineSong is null ? memory.Library : null,
             // AI battle too: its song select takes the custom folders (SongSelectGenrePatch), the other libraries' among them.
-            links: linked.Where(library => library != memory.Library), favourites: Favourites?.Songs, tutorial: HomeTutorialSeen?.Invoke() != true && !(credit.AiBattle ? credit.AiTutorialSeen : credit.Waiwai ? credit.WaiwaiTutorialSeen : credit.TutorialSeen),
+            links: linked.Where(library => library != memory.Library), favourites: Favourites?.Songs, tutorial: !(arcade.Home && arcade.TutorialSeen) && !(credit.AiBattle ? credit.AiTutorialSeen : credit.Waiwai ? credit.WaiwaiTutorialSeen : credit.TutorialSeen),
             browse: memory.OsuBrowse, search: memory.Search, // As on the game: no dan dojo for two players, or without an account (it works offline once its list is saved).
             danDojo: !credit.AiBattle && Dan?.Available == true && !credit.TwoPlayers && TaikoGuest.Profiles[credit.PlayerSide] is not null
                 && InOnlineRoom?.Invoke() != true,
             danSeries: arcade.Home ? Dan?.Series : null,
             online: !credit.Waiwai && !credit.AiBattle && !credit.TwoPlayers && OnlineAvailable?.Invoke() == true, onlySong: memory.OnlineSong, received: Received,
-            courseStar: memory.OnlineSong is null, rollFolder: RandomSongFolder?.Invoke() == true,
+            courseStar: memory.OnlineSong is null, rollFolder: arcade.RandomSongFolder,
             recentCharts: credit.TwoPlayers || memory.OnlineSong is not null ? null : RecentCharts?.Invoke(credit.PlayerSide));
-        var (start, startSong) = memory.Start(view, SongSelect?.Picked);
-        var binding = SongSelect = new SongSelectHostBinding(
+        var (start, startSong) = memory.Start(view, loaded.SongSelect?.Picked);
+        var binding = loaded.SongSelect = new SongSelectHostBinding(
             new SongSelectSession(
                 view,
                 textures,
@@ -367,7 +330,7 @@ internal sealed class LayerHostFactory(
             ForcePick = memory.OnlineSong is not null,
             StartSong = startSong,
             Favourites = Favourites,
-            ShowOni = ShowOni?.Invoke() == true,
+            ShowOni = arcade.ShowOni,
             PatchedGenres = Waddamburo.Game.Patching.SongSelectGenrePatch.Applied(songSelectMovie),
             GenreColours = Waddamburo.Game.Patching.SongSelectGenrePatch.Colours(songSelectMovie),
             PlayCue = sounds is null ? null : sounds.Frontend.PlayCue,
@@ -385,13 +348,11 @@ internal sealed class LayerHostFactory(
 
 
 
-    /// <summary>AI battle's section results, while they are on stage.</summary>
-    public AiSectionResultBinding? AiSectionResult { get; private set; }
 
     // AI battle's normal results: the player's play only (AI-don's lane is not shown); closing them starts the sections'.
     private LumenLayerHost aiResultHost()
     {
-        WaiwaiResult = null;
+        loaded.WaiwaiResult = null;
         var plays = playResults();
         if (plays.Count == 0)
             throw new InvalidOperationException("Results loaded without a finished play.");
@@ -402,40 +363,36 @@ internal sealed class LayerHostFactory(
             Placement = Placement, // the ranking, as on a song's results
             AiBattle = true,
             PlayCue = sounds is null ? null : sounds.Frontend.PlayCue,
-            NormalResultClosed = () => AiSectionResult?.Start(),
+            NormalResultClosed = () => loaded.AiSectionResult?.Start(),
         };
         return new LumenLayerHost(binding, binding.Attach);
     }
 
     private LumenLayerHost aiRemindHost()
     {
-        var binding = AiRemind = new AiRemindBinding(AiPanels?.Invoke() ?? AiBattlePanels.NewPlayer, sounds is null ? null : sounds.Frontend.PlayCue);
+        var binding = loaded.AiRemind = new AiRemindBinding(AiPanels?.Invoke() ?? AiBattlePanels.NewPlayer, sounds is null ? null : sounds.Frontend.PlayCue);
         return new LumenLayerHost(binding, binding.Attach);
     }
 
-    /// <summary>AI battle's farewell, while it is on stage.</summary>
-    public AiRemindBinding? AiRemind { get; private set; }
 
     // Traced SetWinTotalFlag(false) after a lost battle; sent with the section results' setup (once callbacks exist).
-    private LumenLayerHost aiResultBackgroundHost() => new(null, player => AiResultBackground = player);
+    private LumenLayerHost aiResultBackgroundHost() => new(null, player => loaded.AiResultBackground = player);
 
-    /// <summary>AI battle's results backdrop (result_bg), while it is on stage.</summary>
-    public LumenPlayer? AiResultBackground { get; private set; }
 
     private LumenLayerHost aiSectionResultHost()
     {
         var outcome = credit.AiOutcome ?? throw new InvalidOperationException("AI battle results without a battle.");
-        var binding = AiSectionResult = new AiSectionResultBinding(outcome, credit.AiNumbers ?? AiResultNumbers.NewPlayer with { ShowProgress = false },
+        var binding = loaded.AiSectionResult = new AiSectionResultBinding(outcome, credit.AiNumbers ?? AiResultNumbers.NewPlayer with { ShowProgress = false },
             sounds is null ? null : sounds.Frontend.PlayCue, credit.AiSectionBest)
         {
-            Backdrop = () => AiResultBackground,
+            Backdrop = () => loaded.AiResultBackground,
         };
         return new LumenLayerHost(binding, binding.Attach);
     }
 
     private LumenLayerHost resultHost()
     {
-        WaiwaiResult = null;
+        loaded.WaiwaiResult = null;
         var plays = playResults();
         if (plays.Count == 0)
             throw new InvalidOperationException("Results loaded without a finished play.");
@@ -449,12 +406,10 @@ internal sealed class LayerHostFactory(
     }
 
 
-    /// <summary>The dan results on stage, while they are.</summary>
-    public DaniResultHostBinding? DaniResult { get; private set; }
 
     private LumenLayerHost daniResultHost()
     {
-        var binding = DaniResult = new DaniResultHostBinding(credit.DanResult ?? throw new InvalidOperationException("Dan results loaded without a course play."),
+        var binding = loaded.DaniResult = new DaniResultHostBinding(credit.DanResult ?? throw new InvalidOperationException("Dan results loaded without a course play."),
             don, sounds is null ? null : sounds.Frontend.PlayCue);
         return new LumenLayerHost(binding, binding.Attach);
     }
@@ -462,7 +417,7 @@ internal sealed class LayerHostFactory(
     private LumenLayerHost waiwaiResultHost()
     {
         var outcome = WaiwaiOutcome?.Invoke() ?? throw new InvalidOperationException("Waiwai results without a Waiwai song.");
-        var binding = WaiwaiResult = new WaiwaiResultHostBinding(outcome.GaugeSegments, outcome.DuetPercent,
+        var binding = loaded.WaiwaiResult = new WaiwaiResultHostBinding(outcome.GaugeSegments, outcome.DuetPercent,
             outcome.RareNotesHit, don, sounds?.WaiwaiResults);
         return new LumenLayerHost(binding, player =>
         {
@@ -477,14 +432,14 @@ internal sealed class LayerHostFactory(
 
     private LumenLayerHost retryHost()
     {
-        var binding = Retry = new RetryGameHostBinding(don, sounds?.Retry);
+        var binding = loaded.Retry = new RetryGameHostBinding(don, sounds?.Retry);
         return new LumenLayerHost(binding, binding.Attach);
     }
 
     private LumenLayerHost modeTutorialHost(bool aiBattle)
     {
         Action? music = null;
-        var binding = ModeTutorial = new ModeTutorialHostBinding(aiBattle, credit.PlayerSide, credit.TwoPlayers,
+        var binding = loaded.ModeTutorial = new ModeTutorialHostBinding(aiBattle, credit.PlayerSide, credit.TwoPlayers,
             sounds is null ? null : sounds.Frontend.PlayCue,
             name => (music = sounds?.Bank.PrepareTutorialMusic(name)) is not null,
             () => music?.Invoke());
@@ -502,12 +457,12 @@ internal sealed class LayerHostFactory(
         var view = new SongSelectCatalogView(catalog);
         var songs = view.Categories.SelectMany(category => category.Songs.Select(song => (Song: song, Category: category)))
             .GroupBy(static entry => entry.Song.Descriptor.Key).ToDictionary(static group => group.Key, static group => group.First());
-        var binding = DaniSelect = new DaniSelectHostBinding(() =>
+        var binding = loaded.DaniSelect = new DaniSelectHostBinding(() =>
         {
             if (!Dan!.Ready)
                 return null;
             var (boards, courses) = Dan.Boards(credit.DanSeries, DanBests?.Invoke());
-            DanBoards = courses;
+            loaded.DanBoards = courses;
             return boards;
         }, credit.PlayerSide, uid =>
             Dan!.Song(uid) is { } song && songs.TryGetValue(song.Key, out var entry)
@@ -519,13 +474,13 @@ internal sealed class LayerHostFactory(
 
     private LumenLayerHost gameOverHost()
     {
-        var binding = GameOver = new GameOverHostBinding(sounds?.GameOver, credit.PlayerSide, credit.TwoPlayers);
+        var binding = loaded.GameOver = new GameOverHostBinding(sounds?.GameOver, credit.PlayerSide, credit.TwoPlayers);
         return new LumenLayerHost(binding, binding.Attach);
     }
 
     private LumenLayerHost attractHost()
     {
-        var binding = Attract = new AttractHostBinding(sounds?.Attract);
+        var binding = loaded.Attract = new AttractHostBinding(sounds?.Attract);
         return new LumenLayerHost(binding);
     }
 }

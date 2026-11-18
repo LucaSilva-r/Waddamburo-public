@@ -37,7 +37,7 @@ internal sealed class EntryFlow(GameShell shell) : FlowScene(shell)
     public override void Advance(LumenInputSnapshot input)
     {
         Shell.Active.Player.Advance(input);
-        Shell.Hosts.AdvanceEntry();
+        Shell.Loaded.Entry?.Advance();
         Shell.DonRenderer?.Advance();
     }
 }
