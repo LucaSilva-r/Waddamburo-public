@@ -25,6 +25,7 @@ public sealed class AudioStreamTransport : IAudioStreamSource
     public SdlAudioFormat Format => _source.Format;
     public bool IsCompleted => _source.IsCompleted;
     public Exception? Failure => _source.Failure;
+    internal TimeSpan LastPosition => TimeSpan.FromSeconds((double)_lastPosition / Format.SampleRate);
 
     public int Read(Span<float> interleavedDestination)
     {
@@ -36,7 +37,7 @@ public sealed class AudioStreamTransport : IAudioStreamSource
     internal TimeSpan Position(ulong submitted, ulong queued, TimeSpan hardwareLatency)
     {
         if (_paused)
-            return TimeSpan.FromSeconds((double)_lastPosition / Format.SampleRate);
+            return LastPosition;
         if (_firstOutputFrame < 0)
             return TimeSpan.Zero;
         var consumed = checked((long)submitted) - checked((long)queued) - _firstOutputFrame;
@@ -48,7 +49,7 @@ public sealed class AudioStreamTransport : IAudioStreamSource
         // so after any late period the clock sat on that bound and the notes moved in period-sized steps.
         _lastPosition = Math.Max(_lastPosition, Math.Clamp(played, 0, _source.IsCompleted ? produced : long.MaxValue));
         diagnose(played > produced, consumed);
-        return TimeSpan.FromSeconds((double)_lastPosition / Format.SampleRate);
+        return LastPosition;
     }
 
     // Diagnostics (the 2026-11 Windows note-lane stutter): every 5 s a line when the clock misbehaved (it ran ahead

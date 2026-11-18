@@ -88,7 +88,7 @@ public sealed class AudioEngine : IDisposable
     /// <summary>What the game is doing (scene, tick), named in the underrun trace; read on the mix thread.</summary>
     public Func<string>? TraceContext { get; set; }
 
-    private Exception? _failure;
+    private volatile Exception? _failure;
 
     public Exception? Failure => _failure
         ?? (_device as IPullAudioOutput)?.Failure;
@@ -110,13 +110,14 @@ public sealed class AudioEngine : IDisposable
         }
     }
 
-    /// <summary>Monotonic output-position estimate interpolated between hardware buffer updates.</summary>
+    /// <summary>Monotonic output-position estimate, held at its last reading if the device fails.</summary>
     public TimeSpan GetPosition(AudioStreamTransport transport)
     {
         ArgumentNullException.ThrowIfNull(transport);
         lock (_outputGate)
-            return transport.Position(_device.SubmittedFrames, _device.QueuedFrames,
-                TimeSpan.FromSeconds((double)_device.HardwareBufferFrames / _device.HardwareFormat.SampleRate));
+            return Failure is not null ? transport.LastPosition
+                : transport.Position(_device.SubmittedFrames, _device.QueuedFrames,
+                    TimeSpan.FromSeconds((double)_device.HardwareBufferFrames / _device.HardwareFormat.SampleRate));
     }
 
     /// <summary>
@@ -128,6 +129,8 @@ public sealed class AudioEngine : IDisposable
         ArgumentNullException.ThrowIfNull(transport);
         lock (_outputGate)
         {
+            if (Failure is not null)
+                return;
             if (paused)
                 _ = transport.Position(_device.SubmittedFrames, _device.QueuedFrames,
                     TimeSpan.FromSeconds((double)_device.HardwareBufferFrames / _device.HardwareFormat.SampleRate));
@@ -172,7 +175,7 @@ public sealed class AudioEngine : IDisposable
         var target = (ulong)(ahead.TotalSeconds * device.Format.SampleRate);
         var samples = new float[RenderFrames * device.Format.Channels];
         lock (_outputGate)
-            while (device.QueuedFrames < target)
+            while (Failure is null && device.QueuedFrames < target)
             {
                 render(samples);
                 device.Queue(samples);

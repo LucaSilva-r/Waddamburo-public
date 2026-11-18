@@ -867,15 +867,23 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             _play.Battle?.Advance(elapsed - _play.InputOffset, Shell.Gameplay.Results);
             _play.Echo?.Pump();
         }
-        if (Shell.Audio?.Failure is { } device)
-            throw new IOException("Gameplay audio failed.", device);
-        // The song's decoder fell behind (or its file broke): back to Song Select, unsaved, with a notice.
-        if (_play.Music?.Failure is { } song)
+        var bannerAt = _play.CourseEndsAt ?? (_play.Charts.Length == 0 ? (TimeSpan?)null : _play.Charts.Max(TaikoResultBanner.Time));
+        var battleResultAt = _play.Battle?.ResultShownAt;
+        var deviceFailure = Shell.Audio?.Failure;
+        var audioFailure = deviceFailure ?? _play.Music?.Failure;
+        if (audioFailure is not null)
         {
-            Console.Error.WriteLine($"Gameplay audio failed: {song.Message}");
-            Shell.Sync.Notices.AddLocal(Strings.T("gameplay.audio_failed"), NoticeSeverity.Warning);
-            end(finished: false);
-            return;
+            var ending = _play.ShutterStartTick >= 0 || _play.SkipToShutter || (_play.Battle is not null
+                ? battleResultAt.HasValue : bannerAt is { } at && elapsed - _play.InputOffset >= at);
+            if (!ending)
+            {
+                if (deviceFailure is not null)
+                    throw new IOException("Gameplay audio failed.", deviceFailure);
+                Console.Error.WriteLine($"Gameplay audio failed: {audioFailure.Message}");
+                Shell.Sync.Notices.AddLocal(Strings.T("gameplay.audio_failed"), NoticeSeverity.Warning);
+                end(finished: false);
+                return;
+            }
         }
         // Online: once this player's notes are over, their result goes to the other player as it stands.
         if (Shell.Match.InSong && !_play.ResultSent && ChartOver)
@@ -888,16 +896,22 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         // Traced: the shutter closes 9 s after the end banner, by the chart, not the audio (whose end only
         // freezes the chart clock below). Audio running past it fades under the shutter: some songs' files
         // go on long after their chart (Stock:hanakp: silence, then more song; #4).
-        var musicFinished = _play.Music is not { } music || Shell.Audio is null || !Shell.Audio.Mixer.IsPlaying(music.Handle);
+        var musicFinished = audioFailure is not null || _play.Music is not { } music
+            || Shell.Audio is null || !Shell.Audio.Mixer.IsPlaying(music.Handle);
         if (musicFinished && _play.Music is { } finished && _play.MusicEndPosition is null)
         {
             _play.MusicEndPosition = Shell.Audio!.GetPosition(finished);
             _play.AfterMusic.Restart();
+            if (audioFailure is not null)
+            {
+                Console.Error.WriteLine($"Gameplay audio stopped during the ending: {audioFailure.Message}");
+                Shell.Audio.Mixer.Stop(finished.Handle);
+            }
         }
         // AI battle: by its battle result, which comes after the last section (traced, no end banner nor shutter).
-        var chartFinished = _play.Battle is { } battle
-            ? battle.ResultShownAt is { } shown && elapsed - _play.InputOffset >= shown + AiBattlePresentation.ResultsDelay
-            : _play.Charts.Length != 0 && elapsed >= (_play.CourseEndsAt ?? _play.Charts.Max(TaikoResultBanner.Time)) + TaikoResultBanner.ShutterDelay;
+        var chartFinished = _play.Battle is not null
+            ? battleResultAt is { } shown && elapsed - _play.InputOffset >= shown + AiBattlePresentation.ResultsDelay
+            : bannerAt is { } endBanner && elapsed >= endBanner + TaikoResultBanner.ShutterDelay;
         if ((!input.Escape || Shell.Arcade.Home) && _play.ShutterStartTick < 0
             && (_play.SkipToShutter || chartFinished && !Shell.Gameplay.OverlayActive))
         {
