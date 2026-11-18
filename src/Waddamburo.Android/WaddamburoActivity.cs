@@ -40,11 +40,11 @@ public sealed class WaddamburoActivity : SDLActivity
             if (pair.Split('=', 2) is [var key, var value] && key.StartsWith("WADDAMBURO_", StringComparison.Ordinal))
                 System.Environment.SetEnvironmentVariable(key, value);
         Waddamburo.App.Boot.AppHome = Path.Combine(FilesDir!.AbsolutePath, "waddamburo");
-        var game = _gameFolder!.Resolve();
+        // Null: the setup screen was closed without Green.
+        if (_gameFolder!.Resolve() is not { } game)
+            return;
         Waddamburo.App.Boot.TjaFolder = Path.Combine(_gameFolder.Root, GameFolder.CustomSongs);
         Waddamburo.App.Boot.DeviceName = GameFolder.DeviceName;
-        Waddamburo.App.Boot.ReceiveTargets = Waddamburo.App.Sync.PhoneReceiver.Targets(_gameFolder.Root);
-        Waddamburo.App.Boot.ReceivedSongsFolder = Path.Combine(_gameFolder.Root, "Songs");
         string[] args = [$"--game-data={game}"];
         // Read again on a restart: a release imported since joins.
         do

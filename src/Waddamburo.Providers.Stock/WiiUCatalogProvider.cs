@@ -55,6 +55,9 @@ public sealed partial class WiiUCatalogProvider : ISongCatalogProvider, ICatalog
 
     public CatalogProviderId Id { get; }
 
+    /// <summary>The disc's content folder, and its update's and DLC's (null without one).</summary>
+    public (string Content, string? Update, string? Dlc) Folders => (_root, _update, _dlc);
+
     /// <summary>The release, as a song's title names it when the releases chart it differently.</summary>
     public string Release { get; }
 

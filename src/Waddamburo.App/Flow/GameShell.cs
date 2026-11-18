@@ -897,7 +897,7 @@ internal sealed class GameShell : IDisposable
             Room = new RoomOverlay(this, Painter);
             Match = new OnlineMatch(this);
             CustomUploadPrompt = new CustomUploadPrompt(this, options.ServiceFontPath ?? options.FontPath);
-            DeviceTransfer = new DeviceTransfer(this, _libraries.Snapshot, dataRoot);
+            DeviceTransfer = new DeviceTransfer(this, _libraries.SyncLibraries(dataRoot));
             _inputOverlays = [_search, _scores, Room, CustomUploadPrompt, DeviceTransfer];
             Reload = new SongSelectReload(this);
             var entry = new EntryFlow(this);
@@ -1423,7 +1423,7 @@ internal sealed class GameShell : IDisposable
         var held = keys;
         keys = scene.MapKeys(_input.Pulses(keys));
         // Home: Backspace is Escape too (a Tatacon's B button), except while it edits text or is being bound.
-        var escape = _input.EscapePressed(keys, menuKey: Arcade.Home && !_search.IsOpen && !Room.Typing && !_home.CapturingBinding ? GameActions.Key(GameAction.Menu) : null);
+        var escape = _input.EscapePressed(keys, menuKey: Arcade.Home && !_search.IsOpen && !Room.Typing && !DeviceTransfer.Typing && !_home.CapturingBinding ? GameActions.Key(GameAction.Menu) : null);
         // Focus is followed whichever overlay takes the keys (the mute in background).
         _home.FollowFocus();
         // Song Select's search field takes the keyboard while open (its Escape closes it, not the menu).
@@ -1808,7 +1808,8 @@ internal sealed class GameShell : IDisposable
                 top.AddRange(TouchDrumOverlay.MenuQuads(Painter, hits, now));
             if (Application.TouchKeyboard)
                 top.Add(TouchDrumOverlay.KeyboardQuad(Painter, hits, now));
-            else if (Arcade.TouchDrum == TouchDrumMode.On || Arcade.TouchDrum == TouchDrumMode.Auto && Application.TouchActive)
+            // Not under an overlay: its touches go to the menu buttons, the drum would only cover the page.
+            else if (!Application.OverlayOpen && (Arcade.TouchDrum == TouchDrumMode.On || Arcade.TouchDrum == TouchDrumMode.Auto && Application.TouchActive))
                 top.AddRange(TouchDrumOverlay.Quads(Painter, hits, now));
             if (Application.TouchSearch)
                 top.Add(TouchDrumOverlay.SearchQuad(Painter, hits, now));

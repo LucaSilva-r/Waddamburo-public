@@ -174,15 +174,15 @@ internal sealed class HomeControls : IDisposable
                     _shell.RequestBenchmark();
                     break;
                 // Send/Receive: the menus close and the transfer's pages open over the game.
-                case HomeMenuAction.SendSongs or HomeMenuAction.ReceiveSongs:
+                case HomeMenuAction.PairDevice or HomeMenuAction.SyncSongs:
                     save();
                     _menu.Close();
                     _audio.HoldMenuMusic(false);
                     _audio.MuteAttract(false);
-                    if (action == HomeMenuAction.SendSongs)
-                        _shell.DeviceTransfer.OpenSend();
+                    if (action == HomeMenuAction.PairDevice)
+                        _shell.DeviceTransfer.OpenPair();
                     else
-                        _shell.DeviceTransfer.OpenReceive();
+                        _shell.DeviceTransfer.OpenSync();
                     break;
                 case HomeMenuAction.BakeTextures when _shell.Upscale is { } upscale:
                     _menu.ShowBake(_shell.Bake is { Running: true } running ? running

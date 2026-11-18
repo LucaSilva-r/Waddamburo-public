@@ -19,11 +19,6 @@ internal sealed class SongLibraries : IDisposable
 
     private SongLibraries(ISongCatalogProvider[] providers, Action<int>? percent)
     {
-        // Songs other devices sent (Sync.SongStore) join the library of their source, or make one.
-        var received = Boot.ReceivedSongsFolder is { } folder ? Sync.StoredSongsProvider.For(new Sync.SongStore(folder)) : [];
-        providers = [.. providers.Select(provider => received.FirstOrDefault(stored => stored.Source == provider.Source) is { } stored
-                ? new Sync.OverlayCatalogProvider(provider, stored) : provider),
-            .. received.Where(stored => providers.All(provider => provider.Source != stored.Source))];
         Providers = providers;
         _catalog = new GlobalSongCatalog(providers);
         Snapshot = _catalog.RefreshAsync(percent is null ? null : new ScanPercent(providers.Length, percent)).AsTask().GetAwaiter().GetResult();
@@ -48,6 +43,58 @@ internal sealed class SongLibraries : IDisposable
     }
 
     public ISongCatalogProvider[] Providers { get; }
+
+    /// <summary>
+    /// The libraries another device can mirror from this one (song sync): each install's folders as its provider reads
+    /// them. Received libraries are left out (a device serves its own), Nijiiro too until its music is converted for
+    /// other devices (song-sync-plan.md step 4).
+    /// </summary>
+    public List<Sync.SyncLibrary> SyncLibraries(string greenData)
+    {
+        var received = Sync.ReceivedLibraries.Root is { } root ? Path.GetFullPath(root) + Path.DirectorySeparatorChar : null;
+        bool own(string folder) => received is null || !Path.GetFullPath(folder).StartsWith(received, StringComparison.Ordinal);
+        var green = Path.TrimEndingDirectorySeparator(Path.GetFullPath(greenData));
+        List<Sync.SyncLibrary> libraries = [];
+        foreach (var provider in Providers.SelectMany(static provider => provider switch
+        {
+            MergedCatalogProvider merged => merged.Sources,
+            WiiLibraryProvider wii => wii.Discs,
+            _ => [provider],
+        }))
+        {
+            switch (provider)
+            {
+                case StockCatalogProvider stock when stock.Root == green:
+                    libraries.Add(Sync.SyncLibrary.Of("green", "Green", ("data", stock.Root)));
+                    break;
+                case StockCatalogProvider stock when own(stock.Root):
+                    libraries.Add(Sync.SyncLibrary.Of("stock", Cli.GameDataLayout.ReleaseOf(stock.Root).Name ?? Path.GetFileName(Path.GetDirectoryName(stock.Root)) ?? "Arcade",
+                        ("data", stock.Root)));
+                    break;
+                case WiiCatalogProvider wii when own(wii.Root):
+                    libraries.Add(Sync.SyncLibrary.Of("wii", wii.Release, ("files", wii.Root)));
+                    break;
+                case WiiUCatalogProvider wiiU when own(wiiU.Folders.Content):
+                    // Title folders (content's parent) side by side: the receiver's provider finds the update and DLC there.
+                    var (content, update, dlc) = wiiU.Folders;
+                    libraries.Add(Sync.SyncLibrary.Of("wiiu", wiiU.Release, [("game", Path.GetDirectoryName(content)!),
+                        .. update is null ? [] : new[] { ("update", Path.GetDirectoryName(update)!) },
+                        .. dlc is null ? [] : new[] { ("dlc", Path.GetDirectoryName(dlc)!) }]));
+                    break;
+                case TjaCatalogProvider tja when own(tja.Root):
+                    libraries.Add(Sync.SyncLibrary.Of("tja", "TJA: " + Path.GetFileName(tja.Root), ("tja", tja.Root)));
+                    break;
+                case OsuLazerCatalogProvider osu when own(osu.Root):
+                    // ponytail: the whole folder (lazer's every beatmap and skin, stable's Songs of every mode); a
+                    // taiko-only file list if the size bothers anyone.
+                    libraries.Add(osu.Source == SongSourceKind.OsuStable
+                        ? Sync.SyncLibrary.Of("osu-stable", "osu!stable", ("osu", osu.Root))
+                        : Sync.SyncLibrary.Of("osu-lazer", "osu!lazer", ("osu", osu.Root)));
+                    break;
+            }
+        }
+        return libraries;
+    }
 
     /// <summary>The metadata cache the scan used: its background checks of the installations report through it.</summary>
     public CatalogMetadataCache? MetadataCache { get; private set; }
@@ -110,20 +157,25 @@ internal sealed class SongLibraries : IDisposable
             problems.Add((arcade.OsuFolder, "No osu!lazer data in this folder"));
         if (arcade.Home && !string.IsNullOrEmpty(arcade.OsuStableFolder) && OsuLazerCatalogProvider.FindStableFolder(arcade.OsuStableFolder) is null)
             problems.Add((arcade.OsuStableFolder, "No osu!stable install (osu!.db) in this folder"));
+        // Custom TJA is a home-mode library of its own (arcade matches the game 1:1); WADDAMBURO_CUSTOM_TJA=1 lists it
+        // in arcade too. TJA libraries mirrored from other devices join it (the local copy of a song wins).
+        List<ISongCatalogProvider> tjas = arcade.Home || Environment.GetEnvironmentVariable("WADDAMBURO_CUSTOM_TJA") == "1"
+            ? [.. new[] { tja }.Where(Directory.Exists).Concat(Sync.ReceivedLibraries.Folders("tja").Select(static folder => Path.Combine(folder, "tja")))
+                .Where(Directory.Exists).Select(root => new TjaCatalogProvider(root) { MetadataCache = metadataCache })]
+            : [];
+        // osu! (home mode): the folder set in the settings, else the default install, else one mirrored from another device.
+        var osu = OsuLazerCatalogProvider.FindDataFolder(arcade.OsuFolder)
+            ?? Sync.ReceivedLibraries.Folders("osu-lazer").Select(static folder => OsuLazerCatalogProvider.FindDataFolder(Path.Combine(folder, "osu"))).FirstOrDefault(static found => found is not null);
+        var stable = OsuLazerCatalogProvider.FindStableFolder(arcade.OsuStableFolder)
+            ?? Sync.ReceivedLibraries.Folders("osu-stable").Select(static folder => OsuLazerCatalogProvider.FindStableFolder(Path.Combine(folder, "osu"))).FirstOrDefault(static found => found is not null);
         var libraries = new SongLibraries([
             .. stock(dataRoot, arcade, problems, metadataCache),
-            // Custom TJA is a home-mode library of its own (arcade matches the game 1:1);
-            // WADDAMBURO_CUSTOM_TJA=1 lists it in arcade too.
-            .. (arcade.Home || Environment.GetEnvironmentVariable("WADDAMBURO_CUSTOM_TJA") == "1") && Directory.Exists(tja)
-                ? [new TjaCatalogProvider(tja) { MetadataCache = metadataCache }] : Array.Empty<ISongCatalogProvider>(),
+            .. tjas.Count switch { 0 => [], 1 => tjas, _ => [new MergedCatalogProvider(tjas)] },
             // A Nijiiro installation picked in the settings (home mode), left out when it cannot play.
             .. arcade.Home ? nijiiro(arcade, problems, metadataCache) : [],
-            // osu!lazer's native taiko beatmaps (home mode): the folder set in the settings, else the default install.
-            .. arcade.Home && OsuLazerCatalogProvider.FindDataFolder(arcade.OsuFolder) is { } osu
-                ? [new OsuLazerCatalogProvider(osu)] : Array.Empty<ISongCatalogProvider>(),
-            // osu!stable's (home mode), a library of its own: the folder set in the settings, else the default install.
-            .. arcade.Home && OsuLazerCatalogProvider.FindStableFolder(arcade.OsuStableFolder) is { } stable
-                ? [new OsuLazerCatalogProvider(stable)] : Array.Empty<ISongCatalogProvider>(),
+            // osu!lazer's native taiko beatmaps and osu!stable's, each a library of its own.
+            .. arcade.Home && osu is not null ? [new OsuLazerCatalogProvider(osu)] : Array.Empty<ISongCatalogProvider>(),
+            .. arcade.Home && stable is not null ? [new OsuLazerCatalogProvider(stable)] : Array.Empty<ISongCatalogProvider>(),
         ], percent);
         metadataCache.ForgetUnopenedInventories();
         libraries.MetadataCache = metadataCache;
@@ -148,7 +200,9 @@ internal sealed class SongLibraries : IDisposable
     // The game's own songs, then (home mode) other releases' that it lacks, newest release first.
     private static ISongCatalogProvider[] stock(string dataRoot, ArcadeSettings arcade, List<(string, string)> problems, CatalogMetadataCache metadataCache)
     {
-        var others = arcade.Home ? ArcadeSettings.Folders(arcade.StockFolders).Concat(Boot.StockFolders)
+        // Other releases mirrored from another device join those set here.
+        IEnumerable<string> received = [.. Sync.ReceivedLibraries.Folders("stock"), .. Sync.ReceivedLibraries.Folders("wii"), .. Sync.ReceivedLibraries.Folders("wiiu")];
+        var others = arcade.Home ? ArcadeSettings.Folders(arcade.StockFolders).Concat(Boot.StockFolders).Concat(received)
             .Where(static folder => WiiCatalogProvider.FindRoot(folder) is null && WiiUCatalogProvider.FindRoot(folder) is null)
             .Select(folder => StockCatalogProvider.FindDataRoot(folder) is { } root ? root : warnMissing(folder, problems))
             .OfType<string>()
@@ -159,7 +213,7 @@ internal sealed class SongLibraries : IDisposable
         // The running game's data is Green, the newest release: it comes first whatever the others are.
         List<string> roots = [.. StockCatalogProvider.IsStockData(dataRoot) ? [dataRoot] : Array.Empty<string>(), .. others];
         // Wii and Wii U discs set among them: the WII and WII U libraries.
-        var folders = arcade.Home ? [.. ArcadeSettings.Folders(arcade.StockFolders), .. Boot.StockFolders] : Array.Empty<string>();
+        var folders = arcade.Home ? [.. ArcadeSettings.Folders(arcade.StockFolders), .. Boot.StockFolders, .. received] : Array.Empty<string>();
         List<WiiUCatalogProvider> wiiU = [.. folders.Select(WiiUCatalogProvider.FindRoot).OfType<string>()
             .Distinct(StringComparer.Ordinal).Select(static root => new WiiUCatalogProvider(root))];
         List<WiiCatalogProvider> wii = [.. folders.Select(WiiCatalogProvider.FindRoot).OfType<string>()

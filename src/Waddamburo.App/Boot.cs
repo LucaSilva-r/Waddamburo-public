@@ -29,13 +29,6 @@ public static class Boot
     /// <summary>This device's name as others list it (a phone sets its model).</summary>
     public static string DeviceName { get; set; } = Environment.MachineName;
 
-    /// <summary>What Receive takes and where (Sync.PhoneReceiver.Targets on a phone, with Green); null: the received
-    /// songs folder alone.</summary>
-    public static IReadOnlyDictionary<string, string>? ReceiveTargets { get; set; }
-
-    /// <summary>Where songs other devices sent are kept (<see cref="Sync.SongStore"/>); the game's home's songs folder
-    /// when not set (a phone sets its own).</summary>
-    public static string? ReceivedSongsFolder { get; set; }
 
     public static int Run(string[] args)
     {
@@ -81,11 +74,10 @@ public static class Boot
             var login = args.Contains("--login", StringComparer.Ordinal);
             var logout = args.Contains("--logout", StringComparer.Ordinal);
             var exportCharts = parseOption(args, "--export-charts=");
-            // Send from the console: --send-to-phone=CODE[@ADDRESS] [--query="source=wiiu category=anime"] [--send-green];
-            // --phone-receiver=DIR acts as a phone (DIR laid out as its game folder), to test it.
-            var sendToPhone = parseOption(args, "--send-to-phone=");
-            if (parseOption(args, "--phone-receiver=") is { } receiverRoot)
-                return Sync.PhoneCommands.Receive(receiverRoot);
+            // Song sync from the console (see Sync.SyncCommands).
+            var syncCommand = args.FirstOrDefault(static arg => arg.StartsWith("--sync-", StringComparison.Ordinal));
+            if (args.Contains("--setup-preview", StringComparer.Ordinal) || args.Any(static arg => arg.StartsWith("--setup-preview=", StringComparison.Ordinal)))
+                return Sync.SetupPreview.Run(parseOption(args, "--setup-preview="));
             var autoplay = args.Contains("--autoplay", StringComparer.Ordinal);
             var recordPerformance = args.Contains("--benchmark-record", StringComparer.Ordinal);
             var benchmark = args.Contains("--benchmark", StringComparer.Ordinal) ? BenchmarkMode.Quit
@@ -151,7 +143,7 @@ public static class Boot
                 if (seekFrame is not null || !callbackInvocations.IsEmpty)
                     throw new ArgumentException("--seek-frame and --invoke are unavailable during normal boot.");
 
-                var consoleTool = login || logout || exportCharts is not null || sendToPhone is not null
+                var consoleTool = login || logout || exportCharts is not null || syncCommand is not null
                     || args.Any(static arg => arg.StartsWith("--online-test", StringComparison.Ordinal)
                         || arg.StartsWith("--upscale-textures", StringComparison.Ordinal));
                 startingUp = !consoleTool && screenshotPath is null && frameLimit is null && tickLimit is null;
@@ -213,11 +205,12 @@ public static class Boot
                 // One-off: every stock and Nijiiro chart, hashed, for the server to import as ranked (see ChartExport).
                 if (exportCharts is not null)
                     return ChartExport.Run(Path.GetFullPath(Path.Combine(layout.LumenRoot, "..", "..")), arcade, exportCharts);
-                ReceivedSongsFolder ??= Path.Combine(layout.Home, "songs");
-                if (sendToPhone is not null)
-                    return Sync.PhoneCommands.Send(sendToPhone, args.Contains("--send-green", StringComparer.Ordinal) && parseOption(args, "--query=") is null
-                            ? null : parseOption(args, "--query=") ?? "",
-                        args.Contains("--send-green", StringComparer.Ordinal), Path.Combine(layout.Root, "data"),
+                // Song sync: pairs and toggles in the home; libraries mirrored from other devices beside them (a phone
+                // sets its own, with its Green folder).
+                Sync.SyncWire.Folder = Path.Combine(layout.CacheHome, "sync"); // stable home: a nightly shares the pairs
+                Sync.ReceivedLibraries.Root ??= Path.Combine(layout.CacheHome, "received");
+                if (syncCommand is not null)
+                    return Sync.SyncCommands.Run(args, Path.Combine(layout.Root, "data"),
                         () => Gameplay.SongLibraries.Load(Path.Combine(layout.Root, "data"), arcade, layout.TjaRoot));
                 var accounts = Waddamburo.Game.Scores.AccountBook.Load(layout.Home);
                 // Phones: a newer release keeps this build off TaikOnline until it is installed (no self-update there).

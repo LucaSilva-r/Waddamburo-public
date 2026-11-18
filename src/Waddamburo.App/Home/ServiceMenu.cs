@@ -321,8 +321,8 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
             // A phone's libraries are its folders (Custom Songs, Arcade, Wii, Wii U): no folders to pick here.
             .. PlatformInfo.IsMobile ? (Row[])[] : [new(S("service.song_libraries"), Enter: () => open(Page.Libraries))],
             // Songs between devices (home): this one sends, or receives while the page is open.
-            .. _home ? [new Row(S("transfer.send.title"), Enter: () => run(HomeMenuAction.SendSongs)),
-                new Row(S("transfer.receive.title"), Enter: () => run(HomeMenuAction.ReceiveSongs))] : (Row[])[],
+            .. _home ? [new Row(S("sync.pair.title"), Enter: () => run(HomeMenuAction.PairDevice)),
+                new Row(S("sync.title"), Enter: () => run(HomeMenuAction.SyncSongs))] : (Row[])[],
             .. _home ? (Row[])[] : [new(S("service.bookkeeping"), Enter: () => open(Page.Bookkeeping))],
             new(S("service.others"), Enter: () => open(Page.Others), Cyan: true), // the language is there // the language is there
             new(S("service.exit"), Gap: true, Enter: close),

@@ -63,13 +63,14 @@ Settings, scores and caches go to the app's private files (`Boot.AppHome`). Unin
 (`hasFragileUserData`).
 
 Until `Green/` holds every file of Green's list (`GreenData`, file names from `eng/green-data-list.py`; sizes are not
-compared, language packs change them), the setup screen shows the phone's name and a 4-digit code: Waddamburo on a PC
-sends Green to it over USB tethering (~25 MB/s on a Redmi 8) or Wi-Fi (~3 MB/s) through the receiver
-(`Sync/PhoneReceiver`, port 8380, UDP discovery on the same port), only what the phone lacks; a file takes its name only
-once complete, so a copy resumes. **Start anyway** appears once the boot's essentials are in. A complete copy is
-remembered (`files/green-verified`). Or the player copies USRDIR's contents into `Green/` over USB.
+compared, language packs change them), the setup screen shows the phone's name and a 4-digit pairing code
+(`GreenSetup`, `Sync/PairingListener`, port 8380). Once Waddamburo on a PC pairs with it (Settings › Pair a device), the
+phone mirrors the PC's Green library from it (`SyncClient`, port 8381) over USB tethering (~25 MB/s on a Redmi 8) or
+Wi-Fi (~3 MB/s), only what it lacks; a file takes its name only once complete, so a copy resumes. **Start anyway**
+appears once the boot's essentials are in. A complete copy is remembered (`files/green-verified`). Or the player copies
+USRDIR's contents into `Green/` over USB.
 
-Songs travel the same way, as rows and content-addressed blobs in `Songs/` (`Boot.ReceivedSongsFolder`): see
+Afterwards Settings › Sync songs mirrors any of the paired PC's libraries into `Received/` (`ReceivedLibraries`): see
 [song-sync-plan.md](song-sync-plan.md). `Arcade/`, `Wii/`, `Wii U/` stay for releases copied by hand.
 
 ## Lifecycle

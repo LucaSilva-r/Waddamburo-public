@@ -13,6 +13,9 @@ public sealed class WiiLibraryProvider : ISongCatalogProvider, ICatalogAssetReso
     // Newest first, with the title mark a song gets when the discs chart it differently.
     private readonly (ISongCatalogProvider Provider, string Release)[] _discs;
 
+    /// <summary>The discs, newest first.</summary>
+    public IEnumerable<ISongCatalogProvider> Discs => _discs.Select(static disc => disc.Provider);
+
     // The game's genre order.
     private static readonly string[] Genres = ["J-POP", "アニメ", "ボーカロイド", "童謡", "バラエティ", "クラシック", "ゲームミュージック", "ナムコオリジナル"];
 

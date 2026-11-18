@@ -20,6 +20,9 @@ public sealed partial class WiiCatalogProvider : ISongCatalogProvider, ICatalogA
     private const string Courses = "enhm";
 
     private readonly string _root;
+
+    /// <summary>The disc's files folder it reads.</summary>
+    public string Root => _root;
     // Charts in sheet/newsht (arcade fumens) rather than sheet/sht (the 2008 format).
     private readonly bool _fumen;
     private Dictionary<string, WiiChartReader.CourseTuning> _tuning = [];

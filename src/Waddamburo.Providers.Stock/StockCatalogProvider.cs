@@ -23,6 +23,9 @@ public sealed partial class StockCatalogProvider : ISongCatalogProvider, ICatalo
     private const long PlaceholderMusicBytes = 300_000;
 
     private readonly string _root;
+
+    /// <summary>The data folder it reads (full path, no trailing separator).</summary>
+    public string Root => _root;
     public CatalogMetadataCache? MetadataCache { get; init; }
     private CatalogMetadataScope? _scan;
     private bool exists(string path) => _scan?.Exists(path) ?? File.Exists(path);

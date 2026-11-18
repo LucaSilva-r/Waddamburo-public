@@ -1,6 +1,5 @@
-using Android.Content;
 using Android.Media;
-using Android.Views;
+using Waddamburo.App.Cli;
 using Waddamburo.App.Sync;
 
 namespace Waddamburo.Android;
@@ -8,7 +7,8 @@ namespace Waddamburo.Android;
 /// <summary>
 /// The game's folders in its own storage (Android/data/&lt;package&gt;/files: no permission needed, visible from a PC over
 /// USB), set up on every start: Green (the game data), Custom Songs (TJA), and Arcade, Wii, Wii U (one subfolder per
-/// release). Until Green holds the game data the setup screen says how to send it (<see cref="PhoneReceiver"/>) and the
+/// release), Received (libraries mirrored from a PC). Until Green holds the game data the setup screen pairs with a PC and
+/// takes Green from it (<see cref="GreenSetup"/>), and the
 /// game starts once the copy is complete.
 /// </summary>
 internal sealed class GameFolder(Activity activity)
@@ -20,7 +20,7 @@ internal sealed class GameFolder(Activity activity)
     [
         (Green, "Copy the contents of Taiko no Tatsujin Green's USRDIR folder here (the data folder and the rest)."),
         (CustomSongs, "One folder per category (its name is the category's), song folders with their TJA inside."),
-        ("Songs", "Songs other Waddamburos sent (Settings › Receive). The game keeps these: don't edit them."),
+        ("Received", "Libraries mirrored from a PC (Settings › Sync songs). Kept identical to the PC's: don't edit them."),
         ("Arcade", "Other arcade releases: one folder per release (its USRDIR contents)."),
         ("Wii", "Wii releases: one folder per disc."),
         ("Wii U", "Wii U releases: one folder per release (with its DLC)."),
@@ -35,67 +35,46 @@ internal sealed class GameFolder(Activity activity)
     /// <summary>
     /// Creates the folders and returns the game data folder. Until it holds all of Green's files, a screen says how to
     /// send them (the upload page over Wi-Fi or USB tethering, or a file manager) and what is still missing; once the
-    /// boot's essentials are there the player may start anyway. Blocks: call it from SDL's thread, never the UI thread.
+    /// boot's essentials are there the player may start anyway. Null: the player closed the setup screen. Blocks: call it
+    /// from SDL's thread, never the UI thread.
     /// </summary>
-    public string Resolve()
+    public string? Resolve()
     {
         createFolders();
         deleteDevelopmentCopy();
         var green = Path.Combine(Root, Green);
+        SyncWire.Folder = Path.Combine(activity.FilesDir!.AbsolutePath, "waddamburo", "sync"); // Boot.AppHome's
+        ReceivedLibraries.Root = Path.Combine(Root, "Received");
+        ReceivedLibraries.GreenFolder = gameRoot(green);
         if (File.Exists(VerifiedMarker) && Waddamburo.App.Cli.GreenData.HasEssentials(gameRoot(green)))
             return gameRoot(green);
         if (Waddamburo.App.Cli.GreenData.Missing(gameRoot(green)) is [])
             return verified(gameRoot(green));
 
-        // Listening only while the setup waits (Settings › Receive from device listens on its own later); the
-        // player is setting up, so what a PC sends is taken without asking.
-        using var server = new PhoneReceiver(Root, PhoneReceiver.Targets(Root), DeviceName);
-        AlertDialog? dialog = null;
-        TextView? text = null;
-        var startAnyway = 0;
-        try
+        // Pairing listens only while the setup waits (later, Settings › Sync songs pairs and syncs).
+        using var setup = new GreenSetup(DeviceName);
+        (int Missing, int Total, bool Essentials) status = (GreenData.FileCount, GreenData.FileCount, false);
+        using var stop = new CancellationTokenSource();
+        // Counted every three seconds off the screen's thread (~20,000 files).
+        var poll = Task.Run(async () =>
         {
-            while (true)
+            while (!stop.IsCancellationRequested)
             {
                 var root = gameRoot(green);
-                var missing = Waddamburo.App.Cli.GreenData.Missing(root);
-                if (missing is [])
-                    return verified(root);
-                var essentials = Waddamburo.App.Cli.GreenData.HasEssentials(root);
-                if (Volatile.Read(ref startAnyway) == 1)
-                    return root;
-                var message = setupMessage(server, missing.Count);
-                activity.RunOnUiThread(() =>
-                {
-                    if (dialog is null)
-                    {
-                        text = new TextView(activity) { TextSize = 19 };
-                        text.SetPadding(56, 32, 56, 32);
-                        text.SetTextIsSelectable(true);
-                        var scroll = new ScrollView(activity);
-                        scroll.AddView(text);
-                        dialog = new AlertDialog.Builder(activity)
-                            .SetTitle("Waddamburo needs the game's files")!
-                            .SetView(scroll)!
-                            .SetCancelable(false)!
-                            .SetNeutralButton("Start anyway", (_, _) => Volatile.Write(ref startAnyway, 1))!
-                            .Create()!;
-                        dialog.Show();
-                    }
-                    text!.Text = message;
-                    if (dialog.GetButton((int)DialogButtonType.Neutral) is { } button)
-                        button.Visibility = essentials ? ViewStates.Visible : ViewStates.Gone;
-                });
-                Thread.Sleep(3000);
+                status = (GreenData.Missing(root).Count, GreenData.FileCount, GreenData.HasEssentials(root)); // a torn read only shows a count late
+                try { await Task.Delay(3000, stop.Token).ConfigureAwait(false); }
+                catch (OperationCanceledException) { }
             }
-        }
-        finally
-        {
-            activity.RunOnUiThread(() => dialog?.Dismiss());
-        }
+        });
+        var started = SetupScreen.Run(setup, () => status,
+            $"Android/data/{activity.PackageName}/files/{Green}");
+        stop.Cancel();
+        poll.Wait();
+        if (!started)
+            return null;
+        return GreenData.Missing(gameRoot(green)) is [] ? verified(gameRoot(green)) : gameRoot(green);
     }
 
-    // One for the process (the activity may be created again): the import page stays up while the app runs.
     /// <summary>How other devices list this one.</summary>
     public static string DeviceName => global::Android.OS.Build.Model ?? "Android";
 
@@ -103,21 +82,6 @@ internal sealed class GameFolder(Activity activity)
     {
         File.WriteAllText(VerifiedMarker, root);
         return root;
-    }
-
-    private string setupMessage(PhoneReceiver server, int missing)
-    {
-        var (files, bytes) = server.Received;
-        // USB tethering first: about ten times Wi-Fi's speed on a budget phone (25 against 3 MB/s measured).
-        return "1. Connect the phone to a PC with a USB cable and turn on USB tethering (Settings › Hotspot). "
-            + "Wi-Fi works too, much slower.\n\n"
-            + "2. On the PC, open Waddamburo: Settings › Send to device. Pick "
-            + $"\"{DeviceName}\" and type the code\n\n        {server.Code}\n\n"
-            + "3. Leave Green game data on; type a search in Songs to bring songs too (* for all). "
-            + "If the copy stops, send again: it goes on where it stopped.\n\n"
-            + $"Or copy USRDIR's contents into Android/data/{activity.PackageName}/files/{Green} yourself.\n\n"
-            + (files > 0 ? $"Received {files:N0} files ({bytes / 1048576:N0} MB). " : "")
-            + $"Missing: {missing:N0} of {Waddamburo.App.Cli.GreenData.FileCount:N0} files. The game starts by itself once they are all here.";
     }
 
     /// <summary>The release folders inside Arcade, Wii and Wii U (config.cfg's stock_folders tells them apart). A Wii U

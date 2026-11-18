@@ -11,6 +11,9 @@ namespace Waddamburo.Providers.OsuLazer;
 public sealed class OsuLazerCatalogProvider : ISongCatalogProvider, ICatalogAssetResolver, IPlayableChartProvider, IChartUploadPolicyProvider
 {
     private readonly string _root;
+
+    /// <summary>The data folder (lazer) or install (stable) it reads.</summary>
+    public string Root => _root;
     private readonly bool _stable;
     // osu!stable: where each file id lives (lazer's store is laid out by id instead).
     private IReadOnlyDictionary<string, string> _stableFiles = new Dictionary<string, string>();
