@@ -4,6 +4,7 @@
 #                                            self-extract on first run)
 #   out/package/Waddamburo-x86_64.AppImage  the Linux build
 #   out/package/licenses.zip                release licenses and notices
+#   out/package/licenses-win-x64.zip        notices from the Windows .NET runtime pack
 #   out/package/Waddamburo.apk              the Android app (target android: needs the Android SDK, NDK and JDK)
 #   out/package/ffmpeg-source.zip           pinned FFmpeg and Opus source archives (from the Linux job)
 #   out/package/ffmpeg-relink-*.zip         platform-specific configure options and vgmstream link inputs
@@ -88,6 +89,29 @@ for name, version in sorted(packages, key=lambda p: p[0].lower()):
 PY
 }
 
+runtime_licenses() { # project rid license-dir [MSBuild arguments]
+    local project=$1 rid=$2 dir=$3; shift 3
+    dotnet msbuild "$project" -nologo -t:ResolveFrameworkReferences \
+        -getItem:ResolvedFrameworkReference,ResolvedRuntimePack \
+        -p:RuntimeIdentifier="$rid" -p:SelfContained=true "$@" |
+        python3 -c '
+import json, shutil, sys
+from pathlib import Path
+
+destination = Path(sys.argv[1])
+items = json.load(sys.stdin)["Items"]
+frameworks = {item["Identity"] for item in items["ResolvedFrameworkReference"]}
+packs = [pack for pack in items["ResolvedRuntimePack"] if pack["FrameworkName"] in frameworks]
+if not packs:
+    raise SystemExit("No resolved runtime packs for license collection")
+for pack in packs:
+    folder = destination / pack["NuGetPackageId"]
+    folder.mkdir(parents=True, exist_ok=True)
+    for name in ("LICENSE.TXT", "THIRD-PARTY-NOTICES.TXT"):
+        shutil.copy2(Path(pack["PackageDirectory"]) / name, folder / name)
+' "$dir"
+}
+
 publish() { # rid native-dir out-dir extra-args...
     local rid=$1 native_dir=$2 dir=$3; shift 3
     rm -rf "$dir"
@@ -109,6 +133,10 @@ for target in $targets; do
             -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true \
             -p:EnableCompressionInSingleFile=true
         cp "$out/win-x64/Waddamburo.App.exe" "$out/Waddamburo.exe"
+        win_notices=$out/windows-notices
+        rm -rf "$win_notices"
+        runtime_licenses src/Waddamburo.App win-x64 "$win_notices/dotnet"
+        (cd "$win_notices" && cmake -E tar cf "$out/licenses-win-x64.zip" --format=zip dotnet)
         echo "$out/Waddamburo.exe"
         ;;
     linux)
@@ -127,6 +155,7 @@ for target in $targets; do
         [[ -f "$appdir/usr/bin/libcimgui.so" ]] || { echo "error: missing ImGui native runtime" >&2; exit 1; }
         cp eng/packaging/waddamburo.png "$appdir/waddamburo.png"
         licenses out/build/native/linux-x64/linux-package "$appdir/usr/share/licenses/waddamburo"
+        runtime_licenses src/Waddamburo.App linux-x64 "$appdir/usr/share/licenses/waddamburo/dotnet"
         (cd "$appdir/usr/share/licenses" && rm -f "$out/licenses.zip" \
             && python3 -m zipfile -c "$out/licenses.zip" waddamburo/*)
         cat > "$appdir/waddamburo.desktop" <<'EOF'
@@ -172,9 +201,13 @@ EOF
                 -p:AndroidSigningKeyAlias="${WADDAMBURO_ANDROID_KEY_ALIAS:-waddamburo}")
         fi
         java=(); [[ -n ${JAVA_HOME:-} ]] && java=(-p:JavaSdkDirectory="$JAVA_HOME")
+        android_sdk=(-p:AndroidSdkDirectory="${ANDROID_HOME:-$HOME/Android/Sdk}" "${java[@]}")
         rm -rf "$out/android"
-        dotnet publish src/Waddamburo.Android -c Release -f net10.0-android -o "$out/android" \
-            -p:AndroidSdkDirectory="${ANDROID_HOME:-$HOME/Android/Sdk}" "${java[@]}" \
+        dotnet restore src/Waddamburo.Android -p:Configuration=Release "${android_sdk[@]}"
+        runtime_licenses src/Waddamburo.Android android-arm64 "$android_notices/dotnet" \
+            -p:Configuration=Release "${android_sdk[@]}"
+        dotnet publish src/Waddamburo.Android -c Release -f net10.0-android --no-restore -o "$out/android" \
+            "${android_sdk[@]}" \
             -p:WaddamburoAndroidNativeDir="$android_build/stage/Release/lib" \
             -p:WaddamburoAndroidNoticesDir="$android_notices" \
             -p:Version="$version" -p:ApplicationDisplayVersion="${version%%-*}" -p:ApplicationVersion="$code" \

@@ -44,6 +44,7 @@ jobs:
   build:
     needs: version
     strategy:
+      fail-fast: false
       matrix:
         include:
           # Oldest supported runner (glibc 2.35): the AppImage runs there and on anything newer.
@@ -77,9 +78,11 @@ jobs:
 
       - name: Install the Windows cross compiler
         if: matrix.target == 'windows'
-        # A stuck Ubuntu mirror once held a release for minutes: fail, and run the job again.
-        timeout-minutes: 5
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends mingw-w64 ninja-build
+        timeout-minutes: 8
+        run: |
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=25 update
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=25 install -y --no-install-recommends \
+            gcc-mingw-w64-x86-64-posix g++-mingw-w64-x86-64-posix ninja-build
 
       # Android: JDK 21 (the runner's default Java is newer than the Android build tools take), the pinned NDK
       # (kept between runs) and .NET's Android workload.
@@ -137,6 +140,7 @@ jobs:
             out/package/Waddamburo-x86_64.AppImage
             out/package/Waddamburo.apk
             out/package/licenses.zip
+            out/package/licenses-win-x64.zip
             out/package/native-*.zip
             out/package/ffmpeg-source.zip
             out/package/ffmpeg-relink-*.zip
@@ -153,11 +157,21 @@ jobs:
       - name: Draft the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >
-          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft --generate-notes
-          --notes "Waddamburo uses FFmpeg under the LGPL 2.1 or later. Download ffmpeg-source.zip and the ffmpeg-relink archive for your platform. [Relinking instructions](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_SHA/docs/development/ffmpeg.md#relinking-a-release)."
-          --title "Waddamburo $GITHUB_REF_NAME" Waddamburo.exe Waddamburo-x86_64.AppImage Waddamburo.apk
-          licenses.zip native-*.zip ffmpeg-source.zip ffmpeg-relink-linux-x64.zip ffmpeg-relink-win-x64.zip ffmpeg-relink-android-arm64.zip
+        run: |
+          assets=(Waddamburo.exe Waddamburo-x86_64.AppImage Waddamburo.apk licenses.zip licenses-win-x64.zip
+            native-*.zip ffmpeg-source.zip ffmpeg-relink-linux-x64.zip ffmpeg-relink-win-x64.zip
+            ffmpeg-relink-android-arm64.zip)
+          if draft=$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft); then
+            if [ "$draft" != true ]; then
+              echo "Release $GITHUB_REF_NAME has already been published."
+              exit 1
+            fi
+            gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber "${assets[@]}"
+          else
+            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft --generate-notes \
+              --notes "Waddamburo uses FFmpeg under the LGPL 2.1 or later. Download ffmpeg-source.zip and the ffmpeg-relink archive for your platform. [Relinking instructions](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_SHA/docs/development/ffmpeg.md#relinking-a-release)." \
+              --title "Waddamburo $GITHUB_REF_NAME" "${assets[@]}"
+          fi
 
   nightly:
     if: github.ref_type != 'tag' && inputs.nightly
@@ -180,4 +194,4 @@ jobs:
           gh release create "${GITHUB_SHA::7}" --repo "$GITHUB_REPOSITORY" --prerelease --target "$GITHUB_SHA" --generate-notes \
             --title "Waddamburo nightly ${GITHUB_SHA::7}" Waddamburo-nightly.exe Waddamburo-nightly-x86_64.AppImage Waddamburo-nightly.apk \
             --notes "Waddamburo uses FFmpeg under the LGPL 2.1 or later. Download ffmpeg-source.zip and the ffmpeg-relink archive for your platform. [Relinking instructions](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_SHA/docs/development/ffmpeg.md#relinking-a-release)." \
-            licenses.zip native-*.zip ffmpeg-source.zip ffmpeg-relink-linux-x64.zip ffmpeg-relink-win-x64.zip ffmpeg-relink-android-arm64.zip
+            licenses.zip licenses-win-x64.zip native-*.zip ffmpeg-source.zip ffmpeg-relink-linux-x64.zip ffmpeg-relink-win-x64.zip ffmpeg-relink-android-arm64.zip
