@@ -158,7 +158,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         _play.Music = null;
         _play.Clock.Reset();
         _directStart = false;
-        _play.Autoplay = null; _play.AiBot = null; _play.Battle = null;
+        _play.Lanes.Stop();
         _play.Charts = [];
         Shell.Gameplay.Stop();
         Shell.PlayRequests.ClearActive();
@@ -274,10 +274,10 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             Shell.Players.WatchAs(_side, watched);
         // AI battle: the second lane is AI-don's, drummed by the bot on the second drum's keys.
         var aiBattle = Shell.Credit.AiBattle && _play.Charts.Length == 2 && _course is null;
-        _play.Autoplay = (Shell.Autoplay || _demo || Shell.DevAutoplay) && _play.Review is null ? new GameplayAutoplay(aiBattle ? [_play.Charts[0]] : _play.Charts, _side,
+        _play.Lanes.Autoplay = (Shell.Autoplay || _demo || Shell.DevAutoplay) && _play.Review is null ? new GameplayAutoplay(aiBattle ? [_play.Charts[0]] : _play.Charts, _side,
             // The demo drums like a person (15 hits a second), not a stress run.
             _demo ? TimeSpan.FromSeconds(1 / 15d) : null) : null;
-        _play.Echo = _demo || _play.Review is not null || aiBattle || request.Players.Length == _sourceCharts.Length ? OnlineEcho.Start(null, clear: Shell.Gameplay) : OnlineEcho.Start(Shell.Gameplay);
+        _play.Lanes.Echo = _demo || _play.Review is not null || aiBattle || request.Players.Length == _sourceCharts.Length ? OnlineEcho.Start(null, clear: Shell.Gameplay) : OnlineEcho.Start(Shell.Gameplay);
         if (Shell.Match.InSong)
             Shell.Match.Start(Shell.Gameplay, request.Players.ToList().FindIndex(player => player.Player != localSlot()));
         // A 4:3 layout (camera.aspect below 1): the stage drawn squeezed into a 4:3 picture.
@@ -290,8 +290,8 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
                 if (!judgement.StrongHitCompleted && !judgement.TimedOut && judgement.Offset is { } offset && judgement.Result is not null)
                     hitOffsets.Add(offset.TotalMilliseconds);
             });
-        _play.Battle = aiBattle ? new AiBattlePresentation(active, _play.Charts[0], players[0].Course, Shell.Sounds is { } battleSounds ? battleSounds.Frontend.PlayCue : null) : null;
-        if (_play.Battle is { } battle && _play.Review is null)
+        _play.Lanes.Battle = aiBattle ? new AiBattlePresentation(active, _play.Charts[0], players[0].Course, Shell.Sounds is { } battleSounds ? battleSounds.Frontend.PlayCue : null) : null;
+        if (_play.Lanes.Battle is { } battle && _play.Review is null)
         {
             // A signed-in player's battle uploads, with or without a server setup (offline): the server replays it, so
             // it plays the frozen online tuning. Local guests may use the installation's.
@@ -300,7 +300,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             _play.AiPrior = AiSession is { } session ? session.Timing : aiProgress(players[0].Player).Timing;
             var simulation = new AiBattleSimulation(_play.Charts[0], players[0].Course, _play.Seed, _play.AiPrior,
                 _play.AiUploads ? AiBattleSimulation.OnlineLevel : Shell.GhostLevels.Count > 0 ? Shell.GhostLevels[0] : null);
-            _play.AiBot = new AiDrummer(simulation, () => Shell.Gameplay.Replays[0].Inputs);
+            _play.Lanes.AiBot = new AiDrummer(simulation, () => Shell.Gameplay.Replays[0].Inputs);
             battle.Simulation = simulation;
             Shell.Gameplay.FollowBranch(1, 0);
         }
@@ -558,7 +558,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         {
             var at = _play.Training?.Clock.Position ?? chartTime();
             if (_play.Music is { } music) Shell.Audio?.Mixer.Stop(music.Handle, TimeSpan.FromMilliseconds(20));
-            _play.Music = null; _play.Autoplay = null; _play.AiBot = null; _play.Battle = null;
+            _play.Music = null; _play.Lanes.Stop();
             _play.Review?.Dispose();
             Shell.Players.StopWatching();
             _play.Review = reviewOf(request, [.. _play.Charts.Select(GameplayAutoplay.InputsFor)], chartEnd() + TimeSpan.FromSeconds(2), _play.InputOffset);
@@ -569,7 +569,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         {
             var at = chartTime();
             if (_play.Music is { } music) Shell.Audio?.Mixer.Stop(music.Handle, TimeSpan.FromMilliseconds(20));
-            _play.Music = null; _play.Autoplay = null; _play.AiBot = null; _play.Battle = null;
+            _play.Music = null; _play.Lanes.Stop();
             _play.Review?.Dispose();
             Shell.Players.StopWatching();
             _play.Review = reviewOf(request, [[]], chartEnd() + TimeSpan.FromSeconds(2), _play.InputOffset);
@@ -713,7 +713,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         if (songInfoPlayer() is { } info)
             TaikoSongInfoPresentation.UpdateVisibility(info,
                 showStage: !Shell.HideArcadeHud || _course is not null || _play.SongInfoMode,
-                showInfo: _play.Battle?.ResultShownAt is null);
+                showInfo: _play.Lanes.Battle?.ResultShownAt is null);
         return Shell.Gameplay.CreateSnapshot(time, _play.Paused ? _play.PauseInterpolation
             : Shell.FreezeAnimations && Shell.EffectsEditorOpen ? 1 : interpolation);
     }
@@ -744,11 +744,9 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         if (!Shell.Headless && revealed && !_play.Paused)
         {
             var time = chartTime() - _play.InputOffset;
-            var played = _play.Autoplay?.Apply(drums(keys), time) ?? keys;
-            Shell.Gameplay.Advance(played, time, aiInput: _play.AiBot is { } bot ? bot.Apply : null);
-            _play.Battle?.Advance(time, Shell.Gameplay.Results);
+            _play.Lanes.Advance(Shell.Gameplay, keys, drums(keys), time);
         }
-        _play.Echo?.Pump();
+        _play.Lanes.Echo?.Pump();
     }
 
     /// <summary>Home: the song is under way and not already a review, so its pause menu can replay it.</summary>
@@ -871,18 +869,16 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         }
         if (Shell.Headless)
         {
-            var played = _play.Autoplay?.Apply(drums(input.Keys), elapsed - _play.InputOffset) ?? input.Keys;
-            Shell.Gameplay.Advance(played, elapsed - _play.InputOffset, aiInput: _play.AiBot is { } bot ? bot.Apply : null);
-            _play.Battle?.Advance(elapsed - _play.InputOffset, Shell.Gameplay.Results);
-            _play.Echo?.Pump();
+            _play.Lanes.Advance(Shell.Gameplay, input.Keys, drums(input.Keys), elapsed - _play.InputOffset);
+            _play.Lanes.Echo?.Pump();
         }
         var bannerAt = _play.CourseEndsAt ?? (_play.Charts.Length == 0 ? (TimeSpan?)null : _play.Charts.Max(TaikoResultBanner.Time));
-        var battleResultAt = _play.Battle?.ResultShownAt;
+        var battleResultAt = _play.Lanes.Battle?.ResultShownAt;
         var deviceFailure = Shell.Audio?.Failure;
         var audioFailure = deviceFailure ?? _play.Music?.Failure;
         if (audioFailure is not null)
         {
-            var ending = _play.ShutterStartTick >= 0 || _play.SkipToShutter || (_play.Battle is not null
+            var ending = _play.ShutterStartTick >= 0 || _play.SkipToShutter || (_play.Lanes.Battle is not null
                 ? battleResultAt.HasValue : bannerAt is { } at && elapsed - _play.InputOffset >= at);
             if (!ending)
             {
@@ -918,7 +914,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             }
         }
         // AI battle: by its battle result, which comes after the last section (traced, no end banner nor shutter).
-        var chartFinished = _play.Battle is not null
+        var chartFinished = _play.Lanes.Battle is not null
             ? battleResultAt is { } shown && elapsed - _play.InputOffset >= shown + AiBattlePresentation.ResultsDelay
             : bannerAt is { } endBanner && elapsed >= endBanner + TaikoResultBanner.ShutterDelay;
         if ((!input.Escape || Shell.Arcade.Home) && _play.ShutterStartTick < 0
@@ -928,7 +924,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             if (!musicFinished && _play.Music is { } outro)
                 Shell.Audio?.Mixer.Stop(outro.Handle, TimeSpan.FromSeconds(1));
             // Traced (5 Waiwai runs, every AI battle): Waiwai and AI battle never close the shutter; their results cut in.
-            if (Shell.Gameplay.WaiwaiOutcome is null && _play.Battle is null)
+            if (Shell.Gameplay.WaiwaiOutcome is null && _play.Lanes.Battle is null)
                 overlay.Show(_course is null ? FlowScenes.Shutter : FlowScenes.DanShutter);
             // Traced sessions 30 and 31, as the course's shutter closes.
             if (_course is not null && Shell.Sounds is { } sounds)
@@ -947,7 +943,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
                 [LumenHostValue.FromNumber(Shell.Credit.TwoPlayers ? 2 : Shell.Credit.PlayerSide)]);
         // ponytail: 70 ticks = traced Close -> results load (1.17 s); the close itself takes ~1 s.
         // (AI battle: no shutter; its delay already ends at the results.)
-        if (input.Escape && !Shell.Arcade.Home || _play.ShutterStartTick >= 0 && (Shell.Tick - _play.ShutterStartTick >= 70 || _play.Battle is not null))
+        if (input.Escape && !Shell.Arcade.Home || _play.ShutterStartTick >= 0 && (Shell.Tick - _play.ShutterStartTick >= 70 || _play.Lanes.Battle is not null))
         {
             // An abandoned song gives its stage back: Song Select counts it again when the next one starts (#21).
             if (input.Escape && !Shell.Arcade.Home && Shell.Credit.SongsPlayed > 0)
@@ -1061,7 +1057,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             Console.WriteLine("Play results: " + string.Join(" | ", Shell.Gameplay.Results.Select(static result =>
                     $"{result.Course} {result.Score} {result.Great}/{result.Good}/{result.Miss} combo {result.MaxCombo} rolls {result.Rolls} gauge {result.GaugeSegments}{(result.Cleared ? " clear" : "")}"))
                 + (Shell.Credit.DanResult is { } danShown ? $" | dan level {danShown.Level}" : "")
-                + (_play.Battle?.Outcome is { } battle ? $" | AI {battle.SectionsWon}/{battle.Sections.Count}" : ""));
+                + (_play.Lanes.Battle?.Outcome is { } battle ? $" | AI {battle.SectionsWon}/{battle.Sections.Count}" : ""));
         CourseSongs = dan ? _courseSongs : [];
         Shell.Gameplay.Stop();
         Shell.Gameplay.Dan = null;
@@ -1087,15 +1083,15 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         if (!show)
         {
             _play.Charts = [];
-            _play.Autoplay = null; _play.AiBot = null; _play.Battle = null;
+            _play.Lanes.Stop();
             return;
         }
-        Shell.Credit.AiOutcome = _play.Battle?.Outcome;
+        Shell.Credit.AiOutcome = _play.Lanes.Battle?.Outcome;
         Shell.Catalog.Replace(dan ? FlowScenes.DaniResults
             : Shell.Credit.AiOutcome is not null ? FlowScenes.AiResults
             : Shell.Gameplay.WaiwaiOutcome is not null ? FlowScenes.WaiwaiResults : FlowScenes.Results);
         if (!finished) _play.Charts = [];
-        _play.Autoplay = null; _play.AiBot = null; _play.Battle = null;
+        _play.Lanes.Stop();
         Shell.Scenes.Show(finished ? FlowScenes.Result : FlowScenes.SongSelect);
         Console.WriteLine($"Gameplay ended at tick {Shell.Tick}; showing {Shell.Active.Id}.");
     }
@@ -1210,7 +1206,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
                 }
                 // AI battle (the player's lane): its battle, and the rank points it earned on the standing before it.
                 AiBattlePlay? battle = null;
-                if (lane == 0 && _play.Battle?.Outcome is { Sections.Count: > 0 } outcome)
+                if (lane == 0 && _play.Lanes.Battle?.Outcome is { Sections.Count: > 0 } outcome)
                 {
                     var ranks = _play.AiUploads ? AiBattleRanks.Green : Shell.AiRanks;
                     var before = AiSession is { } setup ? new AiProgress(setup.Points, setup.Wins, setup.Timing) : scores.AiProgress(profile.Baid);
