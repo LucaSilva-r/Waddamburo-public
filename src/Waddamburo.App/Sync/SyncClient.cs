@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text.Json;
 
 namespace Waddamburo.App.Sync;
@@ -41,7 +42,7 @@ public sealed class SyncClient(SyncDevice device, PairedDevice pair)
     }
 
     public async Task<List<RemoteLibrary>> LibrariesAsync(CancellationToken cancellationToken = default) =>
-        [.. (await askAsync(cancellationToken, "libraries").ConfigureAwait(false)).Split('\n', StringSplitOptions.RemoveEmptyEntries)
+        [.. (await askAsync(cancellationToken, "libraries", "nijiiro-v1").ConfigureAwait(false)).Split('\n', StringSplitOptions.RemoveEmptyEntries)
             .Select(static line => line.Split('\t')).Where(static parts => parts.Length == 5)
             .Select(static parts => new RemoteLibrary(parts[0], parts[1], parts[2], long.Parse(parts[3], CultureInfo.InvariantCulture),
                 int.Parse(parts[4], CultureInfo.InvariantCulture)))];
@@ -52,7 +53,17 @@ public sealed class SyncClient(SyncDevice device, PairedDevice pair)
     /// </summary>
     public async Task<MirrorPlan> PlanAsync(RemoteLibrary library, string folder, CancellationToken cancellationToken = default)
     {
-        var remote = (await askAsync(cancellationToken, "list", library.Id).ConfigureAwait(false)).Split('\n', StringSplitOptions.RemoveEmptyEntries)
+        string inventory;
+        try
+        {
+            inventory = await askWithTimeoutAsync(library.Kind == NijiiroSync.Kind ? TimeSpan.FromHours(1) : StandardQueryWait,
+                ["list", library.Id], cancellationToken).ConfigureAwait(false);
+        }
+        catch (SyncRefusedException exception) when (library.Kind == NijiiroSync.Kind && exception.Code == SyncWire.Failed)
+        {
+            throw new IOException(Strings.T("sync.nijiiro.prepare_failed"), exception);
+        }
+        var remote = inventory.Split('\n', StringSplitOptions.RemoveEmptyEntries)
             .Select(static line => line.Split('\t')).Where(static parts => parts.Length == 3)
             .Select(static parts => (Path: parts[0], Size: long.Parse(parts[1], CultureInfo.InvariantCulture), Time: long.Parse(parts[2], CultureInfo.InvariantCulture)))
             .ToList();
@@ -107,6 +118,16 @@ public sealed class SyncClient(SyncDevice device, PairedDevice pair)
     public async Task MirrorAsync(RemoteLibrary library, string folder, MirrorPlan plan, Action<long>? fetched = null,
         Action? published = null, CancellationToken cancellationToken = default)
     {
+        if (library.Kind == NijiiroSync.Kind)
+        {
+            using var rsa = RSA.Create(2048);
+            var payload = await askAsync(cancellationToken, "nijiiro-config", library.Id, NijiiroSync.PublicKey(rsa)).ConfigureAwait(false);
+            try { NijiiroSync.WriteConfig(folder, NijiiroSync.UnwrapKeys(rsa, payload)); }
+            catch (Exception exception) when (exception is CryptographicException or FormatException)
+            {
+                throw new InvalidDataException("The sender's Nijiiro key configuration could not be read.", exception);
+            }
+        }
         Directory.CreateDirectory(folder);
         SongSyncStaging.Recover(folder);
         if (library.Kind != "green")
@@ -317,12 +338,17 @@ public sealed class SyncClient(SyncDevice device, PairedDevice pair)
         }
     }
 
-    // A connection per question: libraries and lists are asked once per sync.
-    private async Task<string> askAsync(CancellationToken cancellationToken, params string[] fields)
+    private static readonly TimeSpan StandardQueryWait = TimeSpan.FromMinutes(2);
+
+    private Task<string> askAsync(CancellationToken cancellationToken, params string[] fields) =>
+        askWithTimeoutAsync(StandardQueryWait, fields, cancellationToken);
+
+    // A connection per question. A Nijiiro file listing also prepares the compressed audio on the sender.
+    private async Task<string> askWithTimeoutAsync(TimeSpan wait, string[] fields, CancellationToken cancellationToken)
     {
         using var client = await SyncWire.ConnectAsync(_address, SyncWire.SyncPort, cancellationToken).ConfigureAwait(false);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(TimeSpan.FromMinutes(2)); // the other side walks the library's folders first
+        timeout.CancelAfter(wait);
         return await SyncWire.AskAsync(client.GetStream(), timeout.Token, [pair.Token, .. fields]).ConfigureAwait(false);
     }
 

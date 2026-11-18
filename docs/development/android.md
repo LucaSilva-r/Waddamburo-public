@@ -72,6 +72,8 @@ USRDIR's contents into `Green/` over USB.
 
 Afterwards select the paired PC in Settings › Devices to mirror its libraries into `Received/` (`ReceivedLibraries`): see
 [song-sync-plan.md](song-sync-plan.md). `Arcade/`, `Wii/`, `Wii U/` stay for releases copied by hand.
+The PC prepares Nijiiro music as Ogg Opus and transfers the library's configured keys to app-private storage.
+Android plays these converted libraries using its bundled decoder.
 
 ## Lifecycle
 

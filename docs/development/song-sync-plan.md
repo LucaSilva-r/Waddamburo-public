@@ -57,6 +57,8 @@ reservation on Windows):
   `WADDAMBURO-SYNC <id> <name>`; requests carry the token: `libraries` (id, kind, name, bytes, files), `list <library>`
   (path, size, Unix time), `song-assets <library>` (shared files and each song's asset paths), `file <library> <path>` (the bytes), and
   `transfer-progress <library> <transfer id> <total bytes> <received bytes> <state>` (the sender's progress card).
+  Clients that can receive Nijiiro pass `nijiiro-v1` to `libraries` and request its private configuration with
+  `nijiiro-config <library> <ephemeral public key>`.
 
 A request is one UTF-8 line, tab-separated; an answer is an 8-byte little-endian length then the bytes (negative:
 refused / missing / failed). A connection carries any number of requests; four connections fetch at once.
@@ -85,13 +87,15 @@ osu! when none is set here). Completed songs from an interrupted sync become ava
    catalog (+1 song, +1 category).
 3. **Screens.** Settings › Devices lists paired devices and offers Add a device and Connect to a PC. On the phone,
    select a paired PC to see its libraries and run Sync now. First-start setup pairs, then mirrors Green by itself.
-4. **Nijiiro.** Whole-library music conversion on the sender (vgmstream), cached so a second sync doesn't convert
-   again; the converted files are what `list` reports.
+4. **Nijiiro.** The sender converts up to four song banks at a time to Ogg Opus with the existing vgmstream cache
+   when the receiver starts a sync. The selection page estimates the size from the source files, and the transfer uses the converted
+   sizes. Datatables and fumen are copied as-is. Existing configured keys are wrapped to the receiver's ephemeral
+   public key and stored in its app-private sync config for that library. Other installations keep their own keys.
 
 ## Open points
 
-- Music formats: the receiver decodes what the sender's game decodes (nub, nus3bank, ogg/mp3/wav). Check each
-  platform's decoder covers every source before step 4 settles Nijiiro's target format.
+- Music formats: check that each platform's bundled decoder covers the raw formats used by its supported
+  libraries. Nijiiro uses Ogg Opus for sync.
 - Big libraries: boot scan time of ~15,000 songs' raw files on a phone.
 - osu!: the whole folder travels (lazer's every beatmap and skin, stable's Songs of every mode): a taiko-only list if
   the size bothers anyone. Not yet tried end to end on a receiver.

@@ -46,8 +46,8 @@ internal sealed class SongLibraries : IDisposable
 
     /// <summary>
     /// The libraries another device can mirror from this one (song sync): each install's folders as its provider reads
-    /// them. Received libraries are left out (a device serves its own), Nijiiro too until its music is converted for
-    /// other devices (song-sync-plan.md step 4).
+    /// them. Received libraries are left out (a device serves its own). Nijiiro music is converted when a paired
+    /// receiver asks to sync its library.
     /// </summary>
     public List<Sync.SyncLibrary> SyncLibraries(string greenData)
     {
@@ -80,6 +80,13 @@ internal sealed class SongLibraries : IDisposable
                     libraries.Add(Sync.SyncLibrary.Of("wiiu", wiiU.Release, [("game", Path.GetDirectoryName(content)!),
                         .. update is null ? [] : new[] { ("update", Path.GetDirectoryName(update)!) },
                         .. dlc is null ? [] : new[] { ("dlc", Path.GetDirectoryName(dlc)!) }]) with { OpenCatalog = () => new WiiUCatalogProvider(content) });
+                    break;
+                case NijiiroCatalogProvider nijiiro when !nijiiro.ConvertedAudio && own(nijiiro.Root):
+                    libraries.Add(Sync.SyncLibrary.Of(Sync.NijiiroSync.Kind, $"Nijiiro ({nijiiro.NewestSong})", (Sync.NijiiroSync.Part, nijiiro.Root)) with
+                    {
+                        OpenCatalog = () => new NijiiroCatalogProvider(nijiiro.Root, keys: nijiiro.Keys),
+                        Nijiiro = new Sync.NijiiroSync(nijiiro.Keys),
+                    });
                     break;
                 case TjaCatalogProvider tja when own(tja.Root):
                     libraries.Add(Sync.SyncLibrary.Of("tja", "TJA: " + Path.GetFileName(tja.Root), ("tja", tja.Root)) with { OpenCatalog = () => new TjaCatalogProvider(tja.Root) });
@@ -237,9 +244,21 @@ internal sealed class SongLibraries : IDisposable
     // Nijiiro installations that can play, the newest (highest song number) first.
     private static ISongCatalogProvider[] nijiiro(ArcadeSettings arcade, List<(string, string)> problems, CatalogMetadataCache metadataCache)
     {
-        var installs = ArcadeSettings.Folders(arcade.NijiiroFolder)
-            .Select(folder => (Folder: folder, Installation: new NijiiroCatalogProvider(folder,
-                keys: NijiiroKeys.Parse(arcade.NijiiroDatatableKey, arcade.NijiiroFumenKey)) { MetadataCache = metadataCache }))
+        var configured = ArcadeSettings.Folders(arcade.NijiiroFolder).Select(folder =>
+            (Folder: folder, Installation: new NijiiroCatalogProvider(folder,
+                keys: NijiiroKeys.Parse(arcade.NijiiroDatatableKey, arcade.NijiiroFumenKey)) { MetadataCache = metadataCache }));
+        var received = Sync.ReceivedLibraries.Folders(Sync.NijiiroSync.Kind).Select(folder =>
+        {
+            var root = Path.Combine(folder, Sync.NijiiroSync.Part);
+            var keys = Sync.NijiiroSync.ReadConfig(folder);
+            return (Folder: root, Installation: new NijiiroCatalogProvider(root, keys: keys.FirstOrDefault())
+            {
+                MetadataCache = metadataCache,
+                ConvertedAudio = true,
+                AlternateKeys = [.. keys.Skip(1)],
+            });
+        });
+        var installs = configured.Concat(received)
             .Where(install => usable(install.Folder, install.Installation, problems))
             .Select(static install => install.Installation)
             .OrderByDescending(static installation => installation.NewestSong)
@@ -267,7 +286,7 @@ internal sealed class SongLibraries : IDisposable
     /// Why a Nijiiro installation cannot be played, null when it can: its own <see cref="NijiiroCatalogProvider.Problem"/>,
     /// or no vgmstream-cli for its G.719 music (a song would start without its sound).
     /// </summary>
-    public static string? NijiiroProblem(NijiiroCatalogProvider installation) => installation.Problem ?? VgmstreamProblem;
+    public static string? NijiiroProblem(NijiiroCatalogProvider installation) => installation.Problem ?? (installation.ConvertedAudio ? null : VgmstreamProblem);
 
     /// <summary>Null when vgmstream-cli is found, else what to do about it.</summary>
     public static string? VgmstreamProblem => VgmstreamCli.IsInstalled ? null

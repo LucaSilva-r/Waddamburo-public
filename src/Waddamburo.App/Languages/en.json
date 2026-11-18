@@ -284,6 +284,10 @@
   "job.sync_sending": "Sending {0} to {1}",
   "job.sync_send_stopped": "Transfer stopped",
   "job.sync_send_disconnected": "Device disconnected",
+  "job.sync_nijiiro": "Preparing audio for {0}",
+  "sync.nijiiro.preparing": "Preparing {0} audio on the sender…",
+  "sync.nijiiro.audio_failed": "Could not convert {0}.",
+  "sync.nijiiro.prepare_failed": "The sender could not convert the Nijiiro audio. Check Waddamburo on the sender.",
   "sync.background": "CONTINUE IN THE BACKGROUND",
   "job.failed": "{0}: failed ({1})",
 

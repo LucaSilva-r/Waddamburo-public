@@ -26,9 +26,14 @@ internal sealed record SongSyncManifest(string[] Shared, string[][] Songs)
                 catch (DirectoryNotFoundException) { continue; }
                 await using (stream)
                 {
-                    if (stream is not FileStream file || library.RelativePath(file.Name) is not { } path || !paths.Contains(path))
+                    if (stream is not FileStream file || library.RelativePath(file.Name) is not { } raw)
+                        throw new IOException("A song file is outside the library inventory. Retry after the source library is stable.");
+                    var path = library.Nijiiro is null ? raw : NijiiroSync.ReceiverPath(raw);
+                    if (!paths.Contains(path))
                         throw new IOException("A song file is outside the library inventory. Retry after the source library is stable.");
                     files.Add(path);
+                    if (library.Nijiiro is not null && paths.Contains(path + ".preview"))
+                        files.Add(path + ".preview");
                 }
             }
             if (files.Count > 0)
@@ -50,6 +55,7 @@ internal sealed record SongSyncManifest(string[] Shared, string[][] Songs)
         "wiiu" => path.EndsWith("/Common/database/db_pack.drp", StringComparison.Ordinal)
             || path.EndsWith("/code/app.xml", StringComparison.Ordinal)
             || path.StartsWith("dlc/", StringComparison.Ordinal) && path.EndsWith("/musicInfo.drp", StringComparison.Ordinal),
+        "nijiiro" => path.StartsWith(NijiiroSync.Part + "/datatable/", StringComparison.Ordinal),
         "osu-lazer" => path == "osu/client.realm",
         "osu-stable" => path is "osu/osu!.db" or "osu/collection.db",
         _ => false,

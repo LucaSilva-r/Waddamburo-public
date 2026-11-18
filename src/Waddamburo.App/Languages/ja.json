@@ -284,6 +284,10 @@
   "job.sync_sending": "{1}に{0}を送信中",
   "job.sync_send_stopped": "転送が停止しました",
   "job.sync_send_disconnected": "端末との接続が切れました",
+  "job.sync_nijiiro": "{0}の音声を変換中",
+  "sync.nijiiro.preparing": "送信側で{0}の音声を変換中…",
+  "sync.nijiiro.audio_failed": "{0}を変換できませんでした。",
+  "sync.nijiiro.prepare_failed": "送信側でニジイロの音声を変換できませんでした。送信側のWaddamburoを確認してください。",
   "sync.background": "バックグラウンドで続ける",
   "job.failed": "{0}：失敗（{1}）",
 

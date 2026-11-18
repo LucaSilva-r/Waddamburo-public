@@ -310,7 +310,7 @@ internal sealed class DeviceTransfer : IDisposable
         [
             .. remote.Select(library =>
             {
-                var size = gb(library.Bytes).PadLeft(9);
+                var size = (library.Kind == NijiiroSync.Kind ? "≈" + gb(library.Bytes) : gb(library.Bytes)).PadLeft(9);
                 return ReceivedLibraries.FolderOf(device.Id, library) is null
                     ? new OverlayRow(library.Name, Value: () => $"{size}   {T("sync.not_here")}", Cyan: true)
                     : new OverlayRow(library.Name,
@@ -395,7 +395,7 @@ internal sealed class DeviceTransfer : IDisposable
                 {
                     if (ReceivedLibraries.FolderOf(server.Device.Id, library) is not { } folder)
                         continue;
-                    _status = T("sync.progress.comparing", library.Name);
+                    _status = T(library.Kind == NijiiroSync.Kind ? "sync.nijiiro.preparing" : "sync.progress.comparing", library.Name);
                     var plan = await server.PlanAsync(library, folder, token).ConfigureAwait(false);
                     // A sync that would remove more than half of a library asks first (a PC's folder half gone is
                     // more likely a mistake than a choice).
