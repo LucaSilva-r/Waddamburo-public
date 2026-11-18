@@ -3,8 +3,10 @@
 #   out/package/Waddamburo.exe              one self-contained Windows file (native libraries
 #                                            self-extract on first run)
 #   out/package/Waddamburo-x86_64.AppImage  the Linux build
-#   out/package/licenses.zip                every license and notice both releases need
+#   out/package/licenses.zip                release licenses and notices
 #   out/package/Waddamburo.apk              the Android app (target android: needs the Android SDK, NDK and JDK)
+#   out/package/ffmpeg-source.zip           pinned FFmpeg and Opus source archives (from the Linux job)
+#   out/package/ffmpeg-relink-*.zip         platform-specific configure options and vgmstream link inputs
 #   out/package/native-{win,linux}-x64.zip  the native libraries alone, for building from source
 #                                            without a C toolchain (eng/fetch-native.sh / .ps1)
 # Both are dropped into the game's USRDIR and find the game next to themselves.
@@ -37,31 +39,47 @@ fetch() { # url file sha256
     echo "$3  $2" | sha256sum --check --status || { echo "error: checksum mismatch: $2" >&2; exit 1; }
 }
 
-native() { # preset stage-dir rid: build the preset, zip its libraries for eng/fetch-native
+native() { # preset stage-dir rid: build the preset and package its libraries and FFmpeg relink inputs
     (cd native && cmake --preset "$1" && cmake --build --preset "$1")
     rm -f "$out/native-$3.zip"
     (cd "$2" && cmake -E tar cf "$out/native-$3.zip" --format=zip $(ls waddamburo_*.dll libwaddamburo_*.so bgfx*.dll libbgfx*.so 2>/dev/null))
     echo "$out/native-$3.zip"
+
+    (cd native && cmake --build --preset "$1" --target waddamburo_ffmpeg_relink)
+    local build_dir=${2%/stage/*}
+    (cd "$build_dir/ffmpeg-relink" && cmake -E tar cf "$out/ffmpeg-relink-$3.zip" --format=zip FFmpeg vgmstream)
+    echo "$out/ffmpeg-relink-$3.zip"
 }
 
-licenses() { # native-build-dir out-dir: every notice the releases need, beside Waddamburo's own
+ffmpeg_source() { # build-dir: publish the same sources that the pinned build verified
+    local manifest=$root/$1/ffmpeg-source-archives.txt
+    local archives=() name
+    while read -r _ name; do
+        archives+=("$name")
+    done < "$manifest"
+    (cd out/downloads && sha256sum --check "$manifest" &&
+        cmake -E tar cf "$out/ffmpeg-source.zip" --format=zip "${archives[@]}")
+    echo "$out/ffmpeg-source.zip"
+}
+
+licenses() { # native-build-dir out-dir [project]: collect Waddamburo's and third-party notices
     local dir=$2
     rm -rf "$dir" && mkdir -p "$dir"
     cp LICENSE NOTICE.md THIRD_PARTY_NOTICES.md eng/packaging/licenses/* "$dir/"
     cp src/Waddamburo.App/Upscale/Real-ESRGAN.LICENSE.txt "$dir/"
+    cp src/Waddamburo.Game/Gameplay/Data/soul-gauge-rates.LICENSE.txt "$dir/"
     cp native/texture/third_party/bc7enc/LICENSE "$dir/bc7enc.LICENSE.txt"
     cp -r "$1"/ffmpeg/prefix/licenses/* "$1"/vgmstream/licenses/* "$1"/freetype/prefix/licenses/* "$1"/bgfx/prefix/licenses/* "$dir/"
     local dotnet_root
     dotnet_root=$(dirname "$(readlink -f "$(command -v dotnet)")")
     mkdir -p "$dir/dotnet" && cp "$dotnet_root/LICENSE.txt" "$dotnet_root/ThirdPartyNotices.txt" "$dir/dotnet/"
-    # NuGet packages carry a license expression, not a file: list each one the app ships.
-    python3 - src/Waddamburo.App/packages.lock.json "${NUGET_PACKAGES:-$HOME/.nuget/packages}" > "$dir/nuget-packages.txt" <<'PY'
+    python3 - "src/${3:-Waddamburo.App}/packages.lock.json" "${NUGET_PACKAGES:-$HOME/.nuget/packages}" > "$dir/nuget-packages.txt" <<'PY'
 import json, re, sys
 from pathlib import Path
 lock, cache = json.load(open(sys.argv[1])), Path(sys.argv[2])
 packages = {(name, entry["resolved"]) for target in lock["dependencies"].values()
             for name, entry in target.items() if entry.get("type") != "Project"}
-print("NuGet packages linked into Waddamburo (id, version, license):")
+print("NuGet dependency inventory, including build tools (id, version, license):")
 for name, version in sorted(packages, key=lambda p: p[0].lower()):
     spec = next((cache / name.lower() / version).glob("*.nuspec"), None)
     text = spec.read_text(encoding="utf-8-sig") if spec else ""
@@ -95,6 +113,7 @@ for target in $targets; do
         ;;
     linux)
         native linux-package "$root/out/build/native/linux-x64/linux-package/stage/Release/lib" linux-x64
+        ffmpeg_source out/build/native/linux-x64/linux-package
         tool=out/downloads/appimagetool-$appimagetool_version-x86_64.AppImage
         runtime=out/downloads/appimage-runtime-$runtime_version-x86_64
         fetch "https://github.com/AppImage/appimagetool/releases/download/$appimagetool_version/appimagetool-x86_64.AppImage" \
@@ -131,7 +150,10 @@ EOF
     android)
         # Needs an Android SDK (ANDROID_HOME, default ~/Android/Sdk) with an NDK, JDK 17 or 21 (JAVA_HOME) and the
         # .NET android workload (docs/development/android.md).
-        native android-package "$root/out/build/native/android-arm64/android-package/stage/Release/lib" android-arm64
+        android_build=$root/out/build/native/android-arm64/android-package
+        native android-package "$android_build/stage/Release/lib" android-arm64
+        android_notices=$out/android-notices
+        licenses "$android_build" "$android_notices" Waddamburo.Android
         # Android installs an update only over a lower versionCode: X.Y.Z -> X*1000000 + Y*10000 + Z*100, a nightly
         # (newer than its X.Y.Z, older than the next) +50; development builds 1.
         code=1
@@ -153,7 +175,8 @@ EOF
         rm -rf "$out/android"
         dotnet publish src/Waddamburo.Android -c Release -f net10.0-android -o "$out/android" \
             -p:AndroidSdkDirectory="${ANDROID_HOME:-$HOME/Android/Sdk}" "${java[@]}" \
-            -p:WaddamburoAndroidNativeDir="$root/out/build/native/android-arm64/android-package/stage/Release/lib" \
+            -p:WaddamburoAndroidNativeDir="$android_build/stage/Release/lib" \
+            -p:WaddamburoAndroidNoticesDir="$android_notices" \
             -p:Version="$version" -p:ApplicationDisplayVersion="${version%%-*}" -p:ApplicationVersion="$code" \
             "${app[@]}" "${signing[@]}"
         apk=$(ls "$out/android"/*-Signed.apk | head -1)

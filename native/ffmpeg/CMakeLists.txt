@@ -6,6 +6,21 @@ set(WADDAMBURO_FFMPEG_URL
   "https://ffmpeg.org/releases/${WADDAMBURO_FFMPEG_ARCHIVE}")
 set(WADDAMBURO_FFMPEG_SHA256
   "464beb5e7bf0c311e68b45ae2f04e9cc2af88851abb4082231742a74d97b524c")
+set(WADDAMBURO_FFMPEG_SOURCE_DIR "" CACHE PATH "Use an unpacked FFmpeg source tree for local relinking")
+if(WADDAMBURO_FFMPEG_SOURCE_DIR)
+  if(NOT EXISTS "${WADDAMBURO_FFMPEG_SOURCE_DIR}/configure")
+    message(FATAL_ERROR "WADDAMBURO_FFMPEG_SOURCE_DIR must contain FFmpeg's configure script")
+  endif()
+  set(_ffmpeg_source_args SOURCE_DIR "${WADDAMBURO_FFMPEG_SOURCE_DIR}" DOWNLOAD_COMMAND "" BUILD_ALWAYS TRUE)
+else()
+  set(_ffmpeg_source_args
+    URL "${WADDAMBURO_FFMPEG_URL}"
+    URL_HASH "SHA256=${WADDAMBURO_FFMPEG_SHA256}"
+    DOWNLOAD_NAME "${WADDAMBURO_FFMPEG_ARCHIVE}"
+    DOWNLOAD_DIR "${CMAKE_SOURCE_DIR}/../out/downloads"
+    SOURCE_DIR "${CMAKE_SOURCE_DIR}/../out/source/ffmpeg-${WADDAMBURO_FFMPEG_VERSION}"
+    DOWNLOAD_EXTRACT_TIMESTAMP true)
+endif()
 
 find_program(WADDAMBURO_MAKE_EXECUTABLE NAMES gmake make REQUIRED)
 cmake_host_system_information(RESULT _ffmpeg_jobs QUERY NUMBER_OF_LOGICAL_CORES)
@@ -139,28 +154,29 @@ string(JOIN "\n" _ffmpeg_configure_manifest
   ${_ffmpeg_platform_options})
 string(REPLACE "${_ffmpeg_prefix}" "<INSTALL_PREFIX>"
   _ffmpeg_configure_manifest "${_ffmpeg_configure_manifest}")
+if(ANDROID)
+  string(REPLACE "${_ndk_bin}" "<NDK_BIN>"
+    _ffmpeg_configure_manifest "${_ffmpeg_configure_manifest}")
+endif()
 file(GENERATE
   OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/configure-options.txt"
   CONTENT "${_ffmpeg_configure_manifest}\n")
 
 ExternalProject_Add(waddamburo_ffmpeg
-  URL "${WADDAMBURO_FFMPEG_URL}"
-  URL_HASH "SHA256=${WADDAMBURO_FFMPEG_SHA256}"
-  DOWNLOAD_NAME "${WADDAMBURO_FFMPEG_ARCHIVE}"
-  DOWNLOAD_DIR "${CMAKE_SOURCE_DIR}/../out/downloads"
-  SOURCE_DIR "${CMAKE_SOURCE_DIR}/../out/source/ffmpeg-${WADDAMBURO_FFMPEG_VERSION}"
+  ${_ffmpeg_source_args}
   BINARY_DIR "${_ffmpeg_build_dir}"
-  DOWNLOAD_EXTRACT_TIMESTAMP true
   DEPENDS waddamburo_opus
   CONFIGURE_COMMAND
     ${CMAKE_COMMAND} -E env "PKG_CONFIG_LIBDIR=${_ffmpeg_prefix}/lib/pkgconfig"
     ${_ffmpeg_configure_command}
     ${_ffmpeg_common_options}
     ${_ffmpeg_platform_options}
+  # The build step owns the installed archives listed in BUILD_BYPRODUCTS.
+  # Ninja must see their new timestamps before deciding whether to relink.
   BUILD_COMMAND ${WADDAMBURO_MAKE_EXECUTABLE} -j${_ffmpeg_jobs}
+    COMMAND ${WADDAMBURO_MAKE_EXECUTABLE} install
   INSTALL_COMMAND
-    ${WADDAMBURO_MAKE_EXECUTABLE} install
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${_ffmpeg_prefix}/licenses/FFmpeg"
+    ${CMAKE_COMMAND} -E make_directory "${_ffmpeg_prefix}/licenses/FFmpeg"
     COMMAND ${CMAKE_COMMAND} -E copy <SOURCE_DIR>/COPYING.LGPLv2.1
             "${_ffmpeg_prefix}/licenses/FFmpeg/COPYING.LGPLv2.1"
     COMMAND ${CMAKE_COMMAND} -E copy <SOURCE_DIR>/LICENSE.md
@@ -187,3 +203,8 @@ add_custom_target(waddamburo_ffmpeg_audit
     -P "${CMAKE_CURRENT_SOURCE_DIR}/audit.cmake"
   DEPENDS waddamburo_ffmpeg
   VERBATIM)
+
+if(WADDAMBURO_PACKAGE AND NOT WADDAMBURO_FFMPEG_SOURCE_DIR)
+  file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/ffmpeg-source-archives.txt"
+    CONTENT "${WADDAMBURO_FFMPEG_SHA256}  ${WADDAMBURO_FFMPEG_ARCHIVE}\n${WADDAMBURO_OPUS_SHA256}  opus-${WADDAMBURO_OPUS_VERSION}.tar.gz\n")
+endif()

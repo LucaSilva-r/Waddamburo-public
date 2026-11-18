@@ -69,6 +69,8 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: |
+            out/downloads/ffmpeg-*.tar.xz
+            out/downloads/opus-*.tar.gz
             out/source
             out/build/native
           key: native-${{ matrix.target }}-${{ matrix.runner }}-${{ hashFiles('native/**') }}
@@ -129,13 +131,15 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.target }}
-          # Each job produces its own subset (licenses.zip comes with the Linux build).
+          # The common notices and source archives come from the Linux build.
           path: |
             out/package/Waddamburo.exe
             out/package/Waddamburo-x86_64.AppImage
             out/package/Waddamburo.apk
             out/package/licenses.zip
             out/package/native-*.zip
+            out/package/ffmpeg-source.zip
+            out/package/ffmpeg-relink-*.zip
 
   release:
     if: github.ref_type == 'tag'
@@ -151,7 +155,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: >
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft --generate-notes
-          --title "Waddamburo $GITHUB_REF_NAME" Waddamburo.exe Waddamburo-x86_64.AppImage Waddamburo.apk licenses.zip native-*.zip
+          --notes "Waddamburo uses FFmpeg under the LGPL 2.1 or later. Download ffmpeg-source.zip and the ffmpeg-relink archive for your platform. [Relinking instructions](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_SHA/docs/development/ffmpeg.md#relinking-a-release)."
+          --title "Waddamburo $GITHUB_REF_NAME" Waddamburo.exe Waddamburo-x86_64.AppImage Waddamburo.apk
+          licenses.zip native-*.zip ffmpeg-source.zip ffmpeg-relink-linux-x64.zip ffmpeg-relink-win-x64.zip ffmpeg-relink-android-arm64.zip
 
   nightly:
     if: github.ref_type != 'tag' && inputs.nightly
@@ -173,4 +179,5 @@ jobs:
           mv Waddamburo.apk Waddamburo-nightly.apk
           gh release create "${GITHUB_SHA::7}" --repo "$GITHUB_REPOSITORY" --prerelease --target "$GITHUB_SHA" --generate-notes \
             --title "Waddamburo nightly ${GITHUB_SHA::7}" Waddamburo-nightly.exe Waddamburo-nightly-x86_64.AppImage Waddamburo-nightly.apk \
-            licenses.zip native-*.zip
+            --notes "Waddamburo uses FFmpeg under the LGPL 2.1 or later. Download ffmpeg-source.zip and the ffmpeg-relink archive for your platform. [Relinking instructions](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_SHA/docs/development/ffmpeg.md#relinking-a-release)." \
+            licenses.zip native-*.zip ffmpeg-source.zip ffmpeg-relink-linux-x64.zip ffmpeg-relink-win-x64.zip ffmpeg-relink-android-arm64.zip

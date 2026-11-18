@@ -6,9 +6,10 @@ the archive against SHA-256
 before extraction. Downloads, extracted sources, objects, and installed libraries
 remain below ignored `out/` directories.
 
-The configuration builds dynamic `avutil`, `avcodec`, `avformat`, `swresample`,
-and `swscale` libraries. It disables automatic dependency discovery, static
-libraries, programs, devices, filters, networking, GPL components,
+The developer configuration builds shared `avutil`, `avcodec`, `avformat`,
+`swresample`, and `swscale` libraries. Release presets link the same components
+statically into the media library. Both configurations disable automatic
+dependency discovery, programs, devices, filters, networking, GPL components,
 nonfree components, and version-3-only components. The one external codec library
 is libopus 1.5.2 (BSD-3-Clause, SHA-256
 `65c1d2f78b9f2fb20082c38cbe47c951ad5839345876e46941612ee87f9a7ce1`, matching xiph's
@@ -65,13 +66,75 @@ It is diagnostic scaffolding for the streaming decoder, not the final BGM/previe
 sound-effect mixer. SDL device ownership and queue semantics are documented in
 [`sdl-audio.md`](sdl-audio.md).
 
+## Relinking a release
+
+Waddamburo uses FFmpeg under the LGPL 2.1 or later. The release page provides
+the tagged Waddamburo source, `ffmpeg-source.zip` with the exact unmodified
+FFmpeg and Opus sources, and `ffmpeg-relink-<platform>.zip` with the original
+configure options and the vgmstream inputs used by the media library.
+
+Extract the Waddamburo source and run the following from its root on a Linux
+host. Use the `linux-x64`, `win-x64`, or `android-arm64` archive for the target.
+The Windows preset needs mingw-w64. The Android preset uses NDK 29.0.14206865
+and targets API 26. Set `ANDROID_NDK_HOME` to the NDK's directory if needed.
+
+```sh
+mkdir -p out/downloads out/relink
+unzip /path/to/ffmpeg-source.zip -d out/downloads
+# Use the archive and preset for your platform.
+unzip /path/to/ffmpeg-relink-android-arm64.zip -d out/relink
+tar -xf out/downloads/ffmpeg-8.1.2.tar.xz -C out/relink
+# Modify the extracted FFmpeg sources here.
+cmake -S native --preset android-package -B out/relink/build \
+  -DWADDAMBURO_FFMPEG_SOURCE_DIR="$PWD/out/relink/ffmpeg-8.1.2" \
+  -DWADDAMBURO_RELINK_VGMSTREAM_DIR="$PWD/out/relink/vgmstream"
+cmake --build out/relink/build --target waddamburo_media
+```
+
+For Linux, use `linux-package`, extract the AppImage with
+`./Waddamburo-x86_64.AppImage --appimage-extract`, copy the rebuilt
+`stage/Release/lib/libwaddamburo_media.so` into `squashfs-root/usr/bin/`, and run
+`squashfs-root/AppRun`.
+
+For Windows, use `windows-package`. Extract `native-win-x64.zip` into a directory
+and replace its `waddamburo_media.dll` with the one under `stage/Release/bin`.
+From the matching Waddamburo source, run
+`dotnet publish src/Waddamburo.App -c Release -r win-x64 --self-contained -p:WaddamburoNativeDir=/absolute/path/to/that/directory -o out/relink/windows`
+and use `Waddamburo.App.exe` in that publish folder.
+
+For Android, replace the media library in a copy of the downloaded APK, align
+it, and sign it with your own key. Run these commands from the matching source
+root with Android SDK Build Tools 36.0.0. Omit the signature removal command if
+the downloaded APK has no `META-INF` signature entries.
+
+```sh
+relink_dir="$PWD/out/relink"
+build_tools="$ANDROID_HOME/build-tools/36.0.0"
+cp /path/to/Waddamburo.apk "$relink_dir/modified.apk"
+zip -d "$relink_dir/modified.apk" 'META-INF/*.SF' 'META-INF/*.RSA' \
+  'META-INF/*.DSA' 'META-INF/*.EC' 'META-INF/MANIFEST.MF'
+mkdir -p "$relink_dir/apk/lib/arm64-v8a"
+cp "$relink_dir/build/stage/Release/lib/libwaddamburo_media.so" "$relink_dir/apk/lib/arm64-v8a/"
+(cd "$relink_dir/apk" && zip -0 "$relink_dir/modified.apk" lib/arm64-v8a/libwaddamburo_media.so)
+"$build_tools/zipalign" -P 16 -f 4 "$relink_dir/modified.apk" "$relink_dir/aligned.apk"
+keytool -genkeypair -keystore "$relink_dir/relink.jks" -alias relink -keyalg RSA -keysize 2048 -validity 10000
+"$build_tools/apksigner" sign --ks "$relink_dir/relink.jks" --ks-key-alias relink \
+  --out "$relink_dir/Waddamburo-relinked.apk" "$relink_dir/aligned.apk"
+"$build_tools/apksigner" verify "$relink_dir/Waddamburo-relinked.apk"
+```
+
+Install the signed APK on a test phone or emulator. Android only accepts
+in-place updates signed with the same key. Back up your app data before
+uninstalling an existing copy signed with a different key.
+
 ## vgmstream backend and Nijiiro audio
 
 The game's nuSound2 `.nub` banks (sound effects and voices are cues inside them) and
 NUS3BANK/BNSF files use a vgmstream backend. `native/vgmstream/` downloads pinned
 vgmstream source and builds it as a static library with G.719 disabled: the G.719
 reference code has no identified open-source redistribution grant, so Waddamburo never
-builds, downloads, or ships it. To build the Linux decoder with both backends:
+builds or ships it. G.722.1 Annex C (Siren 14) is also disabled pending review
+of the decoder's provenance. To build the Linux decoder with both backends:
 
 ```sh
 cd native

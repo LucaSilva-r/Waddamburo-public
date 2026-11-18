@@ -3,6 +3,7 @@ include(ExternalProject)
 # vgmstream decodes the game's nuSound2 banks (SE cues are subsongs). G.719 is never
 # built: its reference code has no redistribution license. Files that need it are
 # decoded by a user-supplied vgmstream-cli instead (see native/media/README.md).
+# G.722.1 is also disabled pending review of the Siren 14 decoder's provenance.
 set(WADDAMBURO_VGMSTREAM_REVISION "09c9f40caae4747e44b6a993b3d5b654cef4d1f7")
 set(WADDAMBURO_VGMSTREAM_URL
   "https://github.com/vgmstream/vgmstream/archive/${WADDAMBURO_VGMSTREAM_REVISION}.tar.gz")
@@ -38,7 +39,7 @@ ExternalProject_Add(waddamburo_vgmstream_build
     -DUSE_FFMPEG=OFF
     -DUSE_MPEG=OFF
     -DUSE_VORBIS=OFF
-    -DUSE_G7221=ON
+    -DUSE_G7221=OFF
     -DUSE_G719=OFF
     -DUSE_ATRAC9=OFF
     -DUSE_CELT=OFF

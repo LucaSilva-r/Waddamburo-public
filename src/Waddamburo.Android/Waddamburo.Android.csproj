@@ -39,6 +39,19 @@
   <ItemGroup>
     <AndroidNativeLibrary Include="$(WaddamburoAndroidNativeDir)/*.so" Abi="arm64-v8a" />
   </ItemGroup>
+  <ItemGroup Condition="'$(WaddamburoAndroidNoticesDir)' != ''">
+    <AndroidAsset Include="$(WaddamburoAndroidNoticesDir)/**/*"
+                  LogicalName="licenses/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+  <Target Name="WaddamburoAddRuntimeNotices" BeforeTargets="_ComputeAndroidAssetsPaths"
+          DependsOnTargets="ResolveFrameworkReferences" Condition="'$(WaddamburoAndroidNoticesDir)' != ''">
+    <ItemGroup>
+      <AndroidAsset Include="@(ResolvedRuntimePack->'%(PackageDirectory)/LICENSE.TXT')"
+                    LogicalName="licenses/dotnet/%(ResolvedRuntimePack.NuGetPackageId)/LICENSE.TXT" />
+      <AndroidAsset Include="@(ResolvedRuntimePack->'%(PackageDirectory)/THIRD-PARTY-NOTICES.TXT')"
+                    LogicalName="licenses/dotnet/%(ResolvedRuntimePack.NuGetPackageId)/THIRD-PARTY-NOTICES.TXT" />
+    </ItemGroup>
+  </Target>
   <Target Name="WaddamburoRequireAndroidNatives" BeforeTargets="Build">
     <Error Condition="!Exists('$(WaddamburoAndroidNativeDir)/libbgfx.so')"
            Text="Build the native libraries first: cd native &amp;&amp; cmake --preset android-package &amp;&amp; cmake --build --preset android-package" />

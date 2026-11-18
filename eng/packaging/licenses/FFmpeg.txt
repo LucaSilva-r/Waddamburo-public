@@ -1,0 +1,12 @@
+Waddamburo uses FFmpeg under the GNU Lesser General Public License,
+version 2.1 or later.
+
+The FFmpeg and Opus source archives, platform-specific relink inputs, and
+Waddamburo source code are available alongside the release binaries:
+https://github.com/LucaSilva-r/Waddamburo-public/releases
+
+See docs/development/ffmpeg.md in the matching Waddamburo source for instructions.
+You may modify and relink the media library for your own use and reverse engineer
+it to debug those modifications.
+
+FFmpeg's video code is based in part on the work of the Independent JPEG Group.

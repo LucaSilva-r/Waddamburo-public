@@ -103,7 +103,7 @@ release in an MSYS2 MINGW64 shell on Windows ([BUILDING.md](../../BUILDING.md)):
 The `linux-package` and `windows-package` presets (`WADDAMBURO_PACKAGE=ON`; the
 Windows one uses mingw-w64 through `native/cmake/mingw-w64.cmake`, cross from Linux or
 natively in an MSYS2 MINGW64 shell) build the pinned FFmpeg,
-vgmstream (G.719 disabled) and FreeType 2.14.2 as static libraries and fold them into
+vgmstream (G.719 and G.722.1 disabled) and FreeType 2.14.2 as static libraries and fold them into
 `waddamburo_media` and `waddamburo_text`. The result depends only on the C runtime and
 system libraries (`libc`/`libm`; `kernel32`/`msvcrt`/`bcrypt`), and exports only the
 project C ABI. The script then publishes the app self-contained with those two
@@ -123,9 +123,11 @@ The version comes from a `vX.Y.Z` tag on HEAD (or `WADDAMBURO_VERSION`); anythin
 builds `0.0.0-dev`. Releases self-update (`src/Waddamburo.App/Hosting/SelfUpdate.cs`)
 from the latest GitHub release of this repository. To release, push a `vX.Y.Z` tag:
 `.github/workflows/release.yml` runs this script on GitHub's Ubuntu 22.04 runner (so the
-AppImage needs only glibc 2.35) and drafts a release with both files and `licenses.zip` (every license and notice the
-binaries need; the AppImage also carries it in `usr/share/licenses`) attached; publishing
-the draft is what installed copies pick up.
+AppImage needs only glibc 2.35) and drafts a release with the binaries, `licenses.zip`,
+`ffmpeg-source.zip`, and the platform-specific `ffmpeg-relink-*.zip` archives. The
+AppImage carries the notices in `usr/share/licenses`. The APK carries its notices
+in `assets/licenses`. See [Relinking a release](ffmpeg.md#relinking-a-release).
+Publishing the draft is what installed copies pick up.
 GitHub's asset SHA-256 digest is verified before an update is installed. Development
 builds never update.
 
