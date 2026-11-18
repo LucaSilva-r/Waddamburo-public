@@ -17,7 +17,6 @@ internal sealed partial class GameplayFlow
         public PlayableChart[] Charts = [];
         public readonly LaneDrivers Lanes = new();
         // AI battle on a level below いつもの (a simplified chart).
-        public bool Intermediate;
         // Each lane's chart as played, before the player's modchart and options: an AI battle's intermediate level is its own
         // simplified chart (saved under its own hash, so it never takes the official chart's crown).
         public PlayableChart[] PlayedSources = [];
@@ -28,10 +27,7 @@ internal sealed partial class GameplayFlow
         public AudioStreamTransport? Music;
         public GameplayTimeline? Timeline;
         // AI battle: AI-don's lane, and the battle's own movies.
-        public int SupportLevel;
         // The battle as the server replays it: AI-don's starting timing, and whether the play uploads (a signed-in player).
-        public (double Median, double Variance)? AiPrior;
-        public bool AiUploads;
         // Home, autoplay: a reviewed play (pause, seek, speed); its clock replaces the music's.
         public ReviewSession? Review;
         // Home, training: attempts on the review (Review is its playback).
@@ -56,10 +52,6 @@ internal sealed partial class GameplayFlow
         public TimeSpan? MusicEndPosition;
         public bool ResultSent;
         public readonly Stopwatch AfterMusic = new();
-        public int CourseSong;
-        public TimeSpan CourseHold;
-        public int? CourseCardTick;
-        public TimeSpan? CourseEndsAt;
         // The player's layout is showing (the chart has no modchart of its own).
         public bool LayoutShown;
         // Escape after the last note: the shutter closes now rather than after the banner and the outro.

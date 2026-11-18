@@ -55,57 +55,38 @@ layouts, kusudama, timeline, review, voiding, autoplay, echo, match, squeeze and
 
 ## 2. Target shape
 
-### 2.1 Two axes for a play: mode and lane drivers
+### 2.1 Play modes and lane drivers (built in phases 3 and 4)
 
-Today every play-time branch mixes two independent questions:
+Every play-time branch mixed two questions: what the play is for (its **mode**), and what plays its
+lanes besides the drums (its **lane drivers**).
 
-- **Mode**: what the play is for. It picks the charts, whether and how it saves, what the results
-  scene receives, what restart means. Normal (1P/2P), Waiwai, AI battle, dan course, training,
-  attract demo.
-- **Lane driver**: where a lane's hits come from. Local drum, autoplay, AI bot, online echo,
-  recorded replay (review).
+**Modes** are nested classes of `GameplayFlow`, one file each (`GameplayFlow.<Mode>.cs`), deriving from
+`PlayMode` (`GameplayFlow.Modes.cs`). The base class's defaults are normal play; a mode overrides only
+what differs. Nested so a mode can work on the play's state, clock and music without those becoming
+the flow's API. The hooks came from the actual branches: the charts played (`Sources`, `Seed`), the
+clock (`Timeline`, `ChartTime`), the start (`Reveal`, `SongStarts`, `MusicOpened`, `OpenAudio`), each
+tick (`TakesTick`, `BeforeTick`, `AdvanceSong`), the end (`EndsAt`, `Ending`, `Finished`, `Shutter`,
+`ResultsCutIn`, `End`, `Save`, `Battle`, `Results`), `Restarting`, `Exit`, plus a few facts
+(`RealPlay`, `SeveralSongs`, `UsesPlayerLayout`, `EndBanner`, `EchoesPartner`, `SavesSongs`,
+`Composition`, `ModeLabel`, `Indicators`, `Presence`).
 
-Demo is Normal with an autoplay driver and no save. Review is any mode with replay drivers and
-saving off. Splitting the two removes most of the 131 branches: a mode never asks about review, a
-driver never asks about dan.
+| Mode | Picked by | Differs in |
+|---|---|---|
+| `NormalPlay` | `Prepare` | nothing: the defaults |
+| `WaiwaiPlay` | `Prepare` with a Waiwai composition | its layout, no shutter, Waiwai results, not saved |
+| `BattlePlay` (AI battle) | `Prepare`, an AI battle credit, two lanes | support level, server session, AI-don's lane, ends by the battle result, no shutter or banner, AI results, its battle saved with the play |
+| `DanCoursePlay` | `PrepareCourse` | merged chart, song cards, next song's audio ahead, early end, dan shutter, saved whole, dan results; stays the mode through its results so Restart plays it again |
+| `DemoPlay` | `StartDemo` | autoplay at 15 hits/s, not a real play (no save, pause, restart, echo), 30 s, take-over; back to normal when the scene is left |
 
-**Online** (decided) is Normal with a fake second player: the partner's lane is an `EchoDriver`,
-while the credit stays a single-player credit for its own rules (one joined side, only the local
-lane saves, single-player kusudama → balloons on the partner's lane). The one thing online adds to
-Normal is the end: results wait for the partner's and show both, synchronised. That is an
-`IPlayMode.End` option on `NormalPlay` (an `OnlineLink` it is given), not a mode of its own.
+**Online, replay and training are not modes** (user, 2026-11-18): they are extensions of normal
+play. Online is normal play with the partner's lane echoed (`OnlineMatch`, synchronised results);
+a replay or autoplay is reviewed (`ReviewSession` owns the clock and the presentation reads the
+replays); practice is a review taken live (`TrainingSession`). They show as `_play.Review` and
+`_play.Training` in `GameplayFlow`.
 
-**Training** (decided) is a mode, `TrainingPlay`: it owns a looping, speed-changing clock and
-section restarts, never saves and has no results. It reuses the review clock that
-`TrainingSession` shares with `ReviewSession` today.
-
-```csharp
-// Flow/Play/IPlayMode.cs
-internal interface IPlayMode
-{
-    PlayableChart[] PrepareCharts(PlayRequest request, PlayPreparation prep); // simplify, modcharts, layout, kusudama
-    GameplayTimeline Timeline(PlayableChart[] charts);
-    bool Saves { get; }                       // dan saves whole, at its own end
-    void Tick(PlayContext play);              // dan: next song card; AI: section scoring
-    SceneId End(PlayContext play, bool finished); // save and hand the results their payload
-    bool CanRestart { get; }
-}
-
-// Flow/Play/ILaneDriver.cs
-internal interface ILaneDriver
-{
-    void Tick(PlayContext play, int lane, TimeSpan chartTime);
-}
-```
-
-Modes: `NormalPlay` (with an optional `OnlineLink`), `WaiwaiPlay`, `AiBattlePlay`,
-`DanCoursePlay`, `TrainingPlay`, `DemoPlay`. Drivers: `DrumDriver`, `AutoplayDriver`,
-`AiBotDriver`, `EchoDriver`, `ReplayDriver`. `ReviewSession` becomes the review clock plus replay
-drivers; `TrainingSession` becomes `TrainingPlay`.
-
-`GameplayFlow` keeps only what every play has: the clock and audio, rainbow reveal, shutter,
-pause, quick restart, the editor hooks. `Play` shrinks to those fields; each mode and driver owns
-its own (`CourseSong`, `CourseHold`, `AiPrior`, `AiUploads`, `Echo`…).
+**Lane drivers** are `Gameplay/LaneDrivers.cs` (phase 3): the autoplay, AI-don's bot and battle
+presentation, and the online echo, with the one `Advance` the frame and tick paths shared. No
+interface: each kind had one caller.
 
 ### 2.2 `CreditSession`: one owner for the credit
 
@@ -180,7 +161,7 @@ Each phase is its own commit series on `main`, contains no feature work, and end
 | 1 | **`CreditSession` + `SongSelectMemory`.** *Done 2026-11-18.* State moved out of `LayerHostFactory` and `PlayerSession`, every use repointed (`Shell.Credit`, `Shell.SelectMemory`). `tests/Waddamburo.App.Tests` (`InternalsVisibleTo`) tests the mode flags and the new-credit tutorial reset. | `LayerHostFactory` keeps no credit or song select state; what it still has settable are services and callbacks (coins, dan catalogue, result and entry callbacks), phase 2's. |
 | 2 | **`LoadedHosts`; settings read directly.** *Done 2026-11-18.* The movies' hosts the flows poll (`SongSelect`, `Entry`, `Retry`, …) are `Shell.Loaded`; the entry passthroughs are gone. The `Func<bool>` settings shims and `SongsStarted` are gone: the factory reads `arcade` and `credit`. The ≤ 8 constructor parameters target was dropped: the remaining score, profile and callback funcs would only move into a bag. Callbacks wired after the system indicators exist (`LayerLoading`, `EntryJoined`, `CardDialog`, `ReturnToAttract`) stay settable: wiring them earlier would run them on the first scene's load. | Flows poll no movie host through the factory; no settings shim left. |
 | 3 | **Lane drivers.** *Done 2026-11-18.* `Gameplay/LaneDrivers.cs` holds the autoplay, AI-don's bot and battle presentation, and the online echo, with the one `Advance` the frame and tick paths shared as copies, and `Stop`. No `ILaneDriver` interface: review and training don't drive lanes (they own the clock; the presentation reads their replays), so each driver kind had one caller. Creating them stays in `Enter` until the modes take it in phase 4. | No `_play.Autoplay/AiBot/Echo/Battle` in `GameplayFlow`. |
-| 4 | **Play modes.** Dan, AI battle, Waiwai, demo, normal; `Enter`, `Tick`, `end`, `saveScore`, `saveCourse` dispatch to the mode. | Mode-branch count in `GameplayFlow` under 15 (from 131); `Play` under 15 fields. |
+| 4 | **Play modes.** *Done 2026-11-18.* `NormalPlay`, `WaiwaiPlay`, `BattlePlay`, `DanCoursePlay`, `DemoPlay` (section 2.1). First a headless fix: a dan course's songs after the first counted their headless clock from the course's reveal, so flow-smoke's dan failed on song 2; it now plays the whole course (369/0/0, gold). `GameplayFlow.cs` 1366 → 1045 lines. | No Waiwai, AI, dan or demo checks left in `GameplayFlow` (AI battle remains only in credit-wide layout and 4:3 rules); review and training stay (normal play's extensions). |
 | 5 | **GameShell split.** `InputStack`, `FrameComposer`, `RumbleController`, `AudioOutputHost`, `PresenceReporter`, `GameServices`, `DiagnosticsOptions`. | `GameShell.cs` under 600 lines; `tickOnce` under 40. |
 | 6 | **Mechanical.** Settings table, `GameOptions.Parse`, `HomeMenu` statics, `IGameLoop`. | Each settings key written once. |
 | 7 | (optional) LumenPlayer split. | Lumen.Tests and `--scan` unchanged. |
@@ -192,7 +173,7 @@ easiest once 1–4 have removed the state GameShell is holding for others.
 
 1. **Online play** is Normal with a fake second player (an echo lane) and a synchronised result
    screen; the credit stays single-player for its own rules (2026-11-18).
-2. **Training** is a mode (2026-11-18).
+2. **Training and replay** are extensions of normal play, not modes (2026-11-18; first decided as a mode, reversed once phase 4 showed `TrainingSession` already holds it).
 3. **Phase 0** runs locally on the user's game data, before each phase is merged; not in CI.
 4. **Docs**: `app-flow.md` gets rewritten at the end of phase 5; this file is deleted then (its
    result is the code).

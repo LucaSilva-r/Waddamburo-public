@@ -47,7 +47,7 @@ one='--flow-smoke-song=!Result Test'
 kinds='--flow-smoke-song=Note Kind Check'
 
 # Longest first, four at a time. Tick limits end each run a little after its last scene change.
-mode dan 13500 dan &
+mode dan 24500 dan &
 run mode-ai-battle 9500 "$(home mode-ai-battle)" --start-scene=ai-song-select --flow-smoke=ai-battle "$kinds" &
 run mode-demo 9000 "$(home mode-demo)" --start-scene=attract --flow-smoke=demo &
 mode waiwai 8500 waiwai &
