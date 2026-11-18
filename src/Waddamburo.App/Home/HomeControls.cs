@@ -154,7 +154,8 @@ internal sealed class HomeControls : IDisposable
         _settingsOverlay = true;
         settings.Health = _shell.Sync.Health;
         settings.Open(_shell.Arcade, 0, don => _shell.Sounds?.Bank.Play("SE_COM", don ? 0 : 3, AudioBus.DrumHit, trace: false),
-            _ => { }, applySettings, _shell.RehashLibrary, _shell.Options.TjaRoot, command, canCalibrate: _menu.CalibrationOffered);
+            _ => { }, applySettings, _shell.RehashLibrary, _shell.Options.TjaRoot, command,
+            canCalibrate: _menu.CalibrationOffered, openDevices: _shell.DeviceTransfer.Open);
 
         void command(HomeMenuAction action)
         {
@@ -172,17 +173,6 @@ internal sealed class HomeControls : IDisposable
                 case HomeMenuAction.RunBenchmark:
                     save();
                     _shell.RequestBenchmark();
-                    break;
-                // Send/Receive: the menus close and the transfer's pages open over the game.
-                case HomeMenuAction.PairDevice or HomeMenuAction.SyncSongs:
-                    save();
-                    _menu.Close();
-                    _audio.HoldMenuMusic(false);
-                    _audio.MuteAttract(false);
-                    if (action == HomeMenuAction.PairDevice)
-                        _shell.DeviceTransfer.OpenPair();
-                    else
-                        _shell.DeviceTransfer.OpenSync();
                     break;
                 case HomeMenuAction.BakeTextures when _shell.Upscale is { } upscale:
                     _menu.ShowBake(_shell.Bake is { Running: true } running ? running
@@ -240,6 +230,7 @@ internal sealed class HomeControls : IDisposable
     /// </summary>
     public void Reset()
     {
+        _shell.DeviceTransfer.Close();
         _menu.Close();
         _restart.Reset();
         _resume?.Cancel();
@@ -325,7 +316,8 @@ internal sealed class HomeControls : IDisposable
                     _resumeTextures, "Resume", _shell.Titles.Resolve).Quads
                 : [])
             .Concat(_shell.Unsqueezed(Enumerable.Empty<RenderQuad>()
-            .Concat(_settingsOverlay && _shell.Service is { } settings ? settings.Quads()
+            .Concat(_shell.DeviceTransfer.IsOpen ? _shell.DeviceTransfer.Quads()
+                : _settingsOverlay && _shell.Service is { } settings ? settings.Quads()
                 : pauseChoices ? pause().Quads() : [])
             .Concat(_overlay.Quads(_restart.Black,
                 _menu.IsOpen || active != FlowScenes.Calibration ? null : _calibration.Calibration)), centred: true))
@@ -472,6 +464,11 @@ internal sealed class HomeControls : IDisposable
     {
         if (!_menu.IsOpen)
             return false;
+        if (_shell.DeviceTransfer.IsOpen)
+        {
+            _shell.DeviceTransfer.Tick(keys, held, escape);
+            return true;
+        }
         // The settings overlay takes the input; closed, the pause choices are back.
         if (_settingsOverlay && _shell.Service is { } settings)
         {

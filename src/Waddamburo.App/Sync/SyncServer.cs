@@ -2,6 +2,9 @@ using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
+using Waddamburo.Catalog;
+using Waddamburo.Game.Flow;
 
 namespace Waddamburo.App.Sync;
 
@@ -13,18 +16,42 @@ namespace Waddamburo.App.Sync;
 /// </summary>
 public sealed record SyncLibrary(string Id, string Kind, string Name, IReadOnlyList<(string Part, string Folder)> Parts)
 {
+    private static readonly string[] StableDatabases = ["osu!.db", "collection.db"];
+    internal Func<ISongCatalogProvider>? OpenCatalog { get; init; }
+
     /// <summary>A library of <paramref name="kind"/> made of <paramref name="parts"/>; its id follows the folders.</summary>
     public static SyncLibrary Of(string kind, string name, params (string Part, string Folder)[] parts) =>
         new(kind == "green" ? "green" : kind + "-" + Convert.ToHexStringLower(SHA256.HashData(
             Encoding.UTF8.GetBytes(string.Join('|', parts.Select(static part => Path.GetFullPath(part.Folder))))))[..12], kind, name, parts);
 
+    internal string? RelativePath(string file)
+    {
+        foreach (var (part, folder) in Parts)
+        {
+            var relative = Path.GetRelativePath(folder, file);
+            if (relative != ".." && !relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+                && !Path.IsPathRooted(relative))
+                return part + "/" + relative.Replace('\\', '/');
+        }
+        return null;
+    }
+
     /// <summary>Every file: path on the receiver (part/relative, '/'), size, modified time (Unix seconds), full path here.</summary>
     public IEnumerable<(string Path, long Size, long Time, string Full)> Files() =>
         Parts.Where(static part => Directory.Exists(part.Folder)).SelectMany(part =>
-            new DirectoryInfo(part.Folder).EnumerateFiles("*", new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = 0 })
-                .Where(static file => !file.Name.EndsWith(".part", StringComparison.Ordinal))
-                .Select(file => (part.Part + "/" + Path.GetRelativePath(part.Folder, file.FullName).Replace('\\', '/'), file.Length,
-                    new DateTimeOffset(file.LastWriteTimeUtc).ToUnixTimeSeconds(), file.FullName)));
+            part.Part == "osu" && Kind == "osu-stable"
+                // The sender's per-user config can point outside its installation. The receiver always uses osu/Songs.
+                ? StableDatabases.Select(name => new FileInfo(Path.Combine(part.Folder, name)))
+                    .Where(static file => file.Exists).Select(file => describe(part, file))
+                : new DirectoryInfo(part.Folder).EnumerateFiles("*", new EnumerationOptions
+                    { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = 0 })
+                    .Select(file => describe(part, file))
+                    .Where(file => !file.Path.EndsWith(".part", StringComparison.Ordinal)
+                        && !SongSyncStaging.IsInternal(file.Path[(part.Part.Length + 1)..])));
+
+    private static (string Path, long Size, long Time, string Full) describe((string Part, string Folder) part, FileInfo file) =>
+        (part.Part + "/" + Path.GetRelativePath(part.Folder, file.FullName).Replace('\\', '/'), file.Length,
+            new DateTimeOffset(file.LastWriteTimeUtc).ToUnixTimeSeconds(), file.FullName);
 }
 
 /// <summary>
@@ -38,26 +65,28 @@ public sealed class SyncServer : IDisposable
     private readonly UdpClient _discovery;
     private readonly CancellationTokenSource _stop = new();
     private readonly IReadOnlyList<SyncLibrary> _libraries;
+    private readonly OutgoingSyncProgress? _progress;
     // Each library's file list, kept a minute (a sync asks for it, then for its files).
     private readonly Dictionary<string, (DateTime At, Dictionary<string, (long Size, long Time, string Full)> Files)> _lists = [];
 
-    public SyncServer(IReadOnlyList<SyncLibrary> libraries, string name)
+    public SyncServer(IReadOnlyList<SyncLibrary> libraries, string name, JobBoard? jobs = null)
     {
         _libraries = libraries;
         _listener.Start();
         _discovery = new UdpClient(new IPEndPoint(IPAddress.Any, SyncWire.SyncPort)) { EnableBroadcast = true };
+        _progress = jobs is null ? null : new OutgoingSyncProgress(jobs);
         _ = Task.Run(() => SyncWire.AnswerAsync(_discovery, SyncWire.SyncProbe, name));
         _ = Task.Run(accept);
     }
 
     /// <summary>A server when a paired device pulls from this one; null when none does or the port is taken.</summary>
-    public static SyncServer? StartIfPaired(IReadOnlyList<SyncLibrary> libraries, string name)
+    public static SyncServer? StartIfPaired(IReadOnlyList<SyncLibrary> libraries, string name, JobBoard jobs)
     {
         if (SyncWire.Paired().All(static device => device.Serves))
             return null;
         try
         {
-            return new SyncServer(libraries, name);
+            return new SyncServer(libraries, name, jobs);
         }
         catch (SocketException exception)
         {
@@ -71,6 +100,7 @@ public sealed class SyncServer : IDisposable
         _stop.Cancel();
         _listener.Stop();
         _discovery.Dispose();
+        _progress?.Dispose();
     }
 
     private async Task accept()
@@ -100,9 +130,9 @@ public sealed class SyncServer : IDisposable
             while (await SyncWire.ReadRequestAsync(stream, _stop.Token).ConfigureAwait(false) is { Length: >= 2 } request)
             {
                 // The token is the pair's secret: compared in constant time, re-read each request (unpairing takes effect at once).
-                var known = SyncWire.Paired().Any(device => !device.Serves && CryptographicOperations.FixedTimeEquals(
+                var receiver = SyncWire.Paired().FirstOrDefault(device => !device.Serves && CryptographicOperations.FixedTimeEquals(
                     Encoding.UTF8.GetBytes(device.Token), Encoding.UTF8.GetBytes(request[0])));
-                if (!known)
+                if (receiver is null)
                 {
                     await SyncWire.WriteLengthAsync(stream, SyncWire.Refused, _stop.Token).ConfigureAwait(false);
                     return;
@@ -124,6 +154,26 @@ public sealed class SyncServer : IDisposable
                         // path, size, time
                         await answer(stream, string.Join('\n', list(library, fresh: true)
                             .Select(static pair => $"{pair.Key}\t{pair.Value.Size}\t{pair.Value.Time}"))).ConfigureAwait(false);
+                        break;
+                    case ("song-assets", 3) when find(request[2]) is { OpenCatalog: not null } songs:
+                        var paths = new HashSet<string>(list(songs).Keys, StringComparer.Ordinal);
+                        try
+                        {
+                            var manifest = await SongSyncManifest.CreateAsync(songs, paths, _stop.Token).ConfigureAwait(false);
+                            await answer(stream, JsonSerializer.Serialize(manifest, SongSyncJson.Default.SongSyncManifest)).ConfigureAwait(false);
+                        }
+                        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException
+                            or System.Xml.XmlException or ArgumentException)
+                        {
+                            Console.Error.WriteLine($"Song sync: could not describe {songs.Name}: {exception.Message}");
+                            await SyncWire.WriteLengthAsync(stream, SyncWire.Failed, _stop.Token).ConfigureAwait(false);
+                        }
+                        break;
+                    case ("transfer-progress", 7) when _progress is { } progress && find(request[2]) is { } transferLibrary:
+                        if (progress.Report(receiver, transferLibrary, request))
+                            await answer(stream, "").ConfigureAwait(false);
+                        else
+                            await SyncWire.WriteLengthAsync(stream, SyncWire.Failed, _stop.Token).ConfigureAwait(false);
                         break;
                     case ("file", 4) when find(request[2]) is { } library && list(library).TryGetValue(request[3], out var file):
                         await send(stream, file.Full).ConfigureAwait(false);

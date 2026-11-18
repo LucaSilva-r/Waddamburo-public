@@ -50,6 +50,7 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
     // Home mode: the settings (no coins, credits, stages or bookkeeping).
     private bool _home;
     private Action<HomeMenuAction>? _command;
+    private Action? _openDevices;
     private bool _canCalibrate;
     private static readonly string TimingSection = Strings.T("section.timing");
     private static readonly string[] Devices = [S("service.device.keyboard"), S("service.device.controller"), S("service.device.midi")];
@@ -89,7 +90,7 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
     /// bake), the menu closing first.</remarks>
     public void Open(ArcadeSettings settings, int credits, Action<bool> drum, Action<ArcadeSettings> exit,
         Action<ArcadeSettings> apply, Action rehash, string defaultTja, Action<HomeMenuAction>? command = null,
-        bool canCalibrate = false)
+        bool canCalibrate = false, Action? openDevices = null)
     {
         _canCalibrate = canCalibrate;
         // Read again each time: a device plugged in since shows (the output switches without a restart).
@@ -97,6 +98,7 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
         HomeMenu.AsioDrivers = OperatingSystem.IsWindows() ? Waddamburo.Platform.Sdl.Media.AsioOutput.DriverNames() : [];
         (_settings, _credits, _drum, _exit, _apply, _rehash, _defaultTja) = (settings, credits, drum, exit, apply, rehash, defaultTja);
         (_home, _command) = (settings.Home, command);
+        _openDevices = openDevices;
         (_listening, _picking) = (false, null);
         Array.Clear(_hits);
         // Home: the menus' ka and don as the cursor moves and picks.
@@ -320,9 +322,7 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
             new(S("service.drum_controls"), Enter: () => open(Page.Drums)),
             // A phone's libraries are its folders (Custom Songs, Arcade, Wii, Wii U): no folders to pick here.
             .. PlatformInfo.IsMobile ? (Row[])[] : [new(S("service.song_libraries"), Enter: () => open(Page.Libraries))],
-            // Songs between devices (home): this one sends, or receives while the page is open.
-            .. _home ? [new Row(S("sync.pair.title"), Enter: () => run(HomeMenuAction.PairDevice)),
-                new Row(S("sync.title"), Enter: () => run(HomeMenuAction.SyncSongs))] : (Row[])[],
+            .. _home && _openDevices is { } openDevices ? [new Row(S("sync.devices"), Enter: openDevices)] : (Row[])[],
             .. _home ? (Row[])[] : [new(S("service.bookkeeping"), Enter: () => open(Page.Bookkeeping))],
             new(S("service.others"), Enter: () => open(Page.Others), Cyan: true), // the language is there // the language is there
             new(S("service.exit"), Gap: true, Enter: close),

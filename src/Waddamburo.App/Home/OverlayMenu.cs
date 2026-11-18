@@ -29,11 +29,12 @@ internal sealed record OverlayRow(string Label, float X = 480, Func<string>? Val
 /// <paramref name="Body"/>: a centred page's message as coloured lines (the boot's error screen), in place of
 /// <paramref name="Message"/>; <paramref name="Footer"/>: coloured lines at the bottom, in place of the legend;
 /// <paramref name="Modal"/>: alone over the darkened game (an error the player has to acknowledge).
+/// <paramref name="Recenter"/>: centre the current rows again when a page's contents arrive asynchronously.
 /// </summary>
 internal sealed record OverlayPage(Func<string> Title, Func<OverlayRow[]> Rows, bool Defaults = false, bool Centred = false,
     bool DrumTest = false, Func<string?>? Message = null, Action? Back = null, object? Tag = null, bool Legend = true,
     bool Fixed = false, Func<(string Text, RenderColor Colour)[]>? Body = null,
-    Func<(string Text, RenderColor Colour)[]>? Footer = null, bool Modal = false);
+    Func<(string Text, RenderColor Colour)[]>? Footer = null, bool Modal = false, bool Recenter = false);
 
 /// <summary>
 /// The menus' one look and feel, after the arcade cabinet's service menu: plain text (Kosugi Maru) over black on a
@@ -291,7 +292,7 @@ internal sealed class OverlayMenu(SdlApplication application, string fontPath) :
             }
             var values = rows.Select(static row => row.Value?.Invoke()).ToArray();
             var (shift, valueX, blockWidth) = page.Fixed ? (0f, (float?)null, float.MaxValue) : block(rows, values);
-            if (!page.Fixed)
+            if (!page.Fixed && !page.Recenter)
             {
                 if (!ReferenceEquals(page, _placed))
                     (_placed, _placedShift, _placedValueX) = (page, shift, float.MinValue);

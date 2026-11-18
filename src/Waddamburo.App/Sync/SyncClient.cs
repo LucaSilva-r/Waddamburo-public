@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
+using System.Text.Json;
 
 namespace Waddamburo.App.Sync;
 
@@ -8,7 +9,10 @@ namespace Waddamburo.App.Sync;
 public sealed record RemoteLibrary(string Id, string Kind, string Name, long Bytes, int Files);
 
 /// <summary>What a mirror would change: files to fetch (and their bytes), files to remove.</summary>
-public sealed record MirrorPlan(List<(string Path, long Size, long Time)> Fetch, long FetchBytes, List<string> Remove, int Have);
+public sealed record MirrorPlan(List<(string Path, long Size, long Time)> Fetch, long FetchBytes, List<string> Remove, int Have)
+{
+    internal SongSyncManifest? Manifest { get; init; }
+}
 
 /// <summary>
 /// The pulling side of song sync: talks to a paired device that serves (<see cref="SyncServer"/>) and mirrors its
@@ -52,21 +56,48 @@ public sealed class SyncClient(SyncDevice device, PairedDevice pair)
             .Select(static line => line.Split('\t')).Where(static parts => parts.Length == 3)
             .Select(static parts => (Path: parts[0], Size: long.Parse(parts[1], CultureInfo.InvariantCulture), Time: long.Parse(parts[2], CultureInfo.InvariantCulture)))
             .ToList();
+        SongSyncStaging.Recover(folder);
+        if (remote.Any(file => file.Size < 0 || SongSyncStaging.IsInternal(file.Path) || SafePath(folder, file.Path) is null))
+            throw new InvalidDataException("The other device listed an invalid library file.");
         var local = Local(folder);
         // FAT/exFAT keep times to 2 s: within that the file is the same.
         var fetch = remote.Where(file => !local.TryGetValue(file.Path, out var here) || here.Size != file.Size || Math.Abs(here.Time - file.Time) > 2).ToList();
         var names = remote.Select(static file => file.Path).ToHashSet(StringComparer.Ordinal);
         var remove = library.Kind == "green" || remote.Count == 0 ? [] : local.Keys.Where(path => !names.Contains(path)).ToList();
-        return new MirrorPlan(fetch, fetch.Sum(static file => file.Size), remove, local.Count);
+        SongSyncManifest? manifest = null;
+        if (fetch.Count > 0)
+        {
+            try
+            {
+                var json = await askAsync(cancellationToken, "song-assets", library.Id).ConfigureAwait(false);
+                manifest = JsonSerializer.Deserialize(json, SongSyncJson.Default.SongSyncManifest);
+                if (manifest is null || manifest.Shared is null || manifest.Songs is null
+                    || manifest.Shared.Any(path => !names.Contains(path))
+                    || manifest.Songs.Any(paths => paths is null || paths.Any(path => !names.Contains(path))))
+                    throw new InvalidDataException("The other device's song files do not match its library listing.");
+            }
+            catch (SyncRefusedException exception) when (exception.Code == SyncWire.Missing)
+            {
+                // This sender predates song manifests.
+            }
+            catch (JsonException exception)
+            {
+                throw new InvalidDataException("The other device sent an invalid song manifest.", exception);
+            }
+        }
+        return new MirrorPlan(fetch, fetch.Where(file => !SongSyncStaging.IsStaged(folder, file)).Sum(static file => file.Size),
+            remove, local.Count) { Manifest = manifest };
     }
 
     /// <summary>The files in a received library's folder: path ('/'), size, time. Leftover partial files are left out.</summary>
     public static Dictionary<string, (long Size, long Time)> Local(string folder) =>
         !Directory.Exists(folder) ? new(StringComparer.Ordinal) : new DirectoryInfo(folder)
             .EnumerateFiles("*", new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = 0 })
-            .Where(static file => !file.Name.EndsWith(".part", StringComparison.Ordinal) && file.Name != ReceivedLibraries.Marker)
-            .ToDictionary(file => Path.GetRelativePath(folder, file.FullName).Replace('\\', '/'),
-                static file => (file.Length, new DateTimeOffset(file.LastWriteTimeUtc).ToUnixTimeSeconds()), StringComparer.Ordinal);
+            .Where(static file => !file.Name.EndsWith(".part", StringComparison.Ordinal))
+            .Select(file => (Path: Path.GetRelativePath(folder, file.FullName).Replace('\\', '/'), File: file))
+            .Where(static file => !SongSyncStaging.IsInternal(file.Path))
+            .ToDictionary(static file => file.Path,
+                static file => (file.File.Length, new DateTimeOffset(file.File.LastWriteTimeUtc).ToUnixTimeSeconds()), StringComparer.Ordinal);
 
     /// <summary>
     /// Carries out <paramref name="plan"/>: fetches (four at a time, each file under a temporary name until complete,
@@ -74,12 +105,25 @@ public sealed class SyncClient(SyncDevice device, PairedDevice pair)
     /// tried again for about three minutes before the sync stops (the next one goes on from there).
     /// </summary>
     public async Task MirrorAsync(RemoteLibrary library, string folder, MirrorPlan plan, Action<long>? fetched = null,
-        CancellationToken cancellationToken = default)
+        Action? published = null, CancellationToken cancellationToken = default)
     {
         Directory.CreateDirectory(folder);
+        SongSyncStaging.Recover(folder);
         if (library.Kind != "green")
             File.WriteAllText(Path.Combine(folder, ReceivedLibraries.Marker), $"{library.Kind}\t{SyncWire.clean(library.Name)}\n");
-        var queue = new Queue<(string Path, long Size, long Time)>(plan.Fetch.OrderBy(static file => file.Path, StringComparer.Ordinal));
+        var staging = new SongSyncStaging(folder, plan);
+        var queue = new Queue<(string Path, long Size, long Time)>(staging.OrderedFiles);
+        long receivedBytes = 0;
+        var finished = plan.FetchBytes > 0 ? new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously) : null;
+        if (finished is not null)
+            _ = reportProgressAsync(library.Id, plan.FetchBytes, () => Interlocked.Read(ref receivedBytes), finished.Task);
+
+        void reportBytes(long bytes)
+        {
+            Interlocked.Add(ref receivedBytes, bytes);
+            fetched?.Invoke(bytes);
+        }
+
         async Task worker()
         {
             TcpClient? connection = null;
@@ -92,8 +136,13 @@ public sealed class SyncClient(SyncDevice device, PairedDevice pair)
                     lock (queue)
                         if (!queue.TryDequeue(out file))
                             return;
-                    if (safePath(folder, file.Path) is not { } destination)
-                        throw new InvalidDataException($"Bad path from the other device: {file.Path}");
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (SongSyncStaging.IsStaged(folder, file))
+                    {
+                        staging.Ready(file.Path, published);
+                        continue;
+                    }
+                    var destination = staging.Destination(file.Path);
                     for (var attempt = 0; ; attempt++)
                     {
                         try
@@ -105,7 +154,7 @@ public sealed class SyncClient(SyncDevice device, PairedDevice pair)
                             }
                             connectedTo = _address;
                             connection ??= await SyncWire.ConnectAsync(connectedTo, SyncWire.SyncPort, cancellationToken).ConfigureAwait(false);
-                            await fetchAsync(connection.GetStream(), library, file.Path, file.Time, destination, fetched, cancellationToken).ConfigureAwait(false);
+                            await fetchAsync(connection.GetStream(), library, file.Path, file.Size, file.Time, destination, reportBytes, cancellationToken).ConfigureAwait(false);
                             break;
                         }
                         catch (SyncRefusedException refused) when (refused.Code == SyncWire.Missing)
@@ -121,6 +170,7 @@ public sealed class SyncClient(SyncDevice device, PairedDevice pair)
                             await Task.Delay(TimeSpan.FromSeconds(Math.Min(2 * (attempt + 1), 10)), cancellationToken).ConfigureAwait(false);
                         }
                     }
+                    staging.Ready(file.Path, published);
                 }
             }
             finally
@@ -128,27 +178,83 @@ public sealed class SyncClient(SyncDevice device, PairedDevice pair)
                 connection?.Dispose();
             }
         }
-        using var watching = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var watch = Task.Run(() => watchLinks(watching.Token), CancellationToken.None);
+        var success = false;
         try
         {
-            await Task.WhenAll(Enumerable.Range(0, Workers).Select(_ => worker())).ConfigureAwait(false);
+            using var watching = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var watch = Task.Run(() => watchLinks(watching.Token), CancellationToken.None);
+            try
+            {
+                await Task.WhenAll(Enumerable.Range(0, Workers).Select(_ => worker())).ConfigureAwait(false);
+            }
+            finally
+            {
+                watching.Cancel();
+                await watch.ConfigureAwait(false);
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+            staging.Finish(published);
+            SongSyncStaging.Clean(folder);
+            foreach (var partial in Directory.EnumerateFiles(folder, "*.part", SearchOption.AllDirectories))
+                File.Delete(partial);
+            deleteEmptyFolders(folder);
+            success = true;
         }
         finally
         {
-            watching.Cancel();
-            await watch.ConfigureAwait(false);
+            finished?.TrySetResult(success);
         }
-        // Removals last, and only inside the library's folder.
-        foreach (var path in plan.Remove)
-            if (safePath(folder, path) is { } doomed)
-                File.Delete(doomed);
-        foreach (var partial in Directory.EnumerateFiles(folder, "*.part", SearchOption.AllDirectories))
-            File.Delete(partial);
-        deleteEmptyFolders(folder);
     }
 
-    private async Task fetchAsync(NetworkStream stream, RemoteLibrary library, string path, long time, string destination,
+    // Status is best effort. A missed update or older sender must not delay any of the file workers.
+    private async Task reportProgressAsync(string library, long total, Func<long> received, Task<bool> finished)
+    {
+        var transfer = Guid.NewGuid().ToString("N");
+        var expected = total.ToString(CultureInfo.InvariantCulture);
+        TcpClient? client = null;
+        IPAddress? connectedTo = null;
+        try
+        {
+            while (true)
+            {
+                var state = finished.IsCompletedSuccessfully ? finished.Result ? "done" : "stopped" : "running";
+                try
+                {
+                    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                    var address = _address;
+                    if (!address.Equals(connectedTo))
+                    {
+                        client?.Dispose();
+                        client = null;
+                    }
+                    client ??= await SyncWire.ConnectAsync(address, SyncWire.SyncPort, timeout.Token).ConfigureAwait(false);
+                    connectedTo = address;
+                    var bytes = Math.Clamp(received(), 0, total).ToString(CultureInfo.InvariantCulture);
+                    await SyncWire.AskAsync(client.GetStream(), timeout.Token, pair.Token, "transfer-progress",
+                        library, transfer, expected, bytes, state).ConfigureAwait(false);
+                }
+                catch (SyncRefusedException)
+                {
+                    return;
+                }
+                catch (Exception exception) when (exception is IOException or SocketException or OperationCanceledException or InvalidDataException)
+                {
+                    client?.Dispose();
+                    client = null;
+                }
+
+                if (state != "running")
+                    return;
+                await Task.WhenAny(finished, Task.Delay(TimeSpan.FromMilliseconds(750))).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            client?.Dispose();
+        }
+    }
+
+    private async Task fetchAsync(NetworkStream stream, RemoteLibrary library, string path, long size, long time, string destination,
         Action<long>? fetched, CancellationToken cancellationToken)
     {
         // Async socket reads ignore the socket's timeouts: a stall of a minute cancels instead.
@@ -158,6 +264,8 @@ public sealed class SyncClient(SyncDevice device, PairedDevice pair)
         var length = await SyncWire.ReadLengthAsync(stream, stall.Token).ConfigureAwait(false);
         if (length < 0)
             throw new SyncRefusedException(length);
+        if (length != size)
+            throw new InvalidDataException("The other device changed a library file during sync. Retry to get an updated file list.");
         Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
         var partial = destination + ".part";
         var buffer = new byte[1 << 20];
@@ -219,7 +327,7 @@ public sealed class SyncClient(SyncDevice device, PairedDevice pair)
     }
 
     // A path inside root, or null: relative, no "..", no empty parts (the other device is trusted with nothing).
-    private static string? safePath(string root, string relative)
+    internal static string? SafePath(string root, string relative)
     {
         if (string.IsNullOrEmpty(relative) || relative.Contains('\\') || relative.Contains('\0') || relative.Contains(':'))
             return null;
@@ -255,16 +363,39 @@ public static class ReceivedLibraries
     /// <summary>Where Green's files go on this device (its own Green folder), null when it can't take them (a desktop).</summary>
     public static string? GreenFolder { get; set; }
 
+    public static void RecoverGreen()
+    {
+        if (GreenFolder is { } folder)
+            SongSyncStaging.Recover(folder);
+    }
+
     /// <summary>The folder a library from <paramref name="deviceId"/> mirrors into; null: this device can't take it.</summary>
     public static string? FolderOf(string deviceId, RemoteLibrary library) =>
         library.Kind == "green" ? GreenFolder : Root is null ? null : Path.Combine(Root, deviceId, library.Id);
 
     /// <summary>Every received library: kind and folder.</summary>
-    public static List<(string Kind, string Folder)> All() =>
-        Root is null || !Directory.Exists(Root) ? [] : [.. Directory.EnumerateDirectories(Root).SelectMany(Directory.EnumerateDirectories)
-            .Where(static folder => File.Exists(Path.Combine(folder, Marker)))
-            .Select(static folder => (File.ReadAllText(Path.Combine(folder, Marker)).Split('\t')[0].Trim(), folder))
-            .OrderBy(static library => library.folder, StringComparer.Ordinal)];
+    public static List<(string Kind, string Folder)> All()
+    {
+        if (Root is not { } root || !Directory.Exists(root))
+            return [];
+        var libraries = new List<(string Kind, string Folder)>();
+        foreach (var folder in Directory.EnumerateDirectories(root).SelectMany(Directory.EnumerateDirectories).Order(StringComparer.Ordinal))
+        {
+            var marker = Path.Combine(folder, Marker);
+            if (!File.Exists(marker))
+                continue;
+            try
+            {
+                SongSyncStaging.Recover(folder);
+                libraries.Add((File.ReadAllText(marker).Split('\t')[0].Trim(), folder));
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+            {
+                Console.Error.WriteLine($"Song sync: couldn't open received library {Path.GetFileName(folder)}: {exception.Message}");
+            }
+        }
+        return libraries;
+    }
 
     /// <summary>The received libraries of <paramref name="kind"/>, each as the folder its provider reads.</summary>
     public static IEnumerable<string> Folders(string kind) => All().Where(library => library.Kind == kind).Select(static library => library.Folder);

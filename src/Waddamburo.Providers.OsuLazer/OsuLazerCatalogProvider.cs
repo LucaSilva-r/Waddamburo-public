@@ -27,6 +27,8 @@ public sealed class OsuLazerCatalogProvider : ISongCatalogProvider, ICatalogAsse
         Id = id ?? new CatalogProviderId(_stable ? "osu-stable" : "osu-lazer");
     }
 
+    public string? StableSongsFolder { get; init; }
+
     public CatalogProviderId Id { get; }
 
     public SongSourceKind Source => _stable ? SongSourceKind.OsuStable : SongSourceKind.OsuLazer;
@@ -93,7 +95,7 @@ public sealed class OsuLazerCatalogProvider : ISongCatalogProvider, ICatalogAsse
         progress?.Report(new CatalogScanProgress(Id, _stable ? "osu!.db" : "realm", 0, null));
         OsuLazerSnapshot snapshot;
         if (_stable)
-            (snapshot, _stableFiles) = OsuStableReader.Read(_root);
+            (snapshot, _stableFiles) = OsuStableReader.Read(_root, StableSongsFolder);
         else
             snapshot = OsuLazerRealmReader.Read(Path.Combine(_root, "client.realm"));
         cancellationToken.ThrowIfCancellationRequested();

@@ -17,9 +17,9 @@ public static class OsuStableReader
     /// The snapshot and where each file id lives: a .osu file's id is the SHA-256 of its contents (lazer's own id for
     /// it, so a chart keeps its scores across both), an audio file's the SHA-256 of its path in the Songs folder.
     /// </summary>
-    public static (OsuLazerSnapshot Snapshot, IReadOnlyDictionary<string, string> Files) Read(string installFolder)
+    public static (OsuLazerSnapshot Snapshot, IReadOnlyDictionary<string, string> Files) Read(string installFolder, string? songsFolder = null)
     {
-        var songs = songsFolder(installFolder);
+        var songs = songsFolder ?? SongsFolder(installFolder);
         var files = new Dictionary<string, string>(StringComparer.Ordinal);
         var beatmaps = new List<(string Folder, OsuLazerBeatmap Beatmap, string AudioPath)>();
         var dateAdded = new Dictionary<string, DateTimeOffset>(StringComparer.OrdinalIgnoreCase);
@@ -185,8 +185,8 @@ public static class OsuStableReader
         return Encoding.UTF8.GetString(reader.ReadBytes(length));
     }
 
-    // The Songs folder: osu!.<user>.cfg's BeatmapDirectory (absolute or relative to the install) when set.
-    private static string songsFolder(string install)
+    /// <summary>The configured BeatmapDirectory, or the Songs folder under the install.</summary>
+    public static string SongsFolder(string install)
     {
         foreach (var cfg in Directory.EnumerateFiles(install, "osu!.*.cfg"))
             foreach (var line in File.ReadLines(cfg))

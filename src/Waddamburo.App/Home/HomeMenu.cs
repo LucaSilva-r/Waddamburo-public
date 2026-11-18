@@ -35,10 +35,6 @@ internal enum HomeMenuAction
     BakeTextures,
     /// <summary>Close the game and start it again (settings that apply at start, memory after a bake).</summary>
     RestartGame,
-    /// <summary>Pair a device that will mirror this one's libraries (DeviceTransfer).</summary>
-    PairDevice,
-    /// <summary>Mirror libraries from a paired device (DeviceTransfer).</summary>
-    SyncSongs,
     /// <summary>Reopen the audio output with the new settings (back to the attract, every sound stops).</summary>
     SwitchAudio,
     /// <summary>Start the audio calibration (the calibration page shows it).</summary>

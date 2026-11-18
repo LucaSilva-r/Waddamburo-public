@@ -898,7 +898,7 @@ internal sealed class GameShell : IDisposable
             Match = new OnlineMatch(this);
             CustomUploadPrompt = new CustomUploadPrompt(this, options.ServiceFontPath ?? options.FontPath);
             DeviceTransfer = new DeviceTransfer(this, _libraries.SyncLibraries(dataRoot));
-            _inputOverlays = [_search, _scores, Room, CustomUploadPrompt, DeviceTransfer];
+            _inputOverlays = [_search, _scores, Room, CustomUploadPrompt];
             Reload = new SongSelectReload(this);
             var entry = new EntryFlow(this);
             var ending = new CreditEndFlow(this, _gameplay);
@@ -1710,7 +1710,7 @@ internal sealed class GameShell : IDisposable
             quads.AddRange(players(scene, interpolation));
         }
         foreach (var overlay in _inputOverlays)
-            if (overlay != _search && overlay != DeviceTransfer)
+            if (overlay != _search)
                 quads.AddRange(overlay.Quads());
         quads.AddRange(indicatorQuads(true));
         quads.AddRange(pill());
@@ -1722,12 +1722,6 @@ internal sealed class GameShell : IDisposable
         {
             frosted = quads.Count;
             quads.AddRange(_search.Quads());
-        }
-        // Send/Receive too (a settings page).
-        if (DeviceTransfer.IsOpen)
-        {
-            frosted = quads.Count;
-            quads.AddRange(DeviceTransfer.Quads());
         }
         // Sign in's overlay as well: a menu page over the frosted entry.
         if (_playerSetup is { SignInOpen: true })

@@ -65,31 +65,35 @@ internal sealed class SongLibraries : IDisposable
             switch (provider)
             {
                 case StockCatalogProvider stock when stock.Root == green:
-                    libraries.Add(Sync.SyncLibrary.Of("green", "Green", ("data", stock.Root)));
+                    libraries.Add(Sync.SyncLibrary.Of("green", "Green", ("data", stock.Root)) with { OpenCatalog = () => new StockCatalogProvider(stock.Root) });
                     break;
                 case StockCatalogProvider stock when own(stock.Root):
                     libraries.Add(Sync.SyncLibrary.Of("stock", Cli.GameDataLayout.ReleaseOf(stock.Root).Name ?? Path.GetFileName(Path.GetDirectoryName(stock.Root)) ?? "Arcade",
-                        ("data", stock.Root)));
+                        ("data", stock.Root)) with { OpenCatalog = () => new StockCatalogProvider(stock.Root) });
                     break;
                 case WiiCatalogProvider wii when own(wii.Root):
-                    libraries.Add(Sync.SyncLibrary.Of("wii", wii.Release, ("files", wii.Root)));
+                    libraries.Add(Sync.SyncLibrary.Of("wii", wii.Release, ("files", wii.Root)) with { OpenCatalog = () => new WiiCatalogProvider(wii.Root) });
                     break;
                 case WiiUCatalogProvider wiiU when own(wiiU.Folders.Content):
                     // Title folders (content's parent) side by side: the receiver's provider finds the update and DLC there.
                     var (content, update, dlc) = wiiU.Folders;
                     libraries.Add(Sync.SyncLibrary.Of("wiiu", wiiU.Release, [("game", Path.GetDirectoryName(content)!),
                         .. update is null ? [] : new[] { ("update", Path.GetDirectoryName(update)!) },
-                        .. dlc is null ? [] : new[] { ("dlc", Path.GetDirectoryName(dlc)!) }]));
+                        .. dlc is null ? [] : new[] { ("dlc", Path.GetDirectoryName(dlc)!) }]) with { OpenCatalog = () => new WiiUCatalogProvider(content) });
                     break;
                 case TjaCatalogProvider tja when own(tja.Root):
-                    libraries.Add(Sync.SyncLibrary.Of("tja", "TJA: " + Path.GetFileName(tja.Root), ("tja", tja.Root)));
+                    libraries.Add(Sync.SyncLibrary.Of("tja", "TJA: " + Path.GetFileName(tja.Root), ("tja", tja.Root)) with { OpenCatalog = () => new TjaCatalogProvider(tja.Root) });
                     break;
                 case OsuLazerCatalogProvider osu when own(osu.Root):
                     // ponytail: the whole folder (lazer's every beatmap and skin, stable's Songs of every mode); a
                     // taiko-only file list if the size bothers anyone.
                     libraries.Add(osu.Source == SongSourceKind.OsuStable
-                        ? Sync.SyncLibrary.Of("osu-stable", "osu!stable", ("osu", osu.Root))
-                        : Sync.SyncLibrary.Of("osu-lazer", "osu!lazer", ("osu", osu.Root)));
+                        ? Sync.SyncLibrary.Of("osu-stable", "osu!stable", ("osu", osu.Root)) with
+                        {
+                            Parts = [("osu/Songs", OsuStableReader.SongsFolder(osu.Root)), ("osu", osu.Root)],
+                            OpenCatalog = () => new OsuLazerCatalogProvider(osu.Root),
+                        }
+                        : Sync.SyncLibrary.Of("osu-lazer", "osu!lazer", ("osu", osu.Root)) with { OpenCatalog = () => new OsuLazerCatalogProvider(osu.Root) });
                     break;
             }
         }
@@ -165,9 +169,11 @@ internal sealed class SongLibraries : IDisposable
             : [];
         // osu! (home mode): the folder set in the settings, else the default install, else one mirrored from another device.
         var osu = OsuLazerCatalogProvider.FindDataFolder(arcade.OsuFolder)
-            ?? Sync.ReceivedLibraries.Folders("osu-lazer").Select(static folder => OsuLazerCatalogProvider.FindDataFolder(Path.Combine(folder, "osu"))).FirstOrDefault(static found => found is not null);
-        var stable = OsuLazerCatalogProvider.FindStableFolder(arcade.OsuStableFolder)
-            ?? Sync.ReceivedLibraries.Folders("osu-stable").Select(static folder => OsuLazerCatalogProvider.FindStableFolder(Path.Combine(folder, "osu"))).FirstOrDefault(static found => found is not null);
+            ?? Sync.ReceivedLibraries.Folders("osu-lazer").Select(static folder => Path.Combine(folder, "osu"))
+                .FirstOrDefault(static folder => File.Exists(Path.Combine(folder, "client.realm")) && Directory.Exists(Path.Combine(folder, "files")));
+        var localStable = OsuLazerCatalogProvider.FindStableFolder(arcade.OsuStableFolder);
+        var stable = localStable ?? Sync.ReceivedLibraries.Folders("osu-stable").Select(static folder => Path.Combine(folder, "osu"))
+            .FirstOrDefault(OsuStableReader.IsInstall);
         var libraries = new SongLibraries([
             .. stock(dataRoot, arcade, problems, metadataCache),
             .. tjas.Count switch { 0 => [], 1 => tjas, _ => [new MergedCatalogProvider(tjas)] },
@@ -175,7 +181,7 @@ internal sealed class SongLibraries : IDisposable
             .. arcade.Home ? nijiiro(arcade, problems, metadataCache) : [],
             // osu!lazer's native taiko beatmaps and osu!stable's, each a library of its own.
             .. arcade.Home && osu is not null ? [new OsuLazerCatalogProvider(osu)] : Array.Empty<ISongCatalogProvider>(),
-            .. arcade.Home && stable is not null ? [new OsuLazerCatalogProvider(stable)] : Array.Empty<ISongCatalogProvider>(),
+            .. arcade.Home && stable is not null ? [new OsuLazerCatalogProvider(stable) { StableSongsFolder = localStable is null ? Path.Combine(stable, "Songs") : null }] : Array.Empty<ISongCatalogProvider>(),
         ], percent);
         metadataCache.ForgetUnopenedInventories();
         libraries.MetadataCache = metadataCache;

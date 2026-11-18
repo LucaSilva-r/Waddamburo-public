@@ -46,6 +46,7 @@ internal sealed class GameFolder(Activity activity)
         SyncWire.Folder = Path.Combine(activity.FilesDir!.AbsolutePath, "waddamburo", "sync"); // Boot.AppHome's
         ReceivedLibraries.Root = Path.Combine(Root, "Received");
         ReceivedLibraries.GreenFolder = gameRoot(green);
+        ReceivedLibraries.RecoverGreen();
         if (File.Exists(VerifiedMarker) && Waddamburo.App.Cli.GreenData.HasEssentials(gameRoot(green)))
             return gameRoot(green);
         if (Waddamburo.App.Cli.GreenData.Missing(gameRoot(green)) is [])
@@ -53,20 +54,19 @@ internal sealed class GameFolder(Activity activity)
 
         // Pairing listens only while the setup waits (later, Settings › Sync songs pairs and syncs).
         using var setup = new GreenSetup(DeviceName);
-        (int Missing, int Total, bool Essentials) status = (GreenData.FileCount, GreenData.FileCount, false);
+        var status = new GreenSetupProgress(0, 0, GreenData.FileCount, false);
         using var stop = new CancellationTokenSource();
         // Counted every three seconds off the screen's thread (~20,000 files).
         var poll = Task.Run(async () =>
         {
             while (!stop.IsCancellationRequested)
             {
-                var root = gameRoot(green);
-                status = (GreenData.Missing(root).Count, GreenData.FileCount, GreenData.HasEssentials(root)); // a torn read only shows a count late
+                Volatile.Write(ref status, GreenData.SetupProgress(gameRoot(green)));
                 try { await Task.Delay(3000, stop.Token).ConfigureAwait(false); }
                 catch (OperationCanceledException) { }
             }
         });
-        var started = SetupScreen.Run(setup, () => status,
+        var started = SetupScreen.Run(setup, () => Volatile.Read(ref status),
             $"Android/data/{activity.PackageName}/files/{Green}");
         stop.Cancel();
         poll.Wait();

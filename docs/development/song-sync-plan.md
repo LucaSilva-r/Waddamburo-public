@@ -9,11 +9,11 @@ Replaces the browser upload page (removed) and the folder-by-folder release copy
 
 ## Rules (decided 2026-11-18)
 
-- **Pair once.** The receiver (a phone) opens *Settings › Sync songs › PAIR WITH A PC*: it shows a 4-digit code. The PC
-  opens *Settings › Pair a device*, picks it and types the code; the PC sends a random token, both keep it
+- **Pair once.** The receiver (a phone) opens *Settings › Devices › Connect to a PC*: it shows a 4-digit code. The PC
+  opens *Settings › Devices › Add a device*, picks it and types the code; the PC sends a random token, both keep it
   (`<home>/sync/paired.txt`). Ten wrong codes close the pairing page until it is reopened. Either side can unpair.
 - **The PC serves while Waddamburo runs** (once it has a paired device): read-only, token-checked. The phone does
-  everything from its own *Sync songs* page; nothing to open on the PC.
+  everything from its own *Devices* page; nothing to open on the PC.
 - **The receiver picks whole libraries.** It sees the sender's libraries (name, size) and toggles each on or off. The
   choice is remembered per sender device, so the next session just syncs. No search, no song picking.
 - **True mirror.** A sync makes each switched-on library on the receiver identical to the sender's: new and changed
@@ -55,17 +55,21 @@ reservation on Windows):
   <name>`; request `code pair <pc id> <pc name> <token>` → `<phone id> <phone name>`.
 - **Sync, 8381** (the PC, while the game runs and a device is paired to pull): probe `WADDAMBURO-SYNC?` →
   `WADDAMBURO-SYNC <id> <name>`; requests carry the token: `libraries` (id, kind, name, bytes, files), `list <library>`
-  (path, size, Unix time), `file <library> <path>` (the bytes).
+  (path, size, Unix time), `song-assets <library>` (shared files and each song's asset paths), `file <library> <path>` (the bytes), and
+  `transfer-progress <library> <transfer id> <total bytes> <received bytes> <state>` (the sender's progress card).
 
 A request is one UTF-8 line, tab-separated; an answer is an 8-byte little-endian length then the bytes (negative:
 refused / missing / failed). A connection carries any number of requests; four connections fetch at once.
 
 The phone compares `list` with its folder: missing, other size or time more than 2 s apart = fetch; absent on the PC
-= remove. Each file lands as `.part`, takes the PC's time, then its name. A failing file is retried ~3 min (a minute
-without bytes counts as failing); a file gone from the PC since the list is skipped. Resume = the next comparison.
+= remove. Files download into a hidden staging directory, and completed staged files are reused after an interruption.
+The receiver publishes each song's chart and audio files together once they arrive. Changes that share files publish
+together, and syncs that remove old files wait for all replacements. Startup recovers an interrupted publication
+before the catalog reads it. A sender without a song manifest publishes the library as one group. If a file disappears
+from the sender after listing, the receiver keeps staged work and asks for an updated list on the next sync.
 Received libraries: `<received>/<pc id>/<library id>/<part>/...` with a `.waddamburo-library` marker (kind, name);
-SongLibraries adds them to the libraries of their kind at boot (stock/Wii/Wii U as more releases, TJA merged after the
-local folder, osu! when none is set here). Green goes into the phone's own Green folder and is never removed from.
+SongLibraries scans the published files at boot (stock/Wii/Wii U as more releases, TJA merged after the local folder,
+osu! when none is set here). Completed songs from an interrupted sync become available after a restart. Green goes into the phone's own Green folder and is never removed from.
 
 ## Steps
 
@@ -79,9 +83,8 @@ local folder, osu! when none is set here). Green goes into the phone's own Green
    is removed, a touched one fetched again, a stale `.part` cleaned; 5,000 extra files skipped without `--yes`; the
    server killed mid-copy and restarted: the copy finished; unpaired: refused; a received TJA song shows in the
    catalog (+1 song, +1 category).
-3. **Screens.** *Built 2026-11-18, not yet tried on a phone.* Settings › Pair a device (PC), Settings › Sync songs
-   (phone: paired PCs, libraries with switches, SYNC NOW, PAIR WITH A PC), the phone's first-start setup (pairs, then
-   mirrors Green by itself).
+3. **Screens.** Settings › Devices lists paired devices and offers Add a device and Connect to a PC. On the phone,
+   select a paired PC to see its libraries and run Sync now. First-start setup pairs, then mirrors Green by itself.
 4. **Nijiiro.** Whole-library music conversion on the sender (vgmstream), cached so a second sync doesn't convert
    again; the converted files are what `list` reports.
 
@@ -96,7 +99,7 @@ local folder, osu! when none is set here). Green goes into the phone's own Green
   (the newest copy wins), "already here" if it ever matters.
 - Empty folders are not mirrored.
 - Firewalls: the PC must accept 8381 TCP+UDP. Windows asks once; Linux firewalls (firewalld's `public` zone, ufw) block
-  it silently, so the PC's Pair page (Linux) and the phone (a paired PC not found) say how to allow it. If that proves
+  it silently, so the phone shows a firewall hint when a paired PC cannot be reached. If that proves
   annoying: reverse the connection (the PC probes its paired phones and dials them; the phone asks over it), so the PC
   never accepts a connection.
 - Some phones' Wi-Fi drops broadcasts (MIUI): discovery also probes every address of networks up to /22.

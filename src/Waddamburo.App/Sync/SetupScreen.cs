@@ -18,7 +18,7 @@ public static class SetupScreen
     /// or the window is closed (false). <paramref name="status"/> is read every frame: keep it cheap (a cached count).
     /// <paramref name="greenFolder"/>: where a player copies the files by hand instead.
     /// </summary>
-    public static bool Run(GreenSetup setup, Func<(int Missing, int Total, bool Essentials)> status, string greenFolder,
+    public static bool Run(GreenSetup setup, Func<Cli.GreenSetupProgress> status, string greenFolder,
         string? shot = null)
     {
         var frames = 0;
@@ -31,9 +31,8 @@ public static class SetupScreen
             ? [new OverlayRow(Strings.T("first_setup.start_anyway"), Enter: () => { startAnyway = true; application.RequestQuit(); })] : [],
             Centred: true, Legend: false, Body: () =>
             {
-                var (missing, total, _) = status();
-                var done = total - missing;
-                var filled = done * 30 / Math.Max(1, total);
+                var progress = status();
+                var filled = progress.Received * 30 / Math.Max(1, progress.Total);
                 // Blank lines space it out: the code in the middle of the screen, the bar under it.
                 return
                 [
@@ -44,7 +43,7 @@ public static class SetupScreen
                             (Strings.T("first_setup.code", setup.Code), OverlayMenu.Yellow) },
                     ("", OverlayMenu.White),
                     ("", OverlayMenu.White),
-                    ($"[{new string('#', filled)}{new string('-', 30 - filled)}] {Strings.T("first_setup.progress", done, total)}", OverlayMenu.Green),
+                    ($"[{new string('#', filled)}{new string('-', 30 - filled)}] {Strings.T("first_setup.progress", progress.Received, progress.Total)}", OverlayMenu.Green),
                 ];
             }, Footer: () =>
             [
@@ -66,10 +65,10 @@ public static class SetupScreen
         }, keys =>
         {
             menu.Tick(keys, keys, false); // the back button does nothing here: there is nowhere to go back to
-            if (status().Missing == 0)
+            if (status().Complete)
                 application.RequestQuit();
         });
-        return startAnyway || status().Missing == 0;
+        return startAnyway || status().Complete;
     }
 }
 
@@ -81,6 +80,7 @@ public sealed class GreenSetup : IDisposable
 {
     private readonly PairingListener? _pairing;
     private readonly CancellationTokenSource _stop = new();
+    private readonly Task _copy;
     private long _fetched, _total;
     private volatile string? _message;
 
@@ -89,7 +89,7 @@ public sealed class GreenSetup : IDisposable
         Name = name;
         try { _pairing = new PairingListener(name); }
         catch (System.Net.Sockets.SocketException exception) { (_message, Failed) = (Strings.T("transfer.failed", exception.Message), true); }
-        _ = Task.Run(loop);
+        _copy = Task.Run(loop);
     }
 
     public string Name { get; }
@@ -106,6 +106,8 @@ public sealed class GreenSetup : IDisposable
     {
         _stop.Cancel();
         _pairing?.Dispose();
+        _copy.GetAwaiter().GetResult();
+        _stop.Dispose();
     }
 
     private async Task loop()
@@ -132,7 +134,7 @@ public sealed class GreenSetup : IDisposable
                         (_message, Failed) = (Strings.T("sync.setup.receiving", server.Device.Name), false);
                         var plan = await server.PlanAsync(green, folder, token).ConfigureAwait(false);
                         (_fetched, _total) = (0, plan.FetchBytes);
-                        await server.MirrorAsync(green, folder, plan, bytes => Interlocked.Add(ref _fetched, bytes), token).ConfigureAwait(false);
+                        await server.MirrorAsync(green, folder, plan, bytes => Interlocked.Add(ref _fetched, bytes), cancellationToken: token).ConfigureAwait(false);
                         _total = 0;
                     }
                 }
@@ -141,7 +143,7 @@ public sealed class GreenSetup : IDisposable
             {
                 return;
             }
-            catch (Exception exception) when (exception is IOException or System.Net.Sockets.SocketException or OperationCanceledException or InvalidDataException)
+            catch (Exception exception) when (exception is IOException or System.Net.Sockets.SocketException or OperationCanceledException or InvalidDataException or UnauthorizedAccessException)
             {
                 (_message, Failed, _total) = (Strings.T("transfer.failed", exception.Message), true, 0);
             }
@@ -165,7 +167,7 @@ internal static class SetupPreview
         SetupScreen.Run(setup, () =>
         {
             var arrived = (int)Math.Min(Total, (Environment.TickCount64 - start) / 2);
-            return (Total - arrived, Total, arrived > Total / 3);
+            return new Cli.GreenSetupProgress(arrived, arrived, Total, arrived > Total / 3);
         }, "Android/data/org.waddamburo.game/files/Green", shot);
         return 0;
     }
