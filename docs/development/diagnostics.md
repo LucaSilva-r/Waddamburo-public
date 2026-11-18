@@ -1,7 +1,7 @@
 # Diagnostics and developer runs
 
-Command-line options for probing single movies, scenes and flows from source, and the
-older notes on how the game flow is composed. Normal play needs none of this: see the
+Command-line options for probing single movies, scenes and flows from source. Normal play
+needs none of this: see the
 [README](../../README.md).
 
 Browse movies and audio from a user-supplied `USRDIR` (or any asset folder):
@@ -221,8 +221,10 @@ highest-priority override. All granular content options below are retained for
 diagnostic runs.
 
 To test a scene without playing through the preceding screens, use
-`--start-scene=attract` (skips the startup notice), `entry`, `song-select`, `result-fail`, `result-clear`, `retry`, or
-`gameover` with the normal game-data argument. For example, the Revival drum-roll
+`--start-scene=` with the normal game-data argument: `boot`, `attract` (skips the startup notice), `entry`,
+`song-select`, `ai-song-select`, `dani-select`, `result-fail`, `result-almost`, `result-clear`,
+`dani-result-fail`, `dani-result-clear`, `dani-gameover`, `retry`, `gameover`, `waiwai-result`, `ai-remind`,
+`waiwai-tutorial` or `ai-tutorial`. For example, the Revival drum-roll
 challenge starts directly with:
 
 ```sh
@@ -249,51 +251,10 @@ dotnet run --project src/Waddamburo.App -- \
   --screenshot=/tmp/entry-to-song-select.png
 ```
 
-This initializes Entry through its exported callbacks, receives its authored scene
-request, resolves that request in the app-owned scene catalog, loads a fresh Song
-Select movie and host, scans the read-only TJA provider, opens a category, scrolls
-away from and back to its return card, closes it, and scrolls the rebuilt category
-carousel. It also renders requested song titles with the user-supplied font. Build
-the optional native text adapter first;
-the font, TJA files, audio, Lumen archives, and framebuffer output are never copied
-into the repository. The relative archive/movie IDs and numeric request mapping are
-composition data; neither the AVM runtime nor generic scene loader contains
-Entry- or Song-Select-specific behavior.
-
-Normal boot loops the user-owned `data/sound/bgm/nub/JINGLE_ENTRY.nub` during
-Player Entry, then stops it and starts `JINGLE_GENRE.nub` when Song Select becomes
-active. `--play-jingle` can override the Entry sound with a one-shot for a
-diagnostic run. Jingles are decoded as bounded short clips; no referenced audio is
-copied into the repository.
-Interactive Song Select also resolves each TJA's opaque audio asset through the
-provider and plays a debounced, seeked preview through the shared mixer. Changing
-or selecting the song and unloading the scene cancel and release that stream.
-Completing a one-player course selection loads the exact catalog-pinned TJA chart,
-then runs the authored rainbow handoff: Song Select remains underneath `in_extra`,
-the composed gameplay scene loads only once the screen is covered, and chart/audio
-time starts with `out_extra`. The transition displays the selected song title in
-its native fill. Gameplay renders authored Don/Ka note movies above the lane and
-drives drum, judgement, combo, score, and Go-Go presentation. Chart offsets and pre-roll
-are explicit; interactive judgement follows an estimated audio output clock,
-independently of animation ticks. See [gameplay integration](gameplay-integration.md)
-for the timing contract, reference sources, and remaining limitations.
-`F`/`J` are the left and right Don inputs, and `D`/`K` are Ka. In home (PC) mode,
-Escape pauses a loaded song; rims or arrow keys select Resume, Restart Song, Settings,
-or Song Select, and centre or Enter confirms. In the entry and Song Select, Escape opens
-Resume, Settings, or Return to Title. Settings holds the master, music, drum, effects and
-Don-chan voice volumes, the audio and input offsets (applied from the next play or
-restart) and the audio buffer size (applied at start); centre edits a row and the rims
-change it (Left/Right also work) by 1, or by 5 then 10 when pressed rapidly, and leaving the page saves them to `config.cfg`. Settings also toggle stereo panning (off: two players share centred sounds) and muting while the window is in the background; losing focus mid-song pauses it (not once the chart's last note or roll is over). Resume counts 3-2-1 on the game's timer before the song goes on. The attract and player setup open the same menu with Escape. A sound cuts off its own previous play (Don stops Don, not Ka). Holding Q during gameplay or its
-results fades toward black; releasing early fades back, while reaching black after
-half a second restarts the same match and fades the new play in. Pause artwork
-is decoded from the user's game archives at runtime. In cabinet mode, Escape
-still abandons gameplay and returns to Song Select.
-TJA supports standard rolls, balloons, partner notes, mid-measure commands, and
-fixed-route branches; see the [compatibility matrix](custom-tja.md#gameplay-compatibility)
-for supported features and remaining limits. Invalid or unsupported chart loads
-return to Song Select with a console diagnostic.
-The initial gameplay composition deliberately rejects two-player launches until a
-two-lane presentation and input contract are implemented.
+This runs Entry, Song Select and a song from explicit content folders instead of a game
+folder: the archives, TJA library, font and jingle are the user's own and are never copied
+into the repository. How the scenes chain together is in [app flow](app-flow.md); timing and
+judgement references are in [gameplay integration](gameplay-integration.md).
 `--sound-root=/path/to/user-owned-sound-tree` additionally enables authored
 nuSound2 bank/cue effects and voices; unresolved system/player request shapes are
 logged rather than guessed.
@@ -304,13 +265,13 @@ The source-neutral song/category catalog and provider contract are documented in
 [docs/development/song-catalog.md](song-catalog.md).
 Binary parser limits and failure behavior are documented in
 [docs/development/parser-safety.md](parser-safety.md).
-The first format implementation, the Green-profile DDP archive index, is described
+The Green-profile DDP archive index is described
 in [docs/development/ddp-archives.md](ddp-archives.md).
 NTP3 texture-pack validation and reference BC decoding are described in
 [docs/development/nut-textures.md](nut-textures.md).
 The lossless LMB container boundary is documented in
 [docs/development/lmb-records.md](lmb-records.md).
-The initial display-list runtime is documented in
+The Lumen display-list runtime is documented in
 [docs/development/lumen-runtime.md](lumen-runtime.md).
 The SDL window and bgfx rendering lifecycle is documented in
 [docs/development/rendering.md](rendering.md).
