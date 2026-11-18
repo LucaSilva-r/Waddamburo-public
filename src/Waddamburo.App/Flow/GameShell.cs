@@ -53,7 +53,9 @@ internal sealed record GameOptions(
     bool Fullscreen = false,
     string? ServiceFontPath = null,
     bool RecordPerformance = false,
-    BenchmarkMode Benchmark = BenchmarkMode.Off);
+    BenchmarkMode Benchmark = BenchmarkMode.Off,
+    FlowSmokeMode FlowSmoke = FlowSmokeMode.Off,
+    string? FlowSmokeSong = null);
 
 /// <summary>--benchmark: off, run and quit, or run and start the game again (Settings > Run Benchmark).</summary>
 // Paced: the benchmark at the player's own vsync, frame cap and frame queue (it quits at the end), to count missed refreshes.
@@ -486,6 +488,7 @@ internal sealed class GameShell : IDisposable
     public Random Random { get; private set; } = Random.Shared;
 
     private readonly BenchmarkRun? _benchmark;
+    private readonly FlowSmokeRun? _flowSmoke;
 
     /// <summary>Settings > Run Benchmark: the game starts again into the benchmark, then again as usual.</summary>
     public void RequestBenchmark()
@@ -658,6 +661,8 @@ internal sealed class GameShell : IDisposable
         Options = options;
         Players = new PlayerSession(this);
         Arcade = options.Arcade ?? new ArcadeSettings();
+        if (options.FlowSmoke != FlowSmokeMode.Off)
+            Arcade = FlowSmokeRun.Configure(Arcade, options.FlowSmoke);
         // Home: a PC plays free, without countdowns (the endless credit is the host factory's).
         if (Arcade.Home)
         {
@@ -907,6 +912,11 @@ internal sealed class GameShell : IDisposable
             var ending = new CreditEndFlow(this, _gameplay);
             var songSelect = SongSelectFlow = new SongSelectFlow(this, _gameplay, calibration);
             _scenes = flowTable(_attract, entry, songSelect, _gameplay, calibration, benchmarkSong, ending);
+            if (options.FlowSmoke != FlowSmokeMode.Off)
+            {
+                Random = new Random(20261118); // the same demo songs and scene parts every run
+                _flowSmoke = new FlowSmokeRun(this, _gameplay, songSelect, options.FlowSmoke, options.FlowSmokeSong);
+            }
         }
         catch (Exception exception) when (exception is not BootClosedException)
         {
@@ -1402,6 +1412,7 @@ internal sealed class GameShell : IDisposable
             throw new InvalidOperationException($"WADDAMBURO_CRASH_AT asked the game to crash at tick {Tick}.");
         var keys = Options.InputTimeline.Apply(Tick, keyboard);
         _benchmark?.Tick();
+        _flowSmoke?.Tick();
         Book.PowerOnTicks++;
         if (_gameplay.Playing)
             Book.PlayTicks++;

@@ -259,7 +259,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         _play.InputOffset = TimeSpan.FromMilliseconds(Shell.Arcade.InputOffsetMs);
         // Home: a recorded play (a replay picked in song select) or the autoplay is reviewed (pause,
         // scrub, speed) rather than played live; it is never saved.
-        _play.Review = !Shell.Arcade.Home || Shell.Headless || _course is not null ? null
+        _play.Review = !Shell.Arcade.Home || Shell.Headless && Shell.Options.FlowSmoke == FlowSmokeMode.Off || _course is not null ? null
             : request.Review is { } recorded && request.Players.Length == 1
                 ? reviewOf(request, [recorded.Inputs], chartEnd() + TimeSpan.FromSeconds(2), recorded.InputOffset)
             : Shell.Autoplay
@@ -338,6 +338,15 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
     /// A replay becomes practice of the song, paused where it was (Space plays the drum live from there):
     /// the whole song is open again, the player's own offsets and look apply, and nothing is saved.
     /// </summary>
+    /// <summary>Starts practice as the practice key would (eng/flow-smoke.sh's training run); false: not yet possible.</summary>
+    internal bool TryStartPractice()
+    {
+        if (!revealed || _play.Paused || !canPractise)
+            return false;
+        startPractice();
+        return true;
+    }
+
     private void startPractice()
     {
         if (_play.LastRequest is not { } request || _play.Review is not { } replay)
@@ -1047,6 +1056,12 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         var finishedCourse = _course;
         Shell.Hosts.DanResult = finished && _course is { } course ? danResult(course) : null;
         var dan = Shell.Hosts.DanResult is not null;
+        // eng/flow-smoke.sh compares these lines between builds.
+        if (finished)
+            Console.WriteLine("Play results: " + string.Join(" | ", Shell.Gameplay.Results.Select(static result =>
+                    $"{result.Course} {result.Score} {result.Great}/{result.Good}/{result.Miss} combo {result.MaxCombo} rolls {result.Rolls} gauge {result.GaugeSegments}{(result.Cleared ? " clear" : "")}"))
+                + (Shell.Hosts.DanResult is { } danShown ? $" | dan level {danShown.Level}" : "")
+                + (_play.Battle?.Outcome is { } battle ? $" | AI {battle.SectionsWon}/{battle.Sections.Count}" : ""));
         CourseSongs = dan ? _courseSongs : [];
         Shell.Gameplay.Stop();
         Shell.Gameplay.Dan = null;
@@ -1293,6 +1308,9 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
 
     private AudioStreamTransport? openAudio(PlayRequest request)
     {
+        // eng/flow-smoke.sh: no music, so headless song time follows the ticks and every run ends on the same tick.
+        if (Shell.Headless && Shell.Options.FlowSmoke != FlowSmokeMode.Off)
+            return null;
         var playing = _course?.Songs[_play.CourseSong];
         if (_nextAudio is { } prepared && Shell.Audio is { } ready)
         {

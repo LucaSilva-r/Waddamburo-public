@@ -84,6 +84,11 @@ public static class Boot
                 : args.Contains("--benchmark=restart", StringComparer.Ordinal) ? BenchmarkMode.Restart
                 : args.Contains("--benchmark=paced", StringComparer.Ordinal) ? BenchmarkMode.Paced : BenchmarkMode.Off;
             var startScene = StartSceneParser.Parse(startSceneOption);
+            // eng/flow-smoke.sh: one play mode started from Song Select (FlowSmokeRun).
+            var flowSmoke = parseOption(args, "--flow-smoke=") is { } smokeMode
+                ? Enum.TryParse<FlowSmokeMode>(smokeMode.Replace("-", ""), ignoreCase: true, out var parsedSmoke) && parsedSmoke != FlowSmokeMode.Off
+                    ? parsedSmoke : throw new ArgumentException($"--flow-smoke: unknown mode '{smokeMode}'.")
+                : FlowSmokeMode.Off;
             var donRoot = parseOption(args, "--don-root=");
             var previewPath = parseOption(args, "--preview=");
             var soundBankProbe = parseOption(args, "--probe-sound-bank=");
@@ -251,7 +256,9 @@ public static class Boot
                     arcade.Fullscreen,
                     layout.ServiceFontPath,
                     recordPerformance,
-                    benchmark));
+                    benchmark,
+                    flowSmoke,
+                    parseOption(args, "--flow-smoke-song=")));
                 // Relaunched only now: the old instance has let go of its files (the texture cache, the scores).
                 if (GameShell.RestartRequested && PlatformInfo.IsMobile)
                     return RestartExitCode; // no second process on a phone: the activity boots again

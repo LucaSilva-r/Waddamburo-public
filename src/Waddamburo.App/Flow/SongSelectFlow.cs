@@ -129,7 +129,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
                 return;
             }
             if (Shell.Hosts.DaniSelect is { Terminated: true, Selected: { } board } && Shell.PlayRequests.Pending is null)
-                playCourse(Shell.Hosts.DanBoards[board]!);
+                PlayCourse(Shell.Hosts.DanBoards[board]!);
             if (Shell.PlayRequests.Pending is { } course)
                 coverForGameplay(course);
             return;
@@ -441,7 +441,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
 
     private DanCourseStatus? _course;
 
-    private void playCourse(DanCourseStatus course)
+    internal void PlayCourse(DanCourseStatus course)
     {
         _course = course;
         var first = course.Songs[0];
@@ -517,7 +517,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             // A song gets its rare (heart) note by chance (traced 1 of 4 runs, and 2 of 2 earlier).
             // ponytail: waiwaicollabo/00_taiko.xml prob_rare_0 = 16 read as a percent per song.
             var (left, right) = waiwai.Apply(charts[0], charts[1],
-                rareNote: Random.Shared.Next(100) < 16
+                rareNote: Shell.Random.Next(100) < 16
                     || Environment.GetEnvironmentVariable("WADDAMBURO_WAIWAI_RARE") == "1"); // diagnostic: force it
             charts = [left, right];
         }
