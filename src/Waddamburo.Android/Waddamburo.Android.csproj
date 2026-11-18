@@ -4,8 +4,8 @@
     <TargetFramework>net10.0-android</TargetFramework>
     <SupportedOSPlatformVersion>26</SupportedOSPlatformVersion>
     <OutputType>Exe</OutputType>
-    <RuntimeIdentifier>android-arm64</RuntimeIdentifier>
-    <RuntimeIdentifiers>android-arm64</RuntimeIdentifiers>
+    <RuntimeIdentifiers Condition="'$(RuntimeIdentifier)' == ''">android-arm64;android-x64</RuntimeIdentifiers>
+    <RuntimeIdentifiers Condition="'$(RuntimeIdentifier)' != ''"></RuntimeIdentifiers>
     <ApplicationId>org.waddamburo.game</ApplicationId>
     <ApplicationTitle>Waddamburo</ApplicationTitle>
     <ApplicationVersion>1</ApplicationVersion>
@@ -32,20 +32,36 @@
     <DebugSymbols>false</DebugSymbols>
   </PropertyGroup>
 
-  <!-- Native libraries of the android-package CMake preset (native/CMakePresets.json). -->
+  <!-- Native libraries staged by the two Android CMake presets. -->
   <PropertyGroup>
     <WaddamburoAndroidNativeDir Condition="'$(WaddamburoAndroidNativeDir)' == ''">$(MSBuildThisFileDirectory)../../out/build/native/android-arm64/android-package/stage/Release/lib</WaddamburoAndroidNativeDir>
+    <WaddamburoAndroidX64NativeDir Condition="'$(WaddamburoAndroidX64NativeDir)' == ''">$(MSBuildThisFileDirectory)../../out/build/native/android-x64/android-x64-package/stage/Release/lib</WaddamburoAndroidX64NativeDir>
+    <WaddamburoIncludeAndroidArm64 Condition="$([System.String]::Copy(';$(RuntimeIdentifiers);$(RuntimeIdentifier);').Contains(';android-arm64;'))">true</WaddamburoIncludeAndroidArm64>
+    <WaddamburoIncludeAndroidX64 Condition="$([System.String]::Copy(';$(RuntimeIdentifiers);$(RuntimeIdentifier);').Contains(';android-x64;'))">true</WaddamburoIncludeAndroidX64>
   </PropertyGroup>
   <ItemGroup>
-    <AndroidNativeLibrary Include="$(WaddamburoAndroidNativeDir)/*.so" Abi="arm64-v8a" />
+    <AndroidNativeLibrary Include="$(WaddamburoAndroidNativeDir)/*.so" Abi="arm64-v8a"
+                          Condition="'$(WaddamburoIncludeAndroidArm64)' == 'true'" />
+    <AndroidNativeLibrary Include="$(WaddamburoAndroidX64NativeDir)/*.so" Abi="x86_64"
+                          Condition="'$(WaddamburoIncludeAndroidX64)' == 'true'" />
   </ItemGroup>
   <ItemGroup Condition="'$(WaddamburoAndroidNoticesDir)' != ''">
     <AndroidAsset Include="$(WaddamburoAndroidNoticesDir)/**/*"
                   LogicalName="licenses/%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
   <Target Name="WaddamburoRequireAndroidNatives" BeforeTargets="Build">
-    <Error Condition="!Exists('$(WaddamburoAndroidNativeDir)/libbgfx.so')"
+    <Error Condition="'$(WaddamburoIncludeAndroidArm64)' == 'true' And !Exists('$(WaddamburoAndroidNativeDir)/libbgfx.so')"
            Text="Build the native libraries first: cd native &amp;&amp; cmake --preset android-package &amp;&amp; cmake --build --preset android-package" />
+    <Error Condition="'$(WaddamburoIncludeAndroidX64)' == 'true' And !Exists('$(WaddamburoAndroidX64NativeDir)/libbgfx.so')"
+           Text="Build the native libraries first: cd native &amp;&amp; cmake --preset android-x64-package &amp;&amp; cmake --build --preset android-x64-package" />
+  </Target>
+
+  <!-- NuGet falls back to the Linux x64 ImGui library for android-x64. The editor is desktop-only. -->
+  <Target Name="WaddamburoExcludeDesktopImGui" AfterTargets="ComputeFilesToPublish">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+          Condition="$([System.String]::Copy('%(ResolvedFileToPublish.FullPath)').Replace('\', '/').EndsWith('/runtimes/linux-x64/native/libcimgui.so'))" />
+    </ItemGroup>
   </Target>
 
   <ItemGroup>

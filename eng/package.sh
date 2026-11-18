@@ -179,10 +179,15 @@ EOF
     android)
         # Needs an Android SDK (ANDROID_HOME, default ~/Android/Sdk) with an NDK, JDK 17 or 21 (JAVA_HOME) and the
         # .NET android workload (docs/development/android.md).
-        android_build=$root/out/build/native/android-arm64/android-package
-        native android-package "$android_build/stage/Release/lib" android-arm64
+        android_arm64_build=$root/out/build/native/android-arm64/android-package
+        android_x64_build=$root/out/build/native/android-x64/android-x64-package
+        native android-package "$android_arm64_build/stage/Release/lib" android-arm64
+        native android-x64-package "$android_x64_build/stage/Release/lib" android-x64
         android_notices=$out/android-notices
-        licenses "$android_build" "$android_notices" Waddamburo.Android
+        licenses "$android_arm64_build" "$android_notices" Waddamburo.Android
+        mv "$android_notices/FFmpeg/configure-options.txt" "$android_notices/FFmpeg/configure-options-android-arm64.txt"
+        cp "$android_x64_build/ffmpeg/prefix/licenses/FFmpeg/configure-options.txt" \
+            "$android_notices/FFmpeg/configure-options-android-x64.txt"
         # Android installs an update only over a lower versionCode: X.Y.Z -> X*1000000 + Y*10000 + Z*100, a nightly
         # (newer than its X.Y.Z, older than the next) +50; development builds 1.
         code=1
@@ -204,11 +209,14 @@ EOF
         android_sdk=(-p:AndroidSdkDirectory="${ANDROID_HOME:-$HOME/Android/Sdk}" "${java[@]}")
         rm -rf "$out/android"
         dotnet restore src/Waddamburo.Android -p:Configuration=Release "${android_sdk[@]}"
-        runtime_licenses src/Waddamburo.Android android-arm64 "$android_notices/dotnet" \
-            -p:Configuration=Release "${android_sdk[@]}"
+        for rid in android-arm64 android-x64; do
+            runtime_licenses src/Waddamburo.Android "$rid" "$android_notices/dotnet" \
+                -p:Configuration=Release "${android_sdk[@]}"
+        done
         dotnet publish src/Waddamburo.Android -c Release -f net10.0-android --no-restore -o "$out/android" \
             "${android_sdk[@]}" \
-            -p:WaddamburoAndroidNativeDir="$android_build/stage/Release/lib" \
+            -p:WaddamburoAndroidNativeDir="$android_arm64_build/stage/Release/lib" \
+            -p:WaddamburoAndroidX64NativeDir="$android_x64_build/stage/Release/lib" \
             -p:WaddamburoAndroidNoticesDir="$android_notices" \
             -p:Version="$version" -p:ApplicationDisplayVersion="${version%%-*}" -p:ApplicationVersion="$code" \
             "${app[@]}" "${signing[@]}"

@@ -160,7 +160,7 @@ jobs:
         run: |
           assets=(Waddamburo.exe Waddamburo-x86_64.AppImage Waddamburo.apk licenses.zip licenses-win-x64.zip
             native-*.zip ffmpeg-source.zip ffmpeg-relink-linux-x64.zip ffmpeg-relink-win-x64.zip
-            ffmpeg-relink-android-arm64.zip)
+            ffmpeg-relink-android-arm64.zip ffmpeg-relink-android-x64.zip)
           if draft=$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft); then
             if [ "$draft" != true ]; then
               echo "Release $GITHUB_REF_NAME has already been published."
@@ -194,4 +194,5 @@ jobs:
           gh release create "${GITHUB_SHA::7}" --repo "$GITHUB_REPOSITORY" --prerelease --target "$GITHUB_SHA" --generate-notes \
             --title "Waddamburo nightly ${GITHUB_SHA::7}" Waddamburo-nightly.exe Waddamburo-nightly-x86_64.AppImage Waddamburo-nightly.apk \
             --notes "Waddamburo uses FFmpeg under the LGPL 2.1 or later. Download ffmpeg-source.zip and the ffmpeg-relink archive for your platform. [Relinking instructions](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_SHA/docs/development/ffmpeg.md#relinking-a-release)." \
-            licenses.zip licenses-win-x64.zip native-*.zip ffmpeg-source.zip ffmpeg-relink-linux-x64.zip ffmpeg-relink-win-x64.zip ffmpeg-relink-android-arm64.zip
+            licenses.zip licenses-win-x64.zip native-*.zip ffmpeg-source.zip ffmpeg-relink-linux-x64.zip ffmpeg-relink-win-x64.zip \
+            ffmpeg-relink-android-arm64.zip ffmpeg-relink-android-x64.zip

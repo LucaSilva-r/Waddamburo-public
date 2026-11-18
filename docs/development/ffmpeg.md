@@ -74,8 +74,8 @@ FFmpeg and Opus sources, and `ffmpeg-relink-<platform>.zip` with the original
 configure options and the vgmstream inputs used by the media library.
 
 Extract the Waddamburo source and run the following from its root on a Linux
-host. Use the `linux-x64`, `win-x64`, or `android-arm64` archive for the target.
-The Windows preset needs mingw-w64. The Android preset uses NDK 29.0.14206865
+host. Use the `linux-x64`, `win-x64`, `android-arm64`, or `android-x64` archive for the target.
+The Windows preset needs mingw-w64. Both Android presets use NDK 29.0.14206865
 and targets API 26. Set `ANDROID_NDK_HOME` to the NDK's directory if needed.
 
 ```sh
@@ -102,20 +102,23 @@ From the matching Waddamburo source, run
 `dotnet publish src/Waddamburo.App -c Release -r win-x64 --self-contained -p:WaddamburoNativeDir=/absolute/path/to/that/directory -o out/relink/windows`
 and use `Waddamburo.App.exe` in that publish folder.
 
-For Android, replace the media library in a copy of the downloaded APK, align
-it, and sign it with your own key. Run these commands from the matching source
-root with Android SDK Build Tools 36.0.0. Omit the signature removal command if
-the downloaded APK has no `META-INF` signature entries.
+For Android x86_64, use `ffmpeg-relink-android-x64.zip` and the `android-x64-package`
+preset in the build commands above, then set `abi=x86_64` below. The example uses
+`arm64-v8a` for the `android-package` preset. Replace the media library for the ABI
+you built in a copy of the downloaded APK, align it, and sign it with your own key.
+Run these commands from the matching source root with Android SDK Build Tools 36.0.0.
+Omit the signature removal command if the downloaded APK has no `META-INF` signature entries.
 
 ```sh
 relink_dir="$PWD/out/relink"
 build_tools="$ANDROID_HOME/build-tools/36.0.0"
+abi=arm64-v8a
 cp /path/to/Waddamburo.apk "$relink_dir/modified.apk"
 zip -d "$relink_dir/modified.apk" 'META-INF/*.SF' 'META-INF/*.RSA' \
   'META-INF/*.DSA' 'META-INF/*.EC' 'META-INF/MANIFEST.MF'
-mkdir -p "$relink_dir/apk/lib/arm64-v8a"
-cp "$relink_dir/build/stage/Release/lib/libwaddamburo_media.so" "$relink_dir/apk/lib/arm64-v8a/"
-(cd "$relink_dir/apk" && zip -0 "$relink_dir/modified.apk" lib/arm64-v8a/libwaddamburo_media.so)
+mkdir -p "$relink_dir/apk/lib/$abi"
+cp "$relink_dir/build/stage/Release/lib/libwaddamburo_media.so" "$relink_dir/apk/lib/$abi/"
+(cd "$relink_dir/apk" && zip -0 "$relink_dir/modified.apk" "lib/$abi/libwaddamburo_media.so")
 "$build_tools/zipalign" -P 16 -f 4 "$relink_dir/modified.apk" "$relink_dir/aligned.apk"
 keytool -genkeypair -keystore "$relink_dir/relink.jks" -alias relink -keyalg RSA -keysize 2048 -validity 10000
 "$build_tools/apksigner" sign --ks "$relink_dir/relink.jks" --ks-key-alias relink \

@@ -29,14 +29,23 @@ set(_ffmpeg_platform_options --arch=x86_64 --disable-x86asm)
 set(_ffmpeg_configure_command <SOURCE_DIR>/configure)
 
 if(ANDROID)
-  # NDK clang wrappers carry the target and API level; NEON assembly stays on.
+  # NDK clang wrappers carry the target and API level.
   set(_ndk_bin "${ANDROID_TOOLCHAIN_ROOT}/bin")
+  if(ANDROID_ABI STREQUAL "arm64-v8a")
+    set(_ffmpeg_arch_options --arch=aarch64)
+    set(_ffmpeg_android_triple aarch64-linux-android)
+  elseif(ANDROID_ABI STREQUAL "x86_64")
+    set(_ffmpeg_arch_options --arch=x86_64 --disable-x86asm)
+    set(_ffmpeg_android_triple x86_64-linux-android)
+  else()
+    message(FATAL_ERROR "Unsupported Android ABI for FFmpeg: ${ANDROID_ABI}")
+  endif()
   set(_ffmpeg_platform_options
     --enable-cross-compile
     --target-os=android
-    --arch=aarch64
-    --cc=${_ndk_bin}/aarch64-linux-android${ANDROID_NATIVE_API_LEVEL}-clang
-    --cxx=${_ndk_bin}/aarch64-linux-android${ANDROID_NATIVE_API_LEVEL}-clang++
+    ${_ffmpeg_arch_options}
+    --cc=${_ndk_bin}/${_ffmpeg_android_triple}${ANDROID_NATIVE_API_LEVEL}-clang
+    --cxx=${_ndk_bin}/${_ffmpeg_android_triple}${ANDROID_NATIVE_API_LEVEL}-clang++
     --ar=${_ndk_bin}/llvm-ar
     --nm=${_ndk_bin}/llvm-nm
     --ranlib=${_ndk_bin}/llvm-ranlib

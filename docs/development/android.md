@@ -16,10 +16,12 @@ workload); build it on its own.
 ## Build
 
 ```sh
-# arm64 native libraries: bgfx (GLES 3 + Vulkan), media (FFmpeg, vgmstream), text (FreeType), texture
+# Native libraries for arm64-v8a and x86_64: bgfx, media, text, and texture
 cd native
 cmake --preset android-package
 cmake --build --preset android-package
+cmake --preset android-x64-package
+cmake --build --preset android-x64-package
 cd ..
 
 # the APK (Release: CoreCLR, framework assemblies trimmed)
@@ -37,10 +39,12 @@ references built without an RID. Desktop publishes (`dotnet publish -r linux-x64
 
 ## Releases
 
-`eng/package.sh android` builds `out/package/Waddamburo.apk` (and `native-android-arm64.zip`); the Release workflow
-runs it beside Windows and Linux and attaches the APK to the release, `Waddamburo-nightly.apk` to a nightly. A nightly is
-an app of its own (`org.waddamburo.game.nightly`, "Waddamburo Nightly") beside the stable one. The versionCode, which
-Android requires to grow with each update, is `X*1000000 + Y*10000 + Z*100` for X.Y.Z, +50 for its nightly.
+`eng/package.sh android` builds one `out/package/Waddamburo.apk` for ARM64 and x86_64 Android devices, including
+x86_64 Chromebooks with Android app support. It also builds the native library archives `native-android-arm64.zip`
+and `native-android-x64.zip`. The Release workflow attaches `Waddamburo.apk` to stable releases and
+`Waddamburo-nightly.apk` to nightlies. The nightly app installs alongside the stable one as
+`org.waddamburo.game.nightly` ("Waddamburo Nightly"). Android requires the versionCode to grow with each update.
+For X.Y.Z, it is `X*1000000 + Y*10000 + Z*100` with 50 added for the nightly.
 
 Every release must be signed with the same key, or Android refuses to install it over the previous one. The workflow
 takes it from two repository secrets: `ANDROID_KEYSTORE` (the .jks file, base64) and `ANDROID_KEYSTORE_PASSWORD`

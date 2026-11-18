@@ -136,6 +136,13 @@
       }
     },
     {
+      "name": "android-x64-package",
+      "displayName": "Android x86_64 release libraries (NDK cross build on Linux)",
+      "inherits": "android-package",
+      "binaryDir": "${sourceDir}/../out/build/native/android-x64/${presetName}",
+      "toolchainFile": "${sourceDir}/cmake/android-x64.cmake"
+    },
+    {
       "name": "windows-debug",
       "displayName": "Windows x64 Debug",
       "inherits": "windows-base",
@@ -195,6 +202,7 @@
     { "name": "linux-package", "configurePreset": "linux-package" },
     { "name": "windows-package", "configurePreset": "windows-package" },
     { "name": "android-package", "configurePreset": "android-package" },
+    { "name": "android-x64-package", "configurePreset": "android-x64-package" },
     { "name": "windows-debug", "configurePreset": "windows-debug" },
     { "name": "windows-release", "configurePreset": "windows-release" },
     { "name": "windows-sanitize", "configurePreset": "windows-sanitize" },
