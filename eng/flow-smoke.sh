@@ -22,6 +22,8 @@ run() { # name ticks args...
     timeout 1800 dotnet run --no-build --project src/Waddamburo.App -- "$@" --ticks="$ticks" \
         --screenshot="$out/$name.bmp" --no-crash-screen > "$out/$name.log" 2>&1
     echo "$name exit=$?"
+    # Its scratch game folder goes at once: each builds its own caches (tens of MB), 20 runs fill a small /tmp.
+    rm -rf -- "${out:?}/home/$name"
 }
 # Every run gets its own scratch game folder (the game's data and custom songs linked in), so none touches
 # the real settings or scores, parallel runs don't share a score database, and a song never pauses when

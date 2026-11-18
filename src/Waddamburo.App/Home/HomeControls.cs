@@ -55,7 +55,7 @@ internal sealed class HomeControls : IDisposable
         HomeMenu.DisplayModes = shell.Headless ? [] : shell.Application.FullscreenModes();
         HomeMenu.AudioDevices = shell.Headless ? [] : SdlAudioDevice.PlaybackDeviceNames();
         HomeMenu.AsioDrivers = OperatingSystem.IsWindows() ? AsioOutput.DriverNames() : [];
-        HomeMenu.RunningAudio = () => shell.RunningAudio.AudioOutputSettings;
+        HomeMenu.RunningAudio = () => shell.AudioOutput.Running.AudioOutputSettings;
         HomeMenu.LayoutNames = () => PlayerLayouts.Names(gameplay.LayoutFolder);
         HomeMenu.ActiveLayout = () => gameplay.ActiveLayout;
         HomeMenu.TwoPlayerLayouts = () => gameplay.TwoPlayerLayouts;
@@ -376,7 +376,7 @@ internal sealed class HomeControls : IDisposable
 
     private void previewHidden()
     {
-        var show = _shell.ShowHiddenElements;
+        var show = _shell.Editor.ShowHiddenElements;
         if (show) _shell.Gameplay.ShowHiddenElements();
         if (_resume is not { } countdown || !show && !_timerPreview) return;
         if (!show) { _timerPreview = false; countdown.Cancel(); return; }
@@ -408,7 +408,7 @@ internal sealed class HomeControls : IDisposable
     private bool openMenu(bool escape)
     {
         // The effects workspace owns its own exit/unsaved prompt; Space still controls practice playback.
-        if (_shell.EffectsEditorOpen) return false;
+        if (_shell.Editor.IsOpen) return false;
         // Online, the song goes on whatever this player does: leaving the window doesn't stop it.
         var online = _shell.Match.InSong && active == FlowScenes.Gameplay;
         var focusPause = !(BuildInfo.Dev && _shell.Arcade.DevNoFocusPause); // a developer option
@@ -629,7 +629,7 @@ internal sealed class HomeControls : IDisposable
         _gameplay.ReapplyLayout();
         resumeSong();
         if (action is HomeMenuAction.EditLayout or HomeMenuAction.NewLayout)
-            _shell.OpenEffectsEditor(layout: true);
+            _shell.Editor.Open(layout: true);
     }
 
     private void save()

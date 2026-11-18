@@ -590,7 +590,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
 
     public override void Advance(LumenInputSnapshot input)
     {
-        if (_play.Paused || Shell.FreezeAnimations && Shell.EffectsEditorOpen) return;
+        if (_play.Paused || Shell.Editor.FreezeAnimations && Shell.Editor.IsOpen) return;
         var animationFrames = Shell.Gameplay.AdvanceAnimations(chartTime(), input);
         Shell.DonRenderer?.Advance(animationFrames);
     }
@@ -629,7 +629,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
                 showStage: !Shell.HideArcadeHud || _mode.SeveralSongs || _play.SongInfoMode,
                 showInfo: _play.Lanes.Battle?.ResultShownAt is null);
         return Shell.Gameplay.CreateSnapshot(time, _play.Paused ? _play.PauseInterpolation
-            : Shell.FreezeAnimations && Shell.EffectsEditorOpen ? 1 : interpolation);
+            : Shell.Editor.FreezeAnimations && Shell.Editor.IsOpen ? 1 : interpolation);
     }
 
     // Live drum input is judged per display frame (headless, per tick).
@@ -640,8 +640,8 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         // AI-don: a few ms on a slow PC) read it later than its neighbours and drew the lane ahead: it jerked forward
         // as the note in front was hit.
         _frameTime = _play.Review is null && revealed && !_play.Paused ? chartTime() : null;
-        if (CanEditEffects && !Shell.EffectsEditorOpen
-            && keys.Presses.Any(static press => press.Key == SdlKeyboardKey.F8)) Shell.OpenEffectsEditor();
+        if (CanEditEffects && !Shell.Editor.IsOpen
+            && keys.Presses.Any(static press => press.Key == SdlKeyboardKey.F8)) Shell.Editor.Open();
         if (_play.Review is { } review)
         {
             if (revealed && !_play.Paused && _play.Training is { } training)

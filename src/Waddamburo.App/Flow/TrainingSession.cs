@@ -147,8 +147,8 @@ internal sealed class TrainingSession : IEffectsEditorTransport
 
     public bool FreezeAnimations
     {
-        get => _shell.FreezeAnimations;
-        set => _shell.FreezeAnimations = value;
+        get => _shell.Editor.FreezeAnimations;
+        set => _shell.Editor.FreezeAnimations = value;
     }
 
     public void RestoreLoop(TrainingSession previous)
