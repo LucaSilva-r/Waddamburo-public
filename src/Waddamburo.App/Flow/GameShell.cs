@@ -1,9 +1,7 @@
 using System.Collections.Concurrent;
 using System.Globalization;
 using System.Diagnostics;
-using Waddamburo.App.Audio;
 using Waddamburo.App.Cli;
-using Waddamburo.App.Gameplay;
 using Waddamburo.App.Hosting;
 using Waddamburo.App.Presentation;
 using Waddamburo.App.Scenes;
@@ -23,7 +21,6 @@ using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Media;
 using Waddamburo.Platform.Sdl.Rendering;
 using Waddamburo.App.Home;
-using Waddamburo.App.Online;
 
 namespace Waddamburo.App.Flow;
 

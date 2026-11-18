@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using Waddamburo.App.Gameplay;
 using Waddamburo.Game.Flow;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Rendering;

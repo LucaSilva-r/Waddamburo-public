@@ -1,14 +1,20 @@
 # App layout and scene flow
 
 `src/Waddamburo.App` is the executable: it wires the engine libraries to SDL and drives the
-front end scene by scene. Namespaces follow the folders (`Waddamburo.App.Flow`, ...).
+front end scene by scene. Namespaces follow the folders (`Waddamburo.App.Flow`, `Waddamburo.App.Flow.Gameplay`, ...);
+`GlobalUsings.cs` imports them all in every file.
 
 | Folder | Contents |
 |---|---|
 | `Cli/` | Command-line parsing (`--start-scene`, `--press`, `--invoke`, game data layout). |
-| `Flow/` | `GameShell` and one `FlowScene` per scene group (see below); `InputLatches` (presses between ticks, key pulses). Drum bindings: [input](input.md). |
+| `Flow/` | `GameShell` (`.Frame.cs` frame composition, `.Tick.cs` the tick and its input order), the `FlowScene`s for attract, entry, results and calibration, `SceneSwitcher`; `InputLatches` (presses between ticks, key pulses). Drum bindings: [input](input.md). |
+| `Flow/Gameplay/` | `GameplayFlow` and its play modes (`GameplayFlow.<Mode>.cs`, see [app refactor](app-refactor.md)), `ReviewSession`, `TrainingSession`, `EffectsEditorHost`. |
+| `Flow/SongSelect/` | `SongSelectFlow`, `SongSelectMemory` (where it starts), the reload, song search, the score list, the custom upload prompt. |
+| `Flow/Credit/` | `CreditSession` (the credit's mode, players and results hand-off), `PlayerSession` (joining, guests, replays watched). |
+| `Flow/Cabinet/` | the cabinet's coins and service menu (`CabinetControls`), `Bookkeeping`. |
+| `Flow/Diagnostics/` | `--benchmark` (`BenchmarkFlow`, `BenchmarkRun`) and `--flow-smoke` (`FlowSmokeRun`). |
 | `Home/` | Home mode: `HomeControls` (Escape menu, pause and resume countdown, quick restart, folder picker), `HomeMenu`, `MenuAudio`, `QuickRestart`, the player setup (`PlayerSetupController`, `PlayerSetupFlow`); arcade mode's service menu (`ServiceMenu`, the test switch: it resets the game, holds the settings, and EXIT starts the attract) and `ControlBindings`. |
-| `Online/` | `ScoreSync` (score database, uploads, server bests, rankings), cabinet pairing, server health, chart hashes. |
+| `Online/` | `OnlineMatch` and `RoomOverlay` (online play), `PresenceReporter` (Discord and website status), `ScoreSync` (score database, uploads, server bests, rankings), cabinet pairing, server health, chart hashes. |
 | `Scenes/` | Scene ids and traced compositions (`FlowScenes`), gameplay layout, intermission, system indicators. |
 | `Hosting/` | `LayerHostFactory` (a Lumen host per layer, by host id) and the console fallbacks for services. |
 | `Gameplay/` | Gameplay presentation (rules: `scoring.md`) (notes, judgement, Don slots), Waiwai's shared stage, skins, the song libraries (`SongLibraries`) and catalog asset routing. |

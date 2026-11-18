@@ -5,8 +5,6 @@ using Waddamburo.Game.Flow;
 using Waddamburo.Game.Scenes;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Rendering;
-using Waddamburo.App.Flow;
-using Waddamburo.App.Gameplay;
 
 namespace Waddamburo.App.Home;
 

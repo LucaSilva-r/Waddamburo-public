@@ -1,5 +1,4 @@
 using System.IO.Compression;
-using Waddamburo.App.Sync;
 
 namespace Waddamburo.App.Cli;
 

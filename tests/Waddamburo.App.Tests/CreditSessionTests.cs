@@ -1,4 +1,4 @@
-using Waddamburo.App.Flow;
+using Waddamburo.App.Flow.Credit;
 
 namespace Waddamburo.App.Tests;
 

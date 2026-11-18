@@ -90,7 +90,7 @@ interface: each kind had one caller.
 
 ### 2.2 `CreditSession`: one owner for the credit
 
-`Flow/CreditSession.cs` (built in phase 1) is plain data with no shell: `Mode` (`CreditMode`: Normal,
+`Flow/Credit/CreditSession.cs` (built in phase 1) is plain data with no shell: `Mode` (`CreditMode`: Normal,
 Waiwai, AiBattle; `Waiwai` and `AiBattle` are views of it, so both can never hold), the players' sides
 (`PlayerSide`, `TwoPlayers`, `PartnerSide`), `SongsPlayed` (0 offers the tutorials again), the
 tutorials watched, what the next entry starts from (`EntryTrigger`, `EntryRejoined`, `EntrySetup`,
@@ -102,7 +102,7 @@ four sit in their own section. `Shell.Hosts.AiBattle` is now `Shell.Credit.AiBat
 battle) and writes the credit's state into `CreditSession`. Folding it in fully waits for phase 4,
 when the modes take over what it decides.
 
-`Flow/SongSelectMemory.cs` (library, osu! browse, focus, search, last pick, online song, and
+`Flow/SongSelect/SongSelectMemory.cs` (library, osu! browse, focus, search, last pick, online song, and
 `Start(view, picked)`: where the cursor starts) outlives credits at home; a cabinet's new credit calls
 `ForgetLastSong`.
 
