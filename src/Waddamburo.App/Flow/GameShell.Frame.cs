@@ -61,7 +61,7 @@ internal sealed partial class GameShell
     // its derived textures are not upscaled again (a split layer upscaled alone gets sharpened edges).
     public RenderTextureId? ResolveSurface(LumenNativeSurfaceKey surface) =>
         _attract.Movie?.Resolve(surface) ?? Don?.Resolve(surface)
-        ?? _danArt.Resolve(surface) ?? _copyright.Resolve(surface) ?? _costumeIcons.Resolve(surface) ?? _waiwaiResultTextures.Resolve(surface) ?? _textFields.Resolve(surface) ?? _nameTexts.Resolve(surface) ?? _toneArt.Resolve(surface)
+        ?? _art.Resolve(surface)
         ?? Titles.Resolve(surface);
 
     // One displayed frame. Depth order (traced): scene, msg_coins (-950), intermission (-2000),

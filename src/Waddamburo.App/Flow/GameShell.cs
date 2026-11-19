@@ -247,13 +247,6 @@ internal sealed partial class GameShell : IDisposable
 
     private readonly SongLibraries _libraries;
     private readonly LumenGameSceneLoader _loader;
-    private readonly CostumeIconTextures _costumeIcons;
-    private readonly DanChallengeArt _danArt;
-    private readonly CopyrightArt _copyright;
-    private readonly WaiwaiResultTextures _waiwaiResultTextures;
-    private readonly TextFieldTextures _textFields;
-    private readonly NameTextTextures _nameTexts;
-    private readonly NutData _nutData;
 
     /// <summary>AI battle's AI-don levels (ghosttuning.xml; empty when the data has none).</summary>
     public IReadOnlyList<Waddamburo.Game.Gameplay.GhostLevel> GhostLevels { get; } = [];
@@ -265,7 +258,8 @@ internal sealed partial class GameShell : IDisposable
 
     /// <summary>AI battle's rank ladder (the installation's ghostinfo.xml).</summary>
     public Waddamburo.Game.Gameplay.AiBattleRanks AiRanks { get; } = Waddamburo.Game.Gameplay.AiBattleRanks.Green;
-    private readonly ToneArt _toneArt;
+    // The game's own art and text in the movies' native fills.
+    private readonly NativeArt _art;
     private readonly AttractFlow _attract;
     private readonly GameplayFlow _gameplay;
     private readonly HomeControls _home;
@@ -638,9 +632,7 @@ internal sealed partial class GameShell : IDisposable
             Titles = new SongTitleTextureCache(Application, options.FontPath, asynchronous: !Headless, english: Arcade.EnglishTitles,
                 squash: () => Arcade.SquashTitles, assetRoot: assetRoot);
             _pill = new PairingPill(Application, options.FontPath);
-            _textFields = new TextFieldTextures(Application, options.FontPath);
-            _nameTexts = new NameTextTextures(Application, options.FontPath);
-            _toneArt = new ToneArt(_nutData = new NutData(Application, dataRoot));
+            _art = new NativeArt(Application, options.FontPath, dataRoot);
             GhostLevels = Waddamburo.Game.Gameplay.GhostTuning.Load(dataRoot);
             AiRanks = Waddamburo.Game.Gameplay.AiBattleRanks.Load(dataRoot);
             var support = Waddamburo.Game.Gameplay.SupportInfo.Load(dataRoot);
@@ -687,10 +679,6 @@ internal sealed partial class GameShell : IDisposable
                     _rumble.Sound(lane, sound);
                 },
                 () => TimeSpan.FromMilliseconds(Arcade.DrumDebounceMs));
-            _costumeIcons = new CostumeIconTextures(Application, _nutData, dataRoot);
-            _danArt = new DanChallengeArt(_nutData);
-            _copyright = new CopyrightArt(_nutData);
-            _waiwaiResultTextures = new WaiwaiResultTextures(_nutData);
             // Other releases' installs (home's stock folders) name skins for the songs Green lacks.
             Skins = new GameplaySkinResolver(Path.GetFullPath(assetRoot), GameplaySkinResolver.MusicInfos(
                 [dataRoot, .. Arcade.Home ? ArcadeSettings.Folders(Arcade.StockFolders).Select(Waddamburo.Providers.Stock.StockCatalogProvider.FindDataRoot).OfType<string>() : []]));
@@ -838,7 +826,7 @@ internal sealed partial class GameShell : IDisposable
             AiPanels = () => AiStanding() is var (points, wins, _)
                 ? new(AiRanks.RankOf(points), AiRanks.PointsToNextRank(points), wins, Waddamburo.Game.Gameplay.AiBattleRanks.WinsToNextReward(wins), Waddamburo.Game.Lumen.AiBattlePanels.NewPlayer.Tension)
                 : Waddamburo.Game.Lumen.AiBattlePanels.NewPlayer,
-            CopyrightPages = _copyright.Pages,
+            CopyrightPages = _art.CopyrightPages,
             Best = index => (uint)index < (uint)Bests.Length ? Bests[index] : null,
             Placement = index => (uint)index < (uint)Placements.Length ? Placements[index] : null,
             // Next to the settings file (USRDIR/waddamburo); memory only without one. Home only: the list is
@@ -1101,8 +1089,7 @@ internal sealed partial class GameShell : IDisposable
     {
         Editor?.Close();
         _playerSetup?.Dispose();
-        _textFields.Dispose();
-        _nameTexts.Dispose();
+        _art?.Dispose();
         Painter.Dispose();
         Hosts?.Rankings?.Dispose();
         _pill.Dispose();
