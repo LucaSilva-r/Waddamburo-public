@@ -594,7 +594,7 @@
   "service.lyrics_blue.hint": "縁取りの色の青(0-255)。",
   "service.lyrics_background": "背景",
   "service.lyrics_background.hint": "歌詞の後ろの暗い帯の不透明度。0:なし。",
-  "service.lyrics.sample": "Lyrics preview 歌詞のプレビュー",
+  "service.lyrics.sample": "Lyrics preview 歌詞 가사",
   "service.folder.hint": "決定でフォルダを選択します。",
   "service.official_songs": "公式曲",
   "service.release": "  リリース",

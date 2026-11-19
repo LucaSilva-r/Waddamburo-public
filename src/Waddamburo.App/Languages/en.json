@@ -594,7 +594,7 @@
   "service.lyrics_blue.hint": "THE OUTLINE COLOUR'S BLUE, 0-255.",
   "service.lyrics_background": "BACKGROUND",
   "service.lyrics_background.hint": "A DARK BAND BEHIND THE LYRICS, ITS OPACITY. 0: NONE.",
-  "service.lyrics.sample": "Lyrics preview 歌詞のプレビュー",
+  "service.lyrics.sample": "Lyrics preview 歌詞 가사",
   "service.folder.hint": "ENTER OPENS THE FOLDER PICKER.",
   "service.official_songs": "OFFICIAL SONGS",
   "service.release": "  RELEASE",

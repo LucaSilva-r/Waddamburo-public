@@ -52,7 +52,7 @@ internal sealed record GameDataLayout(
         var font = fontOverride is null ? findTitleFont(fullRoot) ?? bundled.Title : Path.GetFullPath(fontOverride);
         if (!File.Exists(font))
             throw new FileNotFoundException($"The title font does not exist: {font}", font);
-        string[] fallbacks = font == bundled.Title ? [bundled.Fallback] : [bundled.Title, bundled.Fallback];
+        string[] fallbacks = font == bundled.Title ? [bundled.Hangul, bundled.Fallback] : [bundled.Title, bundled.Hangul, bundled.Fallback];
         return new GameDataLayout(fullRoot, home, lumen, don, tja, sound, font, fallbacks, bundled.Service) { CacheHome = stableHome };
     }
 
