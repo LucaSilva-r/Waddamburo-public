@@ -1,14 +1,10 @@
-using Waddamburo.Game.Dan;
 using System.Globalization;
 using System.Reflection;
 using Microsoft.Data.Sqlite;
 using Waddamburo.Catalog;
-using Waddamburo.Game.Gameplay;
 
-namespace Waddamburo.Game.Scores;
+namespace Waddamburo.Services.Scores;
 
-/// <summary>A chart's best crown, as the server numbers them (Dondaful 3: 全良, no 可 and no 不可).</summary>
-public enum TaikoCrown { None, Clear, FullCombo, Dondaful }
 
 /// <summary>A player's best on one chart, as the server keeps it (crown 0 none, 1 clear, 2 full combo).</summary>
 public sealed record RemoteBest(string Sha256, long Score, int Crown);
@@ -27,7 +23,7 @@ public sealed record UploadPlay(Guid Id, long Baid, string ChartSha256, string M
     /// <summary>The player's input offset during the play; the replay's times already have it applied.</summary>
     public int? InputOffsetMs { get; init; }
 
-    /// <summary>The play options (<see cref="Gameplay.TaikoPlayOptions.Bits"/>; 0 none).</summary>
+    /// <summary>The play options (<see cref="Waddamburo.Game.Gameplay.TaikoPlayOptions.Bits"/>; 0 none).</summary>
     public int Options { get; init; }
 
     /// <summary>The random options' seed (null: none drawn).</summary>
@@ -72,7 +68,7 @@ public sealed record AiBattlePlay(bool Won, string Sections, int SupportLevel, i
     /// <summary>AI-don's starting timing (median ms, variance ms²); null: the model's own.</summary>
     public (double Median, double Variance)? Prior { get; init; }
 
-    /// <summary>The player's counts per section (<see cref="Lumen.AiSectionCounts.Format"/>), for later section bests.</summary>
+    /// <summary>The player's counts per section (<see cref="Waddamburo.Game.Lumen.AiSectionCounts.Format"/>), for later section bests.</summary>
     public string? SectionCounts { get; init; }
 }
 
@@ -564,7 +560,7 @@ public sealed class ScoreStore : IDisposable
         }
     }
 
-    /// <summary>Keeps an AI battle's section counts (<see cref="Lumen.AiSectionCounts.Format"/>).</summary>
+    /// <summary>Keeps an AI battle's section counts (<see cref="Waddamburo.Game.Lumen.AiSectionCounts.Format"/>).</summary>
     public void SetAiSectionCounts(Guid id, string counts)
     {
         lock (_connection)
@@ -768,7 +764,7 @@ public sealed class ScoreStore : IDisposable
     /// The player's best per AI battle section on this chart, from their earlier battles on this PC; null: none kept.
     /// </summary>
     // ponytail: local plays only; server plays have no section counts on this PC, fetch them if bests should follow the player.
-    public Lumen.AiSectionCounts[]? AiSectionBest(long baid, string sha256)
+    public Waddamburo.Game.Lumen.AiSectionCounts[]? AiSectionBest(long baid, string sha256)
     {
         lock (_connection)
         {
@@ -780,10 +776,10 @@ public sealed class ScoreStore : IDisposable
             command.Parameters.AddWithValue("$baid", baid);
             command.Parameters.AddWithValue("$sha", sha256);
             using var reader = command.ExecuteReader();
-            Lumen.AiSectionCounts[]? best = null;
+            Waddamburo.Game.Lumen.AiSectionCounts[]? best = null;
             while (reader.Read())
             {
-                if (Lumen.AiSectionCounts.Parse(reader.GetString(0)) is not { } sections)
+                if (Waddamburo.Game.Lumen.AiSectionCounts.Parse(reader.GetString(0)) is not { } sections)
                     continue;
                 if (best is null || best.Length < sections.Length)
                     Array.Resize(ref best, sections.Length);

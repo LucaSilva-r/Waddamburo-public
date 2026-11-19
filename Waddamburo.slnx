@@ -10,6 +10,7 @@
     <Project Path="src/Waddamburo.Providers.OsuLazer/Waddamburo.Providers.OsuLazer.csproj" />
     <Project Path="src/Waddamburo.Providers.Stock/Waddamburo.Providers.Stock.csproj" />
     <Project Path="src/Waddamburo.Providers.Tja/Waddamburo.Providers.Tja.csproj" />
+    <Project Path="src/Waddamburo.Services/Waddamburo.Services.csproj" />
     <Project Path="src/Waddamburo.Upscale/Waddamburo.Upscale.csproj" />
   </Folder>
   <Folder Name="/tests/">

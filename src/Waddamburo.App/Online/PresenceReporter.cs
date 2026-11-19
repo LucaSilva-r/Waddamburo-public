@@ -1,5 +1,4 @@
 using Waddamburo.App.Scenes;
-using Waddamburo.Game.Online;
 
 namespace Waddamburo.App.Online;
 

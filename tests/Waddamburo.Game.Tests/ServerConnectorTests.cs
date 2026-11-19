@@ -1,8 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using Waddamburo.Game.Online;
-using Waddamburo.Game.Scores;
 
 namespace Waddamburo.Game.Tests;
 

@@ -160,6 +160,7 @@
           "Waddamburo.Providers.OsuLazer": "[0.0.0-dev, )",
           "Waddamburo.Providers.Stock": "[0.0.0-dev, )",
           "Waddamburo.Providers.Tja": "[0.0.0-dev, )",
+          "Waddamburo.Services": "[0.0.0-dev, )",
           "Waddamburo.Upscale": "[0.0.0-dev, )"
         }
       },
@@ -184,7 +185,6 @@
       "waddamburo.game": {
         "type": "Project",
         "dependencies": {
-          "Microsoft.Data.Sqlite": "[10.0.12, )",
           "Waddamburo.Catalog": "[0.0.0-dev, )",
           "Waddamburo.Formats": "[0.0.0-dev, )",
           "Waddamburo.Lumen": "[0.0.0-dev, )"
@@ -222,6 +222,13 @@
         "type": "Project",
         "dependencies": {
           "Waddamburo.Catalog": "[0.0.0-dev, )"
+        }
+      },
+      "waddamburo.services": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Data.Sqlite": "[10.0.12, )",
+          "Waddamburo.Game": "[0.0.0-dev, )"
         }
       },
       "waddamburo.upscale": {

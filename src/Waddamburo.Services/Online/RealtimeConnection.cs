@@ -2,7 +2,7 @@ using System.Net.WebSockets;
 using System.Security.Authentication;
 using System.Text.Json;
 
-namespace Waddamburo.Game.Online;
+namespace Waddamburo.Services.Online;
 
 /// <summary>A channel's signature for one socket; a presence channel's also signs who is joining.</summary>
 public sealed record ChannelAuthorization(string Auth, string? ChannelData = null);

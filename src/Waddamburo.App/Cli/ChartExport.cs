@@ -2,7 +2,6 @@ using System.IO.Compression;
 using System.Text.Json;
 using Waddamburo.Catalog;
 using Waddamburo.Game.Flow;
-using Waddamburo.Game.Scores;
 using Waddamburo.Providers.Stock;
 
 namespace Waddamburo.App.Cli;

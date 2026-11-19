@@ -3,15 +3,14 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Waddamburo.Catalog;
-using Waddamburo.Game.Gameplay;
 
-namespace Waddamburo.Game.Scores;
+namespace Waddamburo.Services.Scores;
 
 /// <summary>A home player stored on this PC: the server token and the Banapass profile it belongs to.</summary>
 public sealed record ScoreAccount(string Token, long Baid, string Name)
 {
     /// <summary>The Don's look (refreshed from the server at startup).</summary>
-    public Don.DonLook? Look { get; init; }
+    public Waddamburo.Game.Don.DonLook? Look { get; init; }
 
     /// <summary>The account's custom Don-chan picture URL.</summary>
     public string? Avatar { get; init; }
@@ -35,8 +34,6 @@ public sealed record ScoreAccount(string Token, long Baid, string Name)
 }
 
 /// <summary>A device login in progress: the code to show and where to enter it.</summary>
-/// <summary>One line of a chart's server ranking: a player's best.</summary>
-public sealed record RankingEntry(long Baid, string Name, int Score);
 
 /// <summary>
 /// One play in a score list (snake_case JSON): its place (null in the player's own list), who played it
@@ -174,7 +171,7 @@ public sealed class ScoreClient(HttpClient http)
     }
 
     /// <summary>The dan dojo catalogue (public: no account needed).</summary>
-    public async Task<Dan.DanCatalogue> DanCatalogueAsync(CancellationToken cancellationToken = default)
+    public async Task<Waddamburo.Game.Dan.DanCatalogue> DanCatalogueAsync(CancellationToken cancellationToken = default)
     {
         using var response = await http.GetAsync("api/wdb/dan", cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
@@ -353,7 +350,7 @@ public sealed class ScoreClient(HttpClient http)
     /// Fire-and-forget <see cref="SyncAsync"/>; a sync already running covers the new plays.
     /// <paramref name="job"/> reports it on the notice sidebar.
     /// </summary>
-    public void SyncInBackground(ScoreStore store, long? baid, Flow.JobBoard.Job? job = null, Action? completed = null,
+    public void SyncInBackground(ScoreStore store, long? baid, Waddamburo.Game.Flow.JobBoard.Job? job = null, Action? completed = null,
         Func<bool>? uploadCustomSongs = null, Func<string, bool>? canUploadChart = null)
     {
         if (Interlocked.Exchange(ref _syncing, 1) == 1)

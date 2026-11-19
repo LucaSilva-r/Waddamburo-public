@@ -3,7 +3,6 @@ using Waddamburo.App.Home;
 using Waddamburo.App.Presentation;
 using Waddamburo.App.Scenes;
 using Waddamburo.Game.Gameplay;
-using Waddamburo.Game.Online;
 using Waddamburo.Game.Scores;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Rendering;

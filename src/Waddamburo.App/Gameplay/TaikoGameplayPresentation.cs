@@ -3,7 +3,6 @@ using Waddamburo.Catalog;
 using Waddamburo.Game;
 using Waddamburo.Game.Don;
 using Waddamburo.Game.Gameplay;
-using Waddamburo.Game.Online;
 using Waddamburo.Game.Lumen;
 using Waddamburo.Game.Scenes;
 using Waddamburo.Game.Patching;

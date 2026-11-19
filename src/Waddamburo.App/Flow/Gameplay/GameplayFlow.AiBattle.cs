@@ -82,7 +82,7 @@ internal sealed partial class GameplayFlow
         public override SceneDefinition? Results => Shell.Credit.AiOutcome is not null ? FlowScenes.AiResults : null;
 
         // The player's lane: its battle, and the rank points it earned on the standing before it.
-        public override Game.Scores.AiBattlePlay? Battle(int lane, ScoreProfile profile, ScoreStore scores, string sha,
+        public override Waddamburo.Services.Scores.AiBattlePlay? Battle(int lane, ScoreProfile profile, ScoreStore scores, string sha,
             bool cleared, PlayableChart played, PlayerChartRequest player)
         {
             if (lane != 0 || Play.Lanes.Battle?.Outcome is not { Sections.Count: > 0 } outcome)
@@ -94,7 +94,7 @@ internal sealed partial class GameplayFlow
             var ranked = session?.Ranked ?? _uploads;
             var award = ranks.Award(before.Points, player.Course, played.Level ?? 0, outcome.Won, cleared,
                 usual: !_intermediate && ranked, firstWin: !scores.HasAiWin(profile.Baid, sha));
-            var battle = new Game.Scores.AiBattlePlay(outcome.Won, string.Concat(outcome.Sections.Select(static section => section.Won ? 'W' : 'L')),
+            var battle = new Waddamburo.Services.Scores.AiBattlePlay(outcome.Won, string.Concat(outcome.Sections.Select(static section => section.Won ? 'W' : 'L')),
                 _supportLevel, award.Points)
             {
                 SessionId = session?.Id, Ranked = ranked,

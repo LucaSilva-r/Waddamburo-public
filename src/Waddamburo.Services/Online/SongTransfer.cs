@@ -1,7 +1,7 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
 
-namespace Waddamburo.Game.Online;
+namespace Waddamburo.Services.Online;
 
 /// <summary>
 /// One large blob (a song) from one player to the other over <see cref="PeerLink"/>, which may lose or reorder packets:

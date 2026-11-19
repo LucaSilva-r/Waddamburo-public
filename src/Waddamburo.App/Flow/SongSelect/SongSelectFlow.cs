@@ -381,8 +381,8 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
                 player.Options.Bits, support).ConfigureAwait(false);
             // No answer (offline): the battle uploads later and the server verifies it then.
             if (session is { Ranked: false })
-                Shell.Sync.Notices.Add(new Waddamburo.Game.Online.Notice("ai-unranked", Waddamburo.Game.Online.NoticeSource.Local,
-                    Waddamburo.Game.Online.NoticeSeverity.Info,
+                Shell.Sync.Notices.Add(new Waddamburo.Services.Online.Notice("ai-unranked", Waddamburo.Services.Online.NoticeSource.Local,
+                    Waddamburo.Services.Online.NoticeSeverity.Info,
                     Strings.T("notice.ai_unranked"), DateTimeOffset.UtcNow));
             return session;
         }

@@ -19,9 +19,10 @@ public sealed class DependencyRulesTests
             ["Waddamburo.Providers.OsuLazer"] = ["Waddamburo.Catalog"],
             ["Waddamburo.Providers.Stock"] = ["Waddamburo.Catalog"],
             ["Waddamburo.Providers.Tja"] = ["Waddamburo.Catalog"],
+            ["Waddamburo.Services"] = ["Waddamburo.Game"],
             ["Waddamburo.Upscale"] = [],
             ["Waddamburo.Editor"] = ["Waddamburo.Catalog", "Waddamburo.Game", "Waddamburo.Lumen", "Waddamburo.Platform.Sdl"],
-            ["Waddamburo.App"] = ["Waddamburo.Catalog", "Waddamburo.Editor", "Waddamburo.Game", "Waddamburo.Platform.Sdl", "Waddamburo.Providers.OsuLazer", "Waddamburo.Providers.Stock", "Waddamburo.Providers.Tja", "Waddamburo.Upscale"],
+            ["Waddamburo.App"] = ["Waddamburo.Catalog", "Waddamburo.Editor", "Waddamburo.Game", "Waddamburo.Platform.Sdl", "Waddamburo.Providers.OsuLazer", "Waddamburo.Providers.Stock", "Waddamburo.Providers.Tja", "Waddamburo.Services", "Waddamburo.Upscale"],
         };
 
         foreach (var (project, allowed) in expected)

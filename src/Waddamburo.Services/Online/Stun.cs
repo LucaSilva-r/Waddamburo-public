@@ -3,7 +3,7 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace Waddamburo.Game.Online;
+namespace Waddamburo.Services.Online;
 
 /// <summary>The parts of STUN (RFC 8489) and TURN (RFC 8656) that <see cref="PeerLink"/> speaks.</summary>
 public sealed class StunMessage

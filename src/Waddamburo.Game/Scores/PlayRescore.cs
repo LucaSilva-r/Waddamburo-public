@@ -5,7 +5,7 @@ using Waddamburo.Game.Gameplay;
 namespace Waddamburo.Game.Scores;
 
 /// <summary>
-/// A stored play scored again from its replay under the current rules (<see cref="PlayRecord.CurrentScoringVersion"/>):
+/// A stored play scored again from its replay under the current rules (<c>PlayRecord.CurrentScoringVersion</c> in Waddamburo.Services):
 /// what a score server keeps instead of the numbers the client sent.
 /// </summary>
 public static class PlayRescore

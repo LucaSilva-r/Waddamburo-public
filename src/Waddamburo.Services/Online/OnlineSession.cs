@@ -1,7 +1,6 @@
 using System.Text.Json;
-using Waddamburo.Game.Gameplay;
 
-namespace Waddamburo.Game.Online;
+namespace Waddamburo.Services.Online;
 
 /// <summary>What one player tells the other through the room channel to set up the link.</summary>
 public sealed record PeerOffer(byte[] Token, IReadOnlyList<PeerCandidate> Candidates)
@@ -124,7 +123,7 @@ public sealed class OnlineSession(HttpClient http, bool insecure = false) : IAsy
     public bool RelayOnly { get; init; }
 
     /// <summary>The other player in the room, as their name board and Don-chan show them (null: nobody yet, or they left).</summary>
-    public Scores.ScoreProfile? Partner { get; private set; }
+    public Waddamburo.Game.Scores.ScoreProfile? Partner { get; private set; }
 
     /// <summary>Where this side can be reached, once started.</summary>
     public IReadOnlyList<PeerCandidate> Candidates => _candidates;
@@ -299,7 +298,7 @@ public sealed class OnlineSession(HttpClient http, bool insecure = false) : IAsy
             return;
         try
         {
-            if (System.Text.Json.JsonSerializer.Deserialize(member.Info, Scores.ScoreJson.Default.ScoreProfile) is { } profile)
+            if (System.Text.Json.JsonSerializer.Deserialize(member.Info, ScoreJson.Default.ScoreProfile) is { } profile)
             {
                 (Partner, _partnerId) = (profile with { Token = null }, member.Id);
                 log($"{profile.DisplayName} is in the room.");

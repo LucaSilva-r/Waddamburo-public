@@ -2,7 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 
-namespace Waddamburo.Game.Online;
+namespace Waddamburo.Services.Online;
 
 /// <summary>An online room: the code that identifies it, and the presence channel its two players set up their connection on.</summary>
 public sealed record OnlineRoom(string Code, string Channel)

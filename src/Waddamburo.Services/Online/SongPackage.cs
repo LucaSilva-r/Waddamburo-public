@@ -2,7 +2,7 @@ using System.Buffers.Binary;
 using System.Text.Json;
 using Waddamburo.Catalog;
 
-namespace Waddamburo.Game.Online;
+namespace Waddamburo.Services.Online;
 
 /// <summary>One course of a sent song: its chart as the host's game reads it, and how Song Select shows it.</summary>
 public sealed record PackagedChart(string StableId, TaikoCourse Course, int? Level, string DifficultyName, PlayableChart Chart);

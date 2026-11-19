@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Waddamburo.Game.Scores;
+namespace Waddamburo.Services.Scores;
 
 /// <summary>
 /// TaikOnline's JSON (snake_case) and accounts.json, generated at compile time so the game also
@@ -19,7 +19,7 @@ namespace Waddamburo.Game.Scores;
 [JsonSerializable(typeof(ScoreClient.RankingsRequest))]
 [JsonSerializable(typeof(ScoreClient.PlaysRequest))]
 [JsonSerializable(typeof(ScoreClient.AiBattleRequest))]
-[JsonSerializable(typeof(Gameplay.AiBattleSession))]
+[JsonSerializable(typeof(Waddamburo.Game.Gameplay.AiBattleSession))]
 [JsonSerializable(typeof(ScoreClient.BestsResult))]
 [JsonSerializable(typeof(ScoreClient.RankingsResult))]
 [JsonSerializable(typeof(ScoreClient.PlaysResult))]
@@ -34,5 +34,5 @@ namespace Waddamburo.Game.Scores;
 [JsonSerializable(typeof(FriendPairingClient.Reply))]
 [JsonSerializable(typeof(PairingClient.CardRequest))]
 [JsonSerializable(typeof(AccountBook.StoredBook))]
-[JsonSerializable(typeof(Dan.DanCatalogue))]
+[JsonSerializable(typeof(Waddamburo.Game.Dan.DanCatalogue))]
 internal sealed partial class ScoreJson : JsonSerializerContext;

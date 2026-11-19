@@ -92,7 +92,7 @@ internal sealed partial class GameplayFlow
         public virtual bool ResultsCutIn => false;
 
         /// <summary>The battle a lane's play saves with (null: a song's play).</summary>
-        public virtual Game.Scores.AiBattlePlay? Battle(int lane, ScoreProfile profile, ScoreStore scores, string sha,
+        public virtual Waddamburo.Services.Scores.AiBattlePlay? Battle(int lane, ScoreProfile profile, ScoreStore scores, string sha,
             bool cleared, PlayableChart played, PlayerChartRequest player) => null;
 
         /// <summary>The Waiwai layout both lanes play on (null: not Waiwai).</summary>

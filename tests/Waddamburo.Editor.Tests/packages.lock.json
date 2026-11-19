@@ -155,7 +155,6 @@
       "waddamburo.game": {
         "type": "Project",
         "dependencies": {
-          "Microsoft.Data.Sqlite": "[10.0.12, )",
           "Waddamburo.Catalog": "[0.0.0-dev, )",
           "Waddamburo.Formats": "[0.0.0-dev, )",
           "Waddamburo.Lumen": "[0.0.0-dev, )"

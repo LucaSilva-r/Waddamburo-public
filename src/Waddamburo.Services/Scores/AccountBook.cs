@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace Waddamburo.Game.Scores;
+namespace Waddamburo.Services.Scores;
 
 /// <summary>
 /// The accounts stored on a home PC (accounts.json beside the game data): who can be picked in the

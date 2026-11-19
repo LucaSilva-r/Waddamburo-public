@@ -9,7 +9,7 @@ using System.Net.WebSockets;
 using System.Security.Cryptography;
 using System.Threading.Channels;
 
-namespace Waddamburo.Game.Online;
+namespace Waddamburo.Services.Online;
 
 /// <summary>Where a peer might be reached: its own network (Host), or its public address (Reflexive).</summary>
 public enum PeerCandidateKind

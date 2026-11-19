@@ -155,7 +155,7 @@ public static class Boot
         if (a.SyncCommand is not null)
             return Sync.SyncCommands.Run(a.Raw, Path.Combine(layout.Root, "data"),
                 () => Gameplay.SongLibraries.Load(Path.Combine(layout.Root, "data"), arcade, layout.TjaRoot));
-        var accounts = Waddamburo.Game.Scores.AccountBook.Load(layout.Home);
+        var accounts = Waddamburo.Services.Scores.AccountBook.Load(layout.Home);
         // Phones: a newer release keeps this build off TaikOnline until it is installed (no self-update there).
         Waddamburo.App.Online.UpdateGate.Check();
         if (a.Login || a.Logout)
@@ -189,7 +189,7 @@ public static class Boot
             arcade,
             arcadePath,
             accounts,
-            Path.Combine(layout.Home, Waddamburo.Game.Scores.ScoreStore.FileName),
+            Path.Combine(layout.Home, Waddamburo.Services.Scores.ScoreStore.FileName),
             a.Autoplay,
             arcade.Fullscreen,
             layout.ServiceFontPath,

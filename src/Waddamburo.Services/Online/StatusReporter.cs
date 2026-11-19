@@ -1,4 +1,4 @@
-namespace Waddamburo.Game.Online;
+namespace Waddamburo.Services.Online;
 
 /// <summary>What a home player is doing: online, afk or playing (with the chart, when known); the online room they're in.</summary>
 public sealed record PlayerStatus(string State, string? ChartSha256 = null, string? Room = null)

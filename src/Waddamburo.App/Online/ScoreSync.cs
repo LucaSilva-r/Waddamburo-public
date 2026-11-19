@@ -1,6 +1,5 @@
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Gameplay;
-using Waddamburo.Game.Online;
 using Waddamburo.Game.Scores;
 
 namespace Waddamburo.App.Online;

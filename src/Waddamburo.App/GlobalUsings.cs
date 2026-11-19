@@ -10,3 +10,5 @@ global using Waddamburo.App.Flow.SongSelect;
 global using Waddamburo.App.Gameplay;
 global using Waddamburo.App.Online;
 global using Waddamburo.App.Sync;
+global using Waddamburo.Services.Online;
+global using Waddamburo.Services.Scores;

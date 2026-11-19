@@ -1,7 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
 
-namespace Waddamburo.Game.Online;
+namespace Waddamburo.Services.Online;
 
 /// <summary>
 /// How the game reaches TaikOnline (its API, Reverb, the relay): each of the server's addresses in turn, IPv6 and IPv4

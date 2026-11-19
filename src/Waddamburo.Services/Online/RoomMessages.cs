@@ -2,7 +2,7 @@ using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Text.Json;
 
-namespace Waddamburo.Game.Online;
+namespace Waddamburo.Services.Online;
 
 /// <summary>
 /// The players' few messages to each other (a song picked, ready, go) over <see cref="PeerLink"/>, which may lose or

@@ -1,4 +1,4 @@
-namespace Waddamburo.Game.Online;
+namespace Waddamburo.Services.Online;
 
 public enum NoticeSeverity { Info, Warning, Critical }
 

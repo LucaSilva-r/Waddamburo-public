@@ -8,7 +8,6 @@ using Waddamburo.App.Scenes;
 using Waddamburo.App.Tools;
 using Waddamburo.Catalog;
 using Waddamburo.Formats.Layout;
-using Waddamburo.Game.Online;
 using Waddamburo.Game.Dan;
 using Waddamburo.Game.Don;
 using Waddamburo.Game.Flow;
@@ -246,9 +245,9 @@ internal sealed partial class GameShell : IDisposable
     public IReadOnlyList<Waddamburo.Game.Gameplay.GhostLevel> GhostLevels { get; } = [];
 
     /// <summary>The AI battle player's standing (the playing drum's player; at home a guest is this PC's).</summary>
-    public Waddamburo.Game.Scores.AiProgress AiStanding() =>
+    public Waddamburo.Services.Scores.AiProgress AiStanding() =>
         (TaikoGuest.Profiles[Credit.PlayerSide] ?? (Arcade.Home ? Waddamburo.Game.Scores.ScoreProfile.LocalGuest : null)) is { } profile
-            && Sync.Scores is { } scores ? scores.AiProgress(profile.Baid) : Waddamburo.Game.Scores.AiProgress.None;
+            && Sync.Scores is { } scores ? scores.AiProgress(profile.Baid) : Waddamburo.Services.Scores.AiProgress.None;
 
     /// <summary>AI battle's rank ladder (the installation's ghostinfo.xml).</summary>
     public Waddamburo.Game.Gameplay.AiBattleRanks AiRanks { get; } = Waddamburo.Game.Gameplay.AiBattleRanks.Green;
@@ -632,8 +631,8 @@ internal sealed partial class GameShell : IDisposable
             var support = Waddamburo.Game.Gameplay.SupportInfo.Load(dataRoot);
             _performance = new PerformanceOverlay(Application, () => Audio)
             {
-                Online = () => Room?.Session?.Link is { State: Waddamburo.Game.Online.PeerLinkState.Direct or Waddamburo.Game.Online.PeerLinkState.Relayed } link
-                    ? (link.State == Waddamburo.Game.Online.PeerLinkState.Relayed, link.RoundTrip) : null,
+                Online = () => Room?.Session?.Link is { State: Waddamburo.Services.Online.PeerLinkState.Direct or Waddamburo.Services.Online.PeerLinkState.Relayed } link
+                    ? (link.State == Waddamburo.Services.Online.PeerLinkState.Relayed, link.RoundTrip) : null,
             };
             // ponytail: phones have no F5 yet; development builds start with the performance overlay on there.
             if (PlatformInfo.IsMobile && BuildInfo.Dev)

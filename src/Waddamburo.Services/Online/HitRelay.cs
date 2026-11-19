@@ -1,7 +1,6 @@
 using System.Buffers.Binary;
-using Waddamburo.Game.Gameplay;
 
-namespace Waddamburo.Game.Online;
+namespace Waddamburo.Services.Online;
 
 /// <summary>
 /// One player's drum hits over <see cref="PeerLink"/>, which may lose or reorder packets. Every packet repeats the hits the

@@ -74,18 +74,18 @@ internal sealed record GameDataLayout(
                 var relative = Path.GetRelativePath(stable, file);
                 var top = relative.Split(Path.DirectorySeparatorChar)[0];
                 if (NotSeeded.Contains(top) || top.StartsWith("backup-", StringComparison.Ordinal)
-                    || top.StartsWith(Waddamburo.Game.Scores.ScoreStore.FileName, StringComparison.Ordinal))
+                    || top.StartsWith(Waddamburo.Services.Scores.ScoreStore.FileName, StringComparison.Ordinal))
                     continue;
                 var target = Path.Combine(partial, relative);
                 Directory.CreateDirectory(Path.GetDirectoryName(target)!);
                 File.Copy(file, target);
             }
-            var scores = Path.Combine(stable, Waddamburo.Game.Scores.ScoreStore.FileName);
+            var scores = Path.Combine(stable, Waddamburo.Services.Scores.ScoreStore.FileName);
             if (File.Exists(scores))
             {
                 using var source = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={scores};Mode=ReadOnly;Pooling=False");
                 using var copy = new Microsoft.Data.Sqlite.SqliteConnection(
-                    $"Data Source={Path.Combine(partial, Waddamburo.Game.Scores.ScoreStore.FileName)};Pooling=False");
+                    $"Data Source={Path.Combine(partial, Waddamburo.Services.Scores.ScoreStore.FileName)};Pooling=False");
                 source.Open();
                 copy.Open();
                 source.BackupDatabase(copy);
