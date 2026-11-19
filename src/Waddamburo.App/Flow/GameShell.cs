@@ -1021,6 +1021,11 @@ internal sealed partial class GameShell : IDisposable
                     // search field takes the letters). The attract's demo play is not a song being played.
                     if (_notices is not null && (!Scenes.OnLane || _gameplay.Demo) && !_search.IsOpen && !Room.Typing && GameActions.Pressed(keyboard, GameAction.Notices))
                         _notices.Toggle();
+                    // Arcade: a card shortcut's button inserts its card (card_1p / card_2p) as if read.
+                    if (Sync.Pairing is { } cards)
+                        foreach (var (button, code) in (ReadOnlySpan<(SdlKeyboardKey, string?)>)[(SdlKeyboardKey.CardP1, Arcade.Card1P), (SdlKeyboardKey.CardP2, Arcade.Card2P)])
+                            if (code is not null && keyboard.Presses.Any(press => press.Key == button) && !cards.Insert(code))
+                                Console.WriteLine("Card shortcut: no card is taken now (or one is waiting already).");
                     if (Arcade.Home || _service?.IsOpen != true)
                         flowOf(Active.Id).UpdateFrame(keyboard);
                 },

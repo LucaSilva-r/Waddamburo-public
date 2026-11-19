@@ -247,9 +247,9 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
 
     // The buttons on DRUM CONTROLS (indexes in ArcadeSettings.Buttons): a cabinet's coin and service switches; at home
     // the buttons beside the drum.
-    private int[] buttons => _home ? [.. Enumerable.Range(0, CoinButton), ScreenshotButton] : [CoinButton, CoinButton + 1, ScreenshotButton];
+    private int[] buttons => _home ? [.. Enumerable.Range(0, CoinButton), ScreenshotButton] : [CoinButton, CoinButton + 1, ScreenshotButton, ScreenshotButton + 1, ScreenshotButton + 2];
 
-    private string[] buttonNames => _home ? [.. HomeMenu.ButtonLabels.Select(static name => upper(Strings.T(name.Label)))] : [S("service.button.coin"), S("service.button.service"), S("service.button.screenshot")];
+    private string[] buttonNames => _home ? [.. HomeMenu.ButtonLabels.Select(static name => upper(Strings.T(name.Label)))] : [S("service.button.coin"), S("service.button.service"), S("service.button.screenshot"), S("service.button.card_1p"), S("service.button.card_2p")];
 
     // A pad's (0-3) or a button's (4 on, see buttons) inputs on the shown device, by name.
     // line: a drum pad's second line, its inputs after the first four.

@@ -559,6 +559,8 @@
   "service.pad.don_left": "ドン（左）",
   "service.pad.don_right": "ドン（右）",
   "service.pad.ka_right": "カッ（右）",
+  "service.button.card_1p": "カード 1P",
+  "service.button.card_2p": "カード 2P",
   "service.button.coin": "コイン",
   "service.button.service": "サービス",
   "service.button.screenshot": "スクリーンショット",

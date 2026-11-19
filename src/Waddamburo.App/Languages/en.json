@@ -559,6 +559,8 @@
   "service.pad.don_left": "DON (LEFT)",
   "service.pad.don_right": "DON (RIGHT)",
   "service.pad.ka_right": "KA (RIGHT)",
+  "service.button.card_1p": "CARD 1P",
+  "service.button.card_2p": "CARD 2P",
   "service.button.coin": "COIN",
   "service.button.service": "SERVICE",
   "service.button.screenshot": "SCREENSHOT",

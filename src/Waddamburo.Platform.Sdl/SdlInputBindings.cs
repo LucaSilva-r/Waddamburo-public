@@ -103,11 +103,13 @@ public sealed class SdlInputBindings
         SdlKeyboardKey.F2, SdlKeyboardKey.F3,
         // Saves a screenshot (#27).
         SdlKeyboardKey.F12,
+        // Arcade: inserts the card set for 1P / 2P (card_1p, card_2p), unbound until the player binds them.
+        SdlKeyboardKey.CardP1, SdlKeyboardKey.CardP2,
     ];
 
     /// <summary>Each pad on the key it is named after, each button on its own key.</summary>
     public static SdlInputBindings Keyboard { get; } = Parse([.. Pads.Select(static pad => pad.ToString())],
-        ["backspace", "tab", "l", "p", "e", "q", "return", "f2", "f3", "f12"]);
+        ["backspace", "tab", "l", "p", "e", "q", "return", "f2", "f3", "f12", "", ""]);
 
     private readonly Dictionary<SdlInput, SdlKeyboardKey> _pads = [];
     private readonly Dictionary<SdlInput, SdlKeyboardKey> _buttons = [];

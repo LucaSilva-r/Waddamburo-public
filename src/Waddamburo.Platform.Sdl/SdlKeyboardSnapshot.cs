@@ -89,4 +89,7 @@ public enum SdlKeyboardKey
     // Not keys: a notch of the mouse wheel, as a press (menus only).
     WheelUp = 1001,
     WheelDown = 1002,
+    // Not keys: the card shortcuts' buttons (arcade), bound to whatever the player picks.
+    CardP1 = 1003,
+    CardP2 = 1004,
 }

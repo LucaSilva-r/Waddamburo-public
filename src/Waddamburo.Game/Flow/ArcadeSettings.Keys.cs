@@ -148,6 +148,8 @@ public sealed partial record ArcadeSettings
         flag("upload_banner", static s => s.UploadBanner, static (s, v) => s with { UploadBanner = v }),
         flag("discord_presence", static s => s.DiscordPresence, static (s, v) => s with { DiscordPresence = v }),
         new("gameplay_skin", static (s, value, _) => s with { GameplaySkin = value.Length > 0 ? value : "auto" }, static s => s.GameplaySkin),
+        optional("card_1p", static s => s.Card1P, static (s, v) => s with { Card1P = v }),
+        optional("card_2p", static s => s.Card2P, static (s, v) => s with { Card2P = v }),
         flag("lyrics", static s => s.Lyrics, static (s, v) => s with { Lyrics = v }),
         number("lyrics_x", static s => s.LyricsX, static (s, v) => s with { LyricsX = v }, -640, 640),
         number("lyrics_y", static s => s.LyricsY, static (s, v) => s with { LyricsY = v }, -700, 0),

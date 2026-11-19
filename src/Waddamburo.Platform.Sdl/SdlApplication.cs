@@ -722,6 +722,10 @@ public sealed unsafe partial class SdlApplication : IDisposable
     // What an input is to the game: its pad or button when bound; else a key is itself (but a pad's or a
     // button's own key, unbound, is nothing), a controller's Start is Escape and its Back Space (a practice
     // attempt's pause).
+    // A key the player bound to a pad or a button: it does that, not the window's own shortcut (F4, F9, F11).
+    private bool bound(SDL_Scancode scancode) =>
+        new SdlInput(SdlInputKind.Key, (int)scancode) is var input && (_bindings.Pad(input) is not null || _bindings.Button(input) is not null);
+
     private SdlKeyboardKey? translate(SdlInput input)
     {
         var key = translateInput(input);
@@ -1013,7 +1017,7 @@ public sealed unsafe partial class SdlApplication : IDisposable
             while (SDL_PollEvent(&currentEvent))
             {
                 // F11 (fullscreen) before any UI: the effects editor's panels take the keys under the mouse.
-                if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_KEY_DOWN && currentEvent.key.key == SDL_Keycode.SDLK_F11)
+                if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_KEY_DOWN && currentEvent.key.key == SDL_Keycode.SDLK_F11 && !bound(currentEvent.key.scancode))
                 {
                     // F11: borderless desktop fullscreen <-> window, like a browser.
                     if (!currentEvent.key.repeat)
@@ -1087,7 +1091,7 @@ public sealed unsafe partial class SdlApplication : IDisposable
                     pointerReleased();
                 }
                 else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_KEY_DOWN
-                    && currentEvent.key.key == SDL_Keycode.SDLK_F4 && toggleInspect is not null)
+                    && currentEvent.key.key == SDL_Keycode.SDLK_F4 && toggleInspect is not null && !bound(currentEvent.key.scancode))
                 {
                     // F4: inspect mode (a left click lists what is drawn under the pointer).
                     if (!currentEvent.key.repeat)
@@ -1109,7 +1113,7 @@ public sealed unsafe partial class SdlApplication : IDisposable
                                 TimeSpan.FromTicks(checked((long)(currentEvent.wheel.timestamp / 100)))));
                 }
                 else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_KEY_DOWN
-                    && currentEvent.key.key == SDL_Keycode.SDLK_F9)
+                    && currentEvent.key.key == SDL_Keycode.SDLK_F9 && !bound(currentEvent.key.scancode))
                 {
                     // F9: upscaled textures <-> the originals, for comparison (the next scene loaded shows it).
                     if (!currentEvent.key.repeat && _renderer is not null)

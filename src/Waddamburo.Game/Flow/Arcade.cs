@@ -328,6 +328,13 @@ public sealed partial record ArcadeSettings
         # counted as a coin in the bookkeeping).
         button_coin = f2
         button_service = f3
+        # A card without a card reader: button_card_1p / button_card_2p (unbound until set in DRUM CONTROLS) insert
+        # the Banapass access code card_1p / card_2p (20 digits, the card's back or TaikOnline) as if read, starting
+        # the entry like a paired card. Anyone who can read this file can play on these cards.
+        button_card_1p =
+        button_card_2p =
+        card_1p =
+        card_2p =
 
         """,
         """
@@ -424,7 +431,7 @@ public sealed partial record ArcadeSettings
     /// <summary>The buttons beside the drum, in the order of <see cref="Buttons"/> (SdlInputBindings.Buttons).</summary>
     public static readonly string[] ButtonKeys =
         ["button_back", "button_search", "button_scores", "button_practise", "button_notices", "button_restart", "button_confirm",
-            "button_coin", "button_service", "button_screenshot"];
+            "button_coin", "button_service", "button_screenshot", "button_card_1p", "button_card_2p"];
 
     /// <summary>What presses each button (<see cref="ButtonKeys"/> order), as <see cref="Controls"/> lists a pad's.</summary>
     public EquatableList Buttons { get; init; } = new(
@@ -439,7 +446,13 @@ public sealed partial record ArcadeSettings
         "f2",
         "f3",
         "f12",
+        "",
+        "",
     ]);
+
+    /// <summary>The Banapass access codes the card buttons insert (20 digits; null: none).</summary>
+    public string? Card1P { get; init; }
+    public string? Card2P { get; init; }
 
     /// <summary>A controller's bound pads also drive the menus (a drum); false: it is a gamepad there.</summary>
     public bool PadMenusAsDrum { get; init; }
