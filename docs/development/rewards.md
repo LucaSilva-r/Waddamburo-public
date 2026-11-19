@@ -12,7 +12,7 @@ Point or present calls.
 
 | System | Earned by | Spent / given | Data we have | Movie |
 |---|---|---|---|---|
-| **Don Medals** (どんメダル) | fixed per credit: 100, plus +50 for the first credit of the day, +100 for the first of the week, +300 for the first of the month. Medals carry over between seasons | **reward shop**: seasonal goods (head, body, make, suit, acce, tone, song) | the 4 Green seasons (Spring/Summer/Fall/Winter 2019-20, 28 goods) in TaikOnline `storage/app/game-data/green/green_item_shop_data.json` | `reward_shop/reward_shop.lm` |
+| **Don Medals** (どんメダル) | fixed per credit: 100, plus +50 for the first credit of the day, +100 for the first of the week, +300 for the first of the month; every bonus on a season's first credit. Medals start again at zero each season (wiki; user decision 2026-11-19) | **reward shop**: seasonal goods (head, body, make, suit, acce, tone, song) | the 4 Green seasons (Spring/Summer/Fall/Winter 2019-20, 28 goods) in TaikOnline `storage/app/game-data/green/green_item_shop_data.json` | `reward_shop/reward_shop.lm` |
 | **Condition titles** | play conditions checked by the game at the end of a credit (≈430: clear all songs with an option, a genre or a tag; FC specific songs; first play in a month; …). Another ≈190 were given by Donder Hiroba (the website) | the title, **silently**: no screen. The game sends it in `playresult` (`get_title_no`) and it shows up in the title list | id = position in the game's list (106 = first play ever, 140 = clear all with Abekobe); `rewardtitlefiltering.xml` lists the 309 ids this cabinet supports. The conditions are in the game code, not in any data file. | none |
 | ~~Don Points~~ | `total_result` + `present.xml` (10 presents, 1000…30000) ship with Green, but the game never loads `present.xml` and the traced flow never showed `total_result`. Blue's presents screen; Green dropped it | | | |
 
@@ -118,7 +118,9 @@ everything from them.
    `WaddamburoUnlocks`, user decisions): "Only what I earned" locks only goods with a known way to earn them (today the
    reward shop's, every season; condition titles join in phase 6); owned = bought in Waddamburo or unlocked on a real
    Green cabinet (the card's Green row). The profile sends `earned_only` and `locked` (songs by musicid, costumes by
-   id); the toggle and the greyed, refused costumes are on the website's Don-chan page.
+   id); the toggle and the greyed, refused costumes are on the website's Don-chan page. From the wiki (lab
+   `research/wiki/`): Green's AI battle rewards lock too (5 songs, 3 costumes, by verified wins); Katsu Medal goods stay
+   free (no way to earn them in Green, user decision); title-unlocked items wait for phase 6.
 3. **Client gating.** Song Select hides stock songs locked for every joined player (a guest locks nothing); a purchase
    unlocks at once. The entry's costume lists only hold guest defaults and the website's presets (validated there).
    Titles and tones: nothing sold, nothing locked yet.

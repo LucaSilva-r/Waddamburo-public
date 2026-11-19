@@ -13,6 +13,9 @@ public sealed class DonMedalsTests
         Assert.Equal(new MedalCredit(150, true, false, false), DonMedals.ForCredit(thursday, thursday.AddDays(1)));
         Assert.Equal(new MedalCredit(250, true, true, false), DonMedals.ForCredit(thursday, new DateOnly(2026, 11, 23))); // Monday
         Assert.Equal(new MedalCredit(550, true, true, true), DonMedals.ForCredit(thursday, new DateOnly(2026, 12, 1)));
+        // The season's first credit pays every bonus, even in the same week and month (winter from 12-05).
+        Assert.Equal(new MedalCredit(550, true, true, true), DonMedals.ForCredit(new DateOnly(2026, 12, 4), new DateOnly(2026, 12, 6)));
+        Assert.Equal(new DateOnly(2026, 12, 5), DonMedals.SeasonStart(new DateOnly(2027, 3, 13)));
     }
 
     [Fact]
