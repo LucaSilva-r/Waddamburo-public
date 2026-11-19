@@ -65,6 +65,8 @@ internal sealed class SongSearch(GameShell shell, SongCatalogSnapshot catalog) :
         }
         else if (keys.IsDown(SdlKeyboardKey.Up) || keys.IsDown(SdlKeyboardKey.Down))
             recall(keys.IsDown(SdlKeyboardKey.Up) ? -1 : 1);
+        else if (keys.IsDown(SdlKeyboardKey.Enter) && onClear)
+            clearHistory();
         else if (keys.IsDown(SdlKeyboardKey.Enter))
         {
             _openWhenDone = true;
@@ -93,14 +95,18 @@ internal sealed class SongSearch(GameShell shell, SongCatalogSnapshot catalog) :
         shell.Application.StartTextInput();
     }
 
-    // The field, the count, then the last searches; the field is row 0 of the selectable ones, the searches 1 on.
+    // The field, the count, then the last searches; the field is row 0 of the selectable ones, the searches 1 on, then
+    // (with any) Clear history (#44).
     private OverlayRow[] rows() =>
     [
         new(OverlayMenu.upper(Strings.T("search.field")), 400, field, 560, Enter: static () => { }),
         new(OverlayMenu.upper(Strings.T("search.results")), 400, count, 560, Cyan: true),
         new(OverlayMenu.upper(Strings.T(_history.Count == 0 ? "search.no_recent" : "search.recent")), 400, Gap: true, Cyan: true),
         .. _history.Select(entry => new OverlayRow(shorten(entry), 430, Enter: static () => { })),
+        .. _history.Count == 0 ? (OverlayRow[])[] : [new(OverlayMenu.upper(Strings.T("search.clear_history")), 400, Gap: true, Enter: static () => { })],
     ];
+
+    private bool onClear => _history.Count > 0 && _menu.Selection == _history.Count + 1;
 
     // The text with its cursor, which blinks (and shows at once after a key).
     private string field() => _field.Shown(typing: true);
@@ -125,12 +131,12 @@ internal sealed class SongSearch(GameShell shell, SongCatalogSnapshot catalog) :
     // ↑/↓: through the field and the last searches; a search reached fills the field (Enter opens it).
     private void recall(int step)
     {
-        var selection = Math.Clamp(_menu.Selection + step, 0, _history.Count);
+        var selection = Math.Clamp(_menu.Selection + step, 0, _history.Count + (_history.Count > 0 ? 1 : 0));
         if (selection == _menu.Selection)
             return;
         sound(don: false);
         _menu.Selection = selection;
-        if (selection > 0)
+        if (selection > 0 && selection <= _history.Count)
         {
             _field.Set(_history[selection - 1]);
             search(_field.Text);
@@ -159,6 +165,22 @@ internal sealed class SongSearch(GameShell shell, SongCatalogSnapshot catalog) :
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             Console.Error.WriteLine($"Warning SEARCH_HISTORY: not saved ({exception.Message}).");
+        }
+    }
+
+    private void clearHistory()
+    {
+        sound(don: true);
+        _history = [];
+        _menu.Selection = 0;
+        try
+        {
+            if (historyPath is { } path)
+                File.Delete(path);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            Console.Error.WriteLine($"Warning SEARCH_HISTORY: not cleared ({exception.Message}).");
         }
     }
 

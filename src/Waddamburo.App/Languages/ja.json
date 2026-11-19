@@ -628,6 +628,7 @@
   "search.searching": "検索中…",
   "search.count": "{0}",
   "search.recent": "最近の検索",
+  "search.clear_history": "履歴を消去",
   "search.no_recent": "最近の検索はありません",
   "search.legend.keys": "入力で検索 · ←→ カーソル · ↑↓ 最近の検索 · ENTER 決定 · TAB/ESC 閉じる",
   "search.legend.filters": "stars>=8  oni=9  ura>0  bpm>180  length<2:30  artist=  mapper=  title=  source=osu,tja,nijiiro,stock",
