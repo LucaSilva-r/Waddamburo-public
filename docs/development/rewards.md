@@ -114,9 +114,14 @@ everything from them.
    when the last play is outside the shop season's [start, end), and TaikOnline sent Green's 2019-20 dates;
    the active season is now dated into the current cycle (`TAIKO_GREEN_ACTIVE_SHOP_SEASON_ID=0` follows the
    calendar). Rule: bonus = last play before the start of today/week/month, or outside the season.
-2. **Server ledger.** Credit grouping, medals, calendar season, purchase API, `earned_only`, and the earned
-   list in the profile payload. Add PHPUnit tests.
-3. **Client gating.** Earned-only filtering in the pickers and the song list.
+2. **Server ledger.** Medals, calendar season and the purchase API done. Unlock mode done 2026-11-19 (TaikOnline
+   `WaddamburoUnlocks`, user decisions): "Only what I earned" locks only goods with a known way to earn them (today the
+   reward shop's, every season; condition titles join in phase 6); owned = bought in Waddamburo or unlocked on a real
+   Green cabinet (the card's Green row). The profile sends `earned_only` and `locked` (songs by musicid, costumes by
+   id); the toggle and the greyed, refused costumes are on the website's Don-chan page.
+3. **Client gating.** Song Select hides stock songs locked for every joined player (a guest locks nothing); a purchase
+   unlocks at once. The entry's costume lists only hold guest defaults and the website's presets (validated there).
+   Titles and tones: nothing sold, nothing locked yet.
 4. **Arcade screens.** `reward_shop` host binding, both modes. Medal mode done. Shopping mode done 2026-11-19: a card
    read fetches `GET api/wdb/shop` (songs carry their `music_id`), the mode select offers the shop once it is in,
    `SetNextScene(3)` opens it, purchases go to `POST shop/purchase`, exit → Song Select. `--start-scene=reward-shop`

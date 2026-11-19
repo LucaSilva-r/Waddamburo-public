@@ -185,7 +185,7 @@ public sealed record SongCategoryDescriptor
 
     public int SortOrder { get; }
 
-    public ImmutableArray<SongKey> Songs { get; }
+    public ImmutableArray<SongKey> Songs { get; init; }
 
     /// <summary>The genre the folder declares (a TJA box.def #GENRE), when it does.</summary>
     public string? Genre { get; init; }

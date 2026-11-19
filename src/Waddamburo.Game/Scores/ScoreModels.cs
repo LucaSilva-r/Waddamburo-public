@@ -40,6 +40,27 @@ public sealed record ScoreProfile(long Baid, string Name)
 
     /// <summary>The day (yyyy-MM-dd) of the last credit that paid medals; null for none yet.</summary>
     public string? LastMedalDay { get; init; }
+
+    /// <summary>"Only what I earned": what stays locked for this player (null or empty: everything is unlocked).</summary>
+    public ProfileLocks? Locked { get; init; }
+}
+
+/// <summary>
+/// What the server keeps locked in "Only what I earned" (TaikOnline's WaddamburoUnlocks): the reward shop's goods not bought
+/// yet. Stock songs by musicid, costume parts by Green's ids. Custom libraries never lock.
+/// </summary>
+public sealed record ProfileLocks(List<string> Songs, List<int> Kigurumi, List<int> Head, List<int> Body, List<int> Puchi)
+{
+    /// <summary>Goods just bought (reward shop type: 1 song by musicid, 3 kigurumi, 4 body, 5 head, 7 puchi) no longer lock.</summary>
+    public ProfileLocks Unlock(int type, int id, string? musicId) => type switch
+    {
+        1 => this with { Songs = [.. Songs.Where(song => song != musicId)] },
+        3 => this with { Kigurumi = [.. Kigurumi.Where(item => item != id)] },
+        4 => this with { Body = [.. Body.Where(item => item != id)] },
+        5 => this with { Head = [.. Head.Where(item => item != id)] },
+        7 => this with { Puchi = [.. Puchi.Where(item => item != id)] },
+        _ => this,
+    };
 }
 
 /// <summary>One line of a chart's server ranking: a player's best.</summary>

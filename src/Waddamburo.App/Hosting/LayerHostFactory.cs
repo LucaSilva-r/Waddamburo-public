@@ -294,10 +294,20 @@ internal sealed class LayerHostFactory(
     // The song select movie of the mode (FlowScenes.SongSelectScene), whose patched genres the host fills.
     private string songSelectMovie => Waddamburo.Game.Patching.SongSelectGenrePatch.MovieNames[credit.AiBattle ? 2 : credit.Waiwai ? 1 : 0];
 
+    // "Only what I earned": the stock songs locked for every joined player (a guest, or a player who unlocks everything, has
+    // none locked, so a song shows when anyone at the drums may play it).
+    private HashSet<SongKey> lockedSongs()
+    {
+        int[] sides = credit.TwoPlayers ? [0, 1] : [credit.PlayerSide];
+        var locked = sides.Select(side => TaikoGuest.Profiles[side]?.Locked?.Songs ?? []).Aggregate(
+            static (shared, songs) => [.. shared.Intersect(songs)]);
+        return [.. locked.Select(static musicId => new SongKey(SongSourceKind.Stock, musicId))];
+    }
+
     private LumenLayerHost songSelectHost()
     {
         var linked = credit.Waiwai ? Array.Empty<SongSourceKind>() : memory.Libraries();
-        var view = new SongSelectCatalogView(catalog, credit.Waiwai ? SongSelectMode.Waiwai : SongSelectMode.Normal,
+        var view = new SongSelectCatalogView(catalog.Without(lockedSongs()), credit.Waiwai ? SongSelectMode.Waiwai : SongSelectMode.Normal,
             modeSwitch: credit.TwoPlayers, library: linked.Length > 0 && memory.OnlineSong is null ? memory.Library : null,
             // AI battle too: its song select takes the custom folders (SongSelectGenrePatch), the other libraries' among them.
             links: linked.Where(library => library != memory.Library), favourites: Favourites?.Songs, tutorial: !(arcade.Home && arcade.TutorialSeen) && !(credit.AiBattle ? credit.AiTutorialSeen : credit.Waiwai ? credit.WaiwaiTutorialSeen : credit.TutorialSeen),
@@ -534,7 +544,11 @@ internal sealed class LayerHostFactory(
                     return null;
                 try
                 {
-                    return await shop.Purchase(no).ConfigureAwait(false);
+                    var answer = await shop.Purchase(no).ConfigureAwait(false);
+                    if (answer.Result == "ok" && state.Goods.FirstOrDefault(goods => goods.No == no) is { } bought
+                        && TaikoGuest.Profiles[side] is { Locked: { } locks } profile)
+                        TaikoGuest.Profiles[side] = profile with { Locked = locks.Unlock(bought.Type, bought.Id, bought.MusicId) };
+                    return answer;
                 }
                 catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
                 {
