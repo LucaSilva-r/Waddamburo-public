@@ -625,6 +625,13 @@ public sealed class LumenPlayer : IAvm1Host
         return lines;
     }
 
+    /// <summary>Keeps the whole movie from being drawn (it still runs), e.g. a scene's layer the game has finished with.</summary>
+    public bool Hidden
+    {
+        get => _root.HiddenByHost;
+        set => _root.HiddenByHost = value;
+    }
+
     /// <summary>Keeps a clip from being drawn whatever its script does with _visible, until asked otherwise.</summary>
     public bool SetInstanceHidden(string instancePath, bool hidden)
     {

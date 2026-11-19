@@ -15,7 +15,7 @@ internal sealed class GameSounds
         WaiwaiResults = new WaiwaiResultSounds(Bank);
         Retry = new RetrySounds(Bank, StopAll);
         GameOver = new GameOverSounds(Bank);
-        RewardShop = new RewardShopSounds(Bank);
+        RewardShop = new RewardShopSounds(Bank, GameOver);
     }
 
     public SoundBank Bank { get; }

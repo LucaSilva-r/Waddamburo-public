@@ -3,8 +3,10 @@ using Waddamburo.Game.Lumen;
 namespace Waddamburo.App.Audio;
 
 /// <summary>reward_shop's cues (traced research/traces/session-rewards-1.md: medal mode and shopping).</summary>
-internal sealed class RewardShopSounds(SoundBank bank) : IRewardShopSoundController
+internal sealed class RewardShopSounds(SoundBank bank, GameOverSounds gameOver) : IRewardShopSoundController
 {
+    public void StartMedalMusic() => gameOver.StartMedalMusic();
+
     public void RequestSound(RewardShopSoundRequest request)
     {
         switch (request.Kind, request.Group, request.Cue)

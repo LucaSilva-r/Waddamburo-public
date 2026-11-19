@@ -10,6 +10,9 @@ public readonly record struct RewardShopSoundRequest(RewardShopSoundRequestKind 
 public interface IRewardShopSoundController
 {
     void RequestSound(RewardShopSoundRequest request);
+
+    /// <summary>The medal screen's music (traced JINGLE_SOGO2, looping until the game over's replaces it).</summary>
+    void StartMedalMusic();
 }
 
 /// <summary>A carded player at the credit's end: their drum, medals before this credit and what it paid.</summary>
@@ -26,6 +29,7 @@ public sealed class RewardShopHostBinding(int season, string telop, RewardShopPl
     // Traced: IsReady_Gameover turns 1 about 2 s after NotifyEndSequence (over_msg's TweenVisible in and out).
     private const int GameOverDelayTicks = 120;
     private int _ticksSinceEnd = -1;
+    private LumenPlayer? _movie;
 
     /// <summary>When shop_gameover may start.</summary>
     public bool Ended => _ticksSinceEnd >= GameOverDelayTicks;
@@ -52,6 +56,8 @@ public sealed class RewardShopHostBinding(int season, string telop, RewardShopPl
     public void Attach(LumenPlayer lumenPlayer)
     {
         ArgumentNullException.ThrowIfNull(lumenPlayer);
+        _movie = lumenPlayer;
+        sounds?.StartMedalMusic();
         static LumenHostValue number(double value) => LumenHostValue.FromNumber(value);
         LumenPlayerCalls.Call(lumenPlayer, "Settings", number(0), number(season));
         LumenPlayerCalls.Call(lumenPlayer, "Telop", LumenHostValue.FromString(telop));
@@ -70,8 +76,11 @@ public sealed class RewardShopHostBinding(int season, string telop, RewardShopPl
 
     public void Tick()
     {
-        if (_ticksSinceEnd >= 0 && _ticksSinceEnd < GameOverDelayTicks)
-            _ticksSinceEnd++;
+        if (_ticksSinceEnd < 0 || _ticksSinceEnd >= GameOverDelayTicks)
+            return;
+        // Its last frame stays up otherwise, over the game over under it.
+        if (++_ticksSinceEnd == GameOverDelayTicks && _movie is not null)
+            _movie.Hidden = true;
     }
 
     private LumenHostValue requestSound(RewardShopSoundRequestKind kind, LumenHostCall call)
