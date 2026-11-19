@@ -282,7 +282,61 @@ public sealed partial class TjaCatalogProvider : ISongCatalogProvider, ICatalogA
             locator,
             _options.MaximumMeasures,
             _options.MaximumNotes);
+        if (playable.Lyrics.IsEmpty && (otherCourseLyrics(bytes, chart, locator.Course)
+            ?? await lyricsAsync(bytes, path, playable.AuthoredOffset, cancellationToken).ConfigureAwait(false)) is { IsEmpty: false } lyrics)
+            playable = playable with { Lyrics = lyrics };
         return modchart is null ? playable : ChartModFile.Apply(playable, modchart);
+    }
+
+    // The song's lyrics are often written in one course only (ANTI-HERO: Ura): another course's #LYRIC lines, the same
+    // in chart time (every course starts at the file's OFFSET).
+    private static System.Collections.Immutable.ImmutableArray<ChartLyric>? otherCourseLyrics(byte[] bytes, ChartKey key, TaikoCourse course)
+    {
+        if (bytes.AsSpan().IndexOf("#LYRIC"u8) < 0)
+            return null;
+        foreach (var other in Enum.GetValues<TaikoCourse>().Where(other => other != course))
+        {
+            try
+            {
+                if (ReadChart(bytes, key, other).Lyrics is { IsEmpty: false } lyrics)
+                    return lyrics;
+            }
+            catch (Exception exception) when (exception is InvalidDataException or NotSupportedException or ArgumentException
+                or OverflowException or KeyNotFoundException)
+            {
+                // that course isn't in the file, or doesn't read: the next one
+            }
+        }
+        return null;
+    }
+
+    // The LYRICS: (or LYRICFILE:) header's .lrc file beside the chart, in chart time (its times are the audio's). A
+    // missing or broken one: no lyrics.
+    private async Task<System.Collections.Immutable.ImmutableArray<ChartLyric>?> lyricsAsync(byte[] chartBytes, string chartPath,
+        TimeSpan offset, CancellationToken cancellationToken)
+    {
+        var header = TjaMetadataReader.Decode(chartBytes).Split('\n')
+            .Select(static line => line.Trim())
+            .FirstOrDefault(static line => line.StartsWith("LYRICS:", StringComparison.OrdinalIgnoreCase)
+                || line.StartsWith("LYRICFILE:", StringComparison.OrdinalIgnoreCase));
+        // ponytail: the first .lrc named; several files (a comma list) or .vtt when someone has one.
+        var name = header?[(header.IndexOf(':') + 1)..].Split(',')[0].Trim();
+        if (string.IsNullOrEmpty(name) || !name.EndsWith(".lrc", StringComparison.OrdinalIgnoreCase))
+            return null;
+        try
+        {
+            var path = resolveContainedPath(Path.GetRelativePath(_root, Path.Combine(Path.GetDirectoryName(chartPath)!, name)));
+            var file = new FileInfo(path);
+            if (!file.Exists || file.Length > 1 << 20)
+                return null;
+            rejectReparsePoints(path);
+            return LrcLyrics.Read(TjaMetadataReader.Decode(await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false)), offset);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            Console.Error.WriteLine($"Lyrics {name} not used: {exception.Message}");
+            return null;
+        }
     }
 
     // The chart's own Song.wddmod beside Song.tja (ChartModFile), read fresh each load so edits show on the next play.

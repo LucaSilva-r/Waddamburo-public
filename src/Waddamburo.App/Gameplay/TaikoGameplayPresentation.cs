@@ -114,6 +114,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         var layers = scene.Layers.Select((layer, index) => (layer.Definition, Layer: scene.Player.Layers[index],
             layer.Content)).ToArray();
         _stage = null;
+        // ponytail: the first chart's (a dan course's first song); per-song lyrics in a dan when someone asks.
+        (_lyrics, _drawnAt) = (charts.Count == 0 ? [] : charts[0].Lyrics, TimeSpan.MinValue);
         if (charts.Count == 1)
         {
             _shared = [];
@@ -292,8 +294,24 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
     /// <summary>Each lane's latest judged hit, early or late, for the timing glow.</summary>
     public IEnumerable<TimingMark> TimingMarks => _lanes.Select(static lane => lane.LastTiming).OfType<TimingMark>();
 
+    private System.Collections.Immutable.ImmutableArray<ChartLyric> _lyrics = [];
+    private TimeSpan _drawnAt = TimeSpan.MinValue;
+
+    /// <summary>The lyrics line at the chart time last drawn (its lines), or null.</summary>
+    public string? Lyric
+    {
+        get
+        {
+            var at = -1;
+            for (var index = 0; index < _lyrics.Length && _lyrics[index].Time <= _drawnAt; index++)
+                at = index; // ponytail: a scan per frame; a few hundred lines at most
+            return at < 0 || _lyrics[at].Text.Length == 0 ? null : _lyrics[at].Text;
+        }
+    }
+
     public LumenRenderSnapshot CreateSnapshot(TimeSpan time, float interpolation)
     {
+        _drawnAt = time;
         if (_lanes.Length == 0)
             throw new InvalidOperationException("Gameplay is not prepared.");
         // Both lanes' backs (backdrops, lanes, notes), then their fronts, then the shared overlays:

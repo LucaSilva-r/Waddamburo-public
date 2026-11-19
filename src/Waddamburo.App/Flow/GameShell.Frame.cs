@@ -129,6 +129,8 @@ internal sealed partial class GameShell
             if (Gameplay.Camera is { } camera)
                 quads.AddRange(CameraBorder(camera.Matrix, new RenderColor(camera.Red, camera.Green, camera.Blue, 1)));
             quads.AddRange(_timingMarks.Quads(Gameplay.TimingMarks, Arcade.TimingIndicator));
+            if (Arcade.Lyrics && Gameplay.Lyric is { } lyric)
+                quads.AddRange(LyricsOverlay.Quads(Painter, lyric, Arcade));
         }
         if (!Editor.IsOpen && _gameplay.Reviewing && _gameplay.Review is { } review)
             quads.AddRange(_reviewBar.Quads(review, _gameplay.Training, _gameplay.AutoplayReview && _gameplay.Training is null));
@@ -220,6 +222,9 @@ internal sealed partial class GameShell
             top.Add(Painter.Text(Strings.T("song_select.no_music"), 640, bannerY + 13, 508, 22));
         }
         top.AddRange(_performance.Quads());
+        // Settings > Game Options > Lyrics: a sample line over the menu, as the settings stand.
+        if (_service?.LyricsPreview is { } lyricsLook)
+            top.AddRange(LyricsOverlay.Quads(Painter, Strings.T("service.lyrics.sample"), lyricsLook));
         // Touch screens: the menu's buttons while an overlay that takes the controls is open (settings, pause, search,
         // scores, an online room), else the drum and, in Song Select, the search button. The back button
         // always: touch_drum (auto: until a controller or keys play; off) governs the drum alone, so a player without a

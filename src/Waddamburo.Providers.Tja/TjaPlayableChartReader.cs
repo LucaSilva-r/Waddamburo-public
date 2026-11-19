@@ -175,6 +175,7 @@ internal static partial class TjaPlayableChartReader
                     ScoreDiff = scoreDiff,
                     Branching = checks.Count == 0 ? null : branching(checks, notes, longs),
                     Effects = drawn.Build(byBeat: scrollPoints.Any(static point => point.ByBeat)),
+                    Lyrics = [.. drawn.Lyrics.OrderBy(static lyric => lyric.Time)],
                     RouteControls = routeBlocks.Count == 0 ? [] : [.. ((string[])["#N", "#E", "#M"]).Select(name => new ChartRouteControls(
                         routeStream(timingPoints, routeBlocks, name, static own => own.Timing, static point => point.Time, static (point, at) => new ChartTimingPoint(at, point.BeatsPerMinute, point.BeatsPerMeasure, point.BeatUnit)),
                         routeStream(scrollPoints, routeBlocks, name, static own => own.Scroll, static point => point.Time, static (point, at) => point.At(at)))
@@ -700,6 +701,9 @@ internal static partial class TjaPlayableChartReader
             case "#CAMRESET" when mainRoute:
                 drawn.CameraReset(cursorSeconds);
                 break;
+            case "#LYRIC" when mainRoute:
+                drawn.Lyric(cursorSeconds, argument);
+                break;
             case "#SENOTECHANGE":
                 drawn.NoteText(int.TryParse(argument, NumberStyles.Integer, CultureInfo.InvariantCulture, out var text) ? text : 0);
                 break;
@@ -708,7 +712,7 @@ internal static partial class TjaPlayableChartReader
             case "#NEXTSONG":
                 throw new NotSupportedException("TJA #NEXTSONG (a dan course in one file) is not supported.");
             default:
-                // #SECTION, #LYRIC and anything else (OpenTaiko's object commands, #SPLITLANE, #BGAON,
+                // #SECTION and anything else (OpenTaiko's object commands, #SPLITLANE, #BGAON,
                 // typos): the chart plays as written without the effect.
                 // ponytail: silently; a diagnostics list if users ask why an effect is missing.
                 break;

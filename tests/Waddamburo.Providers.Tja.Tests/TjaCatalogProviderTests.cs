@@ -34,6 +34,32 @@ public sealed class TjaCatalogProviderTests
     }
 
     [Fact]
+    public async Task LyricsComeFromLyricCommandsOrTheLrcFileInChartTime()
+    {
+        using var library = new TemporaryLibrary();
+        // 120 BPM: a measure is 2 s. #LYRIC at the second measure; "\n" breaks the line; an empty one clears.
+        library.WriteText("A/song.tja", "TITLE:A\nBPM:120\nCOURSE:Oni\n#START\n1000,\n#LYRIC first\\nsecond\n1000,\n#LYRIC\n1000,\n#END\n");
+        // OFFSET -1: chart time = audio time - 1 s; [offset:500] moves the lines half a second sooner.
+        library.WriteText("B/song.tja", "TITLE:B\nBPM:120\nOFFSET:-1\nLYRICS:song.lrc\nCOURSE:Oni\n#START\n1000,\n#END\n");
+        library.WriteText("B/song.lrc", "[ar:someone]\n[offset:500]\n[00:03.50][00:05.00]chorus\nno time here\n[00:04.00]verse\n");
+        // C: lyrics in the Ura course only; the Oni chart shows them too.
+        library.WriteText("C/song.tja", "TITLE:C\nBPM:120\nCOURSE:Oni\n#START\n1000,\n#END\nCOURSE:Edit\n#START\n#LYRIC only here\n1000,\n#END\n");
+        var provider = new TjaCatalogProvider(library.Path);
+        var songs = (await provider.ScanAsync(null, CancellationToken.None)).Songs.OrderBy(static song => song.Title.Primary).ToArray();
+        async Task<ChartLyric[]> lyrics(int song)
+        {
+            var chart = Assert.Single(songs[song].Charts);
+            return [.. (await provider.LoadChartAsync(chart.Key, chart.ChartAsset)).Lyrics];
+        }
+
+        Assert.Equal([new(TimeSpan.FromSeconds(2), "first\nsecond"), new(TimeSpan.FromSeconds(4), "")], await lyrics(0));
+        Assert.Equal([new(TimeSpan.FromSeconds(2), "chorus"), new(TimeSpan.FromSeconds(2.5), "verse"), new(TimeSpan.FromSeconds(3.5), "chorus")],
+            await lyrics(1));
+        foreach (var chart in songs[2].Charts)
+            Assert.Equal([new(TimeSpan.Zero, "only here")], [.. (await provider.LoadChartAsync(chart.Key, chart.ChartAsset)).Lyrics]);
+    }
+
+    [Fact]
     public async Task FolderPrivacyIsCheckedFreshForEveryChartWithoutChangingChartContent()
     {
         using var library = new TemporaryLibrary();

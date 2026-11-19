@@ -148,6 +148,16 @@ public sealed partial record ArcadeSettings
         flag("upload_banner", static s => s.UploadBanner, static (s, v) => s with { UploadBanner = v }),
         flag("discord_presence", static s => s.DiscordPresence, static (s, v) => s with { DiscordPresence = v }),
         new("gameplay_skin", static (s, value, _) => s with { GameplaySkin = value.Length > 0 ? value : "auto" }, static s => s.GameplaySkin),
+        flag("lyrics", static s => s.Lyrics, static (s, v) => s with { Lyrics = v }),
+        number("lyrics_x", static s => s.LyricsX, static (s, v) => s with { LyricsX = v }, -640, 640),
+        number("lyrics_y", static s => s.LyricsY, static (s, v) => s with { LyricsY = v }, -700, 0),
+        number("lyrics_scale", static s => s.LyricsScale, static (s, v) => s with { LyricsScale = v }, 50, 200),
+        new("lyrics_outline", static (s, value, _) => s with
+            {
+                LyricsOutline = int.TryParse(value.TrimStart('#'), System.Globalization.NumberStyles.HexNumber,
+                    System.Globalization.CultureInfo.InvariantCulture, out var rgb) ? rgb & 0xFFFFFF : 0x25248E,
+            }, static s => s.LyricsOutline.ToString("X6", System.Globalization.CultureInfo.InvariantCulture)),
+        number("lyrics_background", static s => s.LyricsBackground, static (s, v) => s with { LyricsBackground = v }, 0, 100),
         choice("timing_indicator", static s => s.TimingIndicator, static (s, v) => s with { TimingIndicator = v },
             [("off", TimingIndicator.Off), ("good_bad", TimingIndicator.GoodBad), ("always", TimingIndicator.Always)]),
         choice("pad_menus", static s => s.PadMenusAsDrum, static (s, v) => s with { PadMenusAsDrum = v },

@@ -248,6 +248,17 @@ public sealed partial record ArcadeSettings
         # blue when early, red when late. good_bad = after a Good or Bad only; always = after every hit
         # (Greats too); off.
         timing_indicator = off
+        # lyrics (also in the Settings menu): a song's lyrics under the lane while it plays (TJA #LYRIC, or the
+        # .lrc file its LYRICS: header names).
+        lyrics = false
+        # Its look (Settings > Game Options > Lyrics): lyrics_x / lyrics_y move it from the bottom centre (stage
+        # pixels, 1280x720), lyrics_scale in percent, lyrics_outline the outline's RGB (hex), lyrics_background the
+        # band behind it in percent opacity (0 = none).
+        lyrics_x = 0
+        lyrics_y = 0
+        lyrics_scale = 100
+        lyrics_outline = 25248E
+        lyrics_background = 0
 
         """,
         """
@@ -497,6 +508,16 @@ public sealed partial record ArcadeSettings
     public bool OsuLibrariesAsked { get; init; }
 
     /// <summary>Which hits get the early/late glow under the judgement circle.</summary>
+    /// <summary>A song's lyrics (TJA #LYRIC or its .lrc) shown while it plays (#45).</summary>
+    public bool Lyrics { get; init; }
+
+    /// <summary>The lyrics' place from the bottom centre (stage pixels), size (percent), outline (0xRRGGBB) and backing band (percent opacity).</summary>
+    public int LyricsX { get; init; }
+    public int LyricsY { get; init; }
+    public int LyricsScale { get; init; } = 100;
+    public int LyricsOutline { get; init; } = 0x25248E;
+    public int LyricsBackground { get; init; }
+
     public TimingIndicator TimingIndicator { get; init; } = TimingIndicator.Off; // new players took the glow for a bug (#43)
 
     /// <summary>A list of strings compared by content, so the settings record still compares by value.</summary>

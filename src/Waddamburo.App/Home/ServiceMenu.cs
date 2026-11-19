@@ -20,7 +20,10 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
     private readonly OverlayMenu _menu = new(application, fontPath);
 
     // Section: one of the settings page's sections (its title in the page's section).
-    private enum Page { Main, Coin, Game, Sound, Io, Bookkeeping, Others, Section, Drums, Libraries, Network, Releases, WiiReleases, NijiiroInstalls }
+    private enum Page { Main, Coin, Game, Sound, Io, Bookkeeping, Others, Section, Drums, Libraries, Network, Releases, WiiReleases, NijiiroInstalls, Lyrics }
+
+    /// <summary>The settings to preview the lyrics with while the LYRICS page is open, else null.</summary>
+    public ArcadeSettings? LyricsPreview => _menu.IsOpen && _menu.Page?.Tag is Page.Lyrics ? _settings : null;
 
     /// <summary>The server check behind NETWORK OPTIONS (null: no server set).</summary>
     public Online.ServerHealth? Health { get; set; }
@@ -366,6 +369,25 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
                     Step: _ => set(s => s with { TimerFreeze = !s.TimerFreeze }), IsDefault: () => _settings.TimerFreeze == Defaults.TimerFreeze),
             ],
             .. shared(SongsSection),
+            new(S("service.lyrics"), 400, Enter: () => open(Page.Lyrics), Hint: S("service.lyrics.hint")),
+            new(S("service.exit"), 400, Gap: true, Enter: _menu.Pop),
+        ],
+        // A song's lyrics (#45): on/off and their look, previewed over the menu while this page is open.
+        Page.Lyrics =>
+        [
+            new(S("service.lyrics"), 400, () => $"{{{S(_settings.Lyrics ? "service.on" : "service.off")}}}", 800,
+                Step: _ => set(s => s with { Lyrics = !s.Lyrics }), IsDefault: () => _settings.Lyrics == Defaults.Lyrics,
+                Hint: S("service.lyrics.hint")),
+            lyricsNumber("service.lyrics_x", static s => s.LyricsX, static (s, v) => s with { LyricsX = v }, -640, 640, 10),
+            lyricsNumber("service.lyrics_y", static s => s.LyricsY, static (s, v) => s with { LyricsY = v }, -700, 0, 10),
+            lyricsNumber("service.lyrics_scale", static s => s.LyricsScale, static (s, v) => s with { LyricsScale = v }, 50, 200, 10, "%"),
+            lyricsNumber("service.lyrics_red", static s => s.LyricsOutline >> 16 & 0xFF,
+                static (s, v) => s with { LyricsOutline = s.LyricsOutline & 0x00FFFF | v << 16 }, 0, 255, 5),
+            lyricsNumber("service.lyrics_green", static s => s.LyricsOutline >> 8 & 0xFF,
+                static (s, v) => s with { LyricsOutline = s.LyricsOutline & 0xFF00FF | v << 8 }, 0, 255, 5),
+            lyricsNumber("service.lyrics_blue", static s => s.LyricsOutline & 0xFF,
+                static (s, v) => s with { LyricsOutline = s.LyricsOutline & 0xFFFF00 | v }, 0, 255, 5),
+            lyricsNumber("service.lyrics_background", static s => s.LyricsBackground, static (s, v) => s with { LyricsBackground = v }, 0, 100, 10, "%"),
             new(S("service.exit"), 400, Gap: true, Enter: _menu.Pop),
         ],
         Page.Sound =>
@@ -549,6 +571,13 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
         _ => S("service.link.unauthorized"),
     };
 
+    // A LYRICS number: the arrows step it within its range, green at its default.
+    private Row lyricsNumber(string key, Func<ArcadeSettings, int> get, Func<ArcadeSettings, int, ArcadeSettings> with,
+        int minimum, int maximum, int step, string unit = "") =>
+        new(S(key), 400, () => $"{{{get(_settings).ToString(CultureInfo.InvariantCulture)}{unit}}}", 800,
+            Step: direction => set(s => with(s, Math.Clamp(get(s) + Math.Sign(direction) * step, minimum, maximum))),
+            IsDefault: () => get(_settings) == get(Defaults), Hint: S(key + ".hint"));
+
     private RenderColor linkColour() => Health?.IconType switch { 0 => OverlayMenu.Green, 2 => OverlayMenu.Red, _ => OverlayMenu.Yellow };
 
     // A section of the home settings as service rows: shown ones only, stepped within their range; green at the
@@ -580,6 +609,7 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
         Page.Bookkeeping => S("service.bookkeeping"),
         Page.Others => S("service.others"),
         Page.Network => S("service.network_options"),
+        Page.Lyrics => S("service.lyrics"),
         Page.Drums => S("service.drum_controls"),
         Page.Libraries => S("service.song_libraries"),
         Page.Releases => S("service.arcade_releases"),

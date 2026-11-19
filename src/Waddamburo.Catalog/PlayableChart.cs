@@ -276,6 +276,9 @@ public readonly record struct ChartBarLine
 /// <summary>One song of a chart made of several (a dan course): its own rates apply from <paramref name="Start"/>.</summary>
 public sealed record ChartSegment(TimeSpan Start, TaikoCourse Course, PlayableChart Source);
 
+/// <summary>A lyrics line shown from <paramref name="Time"/> (chart time) until the next one; empty text clears it.</summary>
+public sealed record ChartLyric(TimeSpan Time, string Text);
+
 public sealed record PlayableChart
 {
     public PlayableChart(
@@ -349,6 +352,9 @@ public sealed record PlayableChart
     /// only, so not in <see cref="ChartHash"/>. <see cref="ChartEffects.None"/> for almost every chart.
     /// </summary>
     public ChartEffects Effects { get; init; } = ChartEffects.None;
+
+    /// <summary>The song's lyrics in chart time, in order (TJA #LYRIC, or its LYRICS .lrc file); none for most charts.</summary>
+    public ImmutableArray<ChartLyric> Lyrics { get; init; } = [];
 
     /// <summary>The tempo at <paramref name="time"/>: every note asks on every frame, so this does not walk the list.</summary>
     public double BeatsPerMinuteAt(TimeSpan time, ChartBranch? route = null)
@@ -461,6 +467,7 @@ public sealed record PlayableChart
             ScoreDiff = ScoreDiff,
             ShinuchiBase = ShinuchiBase,
             Effects = Effects,
+            Lyrics = Lyrics,
         };
 
     /// <summary>The same chart with these notes (drawing-only fields changed, e.g. their forced labels); checked as the constructor checks.</summary>

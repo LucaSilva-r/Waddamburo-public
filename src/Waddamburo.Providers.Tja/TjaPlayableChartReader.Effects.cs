@@ -70,6 +70,13 @@ internal static partial class TjaPlayableChartReader
         }
 
         /// <summary>#SENOTECHANGE: the label under the next don or ka (1 ドン 2 ド 3 コ 4 カッ 5 カ 6 ドン(大) 7 カッ(大); the roll ones unused).</summary>
+        public List<ChartLyric> Lyrics { get; } = [];
+
+        // OpenTaiko's #LYRIC: the line from here on; "\n" in it breaks the line.
+        public void Lyric(decimal at, string text) =>
+            Lyrics.Add(new ChartLyric(TimeSpan.FromTicks(decimal.ToInt64(decimal.Round(at * TimeSpan.TicksPerSecond))),
+                text.Replace("\\n", "\n", StringComparison.Ordinal).Trim()));
+
         public void NoteText(int index) => _noteText = index switch
         {
             1 => "don", 2 => "do", 3 => "ko", 4 => "katsu", 5 => "ka", 6 => "don_dai", 7 => "katsu_dai", _ => null,
