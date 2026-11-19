@@ -34,6 +34,12 @@ public sealed record ScoreProfile(long Baid, string Name)
 
     /// <summary>The token its plays upload with at home (a stored account's, or a friend's short-lived one).</summary>
     public string? Token { get; init; }
+
+    /// <summary>Don Medals to spend; null from a server without medals.</summary>
+    public int? Medals { get; init; }
+
+    /// <summary>The day (yyyy-MM-dd) of the last credit that paid medals; null for none yet.</summary>
+    public string? LastMedalDay { get; init; }
 }
 
 /// <summary>One line of a chart's server ranking: a player's best.</summary>

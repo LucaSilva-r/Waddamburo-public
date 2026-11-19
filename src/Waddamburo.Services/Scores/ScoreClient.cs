@@ -314,7 +314,7 @@ public sealed class ScoreClient(HttpClient http)
             if (batch.Count == 0)
                 continue;
             // The machine's own offset: the server pays daily/weekly/monthly bonuses by the player's calendar.
-            var songs = batch.Select(static song => new UploadMedalSong(song.Id, song.Baid, song.PlayedAt.ToLocalTime(), song.Kind)).ToList();
+            var songs = batch.Select(static song => new UploadMedalSong(song.Id, song.Baid, song.PlayedAt.ToLocalTime(), song.Kind, song.CreditId)).ToList();
             using var response = await http.PostAsJsonAsync("api/wdb/medals/songs", new MedalSongsRequest(songs), ScoreJson.Default.MedalSongsRequest,
                 cancellationToken).ConfigureAwait(false);
             if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
@@ -426,7 +426,7 @@ public sealed class ScoreClient(HttpClient http)
 
     internal sealed record DanPlaysResult(List<Guid> Accepted);
 
-    internal sealed record UploadMedalSong(Guid Id, long Baid, DateTimeOffset PlayedAt, string Kind);
+    internal sealed record UploadMedalSong(Guid Id, long Baid, DateTimeOffset PlayedAt, string Kind, Guid? CreditId);
 
     internal sealed record MedalSongsRequest(List<UploadMedalSong> Songs);
 

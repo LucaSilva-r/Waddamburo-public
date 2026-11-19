@@ -563,6 +563,7 @@ public sealed class ScoreSavingTests
                     ALTER TABLE plays DROP COLUMN upload_blocked;
                     ALTER TABLE plays DROP COLUMN ai_section_counts;
                     ALTER TABLE plays DROP COLUMN medal_sent_at; ALTER TABLE dan_plays DROP COLUMN medal_sent_at;
+                    ALTER TABLE plays DROP COLUMN credit_id;
                     DROP TABLE remote_ai_plays;
                     PRAGMA user_version = 8;
                     """;
@@ -746,8 +747,10 @@ public sealed class ScoreSavingTests
             var sha = ChartHash.Compute(played, TaikoCourse.Oni);
             var upload = ChartUpload.From(played, TaikoCourse.Oni, null);
             var failed = Guid.NewGuid();
+            var credit = Guid.NewGuid();
             store.Save(new PlayRecord(failed, 5, sha, played.Key, "normal",
-                new TaikoPlayResult(TaikoCourse.Oni, 10, 0, 0, 3, 0, 0, 10, false), DateTimeOffset.UtcNow, new TaikoReplay().Encode()), upload);
+                new TaikoPlayResult(TaikoCourse.Oni, 10, 0, 0, 3, 0, 0, 10, false), DateTimeOffset.UtcNow, new TaikoReplay().Encode())
+                { CreditId = credit }, upload);
             var course = new Waddamburo.Game.Dan.DanCourse(7, "Test", "course", [], []);
             var dan = Guid.NewGuid();
             store.SaveDan(new DanPlayRecord(dan, 5, new(course, [new(0, 3, 7, default)], 1, default, 0), ["a"], DateTimeOffset.UtcNow, [[1]]));
@@ -757,7 +760,7 @@ public sealed class ScoreSavingTests
             // A failed song never uploads as a play, but it counts for medals; so does the course.
             Assert.Empty(store.PendingPlays(5, 10));
             var pending = store.PendingMedalSongs(null, 10);
-            Assert.Equal([(failed, "song"), (dan, "dan")], pending.Select(static song => (song.Id, song.Kind)));
+            Assert.Equal([(failed, "song", (Guid?)credit), (dan, "dan", null)], pending.Select(static song => (song.Id, song.Kind, song.CreditId)));
             store.MarkMedalsSent(pending.Select(static song => song.Id));
             Assert.Empty(store.PendingMedalSongs(null, 10));
         }

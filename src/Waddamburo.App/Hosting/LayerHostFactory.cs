@@ -232,6 +232,7 @@ internal sealed class LayerHostFactory(
             "ai-tutorial-timer" => new LumenLayerHost(null, movie => loaded.ModeTutorial?.AttachTimer(movie)),
             "dani-select" => daniSelectHost(),
             "gameover" => gameOverHost(),
+            "reward-shop" => rewardShopHost(),
             "attract" => attractHost(),
             "boot" => new LumenLayerHost(null, bootCredits),
             _ => throw new KeyNotFoundException($"No Lumen host is configured for '{layer.HostId}'."),
@@ -466,8 +467,31 @@ internal sealed class LayerHostFactory(
 
     private LumenLayerHost gameOverHost()
     {
-        var binding = loaded.GameOver = new GameOverHostBinding(sounds?.GameOver, credit.PlayerSide, credit.TwoPlayers);
+        var binding = loaded.GameOver = new GameOverHostBinding(sounds?.GameOver, credit.PlayerSide, credit.TwoPlayers,
+            credit.RewardPlayer is null ? null : () => loaded.RewardShop?.Ended ?? false);
         return new LumenLayerHost(binding, binding.Attach);
+    }
+
+    private LumenLayerHost rewardShopHost()
+    {
+        var player = credit.RewardPlayer ?? throw new InvalidOperationException("reward_shop without a carded player.");
+        var (season, telop) = Waddamburo.Game.Scores.DonMedals.Season(DateOnly.FromDateTime(DateTime.Now));
+        var binding = loaded.RewardShop = new RewardShopHostBinding(season, telop, player, sounds?.RewardShop);
+        return new LumenLayerHost(binding, movie =>
+        {
+            // ponytail: slot names guessed from the movie's strings; checked on screen.
+            movie.SetNativeFill("season_BG", Presentation.SeasonArt.Key("BG", season));
+            movie.SetNativeFill("season_thema", Presentation.SeasonArt.Key("thema", season));
+            for (var side = 0; side < 2; side++)
+            {
+                movie.SetNativeFill($"season_fan_{side + 1}p", Presentation.SeasonArt.Key("daishi_1p2p", season, side));
+                movie.SetNativeFill($"medalbase{side + 1}p", Presentation.SeasonArt.Key("medal_1p2p", season, side));
+            }
+            // The players' Don-chan in their costumes (don1pM / don2pM), as at the entry.
+            if (don is not null)
+                DonLumenBinding.Attach(movie, don);
+            binding.Attach(movie);
+        });
     }
 
     private LumenLayerHost attractHost()

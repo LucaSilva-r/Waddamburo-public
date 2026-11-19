@@ -158,6 +158,9 @@ public sealed record PlayRecord(
     /// <summary>Uploads were disabled for this play by a setting or folder marker; it must never be uploaded later.</summary>
     public bool UploadBlocked { get; init; }
 
+    /// <summary>The arcade credit it was played in (Don Medals are paid per credit); null at home.</summary>
+    public Guid? CreditId { get; init; }
+
     public int ScoringVersion { get; init; } = CurrentScoringVersion;
 
     public static string CurrentEngineVersion { get; } =
@@ -187,10 +190,11 @@ public sealed record UploadDanPlay(Guid Id, long Baid, string CourseHash, int Re
     int InputOffsetMs, DateTimeOffset PlayedAt, List<UploadDanSong> Songs);
 
 /// <summary>A finished song or dan course for Don Medals (Kind "song" or "dan").</summary>
-public sealed record MedalSong(Guid Id, long Baid, string Kind, string EngineVersion, DateTimeOffset PlayedAt);
-
-/// <summary>A credit's Don Medals as Green pays them: 100, plus 50/100/300 for the day's, week's and month's first credit.</summary>
-public sealed record MedalCredit(int Medals, bool Daily, bool Weekly, bool Monthly);
+public sealed record MedalSong(Guid Id, long Baid, string Kind, string EngineVersion, DateTimeOffset PlayedAt)
+{
+    /// <summary>The arcade credit (paid once); null at home (every three songs) and for a course (its own credit).</summary>
+    public Guid? CreditId { get; init; }
+}
 
 /// <summary>One song of an uploaded course play.</summary>
 public sealed record UploadDanSong(string Sha256, string Replay);
@@ -381,6 +385,10 @@ public sealed class ScoreStore : IDisposable
         ALTER TABLE dan_plays ADD COLUMN medal_sent_at TEXT;
         UPDATE plays SET medal_sent_at = 'before medals';
         UPDATE dan_plays SET medal_sent_at = 'before medals';
+        """,
+        // The arcade credit a song was played in: TaikOnline pays a credit's medals once (home: every three songs).
+        """
+        ALTER TABLE plays ADD COLUMN credit_id TEXT;
         """,
     ];
 
@@ -695,12 +703,13 @@ public sealed class ScoreStore : IDisposable
             INSERT INTO plays (id, baid, chart_sha256, chart_key, course, mode, score, great, good, miss,
                 max_combo, rolls, gauge, cleared, scoring_version, engine_version, played_at, replay,
                 audio_offset_ms, input_offset_ms, options, seed, ai_won, ai_sections, ai_support, ai_points,
-                hit_median, hit_variance, ai_session_id, ai_ranked, ai_base_sha256, ai_prior_median, ai_prior_variance, upload_blocked, ai_section_counts)
+                hit_median, hit_variance, ai_session_id, ai_ranked, ai_base_sha256, ai_prior_median, ai_prior_variance, upload_blocked, ai_section_counts, credit_id)
             VALUES ($id, $baid, $sha, $key, $course, $mode, $score, $great, $good, $miss,
                 $combo, $rolls, $gauge, $cleared, $version, $engine, $at, $replay, $audio_offset, $input_offset,
-                $options, $seed, $ai_won, $ai_sections, $ai_support, $ai_points, $hit_median, $hit_variance, $ai_session_id, $ai_ranked, $ai_base, $ai_prior_median, $ai_prior_variance, $upload_blocked, $ai_section_counts)
+                $options, $seed, $ai_won, $ai_sections, $ai_support, $ai_points, $hit_median, $hit_variance, $ai_session_id, $ai_ranked, $ai_base, $ai_prior_median, $ai_prior_variance, $upload_blocked, $ai_section_counts, $credit_id)
             """;
         command.Parameters.AddWithValue("$ai_section_counts", (object?)play.Battle?.SectionCounts ?? DBNull.Value);
+        command.Parameters.AddWithValue("$credit_id", (object?)play.CreditId?.ToString() ?? DBNull.Value);
         command.Parameters.AddWithValue("$id", play.Id.ToString());
         command.Parameters.AddWithValue("$upload_blocked", play.UploadBlocked);
         command.Parameters.AddWithValue("$baid", play.Baid);
@@ -1111,10 +1120,10 @@ public sealed class ScoreStore : IDisposable
         {
             using var command = _connection.CreateCommand();
             command.CommandText = """
-                SELECT id, baid, 'song', engine_version, played_at FROM plays
+                SELECT id, baid, 'song', engine_version, played_at, credit_id FROM plays
                     WHERE ($baid IS NULL OR baid = $baid) AND baid <> 0 AND medal_sent_at IS NULL
                 UNION ALL
-                SELECT id, baid, 'dan', engine_version, played_at FROM dan_plays
+                SELECT id, baid, 'dan', engine_version, played_at, NULL FROM dan_plays
                     WHERE ($baid IS NULL OR baid = $baid) AND baid <> 0 AND medal_sent_at IS NULL
                 ORDER BY 5 LIMIT $limit
                 """;
@@ -1124,7 +1133,8 @@ public sealed class ScoreStore : IDisposable
             var songs = new List<MedalSong>();
             while (reader.Read())
                 songs.Add(new MedalSong(Guid.Parse(reader.GetString(0)), reader.GetInt64(1), reader.GetString(2), reader.GetString(3),
-                    DateTimeOffset.Parse(reader.GetString(4), CultureInfo.InvariantCulture)));
+                    DateTimeOffset.Parse(reader.GetString(4), CultureInfo.InvariantCulture))
+                { CreditId = reader.IsDBNull(5) ? null : Guid.Parse(reader.GetString(5)) });
             return songs;
         }
     }

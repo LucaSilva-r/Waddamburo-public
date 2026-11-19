@@ -945,7 +945,7 @@ internal sealed partial class GameShell : IDisposable
             StartScene.ResultFail or StartScene.ResultAlmost or StartScene.ResultClear or StartScene.WaiwaiResult
                 or StartScene.DaniResultFail or StartScene.DaniResultClear => FlowScenes.Result,
             StartScene.Retry => FlowScenes.Retry,
-            StartScene.GameOver or StartScene.DaniGameOver => FlowScenes.GameOver,
+            StartScene.GameOver or StartScene.DaniGameOver or StartScene.RewardGameOver => FlowScenes.GameOver,
             StartScene.AiRemind => FlowScenes.AiRemind,
             StartScene.WaiwaiTutorial => FlowScenes.WaiwaiTutorial,
             StartScene.AiTutorial => FlowScenes.AiTutorial,
@@ -953,6 +953,13 @@ internal sealed partial class GameShell : IDisposable
         };
         if (Options.StartScene == StartScene.DaniGameOver)
             Catalog.Replace(FlowScenes.DaniGameOver);
+        if (Options.StartScene == StartScene.RewardGameOver)
+        {
+            // A first credit ever: 900 medals before it, every bonus.
+            Credit.RewardPlayer = new Waddamburo.Game.Lumen.RewardShopPlayer(0, 900,
+                Waddamburo.Game.Scores.DonMedals.ForCredit(null, DateOnly.FromDateTime(DateTime.Now)));
+            Catalog.Replace(FlowScenes.RewardGameOver);
+        }
         if (Options.StartScene == StartScene.WaiwaiTutorial) Credit.Waiwai = true;
         if (Options.StartScene is StartScene.AiSongSelect or StartScene.AiTutorial)
             Players.ChooseMode(aiBattle: true);

@@ -30,5 +30,6 @@ internal sealed class LoadedHosts
     public LumenPlayer? AiResultBackground { get; set; }
     public RetryGameHostBinding? Retry { get; set; }
     public GameOverHostBinding? GameOver { get; set; }
+    public RewardShopHostBinding? RewardShop { get; set; }
     public AttractHostBinding? Attract { get; set; }
 }

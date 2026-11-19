@@ -15,6 +15,7 @@ internal sealed class GameSounds
         WaiwaiResults = new WaiwaiResultSounds(Bank);
         Retry = new RetrySounds(Bank, StopAll);
         GameOver = new GameOverSounds(Bank);
+        RewardShop = new RewardShopSounds(Bank);
     }
 
     public SoundBank Bank { get; }
@@ -25,6 +26,7 @@ internal sealed class GameSounds
     public WaiwaiResultSounds WaiwaiResults { get; }
     public RetrySounds Retry { get; }
     public GameOverSounds GameOver { get; }
+    public RewardShopSounds RewardShop { get; }
 
     /// <summary>Everything but the coin stops, and the next credit starts fresh.</summary>
     public void StopAll()

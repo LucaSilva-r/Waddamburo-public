@@ -1,7 +1,9 @@
 using Waddamburo.App.Presentation;
 using Waddamburo.App.Scenes;
 using Waddamburo.Game.Flow;
+using Waddamburo.Game.Gameplay;
 using Waddamburo.Game.Lumen;
+using Waddamburo.Game.Scores;
 using Waddamburo.Platform.Sdl;
 
 namespace Waddamburo.App.Flow;
@@ -72,7 +74,36 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
         {
             Shell.Sounds?.GameOver.StopGameOverMusic();
             Shell.Catalog.Replace(FlowScenes.NormalGameOver);
+            Shell.Credit.RewardPlayer = null;
+            Shell.Loaded.RewardShop = null;
         }
+    }
+
+    /// <summary>
+    /// The arcade credit's end: a carded player (a server with medals) first sees Green's ごほうびタイム, the credit's Don
+    /// Medals with its bonuses (reward_shop over the game over). The game shows them as Green did, from the last paid
+    /// day; TaikOnline pays the same from the songs.
+    /// </summary>
+    private SceneId gameOver()
+    {
+        if (Shell.Arcade.Home)
+            return FlowScenes.GameOver;
+        // ponytail: one carded player; a second card's medals are paid by the server but not shown.
+        foreach (var side in Shell.Players.JoinedSides)
+        {
+            if (TaikoGuest.Profiles[side] is not { Baid: > 0, Medals: { } medals } profile)
+                continue;
+            var today = DateOnly.FromDateTime(DateTime.Now);
+            var credit = DonMedals.ForCredit(DateOnly.TryParse(profile.LastMedalDay, System.Globalization.CultureInfo.InvariantCulture,
+                out var last) ? last : null, today);
+            Shell.Credit.RewardPlayer = new RewardShopPlayer(side, medals, credit);
+            // Until the next card read brings the server's: the next credit on this cabinet sees this one.
+            TaikoGuest.Profiles[side] = profile with { Medals = medals + credit.Medals, LastMedalDay = today.ToString("yyyy-MM-dd",
+                System.Globalization.CultureInfo.InvariantCulture) };
+            Shell.Catalog.Replace(FlowScenes.RewardGameOver);
+            break;
+        }
+        return FlowScenes.GameOver;
     }
 
     // The revival keeps the left player's movie setup (see RetryGameHostBinding), so a right-drum
@@ -137,7 +168,7 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
                     TaikoCreditNext.NextSong => FlowScenes.SongSelect,
                     // An AI battle credit says goodbye with the player's rank and progress first (traced remind).
                     _ when Shell.Credit.AiOutcome is not null && !Shell.Arcade.Home => FlowScenes.AiRemind,
-                    _ => FlowScenes.GameOver,
+                    _ => gameOver(),
                 });
         }
         else if (scene == FlowScenes.AiRemind)
@@ -148,14 +179,16 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
             if (Shell.Tick - _remindStartTick == RemindTimeoutTicks)
                 Shell.Loaded.AiRemind?.Exit();
             if (input.Escape || RetryGameHostBinding.IsEnd(Shell.Active.Player.Layers[1].Player)) // remind, over its backdrop
-                Shell.Scenes.FadeTo(FlowScenes.GameOver);
+                Shell.Scenes.FadeTo(gameOver());
         }
         else if (scene == FlowScenes.Retry)
         {
             if (Shell.Scenes.FinishFade()) return;
             if (RetryGameHostBinding.IsEnd(Shell.Active.Player.Layers.Single().Player))
-                Shell.Scenes.FadeTo(Shell.Loaded.Retry?.Succeeded == true ? FlowScenes.SongSelect : FlowScenes.GameOver);
+                Shell.Scenes.FadeTo(Shell.Loaded.Retry?.Succeeded == true ? FlowScenes.SongSelect : gameOver());
         }
+        else if (scene == FlowScenes.GameOver && Shell.Loaded.GameOver?.Ended != true)
+            Shell.Loaded.RewardShop?.Tick();
         else if (Shell.Loaded.GameOver?.Ended == true)
         {
             if (_gameOverEndTick < 0)

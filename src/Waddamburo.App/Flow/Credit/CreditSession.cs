@@ -36,6 +36,12 @@ internal sealed class CreditSession
     /// <summary>The joined player's drum (0 left, 1 right; 0 for two players); scenes after entry follow it.</summary>
     public int PlayerSide { get; set; }
 
+    /// <summary>The carded player whose Don Medals the credit's end shows (reward_shop over the game over); null: none.</summary>
+    public RewardShopPlayer? RewardPlayer { get; set; }
+
+    /// <summary>This credit's id: its songs' Don Medals are paid once (a new one with each credit).</summary>
+    public Guid CreditId { get; set; } = Guid.NewGuid();
+
     /// <summary>Both drums joined (or an online song played as two).</summary>
     public bool TwoPlayers { get; set; }
 

@@ -19,19 +19,21 @@ internal sealed class NativeArt(SdlApplication application, string fontPath, str
     private CostumeIconTextures? _costumeIcons;
     private DanChallengeArt? _danArt;
     private CopyrightArt? _copyright;
+    private SeasonArt? _seasonArt;
     private WaiwaiResultTextures? _waiwaiResults;
 
     private ToneArt tones => _tones ??= new ToneArt(_nut);
     private CostumeIconTextures costumeIcons => _costumeIcons ??= new CostumeIconTextures(application, _nut, dataRoot);
     private DanChallengeArt danArt => _danArt ??= new DanChallengeArt(_nut);
     private CopyrightArt copyright => _copyright ??= new CopyrightArt(_nut);
+    private SeasonArt seasonArt => _seasonArt ??= new SeasonArt(_nut);
     private WaiwaiResultTextures waiwaiResults => _waiwaiResults ??= new WaiwaiResultTextures(_nut);
 
     /// <summary>The boot's music credit pages (the copyright NUT's).</summary>
     public int CopyrightPages => copyright.Pages;
 
     public RenderTextureId? Resolve(LumenNativeSurfaceKey surface) =>
-        danArt.Resolve(surface) ?? copyright.Resolve(surface) ?? costumeIcons.Resolve(surface) ?? waiwaiResults.Resolve(surface)
+        danArt.Resolve(surface) ?? seasonArt.Resolve(surface) ?? copyright.Resolve(surface) ?? costumeIcons.Resolve(surface) ?? waiwaiResults.Resolve(surface)
         ?? _textFields.Resolve(surface) ?? _nameTexts.Resolve(surface) ?? tones.Resolve(surface);
 
     public void Dispose()

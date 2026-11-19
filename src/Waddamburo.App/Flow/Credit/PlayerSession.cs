@@ -33,6 +33,7 @@ internal sealed class PlayerSession(GameShell shell)
     public void Reset()
     {
         shell.Room?.Leave();
+        shell.Credit.CreditId = Guid.NewGuid();
         // A credit starts with guests (default Dons), with the website's current looks once they attach.
         if (!shell.Arcade.Home)
         {

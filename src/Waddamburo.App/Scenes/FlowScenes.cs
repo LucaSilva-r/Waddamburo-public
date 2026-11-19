@@ -156,6 +156,14 @@ internal static class FlowScenes
             new SceneLayerDefinition("reward_shop/packeddata.ddp", "shop_gameover/shop_gameover.lm", LumenMatrix.Identity, "gameover"),
         ]);
 
+    // Green's ごほうびタイム: reward_shop in medal mode over the game over, which waits for it (traced
+    // research/traces/session-rewards-1.md: shop_gameover at depth -890, under reward_shop).
+    public static SceneDefinition RewardGameOver { get; } =
+        new SceneDefinition(SceneDefinition.CurrentVersion, GameOver, [
+            new SceneLayerDefinition("reward_shop/packeddata.ddp", "shop_gameover/shop_gameover.lm", LumenMatrix.Identity, "gameover"),
+            new SceneLayerDefinition("reward_shop/packeddata.ddp", "reward_shop/reward_shop.lm", LumenMatrix.Identity, "reward-shop"),
+        ]);
+
     // A dan course's end (traced sessions 30 to 32): the same calls and sounds as the normal one, its own movie.
     public static SceneDefinition DaniGameOver { get; } =
         new SceneDefinition(SceneDefinition.CurrentVersion, GameOver, [
