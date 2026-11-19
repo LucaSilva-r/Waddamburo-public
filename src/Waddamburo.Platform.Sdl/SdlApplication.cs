@@ -871,7 +871,11 @@ public sealed unsafe partial class SdlApplication : IDisposable
     /// shown when the renderer is ready for it. False once the window was closed; <paramref name="escape"/>: Escape
     /// was pressed.
     /// </summary>
-    public bool PumpAndPresent(RenderFrame frame, out bool escape)
+    public bool PumpAndPresent(RenderFrame frame, out bool escape) => PumpAndPresent(frame, out escape, null);
+
+    /// <summary>As above; <paramref name="menuKeys"/> gets the menu keys pressed (arrows and Enter, a controller's
+    /// d-pad and A; its B or Start is Escape), for a question on the boot screen.</summary>
+    public bool PumpAndPresent(RenderFrame frame, out bool escape, List<SdlKeyboardKey>? menuKeys)
     {
         ensureOwnerThread();
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -884,6 +888,20 @@ public sealed unsafe partial class SdlApplication : IDisposable
                 open = false;
             else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_KEY_DOWN && currentEvent.key.key == SDL_Keycode.SDLK_ESCAPE)
                 escape = true;
+            else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_KEY_DOWN && !currentEvent.key.repeat && menuKeys is not null
+                && mapKey(currentEvent.key.key) is (SdlKeyboardKey.Up or SdlKeyboardKey.Down or SdlKeyboardKey.Left
+                    or SdlKeyboardKey.Right or SdlKeyboardKey.Enter) and var key)
+                menuKeys.Add(key);
+            else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_GAMEPAD_BUTTON_DOWN && menuKeys is not null)
+            {
+                switch ((SDL_GamepadButton)currentEvent.gbutton.button)
+                {
+                    case SDL_GamepadButton.SDL_GAMEPAD_BUTTON_DPAD_UP: menuKeys.Add(SdlKeyboardKey.Up); break;
+                    case SDL_GamepadButton.SDL_GAMEPAD_BUTTON_DPAD_DOWN: menuKeys.Add(SdlKeyboardKey.Down); break;
+                    case SDL_GamepadButton.SDL_GAMEPAD_BUTTON_SOUTH: menuKeys.Add(SdlKeyboardKey.Enter); break;
+                    case SDL_GamepadButton.SDL_GAMEPAD_BUTTON_EAST or SDL_GamepadButton.SDL_GAMEPAD_BUTTON_START: escape = true; break;
+                }
+            }
             // SDL announces the controllers already connected at start as added: they arrive during the boot screen.
             else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_GAMEPAD_ADDED)
                 addPad(currentEvent.gdevice.which);

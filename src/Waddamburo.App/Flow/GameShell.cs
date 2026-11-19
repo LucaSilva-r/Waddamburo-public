@@ -416,6 +416,36 @@ internal sealed partial class GameShell : IDisposable
         }
     }
 
+    // osu! libraries are read only once chosen (#46): the first start finding an install not set yet offers it, off
+    // until the player turns it on. Escape asks again next start.
+    private void askOsuLibraries(BootChecks boot)
+    {
+        var lazer = string.IsNullOrEmpty(Arcade.OsuFolder) ? Waddamburo.Providers.OsuLazer.OsuLazerCatalogProvider.FindDataFolder(null) : null;
+        var stable = string.IsNullOrEmpty(Arcade.OsuStableFolder) ? Waddamburo.Providers.OsuLazer.OsuLazerCatalogProvider.FindStableFolder(null) : null;
+        if (lazer is null && stable is null)
+            return;
+        bool useLazer = false, useStable = false;
+        // Settings' own option rows: Enter picks one, the arrows switch it, green at its default (off).
+        OverlayRow option(string name, string path, Func<bool> on, Action flip) =>
+            new(OverlayMenu.upper(Strings.T(name)), 400, () => $"{{{Strings.T(on() ? "service.on" : "service.off")}}}", 640,
+                Step: _ => flip(), IsDefault: () => !on(), Hint: OverlayMenu.upper(Strings.T("osu_found.hint", path)));
+        boot.Ask(close => new OverlayPage(() => OverlayMenu.upper(Strings.T("osu_found.title")), () =>
+        [
+            .. lazer is null ? (OverlayRow[])[] : [option("osu_found.lazer", lazer, () => useLazer, () => useLazer = !useLazer)],
+            .. stable is null ? (OverlayRow[])[] : [option("osu_found.stable", stable, () => useStable, () => useStable = !useStable)],
+            new(Strings.T("service.ok"), 400, Gap: true, Enter: () =>
+            {
+                SaveArcade(Arcade with
+                {
+                    OsuFolder = useLazer ? lazer : Arcade.OsuFolder,
+                    OsuStableFolder = useStable ? stable : Arcade.OsuStableFolder,
+                    OsuLibrariesAsked = true,
+                });
+                close();
+            }),
+        ], Defaults: true));
+    }
+
     public void ApplyDisplay()
     {
         // The setting shows or hides it when it changes; F5 (or a phone's development build) in between is left alone.
@@ -544,6 +574,8 @@ internal sealed partial class GameShell : IDisposable
                         _ => "Cabinet token refused",
                     });
             }
+            if (Arcade.Home && !PlatformInfo.IsMobile && !Arcade.OsuLibrariesAsked)
+                askOsuLibraries(_boot);
             _libraries = _boot.Background("SONG LIBRARY", () => SongLibraries.Load(dataRoot, Arcade, options.TjaRoot, _boot.Progress,
                 () => _boot.Note(Strings.T("boot.building_cache"))));
             // Not fatal: the libraries that load are listed (the settings say what's wrong with the others).

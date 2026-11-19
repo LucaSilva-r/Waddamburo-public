@@ -174,11 +174,12 @@ internal sealed class SongLibraries : IDisposable
             ? [.. new[] { tja }.Where(Directory.Exists).Concat(Sync.ReceivedLibraries.Folders("tja").Select(static folder => Path.Combine(folder, "tja")))
                 .Where(Directory.Exists).Select(root => new TjaCatalogProvider(root) { MetadataCache = metadataCache })]
             : [];
-        // osu! (home mode): the folder set in the settings, else the default install, else one mirrored from another device.
-        var osu = OsuLazerCatalogProvider.FindDataFolder(arcade.OsuFolder)
+        // osu! (home mode): the folder set in the settings (none: off; the startup offers the installs found), else one
+        // mirrored from another device.
+        var osu = (string.IsNullOrEmpty(arcade.OsuFolder) ? null : OsuLazerCatalogProvider.FindDataFolder(arcade.OsuFolder))
             ?? Sync.ReceivedLibraries.Folders("osu-lazer").Select(static folder => Path.Combine(folder, "osu"))
                 .FirstOrDefault(static folder => File.Exists(Path.Combine(folder, "client.realm")) && Directory.Exists(Path.Combine(folder, "files")));
-        var localStable = OsuLazerCatalogProvider.FindStableFolder(arcade.OsuStableFolder);
+        var localStable = string.IsNullOrEmpty(arcade.OsuStableFolder) ? null : OsuLazerCatalogProvider.FindStableFolder(arcade.OsuStableFolder);
         var stable = localStable ?? Sync.ReceivedLibraries.Folders("osu-stable").Select(static folder => Path.Combine(folder, "osu"))
             .FirstOrDefault(OsuStableReader.IsInstall);
         var libraries = new SongLibraries([

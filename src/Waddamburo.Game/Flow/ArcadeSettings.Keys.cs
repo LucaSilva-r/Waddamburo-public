@@ -143,6 +143,7 @@ public sealed partial record ArcadeSettings
             [("auto", TouchDrumMode.Auto), ("on", TouchDrumMode.On), ("off", TouchDrumMode.Off)],
             [("true", TouchDrumMode.On), ("false", TouchDrumMode.Off)]),
         flag("custom_upload_notice_seen", static s => s.CustomUploadNoticeSeen, static (s, v) => s with { CustomUploadNoticeSeen = v }),
+        flag("osu_libraries_asked", static s => s.OsuLibrariesAsked, static (s, v) => s with { OsuLibrariesAsked = v }),
         flag("upload_custom_songs", static s => s.UploadCustomSongs, static (s, v) => s with { UploadCustomSongs = v }),
         flag("upload_banner", static s => s.UploadBanner, static (s, v) => s with { UploadBanner = v }),
         flag("discord_presence", static s => s.DiscordPresence, static (s, v) => s with { DiscordPresence = v }),

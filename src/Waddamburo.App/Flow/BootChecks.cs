@@ -101,6 +101,35 @@ internal sealed class BootChecks : IDisposable
         present();
     }
 
+    /// <summary>
+    /// A question on the boot screen, in the usual overlay pages: <paramref name="page"/> (given the action that closes
+    /// it) shows until it closes, the loading waiting meanwhile; Escape closes it too. Scripted runs skip it.
+    /// </summary>
+    public void Ask(Func<Action, OverlayPage> page)
+    {
+        if (!_interactive)
+            return;
+        var open = true;
+        _menu.Push(page(() => { open = false; _menu.Pop(); }));
+        var keys = new List<SdlKeyboardKey>();
+        while (open)
+        {
+            keys.Clear();
+            if (!_application.PumpAndPresent(_menu.Frame(), out var escape, keys))
+                throw new BootClosedException();
+            if (escape)
+            {
+                open = false;
+                _menu.Pop();
+                break;
+            }
+            var pulses = new SdlKeyboardSnapshot(keys);
+            _menu.Tick(pulses, pulses, escape: false);
+            Thread.Sleep(15);
+        }
+        present();
+    }
+
     /// <summary>The part named runs on a background thread while the screen keeps drawing; its result once done.</summary>
     public T Background<T>(string name, Func<T> work)
     {

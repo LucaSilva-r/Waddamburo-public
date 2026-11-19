@@ -380,6 +380,9 @@ public sealed partial record ArcadeSettings
         upload_banner = true
         # The first custom-library upload question was answered; false = ask on the next entry.
         custom_upload_notice_seen = false
+        # The osu! installs found were offered at startup (lazer, stable: none, one or both); false = ask on the next
+        # start that finds one not set yet.
+        osu_libraries_asked = false
 
         """,
     ];
@@ -489,6 +492,9 @@ public sealed partial record ArcadeSettings
 
     /// <summary>The custom-library upload question has been answered on this installation.</summary>
     public bool CustomUploadNoticeSeen { get; init; }
+
+    /// <summary>The osu! installs found at startup were offered (they are only read once chosen).</summary>
+    public bool OsuLibrariesAsked { get; init; }
 
     /// <summary>Which hits get the early/late glow under the judgement circle.</summary>
     public TimingIndicator TimingIndicator { get; init; } = TimingIndicator.Off; // new players took the glow for a bug (#43)
@@ -713,10 +719,10 @@ public sealed partial record ArcadeSettings
         : IsGameCache(cacheFolder) ? Path.Combine(home, "cache")
         : Path.GetFullPath(cacheFolder!);
 
-    /// <summary>An osu!lazer data folder (null: the default install's, when there is one).</summary>
+    /// <summary>An osu!lazer data folder (null: none, the library is off).</summary>
     public string? OsuFolder { get; init; }
 
-    /// <summary>An osu!stable install, its own library beside lazer's (null: the default install's, when there is one).</summary>
+    /// <summary>An osu!stable install, its own library beside lazer's (null: none, the library is off).</summary>
     public string? OsuStableFolder { get; init; }
 
     /// <summary>The osu!lazer library's folder grouping and song order (its Group and Sort spines change them).</summary>

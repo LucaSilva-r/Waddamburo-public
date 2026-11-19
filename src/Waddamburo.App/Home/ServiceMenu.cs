@@ -143,7 +143,7 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
             _down[pad] = down;
         }
         // Backspace there clears instead of going back (it may be the BACK button too).
-        if (clearSelected(pulses))
+        if (clearSelected(pulses) || clearLibrary(pulses))
             return;
         _menu.Tick(pulses, held, escape && _home);
     }
@@ -278,12 +278,17 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
     }
 
     // An osu! library's row: the folder set, or (green, its path as the hint) the install found without one.
-    private Row osuRow(string label, string library, string? folder, Func<string?, string?> find)
+    private Row osuRow(string label, string library, string? folder, Func<string?, string?> find) =>
+        new(label, 400, () => folderName(folder), 640, Enter: () => pick(library, folder ?? find(null)),
+            Hint: problemOf(folder) ?? S(folder is null ? "service.folder.hint" : "service.folder.clear_hint"), Colour: folderColour(folder));
+
+    // LIBRARIES: Delete on an osu! library clears its folder (the library is off).
+    private bool clearLibrary(SdlKeyboardSnapshot pulses)
     {
-        var found = folder is null ? find(null) : null;
-        return new(label, 400, () => folderName(folder ?? found), 640, Enter: () => pick(library, folder ?? found),
-            Hint: problemOf(folder) ?? (found is null ? S("service.folder.hint") : S("service.folder.found", found)),
-            Colour: found is null ? folderColour(folder) : static () => OverlayMenu.Green);
+        if (_menu.Page?.Tag is not Page.Libraries || _menu.Selection is not (1 or 2) || !pulses.IsDown(SdlKeyboardKey.Delete))
+            return false;
+        set(s => _menu.Selection == 1 ? s with { OsuFolder = null } : s with { OsuStableFolder = null });
+        return true;
     }
 
     // A group of official libraries: how many, red when one of them was left out at startup.
@@ -490,6 +495,7 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
             new(S("service.tja_songs"), 400, () => folderName(_settings.TjaFolder ?? _defaultTja), 640,
                 Enter: () => pick("tja", _settings.TjaFolder ?? _defaultTja),
                 Hint: problemOf(_settings.TjaFolder ?? _defaultTja) ?? S("service.folder.hint"), Colour: folderColour(_settings.TjaFolder ?? _defaultTja)),
+            // Rows 1 and 2: clearLibrary.
             osuRow(S("service.osu_songs"), "osu", _settings.OsuFolder, Providers.OsuLazer.OsuLazerCatalogProvider.FindDataFolder),
             osuRow(S("service.osu_stable_songs"), "osu-stable", _settings.OsuStableFolder, Providers.OsuLazer.OsuLazerCatalogProvider.FindStableFolder),
             // The official libraries, each on its own page (a list of every release no longer fits one).
