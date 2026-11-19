@@ -53,7 +53,7 @@ public sealed record RewardShopVisit(
 /// scene 21, after a card entry): the season's goods for 100 s, bought with medals, then Song Select.
 /// </summary>
 public sealed class RewardShopHostBinding(int season, string telop, RewardShopPlayer player, IRewardShopSoundController? sounds = null,
-    RewardShopVisit? visit = null, Don.IDonPresentationController? don = null)
+    RewardShopVisit? visit = null, Don.IDonPresentationController? don = null, IndicatorParts? parts = null)
     : ILumenHostBinding
 {
     // Traced: IsReady_Gameover turns 1 about 2 s after NotifyEndSequence (over_msg's TweenVisible in and out).
@@ -68,6 +68,7 @@ public sealed class RewardShopHostBinding(int season, string telop, RewardShopPl
     private Task<ShopPurchase?>? _purchase;
     private int _answerIn = -1;
     private int _answerCode;
+    private bool _counterStarted;
     private int _spent;
     // The Don wears a previewed costume: FinishCostumeLoad on the next tick (the 3D Don dresses at once).
     private int _costumeLoaded = -1;
@@ -110,11 +111,13 @@ public sealed class RewardShopHostBinding(int season, string telop, RewardShopPl
         lumen.RegisterMethod("PauseTimer", _ =>
         {
             _timerPaused = true;
+            parts?.PauseCountdown();
             return LumenHostValue.Undefined;
         });
         lumen.RegisterMethod("ResumeTimer", _ =>
         {
             _timerPaused = false;
+            parts?.ResumeCountdown();
             return LumenHostValue.Undefined;
         });
         lumen.RegisterMethod("GetSecTimer", _ => LumenHostValue.FromNumber(secondsLeft()));
@@ -216,7 +219,14 @@ public sealed class RewardShopHostBinding(int season, string telop, RewardShopPl
 
     public void Tick()
     {
-        if (_timerTicks >= 0 && !_timerPaused)
+        // The counter starts with the shop's timer, once its movie is set up (it can come after StartTimer).
+        if (parts is not null && parts.PollReady() && _timerTicks >= 0 && !_counterStarted)
+        {
+            _counterStarted = true;
+            parts.StartCountdown(secondsLeft());
+        }
+        // A frozen timer (the operator's setting) never runs out.
+        if (_timerTicks >= 0 && !_timerPaused && parts?.Countdown != false)
             _timerTicks++;
         if (_costumeLoaded >= 0 && _movie is not null)
         {

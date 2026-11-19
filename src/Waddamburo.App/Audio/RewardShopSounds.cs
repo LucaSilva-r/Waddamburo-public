@@ -38,6 +38,7 @@ internal sealed class RewardShopSounds(SoundBank bank, GameOverSounds gameOver) 
             (RewardShopSoundRequestKind.Effect, 0, 0) => ("SE_COM", 1), // don
             (RewardShopSoundRequestKind.Effect, 0, 1) => ("SE_COM", 4), // ka
             (RewardShopSoundRequestKind.Effect, 0, 2) => ("SE_COM", 7), // cancel
+            (RewardShopSoundRequestKind.Effect, 0, 3) => ("SE_COM", 13), // SE_CNTDOWN: the menus' countdown tick
             (RewardShopSoundRequestKind.Effect, 0, 4) => ("SE_COM", 19), // costume change
             (RewardShopSoundRequestKind.Effect, 0, 8) => ("SE_GOHOBI", 2), // the medal card in
             (RewardShopSoundRequestKind.Effect, 0, 9) => ("SE_GOHOBI", 4), // the count, every 50 ms

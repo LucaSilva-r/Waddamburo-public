@@ -6,6 +6,8 @@ public enum IndicatorPartsScene
 {
     Entry,
     SongSelect,
+    /// <summary>The reward shop: only the counter, hidden until the shop starts it (traced session-rewards-1 scene 21).</summary>
+    RewardShop,
 }
 
 /// <summary>
@@ -57,6 +59,8 @@ public sealed class IndicatorParts(IndicatorPartsScene scene, bool countdown)
     public void StartCountdown(double seconds)
     {
         if (_counter is not { } counter) return;
+        if (scene == IndicatorPartsScene.RewardShop)
+            call(counter, "Tween_FadeIn"); // the shop's counter fades in as it starts (traced)
         if (Countdown)
             call(counter, "Start", number(seconds), LumenHostValue.FromBoolean(true));
         else
@@ -221,7 +225,9 @@ public sealed class IndicatorParts(IndicatorPartsScene scene, bool countdown)
                 _counter = player;
                 call(player, "SetMusicNum", number(0));
                 call(player, "SetTime", number(entry ? 50 : 100));
-                if (entry)
+                if (scene == IndicatorPartsScene.RewardShop)
+                    call(player, "SetVisible", LumenHostValue.FromBoolean(false));
+                else if (entry)
                     call(player, "SetShadow", LumenHostValue.FromBoolean(true));
                 else
                 {

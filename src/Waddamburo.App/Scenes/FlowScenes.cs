@@ -167,10 +167,11 @@ internal static class FlowScenes
         ]);
 
     // The shop after a card entry (traced session-rewards-1 scene 21: SetNextScene(3) from the mode select), then Song Select.
-    // ponytail: without the indicator's parts (name board, timer); the movie keeps its own 100 s.
+    // ponytail: the counter only; the name board and over_msg are left out.
     public static SceneDefinition RewardShopVisit { get; } =
         new SceneDefinition(SceneDefinition.CurrentVersion, RewardShop, [
             new SceneLayerDefinition("reward_shop/packeddata.ddp", "reward_shop/reward_shop.lm", LumenMatrix.Identity, "reward-shop-visit"),
+            indicatorPart("time_counter"),
         ]);
 
     // A dan course's end (traced sessions 30 to 32): the same calls and sounds as the normal one, its own movie.

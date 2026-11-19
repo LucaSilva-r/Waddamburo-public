@@ -160,6 +160,8 @@ internal sealed class LayerHostFactory(
     {
         LayerLoading?.Invoke(layer.HostId);
         // A front-end scene movie starts the indicator parts its following layers attach to.
+        if (layer.HostId == "reward-shop-visit")
+            _parts = new IndicatorParts(IndicatorPartsScene.RewardShop, counting) { ShowCounter = !hideArcadeHud };
         if (layer.HostId == "player-entry")
         {
             _parts = new IndicatorParts(IndicatorPartsScene.Entry, counting) { ShowCounter = !hideArcadeHud };
@@ -566,7 +568,7 @@ internal sealed class LayerHostFactory(
             },
             static (type, id) => type is 4 or 5 ? CostumeIconTextures.Key(type == 5 ? 1 : 2, id) : null);
         var player = new RewardShopPlayer(shop.Side, state.Medals, new Waddamburo.Game.Scores.MedalCredit(0, false, false, false));
-        var binding = loaded.RewardShop = new RewardShopHostBinding(state.SeasonId, state.Telop, player, sounds?.RewardShop, visit, don);
+        var binding = loaded.RewardShop = new RewardShopHostBinding(state.SeasonId, state.Telop, player, sounds?.RewardShop, visit, don, _parts);
         return rewardShopLayer(binding, state.SeasonId);
     }
 
