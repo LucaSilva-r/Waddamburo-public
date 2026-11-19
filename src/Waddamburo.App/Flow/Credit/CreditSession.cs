@@ -5,8 +5,8 @@ using Waddamburo.Game.Scores;
 
 namespace Waddamburo.App.Flow.Credit;
 
-/// <summary>A card's reward shop: its drum, this season's goods and medals, and buying goods by number.</summary>
-internal sealed record CreditShop(int Side, Task<ShopState> State, Func<int, Task<ShopPurchase>> Purchase);
+/// <summary>A card's reward shop: this season's goods and the card's medals, and buying goods by number.</summary>
+internal sealed record CreditShop(Task<ShopState> State, Func<int, Task<ShopPurchase>> Purchase);
 
 /// <summary>The credit's mode, picked at the entry (AI battle) or by the players joined (Waiwai for two).</summary>
 internal enum CreditMode { Normal, Waiwai, AiBattle }
@@ -42,8 +42,11 @@ internal sealed class CreditSession
     /// <summary>The carded player whose Don Medals the credit's end shows (reward_shop over the game over); null: none.</summary>
     public RewardShopPlayer? RewardPlayer { get; set; }
 
-    /// <summary>The carded player's reward shop (fetched at the card read; the entry offers it once loaded); null: none.</summary>
-    public CreditShop? Shop { get; set; }
+    /// <summary>Each drum's card's reward shop (fetched at the card read; the entry offers it once one is in); null: none.</summary>
+    public CreditShop?[] Shops { get; } = new CreditShop?[2];
+
+    /// <summary>The shop's goods: a card's whose shop is in (the season's goods are the same for every card).</summary>
+    public ShopState? ShopGoods => Shops.FirstOrDefault(static shop => shop?.State.IsCompletedSuccessfully == true)?.State.Result;
 
     /// <summary>This credit's id: its songs' Don Medals are paid once (a new one with each credit).</summary>
     public Guid CreditId { get; set; } = Guid.NewGuid();
@@ -62,7 +65,10 @@ internal sealed class CreditSession
         {
             field = value;
             if (value == 0)
-                (TutorialSeen, WaiwaiTutorialSeen, AiTutorialSeen, Shop) = (false, false, false, null);
+            {
+                (TutorialSeen, WaiwaiTutorialSeen, AiTutorialSeen) = (false, false, false);
+                Array.Clear(Shops);
+            }
         }
     }
 

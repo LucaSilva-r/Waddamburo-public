@@ -120,8 +120,9 @@ everything from them.
 4. **Arcade screens.** `reward_shop` host binding, both modes. Medal mode done. Shopping mode done 2026-11-19: a card
    read fetches `GET api/wdb/shop` (songs carry their `music_id`), the mode select offers the shop once it is in,
    `SetNextScene(3)` opens it, purchases go to `POST shop/purchase`, exit → Song Select. `--start-scene=reward-shop`
-   shows it with Green's Winter goods and local purchases. Tested end to end on a local TaikOnline. Left out:
-   the name board and over_msg "connecting", 2P shopping, the first-visit tutorial, SE_TIMEUP's cue.
+   shows it with Green's Winter goods and local purchases. Tested end to end on a local TaikOnline. Name boards, the 100 s counter
+   and two players (each card buys with its own medals; a guest only looks; `--start-scene=reward-shop-2p`) done.
+   Left out: over_msg "connecting", the first-visit tutorial, SE_TIMEUP's cue, 2P's own don/ka cues (1P's are used).
 5. **Home screens.** Toast and the pause menu entry.
 6. **Condition titles.** Condition data file (from the reward names + wiki), then server evaluation.
 7. **Later.** Custom unlockables (own costumes and content) once the skin system can supply them.

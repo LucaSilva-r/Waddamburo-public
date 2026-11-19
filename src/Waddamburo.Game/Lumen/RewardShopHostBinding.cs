@@ -30,18 +30,20 @@ public interface IRewardShopSoundController
 /// <summary>A carded player at the credit's end: their drum, medals before this credit and what it paid.</summary>
 public sealed record RewardShopPlayer(int Side, int MedalsBefore, MedalCredit Credit);
 
-/// <summary>A goods slot as the movie takes it; songs add their genre (1-8) and the four courses' stars.</summary>
-public sealed record RewardShopGoods(ShopGoods Goods, int Genre = 0, int[]? Stars = null);
+/// <summary>A goods slot as the movie takes it: owned per side (1P, 2P); songs add their genre (1-8) and the four courses' stars.</summary>
+public sealed record RewardShopGoods(ShopGoods Goods, bool[] Owned, int Genre = 0, int[]? Stars = null);
 
 /// <summary>
-/// A shopping visit's game side: the goods, the medals, buying (goods no → the server's answer; null: unreachable), the
-/// preview (side, type, id → whether the Don's costume changes; -2 = the player's own) and the detail fills (fillrect id,
-/// type, id → the surface: 6/7 the name, 8/9 the icon, 10/11 a song's title, for 1P/2P).
+/// A shopping visit's game side: the goods, the drums joined and each one's medals (null: a guest, who can't buy), buying
+/// (side, goods no → the server's answer; null: unreachable), the preview (side, type, id → whether that Don's costume changes;
+/// -2 = the player's own) and the detail fills (fillrect id, type, id → the surface: 6/7 the name, 8/9 the icon, 10/11 a song's
+/// title, for 1P/2P).
 /// </summary>
 public sealed record RewardShopVisit(
     IReadOnlyList<RewardShopGoods> Goods,
-    int Medals,
-    Func<int, Task<ShopPurchase?>> Purchase,
+    IReadOnlyList<int> Joined,
+    int?[] Medals,
+    Func<int, int, Task<ShopPurchase?>> Purchase,
     Func<int, int, int, bool> Preview,
     Func<int, int, int, LumenNativeSurfaceKey?> Fill,
     Func<int, int, LumenNativeSurfaceKey?> BoxIcon);
@@ -50,9 +52,10 @@ public sealed record RewardShopVisit(
 /// reward_shop.lm, Green's ごほうびタイム (traced research/traces/session-rewards-1.md). Medal mode (scene 12): the credit's Don
 /// Medals with the daily, weekly and monthly bonuses, then game over; shop_gameover sits under it and waits (IsReady_Gameover
 /// 0) until the screen ends: NotifyEndSequence, then the over_msg fade (2 s traced). Shopping mode (<paramref name="visit"/>,
-/// scene 21, after a card entry): the season's goods for 100 s, bought with medals, then Song Select.
+/// scene 21, after a card entry): the season's goods for 100 s, bought with medals, then Song Select. One of
+/// <paramref name="player"/> (medal mode) and <paramref name="visit"/> (shopping) is given.
 /// </summary>
-public sealed class RewardShopHostBinding(int season, string telop, RewardShopPlayer player, IRewardShopSoundController? sounds = null,
+public sealed class RewardShopHostBinding(int season, string telop, RewardShopPlayer? player, IRewardShopSoundController? sounds = null,
     RewardShopVisit? visit = null, Don.IDonPresentationController? don = null, IndicatorParts? parts = null)
     : ILumenHostBinding
 {
@@ -66,10 +69,11 @@ public sealed class RewardShopHostBinding(int season, string telop, RewardShopPl
     private int _timerTicks = -1;
     private bool _timerPaused;
     private Task<ShopPurchase?>? _purchase;
+    private int _purchaseSide;
     private int _answerIn = -1;
     private int _answerCode;
     private bool _counterStarted;
-    private int _spent;
+    private readonly int[] _spent = new int[2];
     // The Don wears a previewed costume: FinishCostumeLoad on the next tick (the 3D Don dresses at once).
     private int _costumeLoaded = -1;
 
@@ -143,7 +147,8 @@ public sealed class RewardShopHostBinding(int season, string telop, RewardShopPl
         });
         lumen.RegisterMethod("SendShopServer", call =>
         {
-            _purchase = shop.Purchase(arg(call, 1));
+            _purchaseSide = arg(call, 0) == 1 ? 1 : 0;
+            _purchase = shop.Purchase(_purchaseSide, arg(call, 1));
             return LumenHostValue.Undefined;
         });
         // Traced calls the game answers with nothing visible here.
@@ -179,29 +184,36 @@ public sealed class RewardShopHostBinding(int season, string telop, RewardShopPl
         LumenPlayerCalls.Call(lumenPlayer, "Settings", number(visit is null ? 0 : 1), number(season));
         LumenPlayerCalls.Call(lumenPlayer, "Telop", LumenHostValue.FromString(telop));
         // Traced per slot: PushGoods, SetAcquiredGoods, and a song's genre and stars.
-        foreach (var (goods, genre, stars) in visit?.Goods ?? [])
+        foreach (var (goods, owned, genre, stars) in visit?.Goods ?? [])
         {
             LumenPlayerCalls.Call(lumenPlayer, "PushGoods", number(goods.No), number(goods.Type), number(goods.Id), number(goods.Price));
-            var ownedP1 = goods.Owned && player.Side == 0;
-            var ownedP2 = goods.Owned && player.Side == 1;
-            LumenPlayerCalls.Call(lumenPlayer, "SetAcquiredGoods", number(goods.No), boolean(ownedP1), boolean(ownedP2));
+            LumenPlayerCalls.Call(lumenPlayer, "SetAcquiredGoods", number(goods.No), boolean(owned[0]), boolean(owned[1]));
             if (stars is [var easy, var normal, var hard, var oni, ..])
             {
                 LumenPlayerCalls.Call(lumenPlayer, "SetGenreGoods", number(genre));
                 LumenPlayerCalls.Call(lumenPlayer, "SetStarGoods", number(easy), number(normal), number(hard), number(oni));
             }
         }
-        // ponytail: one carded player; the other drum shows empty.
-        // Traced order: the other side first.
-        var other = 1 - player.Side;
-        LumenPlayerCalls.Call(lumenPlayer, "SetPlayerEnter", number(other), boolean(false), boolean(false));
-        LumenPlayerCalls.Call(lumenPlayer, "SetPlayerEnter", number(player.Side), boolean(true), boolean(true));
-        var credit = player.Credit;
-        if (visit is null)
+        // SetPlayerEnter(side, joined, carded) picks the player the following SetPlayerBonus/SetPlayerMedal are for (the
+        // movie's tmp_pid). Traced order: an empty drum first.
+        if (player is not null)
+        {
+            LumenPlayerCalls.Call(lumenPlayer, "SetPlayerEnter", number(1 - player.Side), boolean(false), boolean(false));
+            LumenPlayerCalls.Call(lumenPlayer, "SetPlayerEnter", number(player.Side), boolean(true), boolean(true));
+            var credit = player.Credit;
             LumenPlayerCalls.Call(lumenPlayer, "SetPlayerBonus", boolean(credit.Daily), boolean(credit.Weekly), boolean(credit.Monthly));
-        // (earned, cap, spent, this credit): Waddamburo's wallet is already earned minus spent.
-        LumenPlayerCalls.Call(lumenPlayer, "SetPlayerMedal", number(player.MedalsBefore + credit.Medals), number(DonMedals.Cap),
-            number(0), number(credit.Medals));
+            // (earned, cap, spent, this credit): Waddamburo's wallet is already earned minus spent.
+            LumenPlayerCalls.Call(lumenPlayer, "SetPlayerMedal", number(player.MedalsBefore + credit.Medals), number(DonMedals.Cap),
+                number(0), number(credit.Medals));
+        }
+        else if (visit is not null)
+            foreach (var side in new[] { 0, 1 }.OrderBy(side => visit.Joined.Contains(side)))
+            {
+                var medals = visit.Medals[side];
+                LumenPlayerCalls.Call(lumenPlayer, "SetPlayerEnter", number(side), boolean(visit.Joined.Contains(side)), boolean(medals is not null));
+                if (visit.Joined.Contains(side) && medals is { } wallet)
+                    LumenPlayerCalls.Call(lumenPlayer, "SetPlayerMedal", number(wallet), number(DonMedals.Cap), number(0), number(0));
+            }
         // The goods boxes' icons (CostumeIconFillrect clips attached as goods_icon_<box>): box 0 is the exit, costumes from
         // box 1, songs and tones from box 12 (the movie's UpdateLineup). The game draws them without being asked.
         if (visit is not null)
@@ -224,6 +236,8 @@ public sealed class RewardShopHostBinding(int season, string telop, RewardShopPl
         {
             _counterStarted = true;
             parts.StartCountdown(secondsLeft());
+            if (visit is not null)
+                parts.ShowShopNames(visit.Joined);
         }
         // A frozen timer (the operator's setting) never runs out.
         if (_timerTicks >= 0 && !_timerPaused && parts?.Countdown != false)
@@ -251,12 +265,14 @@ public sealed class RewardShopHostBinding(int season, string telop, RewardShopPl
         {
             _purchase = null;
             var answer = purchase.IsCompletedSuccessfully ? purchase.Result : null;
-            var balance = visit!.Medals;
-            LumenPlayerCalls.Call(_movie, "UpdateMedal", LumenHostValue.FromNumber(balance), LumenHostValue.FromNumber(_spent));
+            // The buyer's (the movie's sendPlayerID, set by SendShopServer).
+            var balance = visit!.Medals[_purchaseSide] ?? 0;
+            ref var spent = ref _spent[_purchaseSide];
+            LumenPlayerCalls.Call(_movie, "UpdateMedal", LumenHostValue.FromNumber(balance), LumenHostValue.FromNumber(spent));
             if (answer is { Result: "ok" })
             {
-                _spent = balance - answer.Medals;
-                LumenPlayerCalls.Call(_movie, "UpdateMedal", LumenHostValue.FromNumber(balance), LumenHostValue.FromNumber(_spent));
+                spent = balance - answer.Medals;
+                LumenPlayerCalls.Call(_movie, "UpdateMedal", LumenHostValue.FromNumber(balance), LumenHostValue.FromNumber(spent));
                 sounds?.Bought();
                 _answerIn = AnswerDelayTicks;
                 _answerCode = 0;

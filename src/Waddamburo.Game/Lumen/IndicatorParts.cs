@@ -191,6 +191,17 @@ public sealed class IndicatorParts(IndicatorPartsScene scene, bool countdown)
         }
     }
 
+    /// <summary>The reward shop: board n is drum n's (left, right); a joined player's fades in (traced Fadein), the others stay hidden.</summary>
+    public void ShowShopNames(IReadOnlyList<int> sides)
+    {
+        for (var side = 0; side < Math.Min(2, _nameBoards.Count); side++)
+            if (sides.Contains(side))
+            {
+                GuestNameBoard.Show(_nameBoards[side], side, visible: false);
+                call(_nameBoards[side], "Fadein");
+            }
+    }
+
     /// <summary>Song Select: a name board fades out under its player's option board, and back (traced Fadeout / Fadein).</summary>
     public void FadeSongSelectName(int board, bool visible)
     {

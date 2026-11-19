@@ -77,9 +77,9 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
             // The shop's music and previews stop; the Don wears the player's own look again.
             Shell.Sounds?.RewardShop.StopMusic();
             Shell.Previews?.Silence();
-            if (Shell.Credit.Shop is { } shop)
-                Shell.Don?.SetLook(shop.Side, TaikoGuest.Profiles[shop.Side]?.Look);
-            Shell.Credit.Shop = null; // one visit a credit
+            foreach (var side in Shell.Players.JoinedSides)
+                Shell.Don?.SetLook(side, TaikoGuest.Profiles[side]?.Look);
+            Array.Clear(Shell.Credit.Shops); // one visit a credit
             Shell.Loaded.RewardShop = null;
         }
         else if (scene == FlowScenes.GameOver)

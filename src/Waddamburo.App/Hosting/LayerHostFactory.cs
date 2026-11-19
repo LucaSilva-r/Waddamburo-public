@@ -173,7 +173,7 @@ internal sealed class LayerHostFactory(
                 CostumeIcon = static (type, id, name) => type is < 0 or > 2 ? null
                     : name ? CostumeIconTextures.NameKey(type, id) : CostumeIconTextures.Key(type, id),
                 Card = credit.EntryCard,
-                ShopAvailable = () => credit.Shop?.State.IsCompletedSuccessfully == true,
+                ShopAvailable = () => credit.ShopGoods is not null,
                 Don = don,
                 ReturnToAttract = () => ReturnToAttract?.Invoke(),
                 PlayerLook = side => PlayerLook?.Invoke(side),
@@ -509,9 +509,11 @@ internal sealed class LayerHostFactory(
     /// </summary>
     private LumenLayerHost rewardShopVisitHost()
     {
-        var shop = credit.Shop ?? throw new InvalidOperationException("reward_shop without a card's shop.");
-        var state = shop.State.Result; // the entry offers the shop only once it is in
-        var profile = TaikoGuest.Profiles[shop.Side];
+        var state = credit.ShopGoods ?? throw new InvalidOperationException("reward_shop without a card's shop.");
+        // Each joined drum: a card whose shop came in buys with its medals; anyone else (a guest, a card the server missed)
+        // only looks.
+        int[] joined = credit.TwoPlayers ? [0, 1] : [credit.PlayerSide];
+        var shops = credit.Shops.Select(shop => shop?.State.IsCompletedSuccessfully == true ? shop : null).ToArray();
         var view = new SongSelectCatalogView(catalog);
         var songs = view.Categories.SelectMany(category => category.Songs.Select(song => (Song: song, Category: category)))
             .Where(static entry => entry.Song.Descriptor.Key.Source == SongSourceKind.Stock)
@@ -519,14 +521,17 @@ internal sealed class LayerHostFactory(
         (SongSelectSong Song, SongSelectCategory Category)? song(int id) =>
             state.Goods.FirstOrDefault(goods => goods.Type == 1 && goods.Id == id)?.MusicId is { } musicId
             && songs.TryGetValue(musicId, out var entry) ? entry : null;
+        bool[] owned(ShopGoods item) => [.. shops.Select(shop => shop?.State.Result.Goods.Any(goods => goods.No == item.No && goods.Owned) == true)];
         var goods = state.Goods.Select(item => song(item.Id) is { } entry && item.Type == 1
-            ? new RewardShopGoods(item, Array.IndexOf(ShopGenres, entry.Category.AuthoredLabel) + 1,
+            ? new RewardShopGoods(item, owned(item), Array.IndexOf(ShopGenres, entry.Category.AuthoredLabel) + 1,
                 [.. new[] { TaikoCourse.Easy, TaikoCourse.Normal, TaikoCourse.Hard, TaikoCourse.Oni }.Select(course => entry.Song.Level(course) ?? 0)])
-            : new RewardShopGoods(item)).ToList();
-        var dressed = true; // the Don wears the player's own look
-        var visit = new RewardShopVisit(goods, state.Medals,
-            async no =>
+            : new RewardShopGoods(item, owned(item))).ToList();
+        var dressed = new[] { true, true }; // each Don wears its player's own look
+        var visit = new RewardShopVisit(goods, joined, [.. shops.Select(shop => shop?.State.Result.Medals)],
+            async (side, no) =>
             {
+                if (shops[side] is not { } shop)
+                    return null;
                 try
                 {
                     return await shop.Purchase(no).ConfigureAwait(false);
@@ -541,22 +546,23 @@ internal sealed class LayerHostFactory(
             {
                 // A song plays its preview; a costume (head 5, body 4) is worn alone; -2 (the exit) and songs bring back the
                 // player's own look. True: the Don changes (the movie waits for FinishCostumeLoad).
+                // ponytail: one preview player; the last cursor to move picks the song.
                 if (type == 1 && song(id) is { Song.Descriptor: { AudioAsset: { } audio } descriptor })
                     previews.SetPreview(new SongPreviewRequest(descriptor.Key, audio, descriptor.PreviewStart ?? TimeSpan.Zero));
                 else
                     previews.Silence();
-                if (don is null)
+                if (don is null || side is not (0 or 1))
                     return false;
                 if (type is 4 or 5)
                 {
                     don.SetCostume(side, new DonCostume(null, type == 5 ? id : 0, type == 4 ? id : 0, 0));
-                    dressed = false;
+                    dressed[side] = false;
                     return true;
                 }
-                if (dressed)
+                if (dressed[side])
                     return false;
-                don.SetLook(side, profile?.Look);
-                dressed = true;
+                don.SetLook(side, TaikoGuest.Profiles[side]?.Look);
+                dressed[side] = true;
                 return true;
             },
             (slot, type, id) => type switch
@@ -567,8 +573,7 @@ internal sealed class LayerHostFactory(
                 _ => null,
             },
             static (type, id) => type is 4 or 5 ? CostumeIconTextures.Key(type == 5 ? 1 : 2, id) : null);
-        var player = new RewardShopPlayer(shop.Side, state.Medals, new Waddamburo.Game.Scores.MedalCredit(0, false, false, false));
-        var binding = loaded.RewardShop = new RewardShopHostBinding(state.SeasonId, state.Telop, player, sounds?.RewardShop, visit, don, _parts);
+        var binding = loaded.RewardShop = new RewardShopHostBinding(state.SeasonId, state.Telop, null, sounds?.RewardShop, visit, don, _parts);
         return rewardShopLayer(binding, state.SeasonId);
     }
 
