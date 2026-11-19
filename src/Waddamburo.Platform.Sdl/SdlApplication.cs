@@ -759,6 +759,11 @@ public sealed unsafe partial class SdlApplication : IDisposable
             TouchDrum.Notices => SdlKeyboardKey.E,
             _ => SdlInputBindings.Pads[input.Code],
         }
+        // An overlay's own navigation (#48): Enter, Escape and the arrows are always themselves there and a controller is
+        // always a gamepad (a drum controller's bound pads first), whatever is bound; bindings only add inputs.
+        : OverlayOpen && input.Kind == SdlInputKind.Key && mapKey(keycode(input)) is (SdlKeyboardKey.Enter or SdlKeyboardKey.Escape
+            or SdlKeyboardKey.Up or SdlKeyboardKey.Down or SdlKeyboardKey.Left or SdlKeyboardKey.Right) and var menuKey ? menuKey
+        : OverlayOpen && input.Device != 0 && !PadsAsGamepad ? _bindings.Pad(input) ?? menuButton(input)
         : _menuInput && PadsAsGamepad && input.Device != 0 ? menuButton(input)
         // In songs a controller is its drum only (its buttons are the keyboard's there).
         : _bindings.Pad(input) ?? (input.Device == 0 ? _bindings.Button(input) : null) ?? input.Kind switch
