@@ -37,5 +37,4 @@ crashdumps/
 
 # Synthetic fixtures are reviewed exceptions
 !tests/fixtures/synthetic/**
-AGENTS.md
 CLAUDE.md
