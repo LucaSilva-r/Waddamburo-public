@@ -1,0 +1,32 @@
+# The release builds' toolchain images (eng/ci/Dockerfile), pushed to ghcr.io whenever the Dockerfile changes: the
+# only time the build touches Ubuntu's package mirrors, and a slow one here never holds up a release.
+name: CI image
+
+on:
+  push:
+    branches: [master]
+    paths: ['eng/ci/Dockerfile', '.github/workflows/ci-image.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [linux, windows]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build and push
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/waddamburo-build
+          TOKEN: ${{ github.token }}
+        run: |
+          image=${IMAGE,,}:${{ matrix.target }}
+          echo "$TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker build -f eng/ci/Dockerfile --target ${{ matrix.target }} -t "$image" eng/ci
+          docker push "$image"
