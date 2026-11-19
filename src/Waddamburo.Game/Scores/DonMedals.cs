@@ -39,3 +39,12 @@ public static class DonMedals
         };
     }
 }
+
+/// <summary>One reward shop slot as TaikOnline serves it (Green's shop data): type 5 head, 4 body, 1 song (id = uniqueId).</summary>
+public sealed record ShopGoods(int No, int Type, int Id, int Price, bool Owned, string? MusicId = null);
+
+/// <summary>The reward shop this season (GET api/wdb/shop).</summary>
+public sealed record ShopState(int SeasonId, string Telop, int Medals, List<ShopGoods> Goods);
+
+/// <summary>A purchase's answer: "ok", "owned" or "short", and the medals left.</summary>
+public sealed record ShopPurchase(string Result, int Medals);

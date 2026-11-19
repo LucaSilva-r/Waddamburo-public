@@ -35,6 +35,9 @@ public sealed class EntrySceneHost(IndicatorParts parts)
     /// <summary>Costume picker icon (name: false) or name plate (true) for (ICONTYPE 0 costume / 1 head / 2 body, id).</summary>
     public Func<int, int, bool, LumenNativeSurfaceKey?>? CostumeIcon { get; init; }
 
+    /// <summary>Whether the mode select offers the reward shop (a card's shop has loaded).</summary>
+    public Func<bool>? ShopAvailable { get; init; }
+
     /// <summary>Whether a player may join, on either drum (the right one is P2); both may.</summary>
     public Func<int, bool> CanJoin { get; init; } = static _ => true;
 
@@ -562,9 +565,9 @@ public sealed class EntrySceneHost(IndicatorParts parts)
         lumen.RegisterMethod("IsPlayerbleCoinOrFree", _ => LumenHostValue.FromBoolean(canPay()));
         lumen.RegisterMethod("IsPlayerbleCoin", _ => LumenHostValue.FromBoolean(canPay()));
         lumen.RegisterMethod("IsCardReaderError", _ => LumenHostValue.FromBoolean(false));
-        // ponytail: the shop has no scene yet and is reported unavailable. Waiwai is on:
+        // The mode select's reward shop: a card's goods are in (traced 1 for a carded player). Waiwai is on:
         // the game enables it while online (traced 0 online, 1 offline); this engine has no network gate.
-        lumen.RegisterMethod("IsAvailableShop", _ => LumenHostValue.FromBoolean(false));
+        lumen.RegisterMethod("IsAvailableShop", _ => LumenHostValue.FromBoolean(ShopAvailable?.Invoke() == true));
         lumen.RegisterMethod("IsAvailableBattle", _ => LumenHostValue.FromBoolean(true));
         lumen.RegisterMethod("IsWaiwaiDisable", _ => LumenHostValue.FromBoolean(false));
         lumen.RegisterMethod("NotifyMaccollabo", _ => LumenHostValue.FromBoolean(false));

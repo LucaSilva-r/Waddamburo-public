@@ -1742,7 +1742,8 @@ public sealed class LumenPlayer : IAvm1Host
 
     private static void placeScriptChild(DisplayInstance parent, DisplayInstance child)
     {
-        if (parent.Children.TryGetValue(child.Depth, out var replaced))
+        // A swapDepths in the same action already put the new clip there (reward_shop's goods icons).
+        if (parent.Children.TryGetValue(child.Depth, out var replaced) && !ReferenceEquals(replaced, child))
             replaced.Removed = true;
         parent.Children[child.Depth] = child;
     }

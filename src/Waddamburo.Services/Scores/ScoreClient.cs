@@ -174,6 +174,24 @@ public sealed class ScoreClient(HttpClient http)
             .Rankings;
     }
 
+    /// <summary>This season's reward shop: goods with the player's owned flags, and their Don Medals (cabinet: <paramref name="baid"/>).</summary>
+    public async Task<ShopState> ShopAsync(long? baid = null, CancellationToken cancellationToken = default)
+    {
+        using var response = await http.GetAsync(baid is { } card ? $"api/wdb/shop?baid={card}" : "api/wdb/shop", cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync(ScoreJson.Default.ShopState, cancellationToken).ConfigureAwait(false))!;
+    }
+
+    /// <summary>Buys goods <paramref name="no"/>: "ok", or "owned"/"short" (refused), with the medals left.</summary>
+    public async Task<ShopPurchase> PurchaseAsync(int no, long? baid = null, CancellationToken cancellationToken = default)
+    {
+        using var response = await http.PostAsJsonAsync("api/wdb/shop/purchase", new PurchaseRequest(no, baid), ScoreJson.Default.PurchaseRequest,
+            cancellationToken).ConfigureAwait(false);
+        if (response.StatusCode != HttpStatusCode.Conflict)
+            response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync(ScoreJson.Default.ShopPurchase, cancellationToken).ConfigureAwait(false))!;
+    }
+
     /// <summary>The dan dojo catalogue (public: no account needed).</summary>
     public async Task<Waddamburo.Game.Dan.DanCatalogue> DanCatalogueAsync(CancellationToken cancellationToken = default)
     {
@@ -429,6 +447,8 @@ public sealed class ScoreClient(HttpClient http)
     internal sealed record UploadMedalSong(Guid Id, long Baid, DateTimeOffset PlayedAt, string Kind, Guid? CreditId);
 
     internal sealed record MedalSongsRequest(List<UploadMedalSong> Songs);
+
+    internal sealed record PurchaseRequest(int No, long? Baid);
 
     internal sealed record MedalSongsResult(List<Guid> Accepted, List<MedalCredit> Credits, int? Wallet);
 

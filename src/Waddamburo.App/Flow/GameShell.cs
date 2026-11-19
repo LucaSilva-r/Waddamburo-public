@@ -824,6 +824,8 @@ internal sealed partial class GameShell : IDisposable
                 new SceneTransitionRoute(FlowScenes.Entry, new LumenSceneRequest(1, 0, 0), FlowScenes.SongSelect),
                 // Mode select's AI battle (traced SetNextScene(10, 0, 0)): its own song select (Players.ChooseMode).
                 new SceneTransitionRoute(FlowScenes.Entry, new LumenSceneRequest(10, 0, 0), FlowScenes.SongSelect),
+                // Mode select's ごほうびショップ (traced SetNextScene(3, 0, 0)): the reward shop, then Song Select.
+                new SceneTransitionRoute(FlowScenes.Entry, new LumenSceneRequest(3, 0, 0), FlowScenes.RewardShop),
                 // The entry gives up (a card declined, or its dialog timed out, with nobody joined and no
                 // credits: TerminateEntry -> SetNextScene(0)): back to the attract loop.
                 new SceneTransitionRoute(FlowScenes.Entry, new LumenSceneRequest(0, 0, 0), FlowScenes.Logo),
@@ -875,6 +877,10 @@ internal sealed partial class GameShell : IDisposable
             {
                 TaikoGuest.Profiles[side] = card;
                 Sync.RefreshBests(card);
+                // The entry offers the reward shop once its goods are in (arcade; a server with medals).
+                // ponytail: the first card's shop only.
+                if (!Arcade.Home && Credit.Shop is null && card.Medals is not null && Sync.ServerFor(card) is var (client, baid))
+                    Credit.Shop = new(side, Task.Run(() => client.ShopAsync(baid)), no => client.PurchaseAsync(no, baid));
             },
             // A card given to the drum, or the account chosen for it in the home player setup.
             Dan = _danCourses,
@@ -908,6 +914,7 @@ internal sealed partial class GameShell : IDisposable
         [FlowScenes.Retry] = ending,
         [FlowScenes.GameOver] = ending,
         [FlowScenes.AiRemind] = ending,
+        [FlowScenes.RewardShop] = ending,
     };
 
     public string? FindJingle(string fileName)
@@ -947,6 +954,7 @@ internal sealed partial class GameShell : IDisposable
             StartScene.Retry => FlowScenes.Retry,
             StartScene.GameOver or StartScene.DaniGameOver or StartScene.RewardGameOver => FlowScenes.GameOver,
             StartScene.AiRemind => FlowScenes.AiRemind,
+            StartScene.RewardShop => FlowScenes.RewardShop,
             StartScene.WaiwaiTutorial => FlowScenes.WaiwaiTutorial,
             StartScene.AiTutorial => FlowScenes.AiTutorial,
             _ => throw new ArgumentOutOfRangeException(nameof(Options.StartScene)),
@@ -959,6 +967,19 @@ internal sealed partial class GameShell : IDisposable
             Credit.RewardPlayer = new Waddamburo.Game.Lumen.RewardShopPlayer(0, 900,
                 Waddamburo.Game.Scores.DonMedals.ForCredit(null, DateOnly.FromDateTime(DateTime.Now)));
             Catalog.Replace(FlowScenes.RewardGameOver);
+        }
+        if (Options.StartScene == StartScene.RewardShop)
+        {
+            // Green's Winter shop (traced session-rewards-1), 4950 medals, the first body owned; purchases succeed locally.
+            var medals = 4950;
+            List<Waddamburo.Game.Scores.ShopGoods> goods =
+            [
+                new(1, 5, 117, 500, false), new(2, 4, 117, 500, true), new(3, 5, 135, 500, false), new(4, 4, 146, 500, false),
+                new(5, 1, 865, 1300, false, "589him"), new(6, 1, 864, 1300, false, "tecdrv"),
+                new(7, 1, 858, 1500, false, "kooryu"), new(8, 1, 866, 1500, false, "kooryu"),
+            ];
+            Credit.Shop = new(0, Task.FromResult(new Waddamburo.Game.Scores.ShopState(4, "Winter reward shop", medals, goods)),
+                no => Task.FromResult(new Waddamburo.Game.Scores.ShopPurchase("ok", medals -= goods[no - 1].Price)));
         }
         if (Options.StartScene == StartScene.WaiwaiTutorial) Credit.Waiwai = true;
         if (Options.StartScene is StartScene.AiSongSelect or StartScene.AiTutorial)

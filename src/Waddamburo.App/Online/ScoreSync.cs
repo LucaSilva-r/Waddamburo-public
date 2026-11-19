@@ -217,6 +217,16 @@ internal sealed class ScoreSync : IDisposable
         }
     }
 
+    /// <summary>The server speaking for a carded profile (cabinet: its token plus the card's baid); null: a guest or offline.</summary>
+    public (ScoreClient Client, long? Baid)? ServerFor(ScoreProfile profile)
+    {
+        if (profile.Baid == ScoreProfile.LocalGuestBaid)
+            return null;
+        if (CabinetServer is { } cabinet)
+            return (cabinet, profile.Baid);
+        return profile.Token is { } token && ClientFor(token) is { } client ? (client, null) : null;
+    }
+
     /// <summary>
     /// Downloads a player's server bests (crowns from every machine) into the store in the background;
     /// song select reads them when it loads. Guests have none.

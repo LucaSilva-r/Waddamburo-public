@@ -171,6 +171,7 @@ internal sealed class LayerHostFactory(
                 CostumeIcon = static (type, id, name) => type is < 0 or > 2 ? null
                     : name ? CostumeIconTextures.NameKey(type, id) : CostumeIconTextures.Key(type, id),
                 Card = credit.EntryCard,
+                ShopAvailable = () => credit.Shop?.State.IsCompletedSuccessfully == true,
                 Don = don,
                 ReturnToAttract = () => ReturnToAttract?.Invoke(),
                 PlayerLook = side => PlayerLook?.Invoke(side),
@@ -233,6 +234,7 @@ internal sealed class LayerHostFactory(
             "dani-select" => daniSelectHost(),
             "gameover" => gameOverHost(),
             "reward-shop" => rewardShopHost(),
+            "reward-shop-visit" => rewardShopVisitHost(),
             "attract" => attractHost(),
             "boot" => new LumenLayerHost(null, bootCredits),
             _ => throw new KeyNotFoundException($"No Lumen host is configured for '{layer.HostId}'."),
@@ -477,21 +479,95 @@ internal sealed class LayerHostFactory(
         var player = credit.RewardPlayer ?? throw new InvalidOperationException("reward_shop without a carded player.");
         var (season, telop) = Waddamburo.Game.Scores.DonMedals.Season(DateOnly.FromDateTime(DateTime.Now));
         var binding = loaded.RewardShop = new RewardShopHostBinding(season, telop, player, sounds?.RewardShop);
-        return new LumenLayerHost(binding, movie =>
+        return rewardShopLayer(binding, season);
+    }
+
+    // The season's art in reward_shop's fills and the players' Don-chan in their costumes (don1pM / don2pM), as at the entry.
+    private LumenLayerHost rewardShopLayer(RewardShopHostBinding binding, int season) => new(binding, movie =>
+    {
+        // ponytail: slot names guessed from the movie's strings; checked on screen.
+        movie.SetNativeFill("season_BG", Presentation.SeasonArt.Key("BG", season));
+        movie.SetNativeFill("season_thema", Presentation.SeasonArt.Key("thema", season));
+        for (var side = 0; side < 2; side++)
         {
-            // ponytail: slot names guessed from the movie's strings; checked on screen.
-            movie.SetNativeFill("season_BG", Presentation.SeasonArt.Key("BG", season));
-            movie.SetNativeFill("season_thema", Presentation.SeasonArt.Key("thema", season));
-            for (var side = 0; side < 2; side++)
+            movie.SetNativeFill($"season_fan_{side + 1}p", Presentation.SeasonArt.Key("daishi_1p2p", season, side));
+            movie.SetNativeFill($"medalbase{side + 1}p", Presentation.SeasonArt.Key("medal_1p2p", season, side));
+        }
+        if (don is not null)
+            DonLumenBinding.Attach(movie, don);
+        binding.Attach(movie);
+    });
+
+    // The movie's GENRELABEL order (1-8).
+    private static readonly string[] ShopGenres = ["J-POP", "アニメ", "ボーカロイド", "童謡", "バラエティ", "クラシック", "ゲームミュージック", "ナムコオリジナル"];
+
+    /// <summary>
+    /// The reward shop after a card entry (shopping mode): the season's goods TaikOnline serves, songs found in the stock
+    /// library by musicid (their genre, stars, title and preview), costumes previewed on the player's Don.
+    /// </summary>
+    private LumenLayerHost rewardShopVisitHost()
+    {
+        var shop = credit.Shop ?? throw new InvalidOperationException("reward_shop without a card's shop.");
+        var state = shop.State.Result; // the entry offers the shop only once it is in
+        var profile = TaikoGuest.Profiles[shop.Side];
+        var view = new SongSelectCatalogView(catalog);
+        var songs = view.Categories.SelectMany(category => category.Songs.Select(song => (Song: song, Category: category)))
+            .Where(static entry => entry.Song.Descriptor.Key.Source == SongSourceKind.Stock)
+            .GroupBy(static entry => entry.Song.Descriptor.Key.StableId).ToDictionary(static group => group.Key, static group => group.First());
+        (SongSelectSong Song, SongSelectCategory Category)? song(int id) =>
+            state.Goods.FirstOrDefault(goods => goods.Type == 1 && goods.Id == id)?.MusicId is { } musicId
+            && songs.TryGetValue(musicId, out var entry) ? entry : null;
+        var goods = state.Goods.Select(item => song(item.Id) is { } entry && item.Type == 1
+            ? new RewardShopGoods(item, Array.IndexOf(ShopGenres, entry.Category.AuthoredLabel) + 1,
+                [.. new[] { TaikoCourse.Easy, TaikoCourse.Normal, TaikoCourse.Hard, TaikoCourse.Oni }.Select(course => entry.Song.Level(course) ?? 0)])
+            : new RewardShopGoods(item)).ToList();
+        var dressed = true; // the Don wears the player's own look
+        var visit = new RewardShopVisit(goods, state.Medals,
+            async no =>
             {
-                movie.SetNativeFill($"season_fan_{side + 1}p", Presentation.SeasonArt.Key("daishi_1p2p", season, side));
-                movie.SetNativeFill($"medalbase{side + 1}p", Presentation.SeasonArt.Key("medal_1p2p", season, side));
-            }
-            // The players' Don-chan in their costumes (don1pM / don2pM), as at the entry.
-            if (don is not null)
-                DonLumenBinding.Attach(movie, don);
-            binding.Attach(movie);
-        });
+                try
+                {
+                    return await shop.Purchase(no).ConfigureAwait(false);
+                }
+                catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+                {
+                    Console.Error.WriteLine($"Warning SHOP: the purchase failed ({exception.Message}).");
+                    return null;
+                }
+            },
+            (side, type, id) =>
+            {
+                // A song plays its preview; a costume (head 5, body 4) is worn alone; -2 (the exit) and songs bring back the
+                // player's own look. True: the Don changes (the movie waits for FinishCostumeLoad).
+                if (type == 1 && song(id) is { Song.Descriptor: { AudioAsset: { } audio } descriptor })
+                    previews.SetPreview(new SongPreviewRequest(descriptor.Key, audio, descriptor.PreviewStart ?? TimeSpan.Zero));
+                else
+                    previews.Silence();
+                if (don is null)
+                    return false;
+                if (type is 4 or 5)
+                {
+                    don.SetCostume(side, new DonCostume(null, type == 5 ? id : 0, type == 4 ? id : 0, 0));
+                    dressed = false;
+                    return true;
+                }
+                if (dressed)
+                    return false;
+                don.SetLook(side, profile?.Look);
+                dressed = true;
+                return true;
+            },
+            (slot, type, id) => type switch
+            {
+                1 when slot is 10 or 11 && song(id) is var (entry, category) =>
+                    textures.GetSongTitle(entry, category.BoardStyle, SongBoardTextureKind.Expanded),
+                4 or 5 => slot is 6 or 7 ? CostumeIconTextures.NameKey(type == 5 ? 1 : 2, id) : CostumeIconTextures.Key(type == 5 ? 1 : 2, id),
+                _ => null,
+            },
+            static (type, id) => type is 4 or 5 ? CostumeIconTextures.Key(type == 5 ? 1 : 2, id) : null);
+        var player = new RewardShopPlayer(shop.Side, state.Medals, new Waddamburo.Game.Scores.MedalCredit(0, false, false, false));
+        var binding = loaded.RewardShop = new RewardShopHostBinding(state.SeasonId, state.Telop, player, sounds?.RewardShop, visit, don);
+        return rewardShopLayer(binding, state.SeasonId);
     }
 
     private LumenLayerHost attractHost()

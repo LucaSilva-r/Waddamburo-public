@@ -33,6 +33,8 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
         _remindStartTick = Shell.Tick;
         if (scene == FlowScenes.AiRemind)
             Shell.Sounds?.Results.StartRemindMusic();
+        if (scene == FlowScenes.RewardShop)
+            Shell.Scenes.Prefetch(FlowScenes.SongSelectScene([.. Shell.Players.JoinedSides]));
         if (scene != FlowScenes.Result)
             return;
         _resultStartTick = Shell.Tick;
@@ -69,6 +71,16 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
         {
             Shell.Sounds?.Results.StopMusic();
             Shell.Credit.DanResult = null;
+        }
+        else if (scene == FlowScenes.RewardShop)
+        {
+            // The shop's music and previews stop; the Don wears the player's own look again.
+            Shell.Sounds?.RewardShop.StopMusic();
+            Shell.Previews?.Silence();
+            if (Shell.Credit.Shop is { } shop)
+                Shell.Don?.SetLook(shop.Side, TaikoGuest.Profiles[shop.Side]?.Look);
+            Shell.Credit.Shop = null; // one visit a credit
+            Shell.Loaded.RewardShop = null;
         }
         else if (scene == FlowScenes.GameOver)
         {
@@ -180,6 +192,14 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
                 Shell.Loaded.AiRemind?.Exit();
             if (input.Escape || RetryGameHostBinding.IsEnd(Shell.Active.Player.Layers[1].Player)) // remind, over its backdrop
                 Shell.Scenes.FadeTo(gameOver());
+        }
+        else if (scene == FlowScenes.RewardShop)
+        {
+            if (Shell.Scenes.FinishFade()) return;
+            Shell.Loaded.RewardShop?.Tick();
+            // NotifyEndSequence (exit, or the 100 s are up): Song Select (traced scene 22).
+            if (Shell.Loaded.RewardShop?.Ended == true)
+                Shell.Scenes.FadeTo(FlowScenes.SongSelect);
         }
         else if (scene == FlowScenes.Retry)
         {

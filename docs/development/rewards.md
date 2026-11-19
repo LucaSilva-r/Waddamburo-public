@@ -1,7 +1,7 @@
 # Rewards: Don Medals, reward shop, Don Points, titles
 
 Plan for Green's reward systems in Waddamburo (Discord suggestion "Events/Gouhoubi Shop").
-Status: design, nothing built. Delete this file when done (git history keeps it).
+Status: medals and the arcade shop built; gating, home screens and titles to do. Delete this file when done (git history keeps it).
 
 ## What Green has
 
@@ -117,7 +117,11 @@ everything from them.
 2. **Server ledger.** Credit grouping, medals, calendar season, purchase API, `earned_only`, and the earned
    list in the profile payload. Add PHPUnit tests.
 3. **Client gating.** Earned-only filtering in the pickers and the song list.
-4. **Arcade screens.** `reward_shop` host binding, both modes. Prove it with flow-smoke and `--play`.
+4. **Arcade screens.** `reward_shop` host binding, both modes. Medal mode done. Shopping mode done 2026-11-19: a card
+   read fetches `GET api/wdb/shop` (songs carry their `music_id`), the mode select offers the shop once it is in,
+   `SetNextScene(3)` opens it, purchases go to `POST shop/purchase`, exit → Song Select. `--start-scene=reward-shop`
+   shows it with Green's Winter goods and local purchases. Left out: the indicator's parts (name board, visible
+   timer, over_msg "connecting"), 2P shopping, the first-visit tutorial.
 5. **Home screens.** Toast and the pause menu entry.
 6. **Condition titles.** Condition data file (from the reward names + wiki), then server evaluation.
 7. **Later.** Custom unlockables (own costumes and content) once the skin system can supply them.

@@ -28,6 +28,7 @@ internal static class FlowScenes
     public static readonly SceneId WaiwaiTutorial = new("waiwai-tutorial");
     public static readonly SceneId AiTutorial = new("ai-tutorial");
     public static readonly SceneId DaniSelect = new("dani-select");
+    public static readonly SceneId RewardShop = new("reward-shop");
 
     // Traced session30: the game plays this as Song Select ends and sends it out once dani_select has loaded.
     public static SceneDefinition DanCover { get; } = new(SceneDefinition.CurrentVersion, new SceneId("dan-cover"), [
@@ -134,6 +135,7 @@ internal static class FlowScenes
         ]),
         DaniSelectScene(0),
         NormalGameOver,
+        RewardShopVisit,
         // AI battle's farewell as a credit ends (traced session-ai-battle-3: remind, and its backdrop common_bg under it).
         new SceneDefinition(SceneDefinition.CurrentVersion, AiRemind, [
             new SceneLayerDefinition("ghost/common_bg/packeddata.ddp", "common_bg/common_bg.lm", LumenMatrix.Identity, "ai-remind-bg"),
@@ -162,6 +164,13 @@ internal static class FlowScenes
         new SceneDefinition(SceneDefinition.CurrentVersion, GameOver, [
             new SceneLayerDefinition("reward_shop/packeddata.ddp", "shop_gameover/shop_gameover.lm", LumenMatrix.Identity, "gameover"),
             new SceneLayerDefinition("reward_shop/packeddata.ddp", "reward_shop/reward_shop.lm", LumenMatrix.Identity, "reward-shop"),
+        ]);
+
+    // The shop after a card entry (traced session-rewards-1 scene 21: SetNextScene(3) from the mode select), then Song Select.
+    // ponytail: without the indicator's parts (name board, timer); the movie keeps its own 100 s.
+    public static SceneDefinition RewardShopVisit { get; } =
+        new SceneDefinition(SceneDefinition.CurrentVersion, RewardShop, [
+            new SceneLayerDefinition("reward_shop/packeddata.ddp", "reward_shop/reward_shop.lm", LumenMatrix.Identity, "reward-shop-visit"),
         ]);
 
     // A dan course's end (traced sessions 30 to 32): the same calls and sounds as the normal one, its own movie.
