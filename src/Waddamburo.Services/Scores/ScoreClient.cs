@@ -80,6 +80,10 @@ public sealed class ScoreClient(HttpClient http)
 {
     private const int BatchSize = 50;
     private const int DanBatchSize = 10;
+    private const int MedalBatchSize = 100;
+
+    /// <summary>Don Medal credits the server paid during a sync (for one account; a cabinet gets none), and the wallet after them.</summary>
+    public event Action<IReadOnlyList<MedalCredit>, int>? MedalsPaid;
 
     /// <summary>The API's JSON options (snake_case), backed by the generated <see cref="ScoreJson"/>.</summary>
     public static JsonSerializerOptions Json => ScoreJson.Default.Options;
@@ -295,7 +299,32 @@ public sealed class ScoreClient(HttpClient http)
             if (result.Accepted.Count < batch.Count)
                 Console.Error.WriteLine($"Warning SCORE_REJECTED: the server refused {batch.Count - result.Accepted.Count} play(s).");
         }
-        return sent + await syncDanAsync(store, baid, cancellationToken).ConfigureAwait(false);
+        sent += await syncDanAsync(store, baid, cancellationToken).ConfigureAwait(false);
+        await syncMedalsAsync(store, baid, cancellationToken).ConfigureAwait(false);
+        return sent;
+    }
+
+    // Every finished song and course for Don Medals, after the plays (an older server without medals costs them nothing).
+    private async Task syncMedalsAsync(ScoreStore store, long? baid, CancellationToken cancellationToken)
+    {
+        var devPlays = AcceptsDevPlays(http.BaseAddress);
+        while (store.PendingMedalSongs(baid, MedalBatchSize) is { Count: > 0 } pending)
+        {
+            var batch = devPlays ? pending : keep(pending, static song => (song.EngineVersion, song.Id), store.MarkMedalsSent);
+            if (batch.Count == 0)
+                continue;
+            // The machine's own offset: the server pays daily/weekly/monthly bonuses by the player's calendar.
+            var songs = batch.Select(static song => new UploadMedalSong(song.Id, song.Baid, song.PlayedAt.ToLocalTime(), song.Kind)).ToList();
+            using var response = await http.PostAsJsonAsync("api/wdb/medals/songs", new MedalSongsRequest(songs), ScoreJson.Default.MedalSongsRequest,
+                cancellationToken).ConfigureAwait(false);
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                return; // an older server: they wait until it has medals
+            response.EnsureSuccessStatusCode();
+            var result = (await response.Content.ReadFromJsonAsync(ScoreJson.Default.MedalSongsResult, cancellationToken).ConfigureAwait(false))!;
+            store.MarkMedalsSent(batch.Select(static song => song.Id));
+            if (result.Credits.Count > 0 && result.Wallet is { } wallet)
+                MedalsPaid?.Invoke(result.Credits, wallet);
+        }
     }
 
     /// <summary>
@@ -396,6 +425,12 @@ public sealed class ScoreClient(HttpClient http)
     internal sealed record DanPlaysRequest(List<UploadDanPlay> Plays);
 
     internal sealed record DanPlaysResult(List<Guid> Accepted);
+
+    internal sealed record UploadMedalSong(Guid Id, long Baid, DateTimeOffset PlayedAt, string Kind);
+
+    internal sealed record MedalSongsRequest(List<UploadMedalSong> Songs);
+
+    internal sealed record MedalSongsResult(List<Guid> Accepted, List<MedalCredit> Credits, int? Wallet);
 
     internal sealed record BestsResult(List<RemoteBest> Bests, List<RemotePlay>? Recent, List<RemoteAiPlay>? AiPlays);
 

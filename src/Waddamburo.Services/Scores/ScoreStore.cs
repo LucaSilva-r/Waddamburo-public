@@ -186,6 +186,12 @@ public sealed record UploadDanPlay(Guid Id, long Baid, string CourseHash, int Re
     int MaxCombo, int Rolls, int GaugePercent, int SongsPlayed, int ScoringVersion, string EngineVersion, int AudioOffsetMs,
     int InputOffsetMs, DateTimeOffset PlayedAt, List<UploadDanSong> Songs);
 
+/// <summary>A finished song or dan course for Don Medals (Kind "song" or "dan").</summary>
+public sealed record MedalSong(Guid Id, long Baid, string Kind, string EngineVersion, DateTimeOffset PlayedAt);
+
+/// <summary>A credit's Don Medals as Green pays them: 100, plus 50/100/300 for the day's, week's and month's first credit.</summary>
+public sealed record MedalCredit(int Medals, bool Daily, bool Weekly, bool Monthly);
+
 /// <summary>One song of an uploaded course play.</summary>
 public sealed record UploadDanSong(string Sha256, string Replay);
 
@@ -367,6 +373,14 @@ public sealed class ScoreStore : IDisposable
         """,
         """
         ALTER TABLE plays ADD COLUMN ai_section_counts TEXT;
+        """,
+        // Don Medals: every finished song and course is sent once (pass or fail). Plays from before medals
+        // existed are marked sent, so nobody's history pays out at once.
+        """
+        ALTER TABLE plays ADD COLUMN medal_sent_at TEXT;
+        ALTER TABLE dan_plays ADD COLUMN medal_sent_at TEXT;
+        UPDATE plays SET medal_sent_at = 'before medals';
+        UPDATE dan_plays SET medal_sent_at = 'before medals';
         """,
     ];
 
@@ -1090,6 +1104,53 @@ public sealed class ScoreStore : IDisposable
     }
 
     /// <summary>Course plays not yet on the server; a guest's stay on this PC.</summary>
+    /// <summary>Finished songs and dan courses (any result) not yet sent for Don Medals, oldest first.</summary>
+    public List<MedalSong> PendingMedalSongs(long? baid, int limit)
+    {
+        lock (_connection)
+        {
+            using var command = _connection.CreateCommand();
+            command.CommandText = """
+                SELECT id, baid, 'song', engine_version, played_at FROM plays
+                    WHERE ($baid IS NULL OR baid = $baid) AND baid <> 0 AND medal_sent_at IS NULL
+                UNION ALL
+                SELECT id, baid, 'dan', engine_version, played_at FROM dan_plays
+                    WHERE ($baid IS NULL OR baid = $baid) AND baid <> 0 AND medal_sent_at IS NULL
+                ORDER BY 5 LIMIT $limit
+                """;
+            command.Parameters.AddWithValue("$baid", (object?)baid ?? DBNull.Value);
+            command.Parameters.AddWithValue("$limit", limit);
+            using var reader = command.ExecuteReader();
+            var songs = new List<MedalSong>();
+            while (reader.Read())
+                songs.Add(new MedalSong(Guid.Parse(reader.GetString(0)), reader.GetInt64(1), reader.GetString(2), reader.GetString(3),
+                    DateTimeOffset.Parse(reader.GetString(4), CultureInfo.InvariantCulture)));
+            return songs;
+        }
+    }
+
+    public void MarkMedalsSent(IEnumerable<Guid> ids)
+    {
+        lock (_connection)
+        {
+            using var transaction = _connection.BeginTransaction();
+            using var command = _connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = """
+                UPDATE plays SET medal_sent_at = $at WHERE id = $id;
+                UPDATE dan_plays SET medal_sent_at = $at WHERE id = $id;
+                """;
+            command.Parameters.AddWithValue("$at", DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture));
+            var id = command.Parameters.Add("$id", SqliteType.Text);
+            foreach (var value in ids)
+            {
+                id.Value = value.ToString();
+                command.ExecuteNonQuery();
+            }
+            transaction.Commit();
+        }
+    }
+
     public List<UploadDanPlay> PendingDanPlays(long? baid, int limit)
     {
         lock (_connection)

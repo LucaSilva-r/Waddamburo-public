@@ -254,7 +254,10 @@ internal sealed class ScoreSync : IDisposable
         lock (_clients)
         {
             if (!_clients.TryGetValue(token, out var client))
+            {
                 _clients[token] = client = new ScoreClient(ScoreClient.CreateHttp(server, _arcade.ServerInsecure, token));
+                client.MedalsPaid += announceMedals;
+            }
             return client;
         }
     }
@@ -383,6 +386,22 @@ internal sealed class ScoreSync : IDisposable
                 }
             }
         });
+    }
+
+    // ponytail: a notice until the reward_shop medal screen plays (rewards plan, home flow).
+    private void announceMedals(IReadOnlyList<MedalCredit> credits, int wallet)
+    {
+        foreach (var credit in credits)
+        {
+            var bonuses = string.Join(" ", new[]
+            {
+                credit.Daily ? Strings.T("notices.medal_daily") : null,
+                credit.Weekly ? Strings.T("notices.medal_weekly") : null,
+                credit.Monthly ? Strings.T("notices.medal_monthly") : null,
+            }.OfType<string>());
+            Notices.Add(new Notice($"{NoticeSource.Local}:medals:{Guid.NewGuid()}", NoticeSource.Local, NoticeSeverity.Info,
+                Strings.T("notices.medals_paid", credit.Medals, bonuses, wallet), DateTimeOffset.UtcNow) { Kind = "medals" });
+        }
     }
 
     /// <summary>A pushed profile: the stored account and any joined player with that baid take it (keeping their token).</summary>
