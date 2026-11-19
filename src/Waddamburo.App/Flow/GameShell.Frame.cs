@@ -110,7 +110,8 @@ internal sealed partial class GameShell
             upscaler.Apply(Application);
         }
         if (_libraries.MetadataCache is { } metadataCache)
-            metadataCache.Paused = Scenes.OnLane;
+            // Not during the attract demo: its notice shows there, and a held check stayed on screen the whole demo.
+            metadataCache.Paused = Scenes.OnLane && !_gameplay.Demo;
         if (DonRenderer is not null)
             DonRenderer.Interpolation = interpolation;
         var scene = flowOf(Active.Id).CreateSnapshot(interpolation);

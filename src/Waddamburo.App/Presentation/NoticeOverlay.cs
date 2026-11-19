@@ -76,7 +76,7 @@ internal sealed class NoticeOverlay : IDisposable
                 _toasts.Add((notice, now));
             var y = ToastTop;
             // Running jobs stay up as small cards above the toasts (a sync's progress, an upload).
-            foreach (var job in _jobs.Visible)
+            foreach (var job in _jobs.Visible.Where(static job => !job.Quiet))
             {
                 quads.Add(_painter.Rect(Stage - Margin - CardWidth, y, CardWidth, 44, new RenderColor(0.07f, 0.07f, 0.09f, 0.9f)));
                 y = jobBar(quads, job, Stage - Margin - CardWidth + 10, y + 4, CardWidth - 20) + Gap;

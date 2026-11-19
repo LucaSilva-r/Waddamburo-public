@@ -547,7 +547,7 @@ internal sealed partial class GameShell : IDisposable
                 _boot.Warn(problems.Count == 1 ? "1 library left out" : $"{problems.Count} libraries left out",
                     problems.Select(static problem => $"{problem.Folder}: {problem.Why}"));
             }
-            // The installations' folders are checked in the background after the start: a notice shows how far.
+            // The installations' folders are checked in the background after the start: the notices menu shows how far.
             if (_libraries.MetadataCache is { } metadataCache)
             {
                 Waddamburo.Game.Flow.JobBoard.Job? checking = null;
@@ -556,7 +556,7 @@ internal sealed partial class GameShell : IDisposable
                 {
                     lock (jobs)
                     {
-                        checking ??= jobs.Start(Strings.T("job.check_libraries"), total);
+                        checking ??= jobs.Start(Strings.T("job.check_libraries"), total, quiet: true);
                         checking.Report(done);
                         if (done >= total)
                             checking.Complete();
