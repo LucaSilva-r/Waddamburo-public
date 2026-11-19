@@ -58,7 +58,9 @@ public sealed class TaikoHitFlights
 
     public void Trigger(TaikoLongNoteProgress progress)
     {
-        if (progress.Note.IsBalloon)
+        // A balloon's hits launch nothing; when it pops, Green flies a rainbow to the gauge (geki_hit). Kusudama: none
+        // seen, none launched.
+        if (progress.Note.IsBalloon && !(progress.IsPopped && progress.Note.Kind == PlayableLongNoteKind.Balloon))
             return;
         if (progress.LastAction is { } action)
             trigger(progress.IsPopped ? "geki_hit" : StateFor(progress.Note.Kind, action));

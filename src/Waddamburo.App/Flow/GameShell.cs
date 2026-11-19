@@ -574,7 +574,9 @@ internal sealed partial class GameShell : IDisposable
                         _ => "Cabinet token refused",
                     });
             }
-            if (Arcade.Home && !PlatformInfo.IsMobile && !Arcade.OsuLibrariesAsked)
+            // Not in scripted runs (benchmark, flow smoke, tick or frame limits): nobody is there to answer.
+            if (Arcade.Home && !PlatformInfo.IsMobile && !Arcade.OsuLibrariesAsked && Interactive
+                && Options.Benchmark == BenchmarkMode.Off && Options.FlowSmoke == FlowSmokeMode.Off)
                 askOsuLibraries(_boot);
             _libraries = _boot.Background("SONG LIBRARY", () => SongLibraries.Load(dataRoot, Arcade, options.TjaRoot, _boot.Progress,
                 () => _boot.Note(Strings.T("boot.building_cache"))));

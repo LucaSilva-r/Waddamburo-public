@@ -19,10 +19,9 @@ public sealed class TaikoHitFlightsTests
 
     [Theory]
     [InlineData(PlayableLongNoteKind.Balloon, false)]
-    [InlineData(PlayableLongNoteKind.Balloon, true)]
     [InlineData(PlayableLongNoteKind.Kusudama, false)]
     [InlineData(PlayableLongNoteKind.Kusudama, true)]
-    public void BalloonHitsAndPopsDoNotLaunchGaugeFlights(PlayableLongNoteKind kind, bool popped)
+    public void BalloonHitsAndKusudamaPopsDoNotLaunchGaugeFlights(PlayableLongNoteKind kind, bool popped)
     {
         var flights = new TaikoHitFlights([createLayer()]);
         var note = new PlayableLongNote(TimeSpan.Zero, TimeSpan.FromSeconds(1), kind, 2);
@@ -35,6 +34,16 @@ public sealed class TaikoHitFlightsTests
         flights.Trigger(progress);
 
         Assert.Empty(flights.ActiveLayers);
+    }
+
+    [Fact]
+    public void PoppedBalloonFliesTheRainbow()
+    {
+        var flights = new TaikoHitFlights([createLayer("geki_hit")]);
+        var note = new PlayableLongNote(TimeSpan.Zero, TimeSpan.FromSeconds(1), PlayableLongNoteKind.Balloon, 2);
+        flights.Trigger(new TaikoLongNoteProgress(0, note, 2, true) { LastAction = TaikoInputAction.LeftDon });
+
+        Assert.Single(flights.ActiveLayers);
     }
 
     [Fact]
@@ -73,7 +82,7 @@ public sealed class TaikoHitFlightsTests
         Assert.Single(flights.ActiveLayers);
     }
 
-    private static LumenSceneLayer createLayer()
+    private static LumenSceneLayer createLayer(string label = "don_hit")
     {
         var action = new LmbAction(0, [0x07, 0x00], 0)
         {
@@ -89,7 +98,7 @@ public sealed class TaikoHitFlightsTests
             new LmbShowFrameCommand(2, 1, [], null!),
             new LmbDoActionCommand(0, 0, [], null!),
         ], null!);
-        var movie = new LmbMovieDefinition(null!, null, [new LmbString(0, "don_hit", 0)],
+        var movie = new LmbMovieDefinition(null!, null, [new LmbString(0, label, 0)],
             [], [], [], [], [], [action], [], [sprite], []);
         return new LumenSceneLayer(new LumenPlayer(movie, 1280, 720, rootCharacterId: 1),
             LumenMatrix.Identity, 0, 0);
