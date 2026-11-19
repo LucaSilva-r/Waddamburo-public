@@ -532,8 +532,8 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
         var insecure = insecureServer();
         var session = new OnlineSession(ScoreClient.CreateHttp(server()!, insecure, token()), insecure)
         {
-            ShareLanWithStrangers = Environment.GetEnvironmentVariable("WADDAMBURO_ONLINE_LAN") == "1",
-            RelayOnly = Environment.GetEnvironmentVariable("WADDAMBURO_ONLINE_RELAY_ONLY") == "1",
+            ShareLanWithStrangers = DiagnosticSwitches.OnlineLan,
+            RelayOnly = DiagnosticSwitches.OnlineRelayOnly,
         };
         _session = session;
         _start = Task.Run(() => start(session));
@@ -603,13 +603,13 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
 
     private void warn(string message) => shell.Sync.Notices.AddLocal(message, NoticeSeverity.Warning);
 
-    private static string? serverOverride => Environment.GetEnvironmentVariable("WADDAMBURO_ONLINE_SERVER") is { Length: > 0 } other ? other : null;
+    private static string? serverOverride => DiagnosticSwitches.OnlineServer is { Length: > 0 } other ? other : null;
 
     private Uri? server() => serverOverride is { } other ? new Uri(other) : Online.UpdateGate.Server(shell.Arcade);
 
     private bool insecureServer() => serverOverride is null && shell.Arcade.ServerInsecure;
 
-    private string? token() => Environment.GetEnvironmentVariable("WADDAMBURO_ONLINE_TOKEN") is { Length: > 0 } other ? other
+    private string? token() => DiagnosticSwitches.OnlineToken is { Length: > 0 } other ? other
         : shell.Players.JoinedSides.Count == 1 ? TaikoGuest.Profiles[shell.Players.JoinedSides.Min]?.Token : null;
 
     private static async Task leaveAsync(OnlineSession session, Task<bool>? start)

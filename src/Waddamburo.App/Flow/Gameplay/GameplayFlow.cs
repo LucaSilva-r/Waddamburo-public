@@ -104,7 +104,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             sounds.Tones = [0]; // the default 太鼓, not the last player's tone (#19)
             sounds.PrepareDrums(false);
         }
-        Shell.SongInfo = new TaikoSongInfo(GameplaySceneComposition.GenreIndex(category), 1, Final: false);
+        Shell.Credit.SongInfo = new TaikoSongInfo(GameplaySceneComposition.GenreIndex(category), 1, Final: false);
         Shell.Catalog.Replace(scene);
         Prepare([loaded], song, 0, null);
         _mode = new DemoPlay(this, takeOver);
@@ -598,7 +598,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
 
     // Diagnostic (WADDAMBURO_HITCH_TRACE=1): a frame whose notes moved further or less than the time since the last
     // frame (the clock jumped).
-    private static readonly bool NoteStepTrace = Environment.GetEnvironmentVariable("WADDAMBURO_HITCH_TRACE") == "1";
+    private static readonly bool NoteStepTrace = DiagnosticSwitches.HitchTrace;
     private long _noteStepAt;
     private TimeSpan _noteStepTime;
 
@@ -884,8 +884,8 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         var remoteLane = Shell.Match.InSong ? Shell.Gameplay.RemoteLaneIndex : -1;
         Shell.Match.SongEnded();
         // Results show the last saved play's bests and rankings otherwise.
-        Array.Clear(Shell.Bests);
-        Array.Clear(Shell.Placements);
+        Array.Clear(Shell.Credit.Bests);
+        Array.Clear(Shell.Credit.Placements);
         Shell.Credit.AiNumbers = null;
         Shell.Credit.AiSectionBest = null;
         if (finished && Shell.PlayRequests.Active is { } played)
@@ -915,8 +915,8 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
     // results) is not saved until its mode is worked out.
     private void saveScore(PlayRequest request, int remoteLane)
     {
-        Array.Clear(Shell.Bests);
-        Array.Clear(Shell.Placements);
+        Array.Clear(Shell.Credit.Bests);
+        Array.Clear(Shell.Credit.Placements);
         // An AI battle's intermediate level saves on its own simplified chart (Green: crowns only on levels 1/5/9/13/裏, but
         // its wins count).
         if (Shell.Autoplay || Shell.DevAutoplay || _play.Voided || Shell.Sync.Scores is not { } scores || !_mode.SavesSongs)
@@ -936,18 +936,18 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
                 var sha = ChartHash.Compute(played, player.Course);
                 var id = Guid.NewGuid();
                 var shinuchi = player.Options.Shinuchi;
-                if (lane < Shell.Bests.Length)
-                    Shell.Bests[lane] = scores.PreviousBest(profile.Baid, sha, id, shinuchi) ?? Shell.Gameplay.Results[lane].Score;
+                if (lane < Shell.Credit.Bests.Length)
+                    Shell.Credit.Bests[lane] = scores.PreviousBest(profile.Baid, sha, id, shinuchi) ?? Shell.Gameplay.Results[lane].Score;
                 // Failed plays are kept on this PC only (never uploaded, see ScoreStore.PendingPlays): the results'
                 // best then shows a hard song's progress; they get no crown or rank-in.
                 var cleared = Shell.Gameplay.Results[lane].Cleared;
                 // Online players only (the guest's baid is never uploaded), from the board song select fetched.
                 // ponytail: 真打 plays get no rank-in on the results (song select fetched the normal board only).
-                if (cleared && lane < Shell.Placements.Length && profile.Baid != ScoreProfile.LocalGuestBaid && _song is not null && !shinuchi
+                if (cleared && lane < Shell.Credit.Placements.Length && profile.Baid != ScoreProfile.LocalGuestBaid && _song is not null && !shinuchi
                     && Shell.Hosts.Rankings?.For(_song) is { } boards && (int)player.Course < boards.Length)
                 {
                     var top = boards[(int)player.Course] ?? []; // fetched, nobody on it yet
-                    var placement = Shell.Placements[lane] = RankingBoard.Place(top, profile.Baid, profile.DisplayName,
+                    var placement = Shell.Credit.Placements[lane] = RankingBoard.Place(top, profile.Baid, profile.DisplayName,
                         (int)Shell.Gameplay.Results[lane].Score);
                     if (placement.RankIn >= 0)
                         Shell.Hosts.Rankings.Record(_song, (int)player.Course, placement.Top);

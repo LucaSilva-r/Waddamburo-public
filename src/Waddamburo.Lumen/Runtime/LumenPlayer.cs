@@ -1811,7 +1811,7 @@ public sealed class LumenPlayer : IAvm1Host
     }
 
     /// <summary>Diagnostic: WADDAMBURO_HOST_TRACE=1 prints every movie -> host call with its result.</summary>
-    private static readonly bool TraceHostCalls = Environment.GetEnvironmentVariable("WADDAMBURO_HOST_TRACE") == "1";
+    private static readonly bool TraceHostCalls = DiagnosticSwitches.HostTrace;
 
     private static string describe(LumenHostValue value) => value.Kind switch
     {

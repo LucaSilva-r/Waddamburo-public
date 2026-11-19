@@ -60,7 +60,7 @@ internal static class MovieViewer
         // ...), 360 px square, so movies that hold host-drawn art (the Dons) show where it goes.
         var placeholders = new Dictionary<LumenNativeSurfaceKey, RenderTextureId>();
         uint[] colours = [0xFF3030FF, 0xFFFF6040, 0xFF40D040, 0xFF20D0F0];
-        foreach (var (name, index) in (Environment.GetEnvironmentVariable("WADDAMBURO_FILL_PLACEHOLDERS") ?? "")
+        foreach (var (name, index) in (DiagnosticSwitches.FillPlaceholders ?? "")
             .Split(',', StringSplitOptions.RemoveEmptyEntries).Select((name, index) => (name, index)))
         {
             var rgba = new byte[8 * 8 * 4];
@@ -80,7 +80,7 @@ internal static class MovieViewer
         }
         foreach (var invocation in callbackInvocations.Where(static invocation => invocation.Tick is null))
             invoke(invocation);
-        var readPath = Environment.GetEnvironmentVariable("WADDAMBURO_READ");
+        var readPath = DiagnosticSwitches.Read;
         object? lastRead = null;
         var debugger = frameLimit is null && tickLimit is null
             ? new InteractiveMovieDebugger(player)
@@ -93,8 +93,8 @@ internal static class MovieViewer
                     : throw new InvalidDataException($"Render snapshot references missing texture {index}."),
                 surface => placeholders.TryGetValue(surface, out var placeholder) ? placeholder : null);
         var simulationTick = 0;
-        var treeEvery = int.TryParse(Environment.GetEnvironmentVariable("WADDAMBURO_TREE_EVERY"), out var every) ? every : 0;
-        var treeFilter = Environment.GetEnvironmentVariable("WADDAMBURO_TREE_FILTER")?.Split('|', StringSplitOptions.RemoveEmptyEntries) ?? [];
+        var treeEvery = int.TryParse(DiagnosticSwitches.TreeEvery, out var every) ? every : 0;
+        var treeFilter = DiagnosticSwitches.TreeFilter?.Split('|', StringSplitOptions.RemoveEmptyEntries) ?? [];
         var result = application.Run(
             createFrame,
             keyboard =>

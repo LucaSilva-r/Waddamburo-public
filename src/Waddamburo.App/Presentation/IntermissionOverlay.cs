@@ -137,7 +137,7 @@ internal static class SceneTextures
     public static RenderTextureId[] Upload(SdlApplication application, LumenGameSceneInstance scene,
         Func<LumenMovieContent, RenderTextureId[]?>? uploadedAhead = null)
     {
-        var profile = Environment.GetEnvironmentVariable("WADDAMBURO_PROFILE") == "1";
+        var profile = DiagnosticSwitches.Profile;
         var start = profile ? Stopwatch.GetTimestamp() : 0;
         var rgbaBytes = scene.Textures.Sum(static texture => (long)texture.Rgba8.Length + texture.Bc7.Length + texture.Blocks.Length);
         var uploaded = scene.Layers.SelectMany(layer => uploadedAhead?.Invoke(layer.Content) ?? Upload(application, layer.Content))

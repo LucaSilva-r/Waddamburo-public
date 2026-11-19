@@ -734,7 +734,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
 
     // Diagnostic: WADDAMBURO_ICON_GALLERY=1 gives the n-th song of a folder the n-th frame label of the
     // board icon clip (mod their count), to see every icon the boards can show.
-    private static readonly string[]? IconGallery = Environment.GetEnvironmentVariable("WADDAMBURO_ICON_GALLERY") == "1"
+    private static readonly string[]? IconGallery = DiagnosticSwitches.IconGallery
         ? ["time_new", "present_1P", "present_2P", "present", "usercup_1P", "usercup_2P", "usercup", "officialcup_1P",
             "officialcup_2P", "officialcup", "vs_1P", "vs_2P", "vs", "time_limited", "character_1", "feature", "entry2players"]
         : null;

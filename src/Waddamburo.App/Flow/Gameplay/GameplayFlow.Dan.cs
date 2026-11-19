@@ -193,16 +193,16 @@ internal sealed partial class GameplayFlow
             }
             // Each song's own genre, as the select screen shows it (the genre Song Select had set stayed for the whole
             // course; reported on Discord).
-            Shell.SongInfo = Shell.SongInfo with
+            Shell.Credit.SongInfo = Shell.Credit.SongInfo with
             {
-                Genre = Shell.Hosts.Dan?.Genre(song.Descriptor) ?? Shell.SongInfo.Genre,
+                Genre = Shell.Hosts.Dan?.Genre(song.Descriptor) ?? Shell.Credit.SongInfo.Genre,
                 Stage = _song + 1,
             };
             // song_info asks LumenSongInfo only as the song starts (main.genre.gotoAndStop(genreArray[GetGenrNumber()]),
             // main.stage.gotoAndStop(GetPlayCount())), so a course's next songs set its clips the same way here.
             if (Flow.sceneLayer("song_info") is { } info
-                && !(info.TryGotoLabel("main/genre", GenreLabels[Math.Clamp(Shell.SongInfo.Genre, 0, GenreLabels.Length - 1)], play: false)
-                    && info.TryGotoFrame("main/stage", Shell.SongInfo.StageFrame - 1, play: false)))
+                && !(info.TryGotoLabel("main/genre", GenreLabels[Math.Clamp(Shell.Credit.SongInfo.Genre, 0, GenreLabels.Length - 1)], play: false)
+                    && info.TryGotoFrame("main/stage", Shell.Credit.SongInfo.StageFrame - 1, play: false)))
                 Console.Error.WriteLine("song_info has no main.genre / main.stage clip to set.");
             Flow.showSongTitle(song);
         }

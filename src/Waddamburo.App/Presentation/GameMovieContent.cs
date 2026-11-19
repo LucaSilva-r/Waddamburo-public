@@ -33,7 +33,7 @@ internal static class GameMovieContent
                 upscale is not null && settings().UpscaleTextures && application.ShowUpscaled ? (upscale, application.SupportsBc7) : null),
             // The game's BC1/BC3 textures go to the GPU as they are: a quarter of the memory, no decoding.
             // WADDAMBURO_DECODE_TEXTURES=1 decodes them all to RGBA as before (comparisons).
-            KeepCompressed = Environment.GetEnvironmentVariable("WADDAMBURO_DECODE_TEXTURES") != "1"
+            KeepCompressed = DiagnosticSwitches.DecodeTextures != "1"
                 && application.Supports(TextureBlockFormat.Bc1) && application.Supports(TextureBlockFormat.Bc3),
         };
         if (upscale is not null)
@@ -88,7 +88,7 @@ internal static class GameMovieContent
             return;
         var own = content.Textures.Length;
         SongSelectGenrePatch.Apply(content);
-        if (Environment.GetEnvironmentVariable("WADDAMBURO_PROFILE") == "1")
+        if (DiagnosticSwitches.Profile)
             Console.Error.WriteLine($"Profile patch {content.Name}: upscales {cached.TotalMilliseconds:F0} ms, "
                 + $"genre patch {(Stopwatch.GetElapsedTime(started) - cached).TotalMilliseconds:F0} ms.");
         for (var index = own; index < content.Textures.Length; index++)

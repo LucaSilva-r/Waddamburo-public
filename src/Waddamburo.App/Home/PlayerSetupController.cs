@@ -84,7 +84,7 @@ internal sealed class PlayerSetupController : IDisposable
                 _setupShownTicks++;
             _flow.InputEnabled = _setupShownTicks >= SetupIntroTicks;
         }
-        if (open && shell.Tick % 10 == 0 && Environment.GetEnvironmentVariable("WADDAMBURO_SETUP_TRACE") == "1")
+        if (open && shell.Tick % 10 == 0 && DiagnosticSwitches.SetupTrace)
             Console.WriteLine("[setup] " + shell.Tick + " entry=" + (shell.Loaded.Entry?.Ticks ?? -1) + ": " + string.Join(" | ", _flow.Columns().Select(c => c.Choice.Kind + " " + c.Choice.Label + " ready=" + c.Ready)));
         if (open)
             keys = SdlKeyboardSnapshot.Empty;
@@ -114,7 +114,7 @@ internal sealed class PlayerSetupController : IDisposable
         shell.Sounds?.StopAll();
         // Diagnostic: WADDAMBURO_SETUP_BOTH=1 skips the screen with both drums joined (the DON_BOTH entry
         // start): the first two stored accounts, a guest where there is none.
-        if (Environment.GetEnvironmentVariable("WADDAMBURO_SETUP_BOTH") == "1")
+        if (DiagnosticSwitches.SetupBoth)
         {
             var stored = shell.Accounts?.Accounts ?? [];
             startWithPlayers([.. Enumerable.Range(0, 2).Select(index => index < stored.Count ? stored[index].Profile : null)], [true, true]);

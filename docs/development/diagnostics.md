@@ -259,6 +259,54 @@ judgement references are in [gameplay integration](gameplay-integration.md).
 nuSound2 bank/cue effects and voices; unresolved system/player request shapes are
 logged rather than guessed.
 
+## Environment switches
+
+Every `WADDAMBURO_*` variable the game reads, from each project's `DiagnosticSwitches` class (read live, at the place
+that uses it). A switch is on with `1` unless its line says otherwise.
+
+| Variable | Does | Read in |
+|---|---|---|
+| `WADDAMBURO_AI_TRACE` | AI battle: each section's decisions and scores on the console. | App |
+| `WADDAMBURO_BENCHMARK_ATTRACT` | --benchmark: seconds of attract loop before the song (default 180). | App |
+| `WADDAMBURO_BOOT_FAIL` | Boot fails at the named check (BootChecks), to see its error screen. | App |
+| `WADDAMBURO_CRASH_AT` | The game throws at this tick, to see its crash screen. | App |
+| `WADDAMBURO_CUSTOM_TJA` | 1: the custom TJA library in arcade mode too. | App |
+| `WADDAMBURO_DECODE_TEXTURES` | 1: scene textures decoded to RGBA instead of kept compressed. | App |
+| `WADDAMBURO_DON_COSTUME` | Don-chan's costume at start (slot:id list). | App |
+| `WADDAMBURO_DON_PUCHI` | This puchi chara beside player 1 at start. | App |
+| `WADDAMBURO_DRUM_TRACE` | 1: every drum hit's judgement on the console. | App |
+| `WADDAMBURO_DUMP_TREE` | The active scene's display lists printed at this tick. | App |
+| `WADDAMBURO_FILL_PLACEHOLDERS` | Movie viewer: native fills shown as placeholders (name=index,...). | App |
+| `WADDAMBURO_GAMEPLAY_FRAME_PROFILE` | 1: per-frame timings of gameplay frames to a file. | Platform.Sdl |
+| `WADDAMBURO_HITCH_TRACE` | 1: why a slow frame was slow (input, update, render, GC, the chart clock's steps). | App, Platform.Sdl |
+| `WADDAMBURO_HOST_TRACE` | 1: every movie-to-game host call on the console. | Lumen |
+| `WADDAMBURO_ICON_GALLERY` | 1: Song Select shows every option icon on its boards. | Game |
+| `WADDAMBURO_INPUT_TRACE` | 1: presses printed in --press format (KEY@tick). | App |
+| `WADDAMBURO_NAME` | Player 1's name board shows this name. | App |
+| `WADDAMBURO_NO_GENRE_PATCH` | 1: Song Select's movie runs without the genre patch. | Game |
+| `WADDAMBURO_ONLINE_ECHO` | Online play alone: your own hits come back as the partner's lane, this many ms later. | App |
+| `WADDAMBURO_ONLINE_LAN` | 1: LAN addresses offered to strangers too. | App |
+| `WADDAMBURO_ONLINE_RELAY_ONLY` | 1: online play through the server's relay only, no direct link. | App |
+| `WADDAMBURO_ONLINE_SERVER` | The online rooms' server instead of the settings' one. | App |
+| `WADDAMBURO_ONLINE_TOKEN` | The online rooms' login token instead of the player's. | App |
+| `WADDAMBURO_PRESENT_MODE` | immediate or mailbox: the swap chain's present mode. | Platform.Sdl |
+| `WADDAMBURO_PROFILE` | 1: load and boot timings, full exception traces. | App, Game, Platform.Sdl |
+| `WADDAMBURO_READ` | Movie viewer: a script value read and printed (path). | App |
+| `WADDAMBURO_REJECT_CARDS` | 1: every paired card is rejected (the red band). | App |
+| `WADDAMBURO_RENDERER` | The renderer (vulkan, gles, opengl, d3d11, metal); config.cfg's renderer sets it when unset. | App, Platform.Sdl |
+| `WADDAMBURO_RESULT_PLAYERS` | 2: --start-scene results show the diagnostic result for both players. | App |
+| `WADDAMBURO_SCROLL_TRACE` | 1: Song Select's scroll steps on the console. | Game |
+| `WADDAMBURO_SETUP_BOTH` | 1: the home player setup opens for both drums. | App |
+| `WADDAMBURO_SETUP_TRACE` | 1: the home player setup's columns on the console. | App |
+| `WADDAMBURO_TICK_STATS` | 1: the game logic's average time and allocation per tick, every 600 ticks. | App |
+| `WADDAMBURO_TITLE` | Player 1's title plate (plate:text). | App |
+| `WADDAMBURO_TREE_EVERY` | Movie viewer: the display list printed every this many ticks. | App |
+| `WADDAMBURO_TREE_FILTER` | Movie viewer: only display-list lines with these parts (a|b). | App |
+| `WADDAMBURO_UPDATE_URL` | The release feed the self-update reads instead of GitHub's. | App |
+| `WADDAMBURO_UPSCALE_MODEL` | The upscaler's model folder. | App |
+| `WADDAMBURO_WAIWAI_RARE` | 1: every Waiwai song gets its rare note. | App |
+| `WADDAMBURO_WAIWAI_RESULT` | --start-scene=waiwai-result: segments,duet%,rare notes. | App |
+
 Native build policy and preset commands are documented in
 [docs/development/native-builds.md](native-builds.md).
 The source-neutral song/category catalog and provider contract are documented in

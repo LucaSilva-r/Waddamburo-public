@@ -962,10 +962,10 @@ public sealed unsafe partial class SdlApplication : IDisposable
                 pendingPresses.Add(new SdlKeyPress(key, TimeSpan.FromTicks(checked((long)(timestamp / 100)))));
         }
         SystemPriority.FavourThread(); // the game thread paces the frames
-        var hitchTrace = Environment.GetEnvironmentVariable("WADDAMBURO_HITCH_TRACE") == "1";
+        var hitchTrace = DiagnosticSwitches.HitchTrace;
         long previousFrameEnd = 0;
         (int Gen0, int Gen1, int Gen2, TimeSpan Pause) hitchGc = default;
-        using var frameProfile = Environment.GetEnvironmentVariable("WADDAMBURO_GAMEPLAY_FRAME_PROFILE") == "1"
+        using var frameProfile = DiagnosticSwitches.GameplayFrameProfile
             ? new FrameProfile() : null;
         var previousProfileEligible = false;
         var windowFocused = true;

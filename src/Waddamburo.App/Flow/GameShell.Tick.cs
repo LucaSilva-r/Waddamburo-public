@@ -24,7 +24,7 @@ internal sealed partial class GameShell
     // setup, the quick restart), then the active scene, the overlays, and a pending scene switch.
     // Diagnostic: WADDAMBURO_TICK_STATS=1 prints the game logic's average time and allocation per tick every 600 ticks,
     // with the scene (the Lumen runtime's before/after measure).
-    private static readonly bool s_tickStats = Environment.GetEnvironmentVariable("WADDAMBURO_TICK_STATS") == "1";
+    private static readonly bool s_tickStats = DiagnosticSwitches.TickStats;
     private long _tickStatsTicks, _tickStatsBytes;
 
     private void tick(SdlKeyboardSnapshot keyboard)

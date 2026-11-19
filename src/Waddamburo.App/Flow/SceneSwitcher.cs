@@ -104,7 +104,7 @@ internal sealed class SceneSwitcher(
 
     private void switchScene(Action transition)
     {
-        var profile = Environment.GetEnvironmentVariable("WADDAMBURO_PROFILE") == "1";
+        var profile = DiagnosticSwitches.Profile;
         var from = Active.Id;
         var start = Stopwatch.GetTimestamp();
         var allocated = GC.GetTotalAllocatedBytes();

@@ -170,7 +170,7 @@ internal sealed class SongLibraries : IDisposable
             problems.Add((arcade.OsuStableFolder, "No osu!stable install (osu!.db) in this folder"));
         // Custom TJA is a home-mode library of its own (arcade matches the game 1:1); WADDAMBURO_CUSTOM_TJA=1 lists it
         // in arcade too. TJA libraries mirrored from other devices join it (the local copy of a song wins).
-        List<ISongCatalogProvider> tjas = arcade.Home || Environment.GetEnvironmentVariable("WADDAMBURO_CUSTOM_TJA") == "1"
+        List<ISongCatalogProvider> tjas = arcade.Home || DiagnosticSwitches.CustomTja
             ? [.. new[] { tja }.Where(Directory.Exists).Concat(Sync.ReceivedLibraries.Folders("tja").Select(static folder => Path.Combine(folder, "tja")))
                 .Where(Directory.Exists).Select(root => new TjaCatalogProvider(root) { MetadataCache = metadataCache })]
             : [];

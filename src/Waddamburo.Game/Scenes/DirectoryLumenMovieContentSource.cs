@@ -116,7 +116,7 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
             var length = new FileInfo(archivePath).Length;
             if (length > owner._limits.MaxFileBytes)
                 throw new InvalidDataException($"Archive '{archiveId}' exceeds the configured {owner._limits.MaxFileBytes}-byte limit.");
-            var profile = Environment.GetEnvironmentVariable("WADDAMBURO_PROFILE") == "1";
+            var profile = DiagnosticSwitches.Profile;
             var start = profile ? Stopwatch.GetTimestamp() : 0;
             var reused = _archives.TryGetValue(archivePath, out var archive);
             if (!reused)

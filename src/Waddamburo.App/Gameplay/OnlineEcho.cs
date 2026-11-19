@@ -18,7 +18,7 @@ internal sealed class OnlineEcho
     private OnlineEcho(TimeSpan delay) => _feed = new RemoteLaneFeed { Delay = delay };
 
     /// <summary>The echo's delay, when it's on.</summary>
-    public static TimeSpan? Delay => Environment.GetEnvironmentVariable("WADDAMBURO_ONLINE_ECHO") is { Length: > 0 } text
+    public static TimeSpan? Delay => DiagnosticSwitches.OnlineEcho is { Length: > 0 } text
         && int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var milliseconds)
             ? TimeSpan.FromMilliseconds(milliseconds) : null;
 

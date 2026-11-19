@@ -43,7 +43,7 @@ public sealed class SongSelectScroll(LumenPlayer movie, Func<int> openFolder, Ac
     private const int PageUp = 33, PageDown = 34, WheelUp = 1001, WheelDown = 1002;
 
     // Diagnostic: WADDAMBURO_SCROLL_TRACE=1 prints each tick a queued step waits for the movie.
-    private static readonly bool Trace = Environment.GetEnvironmentVariable("WADDAMBURO_SCROLL_TRACE") == "1";
+    private static readonly bool Trace = DiagnosticSwitches.ScrollTrace;
 
     /// <summary>A skip is running the movie through its steps: their rim hits are not to be heard one by one.</summary>
     public bool Jumping { get; private set; }

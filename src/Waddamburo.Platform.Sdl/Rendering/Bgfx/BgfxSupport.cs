@@ -144,7 +144,7 @@ namespace Waddamburo.Platform.Sdl.Rendering
 
         /// <summary>Turns vsync on or off (the next present resets the swap chain); the diagnostic env var still wins.</summary>
         public static void SetVsync(bool vsync) =>
-            ResetFlags = vsync && Environment.GetEnvironmentVariable("WADDAMBURO_PRESENT_MODE") is not ("immediate" or "mailbox")
+            ResetFlags = vsync && DiagnosticSwitches.PresentMode is not ("immediate" or "mailbox")
                 ? (uint)bgfx.ResetFlags.Vsync : 0;
 
         private static Thread? s_renderThread;
@@ -166,7 +166,7 @@ namespace Waddamburo.Platform.Sdl.Rendering
 
             var init = new bgfx.Init();
             bgfx.init_ctor(&init);
-            init.type = Environment.GetEnvironmentVariable("WADDAMBURO_RENDERER")?.ToLowerInvariant() switch
+            init.type = DiagnosticSwitches.Renderer?.ToLowerInvariant() switch
             {
                 "vulkan" => bgfx.RendererType.Vulkan,
                 "opengl" or "gl" => bgfx.RendererType.OpenGL,
@@ -178,7 +178,7 @@ namespace Waddamburo.Platform.Sdl.Rendering
                 _ => bgfx.RendererType.Count,
             };
             // Diagnostic: WADDAMBURO_PRESENT_MODE=immediate or mailbox renders uncapped (no vsync).
-            ResetFlags = Environment.GetEnvironmentVariable("WADDAMBURO_PRESENT_MODE") is "immediate" or "mailbox"
+            ResetFlags = DiagnosticSwitches.PresentMode is "immediate" or "mailbox"
                 ? 0 : (uint)bgfx.ResetFlags.Vsync;
             init.debug = (byte)(debug ? 1 : 0);
             init.callback = (IntPtr)Callbacks.Interface;
@@ -195,7 +195,7 @@ namespace Waddamburo.Platform.Sdl.Rendering
                 throw new InvalidOperationException("bgfx could not initialize a renderer.");
             }
             // Diagnostic: the hitch trace reports GPU time per view, which needs bgfx's profiler.
-            if (Environment.GetEnvironmentVariable("WADDAMBURO_HITCH_TRACE") == "1")
+            if (DiagnosticSwitches.HitchTrace)
                 bgfx.set_debug((uint)bgfx.DebugFlags.Profiler, default, 0);
         }
 

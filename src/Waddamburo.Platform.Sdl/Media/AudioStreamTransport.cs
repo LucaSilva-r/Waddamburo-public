@@ -54,7 +54,7 @@ public sealed class AudioStreamTransport : IAudioStreamSource
 
     // Diagnostics (the 2026-11 Windows note-lane stutter): every 5 s a line when the clock misbehaved (it ran ahead
     // of the mixed audio, or a read stepped 2 ms off the wall clock), every 5 s regardless with WADDAMBURO_HITCH_TRACE=1.
-    private static readonly bool Trace = Environment.GetEnvironmentVariable("WADDAMBURO_HITCH_TRACE") == "1";
+    private static readonly bool Trace = DiagnosticSwitches.HitchTrace;
     private long _windowStartTicks = -1, _windowStartPosition, _windowStartConsumed, _lastCallTicks, _lastCallPosition;
     private int _calls, _capped;
     private double _worstStepError;

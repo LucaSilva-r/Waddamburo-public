@@ -180,7 +180,7 @@ public static class SongSelectGenrePatch
             return false;
         ColoursByMovie.TryRemove(movie, out _);
         // ponytail: diagnostic switch, the movie's own event art for every named folder.
-        if (Environment.GetEnvironmentVariable("WADDAMBURO_NO_GENRE_PATCH") == "1")
+        if (DiagnosticSwitches.NoGenrePatch)
             return false;
         if (find(content) is not { } profile)
         {

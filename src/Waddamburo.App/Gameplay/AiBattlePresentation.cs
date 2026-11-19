@@ -175,7 +175,7 @@ internal sealed class AiBattlePresentation
 
     // Diagnostic: WADDAMBURO_AI_TRACE=1 logs each call to the battle movies, and the hit effect's Don clips for 4 s after
     // each section's end.
-    private static readonly bool Trace = Environment.GetEnvironmentVariable("WADDAMBURO_AI_TRACE") == "1";
+    private static readonly bool Trace = DiagnosticSwitches.AiTrace;
     private static int _traceTicks;
 
     private static bool call(LumenPlayer? player, string name, params LumenHostValue[] arguments)

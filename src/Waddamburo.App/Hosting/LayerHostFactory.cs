@@ -26,7 +26,6 @@ internal sealed class LayerHostFactory(
     ILumenFrontendServices frontend,
     IDonPresentationController? don,
     IPlayRequestSink playRequests,
-    Func<TaikoSongInfo> songInfo,
     bool countdown,
     Func<IReadOnlyList<TaikoPlayResult>> playResults,
     Func<ArcadeSettings> arcadeSettings,
@@ -52,10 +51,7 @@ internal sealed class LayerHostFactory(
     /// <summary>The songs marked favourite (a folder per library, a red coin icon on their boards).</summary>
     public SongFavourites? Favourites { get; init; }
 
-    /// <summary>Each saved play's previous best on its chart, by play index (results' best score).</summary>
-    public Func<int, long?>? Best { get; init; }
 
-    public Func<int, Waddamburo.Game.Scores.RankingPlacement?>? Placement { get; init; }
 
 
     /// <summary>AI battle's song select panels: the player's rank, points to the next, wins, wins to the next reward.</summary>
@@ -150,10 +146,10 @@ internal sealed class LayerHostFactory(
 
     /// <summary>What follows the results (see <see cref="TaikoCredit"/>).</summary>
     // Home: an endless credit, song after song, no revival and no end message.
-    public TaikoCreditNext CreditNext => arcade.Home ? TaikoCreditNext.NextSong : TaikoCredit.Next(songInfo().Stage,
+    public TaikoCreditNext CreditNext => arcade.Home ? TaikoCreditNext.NextSong : TaikoCredit.Next(credit.SongInfo.Stage,
         [.. playResults().Select(play => play.Cleared)], arcade.SongsPerSession);
 
-    private int endMessage => arcade.Home ? 0 : TaikoCredit.EndMessage(songInfo().Stage,
+    private int endMessage => arcade.Home ? 0 : TaikoCredit.EndMessage(credit.SongInfo.Stage,
         [.. playResults().Select(play => play.Cleared)], arcade.SongsPerSession);
 
 
@@ -212,7 +208,7 @@ internal sealed class LayerHostFactory(
                 Path.GetFileNameWithoutExtension(layer.MovieId)),
             "song-select" => songSelectHost(),
             GameplaySceneComposition.StaticHostId or GameplaySceneComposition.PlayerTwoHostId =>
-                new LumenLayerHost(new TaikoGameplayHostBinding(songInfo, sounds is null ? null : sounds.Frontend.PlayCue)),
+                new LumenLayerHost(new TaikoGameplayHostBinding(() => credit.SongInfo, sounds is null ? null : sounds.Frontend.PlayCue)),
             RainbowTransitionComposition.StaticHostId => new LumenLayerHost(null),
             SystemIndicators.HostId => new LumenLayerHost(null),
             "result" => resultHost(),
@@ -353,10 +349,10 @@ internal sealed class LayerHostFactory(
         if (plays.Count == 0)
             throw new InvalidOperationException("Results loaded without a finished play.");
         IReadOnlyList<TaikoPlayResult> own = [plays[0]];
-        var binding = new ResultHostBinding(() => own, songInfo().Stage, endMessage, don, sounds?.Results, 0)
+        var binding = new ResultHostBinding(() => own, credit.SongInfo.Stage, endMessage, don, sounds?.Results, 0)
         {
-            Best = Best,
-            Placement = Placement, // the ranking, as on a song's results
+            Best = credit.Best,
+            Placement = credit.Placement, // the ranking, as on a song's results
             AiBattle = true,
             PlayCue = sounds is null ? null : sounds.Frontend.PlayCue,
             NormalResultClosed = () => loaded.AiSectionResult?.Start(),
@@ -392,11 +388,11 @@ internal sealed class LayerHostFactory(
         var plays = playResults();
         if (plays.Count == 0)
             throw new InvalidOperationException("Results loaded without a finished play.");
-        var binding = new ResultHostBinding(() => plays, songInfo().Stage, endMessage,
+        var binding = new ResultHostBinding(() => plays, credit.SongInfo.Stage, endMessage,
             don, sounds?.Results, credit.PlayerSide)
         {
-            Best = Best,
-            Placement = Placement,
+            Best = credit.Best,
+            Placement = credit.Placement,
         };
         return new LumenLayerHost(binding, binding.Attach);
     }

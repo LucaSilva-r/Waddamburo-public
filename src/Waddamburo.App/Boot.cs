@@ -133,7 +133,7 @@ public static class Boot
         Waddamburo.Game.SongSelect.SongSelectCatalogView.Japanese = Strings.Language.StartsWith("ja", StringComparison.Ordinal);
         Console.WriteLine($"Language: {Strings.Language}");
         // ponytail: the config reaches BgfxSupport through its env var; the env var itself still wins.
-        if (arcade.Renderer is not null && Environment.GetEnvironmentVariable("WADDAMBURO_RENDERER") is null)
+        if (arcade.Renderer is not null && DiagnosticSwitches.Renderer is null)
             Environment.SetEnvironmentVariable("WADDAMBURO_RENDERER", arcade.Renderer);
         Console.WriteLine(arcade.Home ? $"Settings: {arcadePath} (home mode: free play, endless songs)."
             : $"Cabinet settings: {arcadePath} (arcade, {(arcade.FreePlay ? "free play" : "coin mode")}, "

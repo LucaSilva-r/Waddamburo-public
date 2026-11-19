@@ -1,4 +1,5 @@
 using Waddamburo.Game.Dan;
+using Waddamburo.Game.Gameplay;
 using Waddamburo.Game.Lumen;
 using Waddamburo.Game.Scores;
 
@@ -87,6 +88,20 @@ internal sealed class CreditSession
     public int DanChallenge { get; set; }
 
     // --- What a finished play hands its results ---
+
+    /// <summary>The song's genre and stage (the results and song_info show them).</summary>
+    public TaikoSongInfo SongInfo { get; set; } = new(0, 1);
+
+    /// <summary>Per lane, the best before the last saved play on its chart, or that play's score when it is the first.</summary>
+    public long?[] Bests { get; } = new long?[2];
+
+    /// <summary>Each lane's place on the chart's online top three after its play (null: not known).</summary>
+    public RankingPlacement?[] Placements { get; } = new RankingPlacement?[2];
+
+    public long? Best(int lane) => (uint)lane < (uint)Bests.Length ? Bests[lane] : null;
+
+    public RankingPlacement? Placement(int lane) => (uint)lane < (uint)Placements.Length ? Placements[lane] : null;
+
 
     /// <summary>The AI battle song the next results show; null: not a battle.</summary>
     public AiBattleOutcome? AiOutcome { get; set; }

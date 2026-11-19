@@ -15,7 +15,7 @@ internal sealed class BenchmarkRun(GameShell shell, BenchmarkFlow song, bool res
 {
     // WADDAMBURO_BENCHMARK_ATTRACT=<seconds> shortens the attract step (testing the route).
     private static readonly TimeSpan AttractTime = TimeSpan.FromSeconds(
-        int.TryParse(Environment.GetEnvironmentVariable("WADDAMBURO_BENCHMARK_ATTRACT"), out var seconds) ? seconds : 180);
+        int.TryParse(DiagnosticSwitches.BenchmarkAttract, out var seconds) ? seconds : 180);
     private static readonly TimeSpan TwoPlayerTime = TimeSpan.FromSeconds(75), ResultsTime = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan ScrollStep = TimeSpan.FromMilliseconds(120);
     private static readonly TimeSpan ScrollRight = TimeSpan.FromSeconds(20), ScrollLeft = TimeSpan.FromSeconds(10);

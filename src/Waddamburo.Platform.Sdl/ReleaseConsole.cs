@@ -114,7 +114,7 @@ public static partial class ReleaseConsole
     {
         ArgumentNullException.ThrowIfNull(exception);
         // Diagnostic: WADDAMBURO_PROFILE=1 prints the stack too.
-        Console.Error.WriteLine(Environment.GetEnvironmentVariable("WADDAMBURO_PROFILE") == "1" ? exception.ToString() : exception.Message);
+        Console.Error.WriteLine(DiagnosticSwitches.Profile ? exception.ToString() : exception.Message);
         var file = WriteCrashFile(exception);
         if (file is not null)
             Console.Error.WriteLine($"Crash log: {file}");

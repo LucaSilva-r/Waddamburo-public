@@ -869,7 +869,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
 
         // Diagnostic: WADDAMBURO_DRUM_TRACE=1 prints each drum hit with the time since the pad's last one
         // (a drum that sends double hits shows pairs a few milliseconds apart) and the ones the debounce drops.
-        private static readonly bool TraceDrum = Environment.GetEnvironmentVariable("WADDAMBURO_DRUM_TRACE") == "1";
+        private static readonly bool TraceDrum = DiagnosticSwitches.DrumTrace;
         private readonly TimeSpan[] _lastPadPress = new TimeSpan[4];
         private readonly DrumDebounce _debounce = new();
 

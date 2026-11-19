@@ -123,11 +123,7 @@ internal sealed partial class GameShell : IDisposable
     public SongTitleTextureCache Titles { get; }
     public CoinBank? Coins { get; internal set; } // the cabinet controls replace it as the service menu closes
 
-    /// <summary>Per lane, the best before the last saved play on its chart, or that play's score when it is the first (for results).</summary>
-    public long?[] Bests { get; } = new long?[2];
 
-    /// <summary>Each lane's place on the chart's online top three after its play (null: not known).</summary>
-    public RankingPlacement?[] Placements { get; } = new RankingPlacement?[2];
 
     /// <summary>Chart key -> hash, stored with the scores (matches server bests to the library).</summary>
     public ChartHashes ChartHashes { get; }
@@ -233,8 +229,6 @@ internal sealed partial class GameShell : IDisposable
     public int Tick { get; private set; }
     public LumenGameSceneInstance Active => Scenes.Active;
 
-    /// <summary>The song being played and its stage (1-8) in the credit.</summary>
-    public TaikoSongInfo SongInfo { get; set; } = new(0, 1);
 
     /// <summary>Who is playing this credit (joined drums, songs played, a replay's player, online two-player).</summary>
     public PlayerSession Players { get; }
@@ -304,9 +298,9 @@ internal sealed partial class GameShell : IDisposable
 
     /// <summary>The cabinet's bookkeeping (the service menu's counts).</summary>
     public Bookkeeping Book { get; }
-    private readonly bool _traceInput = Environment.GetEnvironmentVariable("WADDAMBURO_INPUT_TRACE") == "1";
+    private readonly bool _traceInput = DiagnosticSwitches.InputTrace;
     private readonly int _dumpTreeTick =
-        int.TryParse(Environment.GetEnvironmentVariable("WADDAMBURO_DUMP_TREE"), out var dumpAt) ? dumpAt : -1;
+        int.TryParse(DiagnosticSwitches.DumpTree, out var dumpAt) ? dumpAt : -1;
 
     /// <summary>The game closed to start again (the caller relaunches it once everything is released).</summary>
     public static bool RestartRequested { get; private set; }
@@ -481,7 +475,7 @@ internal sealed partial class GameShell : IDisposable
         CrashScreen.Show(Application, Options.ServiceFontPath ?? Options.FontPath, "99-1", BootChecks.Shown("GAME"), exception, log);
     }
 
-    private readonly int _crashAt = int.TryParse(Environment.GetEnvironmentVariable("WADDAMBURO_CRASH_AT"), out var crashAt) ? crashAt : -1;
+    private readonly int _crashAt = int.TryParse(DiagnosticSwitches.CrashAt, out var crashAt) ? crashAt : -1;
 
     // The startup's check screen, until the attract (or the scene asked for) shows.
     private BootChecks? _boot;
@@ -600,24 +594,24 @@ internal sealed partial class GameShell : IDisposable
             DonRenderer = options.DonRoot is null ? null : Application.CreateDonRenderer(options.DonRoot);
             Don = DonRenderer is null ? null : new DonPresentationController(DonRenderer);
             // Diagnostic: WADDAMBURO_DON_COSTUME=head,body,paint (or a single whole-costume id) dresses P1 at start.
-            if (Don is not null && Environment.GetEnvironmentVariable("WADDAMBURO_DON_COSTUME") is { } costumeSetting)
+            if (Don is not null && DiagnosticSwitches.DonCostume is { } costumeSetting)
             {
                 var ids = costumeSetting.Split(',').Select(int.Parse).ToArray();
                 Don.SetCostume(0, ids.Length == 1 ? DonCostume.FromWhole(ids[0]) : new DonCostume(null, ids[0], ids[1], ids.ElementAtOrDefault(2)));
             }
             // Diagnostic: WADDAMBURO_TITLE=plate:text and/or WADDAMBURO_NAME=name give P1 a guest profile with them.
-            var diagnosticName = Environment.GetEnvironmentVariable("WADDAMBURO_NAME");
-            if (Environment.GetEnvironmentVariable("WADDAMBURO_TITLE") is [var plate, ':', .. var titleText])
+            var diagnosticName = DiagnosticSwitches.Name;
+            if (DiagnosticSwitches.Title is [var plate, ':', .. var titleText])
                 TaikoGuest.Profiles[0] = ScoreProfile.LocalGuest with { Title = titleText, TitlePlate = plate - '0', AccountName = diagnosticName };
             else if (diagnosticName is { Length: > 0 })
                 TaikoGuest.Profiles[0] = ScoreProfile.LocalGuest with { AccountName = diagnosticName };
             // Diagnostic: WADDAMBURO_DON_PUCHI=id puts that puchi chara beside P1 at start.
-            if (Don is not null && int.TryParse(Environment.GetEnvironmentVariable("WADDAMBURO_DON_PUCHI"), out var puchiSetting))
+            if (Don is not null && int.TryParse(DiagnosticSwitches.DonPuchi, out var puchiSetting))
                 Don.SetAccessory(0, puchiSetting);
             _boot.Begin("AUDIO DEVICE");
             var needsAudio = !Headless || options.JinglePath is not null || options.SoundRoot is not null;
             var audioDevice = AudioOutput.Start(needsAudio);
-            if (Environment.GetEnvironmentVariable("WADDAMBURO_PROFILE") == "1" && audioDevice is not null)
+            if (DiagnosticSwitches.Profile && audioDevice is not null)
                 Console.Error.WriteLine($"Profile audio: {audioDevice.Driver}, "
                     + $"{audioDevice.HardwareFormat.SampleRate} Hz, "
                     + $"{audioDevice.HardwareBufferFrames} hardware frames.");
@@ -766,7 +760,7 @@ internal sealed partial class GameShell : IDisposable
             _ => null,
         };
         WaiwaiOutcome? waiwai = start == StartScene.WaiwaiResult
-            ? Environment.GetEnvironmentVariable("WADDAMBURO_WAIWAI_RESULT")?.Split(',') is [var segments, var duet, .. var rest]
+            ? DiagnosticSwitches.WaiwaiResult?.Split(',') is [var segments, var duet, .. var rest]
                 ? new(int.Parse(segments, CultureInfo.InvariantCulture), int.Parse(duet, CultureInfo.InvariantCulture), [.. string.Concat(rest).Select(static hit => hit == '1')])
                 : new(50, 90, [true])
             : null;
@@ -806,12 +800,11 @@ internal sealed partial class GameShell : IDisposable
             new ViewerFrontendServices(Sounds?.Frontend, Arcade.FreePlay),
             Don,
             PlayRequests,
-            () => SongInfo,
             Options.Countdown,
             () => Gameplay.Results is { Count: > 0 } results ? Match.WithPartnerResult(results)
                 // ponytail: WADDAMBURO_RESULT_PLAYERS=2 shows the diagnostic result for both players.
                 : diagnosticResult is { } diagnostic
-                    ? Environment.GetEnvironmentVariable("WADDAMBURO_RESULT_PLAYERS") == "2" ? [diagnostic, diagnostic] : [diagnostic]
+                    ? DiagnosticSwitches.ResultPlayers == "2" ? [diagnostic, diagnostic] : [diagnostic]
                     : [],
             () => Arcade,
             Coins,
@@ -827,8 +820,6 @@ internal sealed partial class GameShell : IDisposable
                 ? new(AiRanks.RankOf(points), AiRanks.PointsToNextRank(points), wins, Waddamburo.Game.Gameplay.AiBattleRanks.WinsToNextReward(wins), Waddamburo.Game.Lumen.AiBattlePanels.NewPlayer.Tension)
                 : Waddamburo.Game.Lumen.AiBattlePanels.NewPlayer,
             CopyrightPages = _art.CopyrightPages,
-            Best = index => (uint)index < (uint)Bests.Length ? Bests[index] : null,
-            Placement = index => (uint)index < (uint)Placements.Length ? Placements[index] : null,
             // Next to the settings file (USRDIR/waddamburo); memory only without one. Home only: the list is
             // the machine's, not a player's, so a cabinet's guests and card players get no folder (#6).
             Favourites = !Arcade.Home ? null : new SongFavourites(Options.ArcadePath is { } arcade
@@ -1003,7 +994,7 @@ internal sealed partial class GameShell : IDisposable
             Console.WriteLine($"Active scene: {Active.Id}");
             _gameplay.ReportFinal(Active.Id);
             ReportDiagnostics();
-            if (Environment.GetEnvironmentVariable("WADDAMBURO_PROFILE") == "1")
+            if (DiagnosticSwitches.Profile)
             {
                 GC.Collect();
                 GC.WaitForPendingFinalizers();

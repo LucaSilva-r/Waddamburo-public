@@ -518,7 +518,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             // ponytail: waiwaicollabo/00_taiko.xml prob_rare_0 = 16 read as a percent per song.
             var (left, right) = waiwai.Apply(charts[0], charts[1],
                 rareNote: Shell.Random.Next(100) < 16
-                    || Environment.GetEnvironmentVariable("WADDAMBURO_WAIWAI_RARE") == "1"); // diagnostic: force it
+                    || DiagnosticSwitches.WaiwaiRare); // diagnostic: force it
             charts = [left, right];
         }
         var prefetched = _cover.Prefetch is { } ready && ready.Song == request.Song && ready.Side == side
@@ -537,7 +537,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         // The credit's song number (reset when a credit ends); a home session's endless credit stays on 1
         // (the counters only have art for songs 1-4).
         var stage = Shell.Arcade.Home ? 1 : ++Shell.Credit.SongsPlayed;
-        Shell.SongInfo = new TaikoSongInfo(GameplaySceneComposition.GenreIndex(category), stage,
+        Shell.Credit.SongInfo = new TaikoSongInfo(GameplaySceneComposition.GenreIndex(category), stage,
             Final: !Shell.Arcade.Home && stage >= Shell.Arcade.SongsPerSession);
         Console.WriteLine($"Gameplay skin: {theme?.Archive ?? "random enso_original"}.");
         Shell.Catalog.Replace(Shell.Credit.AiBattle && twoPlayers ? GameplaySceneComposition.CreateAiBattle(FlowScenes.Gameplay, Shell.EnsoLayout)

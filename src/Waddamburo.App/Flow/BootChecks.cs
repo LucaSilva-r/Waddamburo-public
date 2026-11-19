@@ -62,7 +62,7 @@ internal sealed class BootChecks : IDisposable
         Console.WriteLine($"Boot: {name}.");
         present();
         // Diagnostic: WADDAMBURO_BOOT_FAIL=<check> (SONG LIBRARY, MOVIES ...) fails that check, to see the error screen.
-        if (Environment.GetEnvironmentVariable("WADDAMBURO_BOOT_FAIL") == name)
+        if (DiagnosticSwitches.BootFail == name)
             throw new InvalidOperationException($"WADDAMBURO_BOOT_FAIL asked {name} to fail.");
     }
 

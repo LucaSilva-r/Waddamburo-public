@@ -30,7 +30,7 @@ internal static class SelfUpdate
     private const string UpdatedOption = "--updated";
 
     // ponytail: test hook; point it at a local server serving a releases/latest-shaped JSON (an array for nightlies).
-    private static string LatestReleaseUrl => Environment.GetEnvironmentVariable("WADDAMBURO_UPDATE_URL")
+    private static string LatestReleaseUrl => DiagnosticSwitches.UpdateUrl
         ?? (nightly
             ? "https://api.github.com/repos/LucaSilva-r/Waddamburo-public/releases?per_page=30"
             : "https://api.github.com/repos/LucaSilva-r/Waddamburo-public/releases/latest");

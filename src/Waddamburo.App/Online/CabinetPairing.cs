@@ -132,7 +132,7 @@ internal sealed class CabinetPairing : IDisposable
                 try
                 {
                     // Diagnostic: WADDAMBURO_REJECT_CARDS=1 treats every card as unregistered (the red band).
-                    profile = Environment.GetEnvironmentVariable("WADDAMBURO_REJECT_CARDS") == "1" ? null
+                    profile = DiagnosticSwitches.RejectCards ? null
                         : await _client.ResolveCardAsync(claimed.AccessCode, _stop.Token).ConfigureAwait(false);
                 }
                 catch (HttpRequestException exception)
