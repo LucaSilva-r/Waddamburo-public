@@ -21,6 +21,7 @@ on:
 
 permissions:
   contents: write
+  packages: read # the toolchain images
 
 jobs:
   # The version stamped into both builds: the tag's, a nightly's, or none (a development build).
@@ -47,15 +48,25 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Oldest supported runner (glibc 2.35): the AppImage runs there and on anything newer.
+          # linux and windows build in their toolchain image (eng/ci/Dockerfile, ci-image.yml): no package mirror at
+          # release time. linux: Ubuntu 22.04 (glibc 2.35), the AppImage runs there and on anything newer. windows:
+          # Ubuntu 24.04's mingw (vgmstream needs a newer mingw GCC than 22.04's); the exe does not depend on glibc.
           - target: linux
-            runner: ubuntu-22.04
-          # The exe does not depend on glibc; vgmstream needs a newer mingw GCC than 22.04's.
+            runner: ubuntu-24.04
+            image: linux
           - target: windows
             runner: ubuntu-24.04
+            image: windows
+          # Android stays on the runner (its SDK is there); ninja comes from PyPI.
           - target: android
             runner: ubuntu-24.04
     runs-on: ${{ matrix.runner }}
+    # No image (android): no container, the job runs on the runner.
+    container:
+      image: ${{ matrix.image && format('ghcr.io/lucasilva-r/waddamburo-build:{0}', matrix.image) || '' }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
     steps:
       - uses: actions/checkout@v7
 
@@ -66,7 +77,7 @@ jobs:
           cache-dependency-path: '**/packages.lock.json'
 
       # The native libraries (ffmpeg, vgmstream, freetype, bgfx) take most of the build: their downloaded sources
-      # and build tree are kept until anything under native/ changes.
+      # and build tree are kept until anything under native/ (or the toolchain image) changes.
       - uses: actions/cache@v4
         with:
           path: |
@@ -74,15 +85,7 @@ jobs:
             out/downloads/opus-*.tar.gz
             out/source
             out/build/native
-          key: native-${{ matrix.target }}-${{ matrix.runner }}-${{ hashFiles('native/**') }}
-
-      - name: Install the Windows cross compiler
-        if: matrix.target == 'windows'
-        timeout-minutes: 8
-        run: |
-          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=25 update
-          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=25 install -y --no-install-recommends \
-            gcc-mingw-w64-x86-64-posix g++-mingw-w64-x86-64-posix ninja-build
+          key: native-${{ matrix.target }}-${{ matrix.runner }}-${{ hashFiles('native/**', 'eng/ci/Dockerfile') }}
 
       # Android: JDK 21 (the runner's default Java is newer than the Android build tools take), the pinned NDK
       # (kept between runs) and .NET's Android workload.
@@ -106,12 +109,8 @@ jobs:
             yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" "ndk;29.0.14206865" > /dev/null
           fi
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/29.0.14206865" >> "$GITHUB_ENV"
-          sudo apt-get update && sudo apt-get install -y --no-install-recommends ninja-build
+          pipx install ninja
           dotnet workload install android
-
-      - name: Install bgfx's Linux build headers
-        if: matrix.target == 'linux'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libx11-dev libgl-dev libwayland-dev
 
       # The release key (Android installs an update only when it carries the same one): a base64 .jks in the
       # ANDROID_KEYSTORE secret, its password in ANDROID_KEYSTORE_PASSWORD. Without them the APK is debug-signed.
