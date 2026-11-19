@@ -63,6 +63,8 @@ internal sealed class DeviceTransfer : IDisposable
 
     public void Open()
     {
+        if (SyncWire.Paired().Any(static device => !device.Serves))
+            SyncServer.AllowThroughWindowsFirewall();
         _server ??= SyncServer.StartIfPaired(_libraries, Boot.DeviceName, _shell.Sync.Jobs);
         _work = new CancellationTokenSource();
         _servers = null;
@@ -237,6 +239,7 @@ internal sealed class DeviceTransfer : IDisposable
             return false;
         }
 
+        SyncServer.AllowThroughWindowsFirewall();
         _server ??= SyncServer.StartIfPaired(_libraries, Boot.DeviceName, _shell.Sync.Jobs);
         if (ReferenceEquals(_menu.Page, attempt.Page))
         {

@@ -112,6 +112,10 @@ public static class SyncWire
     public static async Task<List<SyncDevice>> DiscoverAsync(string probe, int port, TimeSpan wait, CancellationToken cancellationToken = default)
     {
         using var socket = new UdpClient(0) { EnableBroadcast = true };
+        // Windows reports an ICMP "port unreachable" (loopback, any neighbour without the game) as ConnectionReset on
+        // the next receive, which ended discovery before any answer was read. SIO_UDP_CONNRESET off.
+        if (OperatingSystem.IsWindows())
+            socket.Client.IOControl(unchecked((int)0x9800000C), [0, 0, 0, 0], null);
         var bytes = Encoding.UTF8.GetBytes(probe);
         // The limited broadcast leaves by one interface only: each network's own broadcast address too (and this
         // machine, for a second instance run here to test).
@@ -165,6 +169,8 @@ public static class SyncWire
     /// <summary>Answers <paramref name="probe"/> on <paramref name="socket"/> with this device's id and name until it is disposed.</summary>
     public static async Task AnswerAsync(UdpClient socket, string probe, string name)
     {
+        if (OperatingSystem.IsWindows())
+            socket.Client.IOControl(unchecked((int)0x9800000C), [0, 0, 0, 0], null); // see DiscoverAsync
         var reply = Encoding.UTF8.GetBytes($"{probe.TrimEnd('?')} {DeviceId} {clean(name)}");
         while (true)
         {

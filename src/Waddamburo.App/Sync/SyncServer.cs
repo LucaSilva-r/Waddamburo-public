@@ -113,6 +113,39 @@ public sealed class SyncServer : IDisposable
         _progress?.Dispose();
     }
 
+    private const string FirewallRule = "Waddamburo song sync";
+
+    /// <summary>
+    /// Windows blocks inbound connections to a program without a rule: its own prompt shows behind a fullscreen game,
+    /// allows only private networks by default (home Wi-Fi is often "public"), and dismissed it adds Block rules, which
+    /// win over any Allow. So: once per program path, with one UAC prompt, this program's inbound rules are replaced by
+    /// one Allow rule on every profile. Waits for the answer, so the rule is there before the port opens.
+    /// </summary>
+    public static void AllowThroughWindowsFirewall()
+    {
+        if (!OperatingSystem.IsWindows() || Environment.ProcessPath is not { } program)
+            return;
+        try
+        {
+            using (var show = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("netsh",
+                $"advfirewall firewall show rule name=\"{FirewallRule}\" verbose") { RedirectStandardOutput = true, CreateNoWindow = true }))
+            {
+                if (show is null || show.StandardOutput.ReadToEnd().Contains(program, StringComparison.OrdinalIgnoreCase))
+                    return;
+            }
+            var netsh = "netsh advfirewall firewall";
+            using var add = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe",
+                $"/c {netsh} delete rule name=\"{FirewallRule}\" & {netsh} delete rule name=all dir=in program=\"{program}\""
+                + $" & {netsh} add rule name=\"{FirewallRule}\" dir=in action=allow program=\"{program}\" enable=yes profile=any")
+                { UseShellExecute = true, Verb = "runas", WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden });
+            add?.WaitForExit();
+        }
+        catch (System.ComponentModel.Win32Exception exception) // UAC declined, or no netsh
+        {
+            Console.Error.WriteLine($"Song sync: firewall rule not added: {exception.Message}");
+        }
+    }
+
     private async Task accept()
     {
         while (!_stop.IsCancellationRequested)
