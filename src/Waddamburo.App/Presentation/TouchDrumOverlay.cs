@@ -83,6 +83,21 @@ internal static class TouchDrumOverlay
         }, .6f + .4f * flash(hits[TouchDrum.Search], now));
     }
 
+    /// <summary>The notices button (E): a rounded square with a bell, beside the back button.</summary>
+    public static RenderQuad NoticesQuad(OverlayPainter painter, ulong[] hits, ulong now)
+    {
+        var size = TouchDrum.BackSize * StageHeight - 16;
+        return painter.Canvas("touch-notices", TouchDrum.BackSize * StageHeight + 8, 8, size, size, canvas =>
+        {
+            (byte, byte, byte) ink = (240, 240, 240);
+            canvas.RoundedRect(0, 0, size, size, 12, (40, 40, 40), 3, (230, 230, 230));
+            // The bell: a dome, its flared rim, the clapper under it.
+            canvas.RoundedRect(size * .3f, size * .22f, size * .4f, size * .46f, size * .2f, ink, 0);
+            canvas.RoundedRect(size * .22f, size * .6f, size * .56f, size * .1f, size * .05f, ink, 0);
+            canvas.RoundedRect(size * .44f, size * .72f, size * .12f, size * .1f, size * .05f, ink, 0);
+        }, .6f + .4f * flash(hits[TouchDrum.Notices], now));
+    }
+
     /// <summary>The back button (Escape): a rounded square with a left arrow, in the top-left corner.</summary>
     public static RenderQuad BackQuad(OverlayPainter painter, ulong[] hits, ulong now)
     {

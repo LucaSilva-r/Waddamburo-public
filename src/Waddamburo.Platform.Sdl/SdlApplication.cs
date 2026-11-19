@@ -34,6 +34,9 @@ public sealed unsafe partial class SdlApplication : IDisposable
     /// <summary>Song select: the search button (Tab) answers too.</summary>
     public bool TouchSearch { get; set; }
 
+    /// <summary>The notices button beside the back button answers touches (outside songs and menus).</summary>
+    public bool TouchNotices { get; set; }
+
     /// <summary>A text field is open (search): the keyboard button shows or hides the screen keyboard.</summary>
     public bool TouchKeyboard { get; set; }
 
@@ -753,6 +756,7 @@ public sealed unsafe partial class SdlApplication : IDisposable
             TouchDrum.Down => SdlKeyboardKey.Down,
             TouchDrum.Ok => SdlKeyboardKey.Enter,
             TouchDrum.Search => SdlKeyboardKey.Tab,
+            TouchDrum.Notices => SdlKeyboardKey.E,
             _ => SdlInputBindings.Pads[input.Code],
         }
         : _menuInput && PadsAsGamepad && input.Device != 0 ? menuButton(input)
@@ -821,10 +825,10 @@ public sealed unsafe partial class SdlApplication : IDisposable
         int width, height;
         var stage = _renderer!.StageViewport;
         if (!SDL_GetWindowSizeInPixels(_window, &width, &height) || stage.Width <= 0 || stage.Height <= 0)
-            return OverlayOpen ? TouchDrum.HitMenu(x, y, keyboard: TouchKeyboard) : TouchDrum.Hit(x, y, search: TouchSearch);
+            return OverlayOpen ? TouchDrum.HitMenu(x, y, keyboard: TouchKeyboard) : TouchDrum.Hit(x, y, search: TouchSearch, notices: TouchNotices);
         float stageX = (x * width - stage.X) / stage.Width, stageY = (y * height - stage.Y) / stage.Height;
         var aspect = (float)stage.Width / stage.Height;
-        return OverlayOpen ? TouchDrum.HitMenu(stageX, stageY, aspect, TouchKeyboard) : TouchDrum.Hit(stageX, stageY, aspect, TouchSearch);
+        return OverlayOpen ? TouchDrum.HitMenu(stageX, stageY, aspect, TouchKeyboard) : TouchDrum.Hit(stageX, stageY, aspect, TouchSearch, TouchNotices);
     }
 
     private int padNumber(SDL_JoystickID id) => Array.FindIndex(_pads, pad => pad.Pad != IntPtr.Zero && pad.Id == id) + 1;

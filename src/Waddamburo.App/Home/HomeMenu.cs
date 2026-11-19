@@ -326,6 +326,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         new(Shown: static s => !PlatformInfo.IsMobile && s.LetterboxSize < 100, Setting: new(T("settings.letterbox_y"), static s => s.LetterboxY,
             static (s, v) => s with { LetterboxY = v }, static (value, step) => value + step, 0, static value => T("value.percent", value), 100,
             Hint: T("settings.letterbox_y.hint"))),
+        new(Setting: toggle("settings.performance_overlay", static s => s.PerformanceOverlay, static (s, v) => s with { PerformanceOverlay = v })),
         new(T("section.graphics")),
         new(Setting: new(T("settings.upscale"), static s => (int)s.Upscale, static (s, v) => s with { Upscale = (UpscaleLevel)v },
             static (value, step) => value + Math.Sign(step), 0,

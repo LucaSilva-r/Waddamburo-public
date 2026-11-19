@@ -182,6 +182,8 @@
   "settings.refresh_rate.highest": "最高",
   "settings.refresh_rate.value": "{0} Hz",
   "settings.refresh_rate.hint": "この解像度での画面のリフレッシュレート。",
+  "settings.performance_overlay": "パフォーマンス表示",
+  "settings.performance_overlay.hint": "右上にフレームレートと処理時間を表示します。F5 キーで一時的に切り替えられます。",
   "settings.vsync": "垂直同期",
   "settings.vsync.hint": "画面の更新を待ちます: ティアリングなし。オフではPCの限界まで（またはフレーム制限まで）描画します。",
   "settings.frame_latency": "フレームキュー",

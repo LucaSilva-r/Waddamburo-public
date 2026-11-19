@@ -229,6 +229,8 @@ internal sealed partial class GameShell
         Application.OverlayOpen = HomeMenuOpen || _service is { IsOpen: true } || _inputOverlays.Any(static overlay => overlay.IsOpen)
             || _playerSetup is { SignInOpen: true };
         Application.TouchSearch = !Application.OverlayOpen && Active.Id == FlowScenes.SongSelect;
+        // As the notices key: not over a lane (the attract's demo excepted), nor while search takes the letters.
+        Application.TouchNotices = !Application.OverlayOpen && _notices is not null && (!Scenes.OnLane || _gameplay.Demo) && !_search.IsOpen;
         Application.TouchKeyboard = PlatformInfo.IsMobile && _search.IsOpen;
         if (PlatformInfo.IsMobile || Application.TouchActive)
         {
@@ -243,6 +245,8 @@ internal sealed partial class GameShell
             if (Application.TouchSearch)
                 top.Add(TouchDrumOverlay.SearchQuad(Painter, hits, now));
             top.Add(TouchDrumOverlay.BackQuad(Painter, hits, now));
+            if (Application.TouchNotices)
+                top.Add(TouchDrumOverlay.NoticesQuad(Painter, hits, now));
         }
         if (top.Count == 0)
             return frame;

@@ -180,6 +180,9 @@ public sealed partial record ArcadeSettings
         letterbox_size = 100
         letterbox_x = 50
         letterbox_y = 50
+        # performance_overlay: the frame rate and timings in the top-right corner (F5 shows or hides them
+        # until the game closes).
+        performance_overlay = false
 
         """,
         """
@@ -526,6 +529,9 @@ public sealed partial record ArcadeSettings
 
     /// <summary>Frames per second at most, outside exclusive fullscreen; 0 = no limit.</summary>
     public int FpsCap { get; init; }
+
+    /// <summary>The performance overlay (frame rate, timings) from the start; F5 still toggles it for the session.</summary>
+    public bool PerformanceOverlay { get; init; }
 
     /// <summary>The dan dojo series a cabinet offers (home mode picks one in the game).</summary>
     public string DanSeries { get; init; } = "green";

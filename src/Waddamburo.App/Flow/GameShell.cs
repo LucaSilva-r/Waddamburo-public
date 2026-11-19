@@ -176,6 +176,7 @@ internal sealed partial class GameShell : IDisposable
 
     private readonly PairingPill _pill;
     private readonly PerformanceOverlay _performance;
+    private bool _performanceSetting;
     // Home only: a cabinet's notices are for its operator (their view comes later).
     private readonly NoticeOverlay? _notices;
     private readonly TimingMarkOverlay _timingMarks;
@@ -417,6 +418,13 @@ internal sealed partial class GameShell : IDisposable
 
     public void ApplyDisplay()
     {
+        // The setting shows or hides it when it changes; F5 (or a phone's development build) in between is left alone.
+        if (Arcade.PerformanceOverlay != _performanceSetting)
+        {
+            _performanceSetting = Arcade.PerformanceOverlay;
+            if (_performance.Visible != _performanceSetting)
+                _performance.Toggle();
+        }
         if (Headless)
             return;
         // Exclusive fullscreen on Windows only: Linux compositors only emulate it.

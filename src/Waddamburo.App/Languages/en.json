@@ -182,6 +182,8 @@
   "settings.refresh_rate.highest": "Highest",
   "settings.refresh_rate.value": "{0} Hz",
   "settings.refresh_rate.hint": "The screen's refresh rate at this resolution.",
+  "settings.performance_overlay": "Performance Overlay",
+  "settings.performance_overlay.hint": "Frame rate and timings in the top-right corner. F5 shows or hides them until the game closes.",
   "settings.vsync": "VSync",
   "settings.vsync.hint": "Wait for the screen's refresh: no tearing. Off draws as fast as the PC can (or up to the frame limit).",
   "settings.frame_latency": "Frame Queue",

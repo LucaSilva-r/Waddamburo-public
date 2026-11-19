@@ -116,6 +116,7 @@ public sealed partial record ArcadeSettings
         flag("vsync", static s => s.Vsync, static (s, v) => s with { Vsync = v }),
         number("frame_latency", static s => s.FrameLatency, static (s, v) => s with { FrameLatency = v }, 1, 3),
         number("fps_cap", static s => s.FpsCap, static (s, v) => s with { FpsCap = v }, 0, 10000),
+        flag("performance_overlay", static s => s.PerformanceOverlay, static (s, v) => s with { PerformanceOverlay = v }),
         choice("fullscreen_mode", static s => s.ExclusiveFullscreen, static (s, v) => s with { ExclusiveFullscreen = v },
             [("borderless", false), ("exclusive", true)]),
         new("fullscreen_resolution", static (s, value, line) => resolution(value, line) is var (width, height)

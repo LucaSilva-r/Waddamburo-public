@@ -18,7 +18,7 @@ public static class TouchDrum
 
     /// <summary>What a touch at the stage point presses: 0-3 player 1's pads (left ka, left don, right don, right
     /// ka), <see cref="Back"/> Escape. Points outside the stage (letterbox bars) count from the nearest edge.</summary>
-    public static int Hit(float x, float y, float stageAspect = 16f / 9, bool search = false)
+    public static int Hit(float x, float y, float stageAspect = 16f / 9, bool search = false, bool notices = false)
     {
         x = Math.Clamp(x, 0, 1);
         y = Math.Clamp(y, 0, 1);
@@ -27,6 +27,8 @@ public static class TouchDrum
         var dy = y - CenterY;
         if (x * stageAspect < BackSize && y < BackSize)
             return Back;
+        if (notices && x * stageAspect < 2 * BackSize && y < BackSize)
+            return Notices;
         if (search && (1 - x) * stageAspect < SearchSize && y < SearchSize)
             return Search;
         var left = x < CenterX;
@@ -39,12 +41,14 @@ public static class TouchDrum
     public const int Back = 4;
 
     /// <summary>The menus' touch buttons' codes (<see cref="HitMenu"/>): the Up and Down arrows and Enter.</summary>
-    public const int Up = 5, Down = 6, Ok = 7, Search = 8, Keyboard = 9, Codes = 10;
+    public const int Up = 5, Down = 6, Ok = 7, Search = 8, Keyboard = 9, Notices = 10, Codes = 11;
 
     /// <summary>The screen keyboard's show/hide button while a text field is open (search), above the menu buttons: the
     /// keyboard covers the screen's lower half.</summary>
     public static readonly (float X, float Y, float Width, float Height) KeyboardButton =
         (1110 / 1280f, 75 / 720f, 150 / 1280f, 120 / 720f);
+
+    // The notices button (E): the same square beside the back button, outside songs (Notices).
 
     /// <summary>Song select's search button (Tab): a square in the top-right corner, in stage heights from that corner.</summary>
     public const float SearchSize = BackSize;
