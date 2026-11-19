@@ -4,30 +4,30 @@ using Waddamburo.Platform.Sdl.Rendering;
 namespace Waddamburo.App.Presentation;
 
 /// <summary>
-/// Draws <see cref="TouchDrum"/>: the drum's top half at the bottom of the stage (rim and face, each half flashing
-/// when hit), the menus' buttons, and the back and search buttons in the top corners.
+/// Draws <see cref="TouchDrum"/>: the drum face's top half at the bottom of the stage (each half flashing red on
+/// don, a blue ring around it on ka), the menus' buttons, and the back and search buttons in the top corners.
 /// </summary>
 internal static class TouchDrumOverlay
 {
     private const float StageWidth = 1280, StageHeight = 720;
-    private static readonly (byte, byte, byte) Rim = (66, 40, 30), Face = (236, 214, 170), Flash = (255, 255, 255);
+    private static readonly (byte, byte, byte) Face = (250, 250, 250), Outline = (40, 40, 40), Don = (255, 70, 40), Ka = (60, 190, 255);
     private const double FlashSeconds = 0.15;
 
+    // As phone taiko games draw it: one white drum face (don); everything around it is ka, which flashes a ring on its side.
     public static IEnumerable<RenderQuad> Quads(OverlayPainter painter, ulong[] hits, ulong now)
     {
         var centreX = TouchDrum.CenterX * StageWidth;
         var centreY = TouchDrum.CenterY * StageHeight;
-        var rim = TouchDrum.RimRadius * StageHeight;
         var face = TouchDrum.FaceRadius * StageHeight;
+        var ring = face + 14;
         foreach (var right in (bool[])[false, true])
         {
             var (ka, don) = right ? (3, 2) : (0, 1);
-            yield return quarter(painter, "rim", right, centreX, centreY, rim, Rim, .55f);
-            yield return quarter(painter, "face", right, centreX, centreY, face, Face, .45f);
             if (flash(hits[ka], now) is > 0 and var kaFlash)
-                yield return quarter(painter, "flash-rim", right, centreX, centreY, rim, Flash, .5f * kaFlash);
+                yield return quarter(painter, "flash-ka", right, centreX, centreY, ring, Ka, null, .8f * kaFlash);
+            yield return quarter(painter, "face", right, centreX, centreY, face, Face, Outline, .8f);
             if (flash(hits[don], now) is > 0 and var donFlash)
-                yield return quarter(painter, "flash-face", right, centreX, centreY, face, Flash, .6f * donFlash);
+                yield return quarter(painter, "flash-don", right, centreX, centreY, face, Don, Outline, .6f * donFlash);
         }
     }
 
@@ -109,11 +109,12 @@ internal static class TouchDrumOverlay
         }, .6f + .4f * flash(hits[TouchDrum.Back], now));
     }
 
-    // One side's quarter disc above the centre (the lower half lies below the stage).
+    // One side's quarter disc above the centre (the lower half lies below the stage), outlined or not.
     private static RenderQuad quarter(OverlayPainter painter, string kind, bool right, float centreX, float centreY,
-        float radius, (byte, byte, byte) colour, float alpha) =>
+        float radius, (byte, byte, byte) colour, (byte, byte, byte)? outline, float alpha) =>
         painter.Canvas(("touch-drum", kind, right), right ? centreX : centreX - radius, centreY - radius, radius, radius,
-            canvas => canvas.RoundedRect(right ? -radius : 0, 0, radius * 2, radius * 2, radius, colour, 0), alpha);
+            canvas => canvas.RoundedRect(right ? -radius : 0, 0, radius * 2, radius * 2, radius, colour,
+                outline is null ? 0 : 3, outline), alpha);
 
     // 1 just hit, fading to 0 over FlashSeconds.
     private static float flash(ulong hit, ulong now) =>

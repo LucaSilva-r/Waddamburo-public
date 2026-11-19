@@ -10,9 +10,6 @@ public static class TouchDrum
     /// <summary>Drum face: centre at the stage's bottom edge, radius in stage heights.</summary>
     public const float CenterX = .5f, CenterY = 1f, FaceRadius = .42f;
 
-    /// <summary>The rim drawn around the face (ka is everywhere outside the face, not only on the rim).</summary>
-    public const float RimRadius = .52f;
-
     /// <summary>The back button: a square in the top-left corner, in stage heights.</summary>
     public const float BackSize = .11f;
 

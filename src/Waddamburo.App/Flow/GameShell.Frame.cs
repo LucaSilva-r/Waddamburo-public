@@ -235,12 +235,15 @@ internal sealed partial class GameShell
         if (PlatformInfo.IsMobile || Application.TouchActive)
         {
             var (hits, now) = (Application.TouchHits, SdlApplication.TicksNs);
+            var attractOrBoot = _gameplay.Demo && Scenes.OnLane || Active.Id == FlowScenes.Boot || Active.Id == FlowScenes.Logo
+                || Active.Id == FlowScenes.Title || Active.Id == FlowScenes.Caution || Active.Id == FlowScenes.Movie;
             if (Application.OverlayOpen)
                 top.AddRange(TouchDrumOverlay.MenuQuads(Painter, hits, now));
             if (Application.TouchKeyboard)
                 top.Add(TouchDrumOverlay.KeyboardQuad(Painter, hits, now));
             // Not under an overlay: its touches go to the menu buttons, the drum would only cover the page.
-            else if (!Application.OverlayOpen && (Arcade.TouchDrum == TouchDrumMode.On || Arcade.TouchDrum == TouchDrumMode.Auto && Application.TouchActive))
+            // Not drawn over the boot and the attract (its demo play too): a touch anywhere there goes to the entry.
+            else if (!Application.OverlayOpen && !attractOrBoot && (Arcade.TouchDrum == TouchDrumMode.On || Arcade.TouchDrum == TouchDrumMode.Auto && Application.TouchActive))
                 top.AddRange(TouchDrumOverlay.Quads(Painter, hits, now));
             if (Application.TouchSearch)
                 top.Add(TouchDrumOverlay.SearchQuad(Painter, hits, now));
