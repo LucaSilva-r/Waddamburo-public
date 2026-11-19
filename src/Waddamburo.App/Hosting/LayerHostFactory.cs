@@ -558,7 +558,7 @@ internal sealed class LayerHostFactory(
             },
             (side, type, id) =>
             {
-                // A song plays its preview; a costume (head 5, body 4) is worn alone; -2 (the exit) and songs bring back the
+                // A song plays its preview; a costume (kigurumi 3, head 5, body 4) is worn alone; -2 (the exit) and songs bring back the
                 // player's own look. True: the Don changes (the movie waits for FinishCostumeLoad).
                 // ponytail: one preview player; the last cursor to move picks the song.
                 if (type == 1 && song(id) is { Song.Descriptor: { AudioAsset: { } audio } descriptor })
@@ -567,9 +567,9 @@ internal sealed class LayerHostFactory(
                     previews.Silence();
                 if (don is null || side is not (0 or 1))
                     return false;
-                if (type is 4 or 5)
+                if (type is 3 or 4 or 5)
                 {
-                    don.SetCostume(side, new DonCostume(null, type == 5 ? id : 0, type == 4 ? id : 0, 0));
+                    don.SetCostume(side, new DonCostume(type == 3 ? id : null, type == 5 ? id : 0, type == 4 ? id : 0, 0));
                     dressed[side] = false;
                     return true;
                 }
@@ -583,10 +583,12 @@ internal sealed class LayerHostFactory(
             {
                 1 when slot is 10 or 11 && song(id) is var (entry, category) =>
                     textures.GetSongTitle(entry, category.BoardStyle, SongBoardTextureKind.Expanded),
-                4 or 5 => slot is 6 or 7 ? CostumeIconTextures.NameKey(type == 5 ? 1 : 2, id) : CostumeIconTextures.Key(type == 5 ? 1 : 2, id),
+                3 or 4 or 5 => slot is 6 or 7 ? CostumeIconTextures.NameKey(iconSet(type), id) : CostumeIconTextures.Key(iconSet(type), id),
                 _ => null,
             },
-            static (type, id) => type is 4 or 5 ? CostumeIconTextures.Key(type == 5 ? 1 : 2, id) : null);
+            static (type, id) => type is 3 or 4 or 5 ? CostumeIconTextures.Key(iconSet(type), id) : null);
+        // Shop TYPE_SUIT 3 / TYPE_HEAD 5 / TYPE_BODY 4 → the icon sets kigurumi 0, head 1, body 2.
+        static int iconSet(int type) => type switch { 3 => 0, 5 => 1, _ => 2 };
         var binding = loaded.RewardShop = new RewardShopHostBinding(state.SeasonId, state.Telop, null, sounds?.RewardShop, visit, don, _parts);
         return rewardShopLayer(binding, state.SeasonId);
     }

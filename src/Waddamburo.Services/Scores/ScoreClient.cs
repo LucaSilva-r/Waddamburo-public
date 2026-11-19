@@ -182,10 +182,14 @@ public sealed class ScoreClient(HttpClient http)
         return (await response.Content.ReadFromJsonAsync(ScoreJson.Default.ShopState, cancellationToken).ConfigureAwait(false))!;
     }
 
-    /// <summary>Buys goods <paramref name="no"/>: "ok", or "owned"/"short" (refused), with the medals left.</summary>
-    public async Task<ShopPurchase> PurchaseAsync(int no, long? baid = null, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Buys goods <paramref name="no"/>: "ok", or "owned"/"short" (refused), with the medals left. With
+    /// <paramref name="goods"/>, the server refuses (404) when its goods <paramref name="no"/> changed (the day's goods).
+    /// </summary>
+    public async Task<ShopPurchase> PurchaseAsync(int no, long? baid = null, ShopGoods? goods = null, CancellationToken cancellationToken = default)
     {
-        using var response = await http.PostAsJsonAsync("api/wdb/shop/purchase", new PurchaseRequest(no, baid), ScoreJson.Default.PurchaseRequest,
+        using var response = await http.PostAsJsonAsync("api/wdb/shop/purchase", new PurchaseRequest(no, baid, goods?.Type, goods?.Id),
+            ScoreJson.Default.PurchaseRequest,
             cancellationToken).ConfigureAwait(false);
         if (response.StatusCode != HttpStatusCode.Conflict)
             response.EnsureSuccessStatusCode();
@@ -448,7 +452,7 @@ public sealed class ScoreClient(HttpClient http)
 
     internal sealed record MedalSongsRequest(List<UploadMedalSong> Songs);
 
-    internal sealed record PurchaseRequest(int No, long? Baid);
+    internal sealed record PurchaseRequest(int No, long? Baid, int? Type, int? Id);
 
     internal sealed record MedalSongsResult(List<Guid> Accepted, List<MedalCredit> Credits, int? Wallet);
 

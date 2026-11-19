@@ -121,6 +121,13 @@ everything from them.
    id); the toggle and the greyed, refused costumes are on the website's Don-chan page. From the wiki (lab
    `research/wiki/`): Green's AI battle rewards lock too (5 songs, 3 costumes, by verified wins); Katsu Medal goods stay
    free (no way to earn them in Green, user decision); title-unlocked items wait for phase 6.
+   **Daily shop pool** (2026-11-20, user decisions): every kigurumi, head, body and stock song with no way to earn it by
+   playing Green (Katsu Medal shop, older versions, expired campaigns and month-of-year titles; 429 items, lab
+   `research/ghidra/green_item_routes.tsv`) is sold in Waddamburo's shop: each day the season's Green goods plus the
+   next pool items fill all 18 slots (reward_shop's `BOX_MAX`), so the pool comes round in about a month. TaikOnline
+   `WaddamburoShopPool` + data file `green_shop_pool.json` (fixed shuffled order); pool goods lock in "Only what I
+   earned". Green's prices for now (costumes 500, songs 1500), to tune from player feedback. Make (no shop art in
+   Green), puchi (not in Waddamburo) and tones 6+ (not playable) stay free.
 3. **Client gating.** Song Select hides stock songs locked for every joined player (a guest locks nothing); a purchase
    unlocks at once. The entry's costume lists only hold guest defaults and the website's presets (validated there).
    Titles and tones: nothing sold, nothing locked yet.

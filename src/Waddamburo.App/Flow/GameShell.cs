@@ -879,7 +879,10 @@ internal sealed partial class GameShell : IDisposable
                 Sync.RefreshBests(card);
                 // The entry offers the reward shop once its goods are in (arcade; a server with medals).
                 if (!Arcade.Home && card.Medals is not null && Sync.ServerFor(card) is var (client, baid))
-                    Credit.Shops[side] = new(Task.Run(() => client.ShopAsync(baid)), no => client.PurchaseAsync(no, baid));
+                {
+                    var goods = Task.Run(() => client.ShopAsync(baid));
+                    Credit.Shops[side] = new(goods, no => client.PurchaseAsync(no, baid, goods.Result.Goods.FirstOrDefault(item => item.No == no)));
+                }
             },
             // A card given to the drum, or the account chosen for it in the home player setup.
             Dan = _danCourses,
