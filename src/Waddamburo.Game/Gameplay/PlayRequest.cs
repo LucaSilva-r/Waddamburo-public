@@ -59,8 +59,11 @@ public static class TaikoGuest
     /// Kept for the app's run, or the credit (PlayerSession.Reset clears it with Mania).</summary>
     public static int?[] LastCourse { get; } = new int?[2];
 
-    /// <summary>Green's drum sounds: 太鼓, お祭り, いぬねこ, 豪華な太鼓, ドラム, タンバリン.</summary>
-    public const int ToneCount = 6;
+    /// <summary>
+    /// Green's drum sounds (its tone_name textures): 太鼓, お祭り, いぬねこ, 豪華な太鼓, ドラム, タンバリン, 和田どん, 手拍子, コンガ,
+    /// 8ビット太鼓, ソイヤ, メカドン, ふなっしー, ラップ, 細貝さん, 朱美ちゃん, シンセドラム.
+    /// </summary>
+    public const int ToneCount = 17;
 }
 
 public sealed record PlayerChartRequest

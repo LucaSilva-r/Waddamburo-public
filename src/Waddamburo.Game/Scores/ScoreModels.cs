@@ -53,14 +53,16 @@ public sealed record PendingReward(int Type, int Id, string? MusicId);
 
 /// <summary>
 /// What the server keeps locked in "Only what I earned" (TaikOnline's WaddamburoUnlocks): the reward shop's goods not bought
-/// yet. Stock songs by musicid, costume parts by Green's ids. Custom libraries never lock.
+/// yet. Stock songs by musicid, costume parts and drum sounds by Green's ids. Custom libraries never lock.
 /// </summary>
-public sealed record ProfileLocks(List<string> Songs, List<int> Kigurumi, List<int> Head, List<int> Body, List<int> Puchi)
+public sealed record ProfileLocks(List<string> Songs, List<int> Kigurumi, List<int> Head, List<int> Body, List<int> Puchi,
+    List<int>? Tones = null)
 {
-    /// <summary>Goods just bought (reward shop type: 1 song by musicid, 3 kigurumi, 4 body, 5 head, 7 puchi) no longer lock.</summary>
+    /// <summary>Goods just bought (reward shop type: 1 song by musicid, 2 tone, 3 kigurumi, 4 body, 5 head, 7 puchi) no longer lock.</summary>
     public ProfileLocks Unlock(int type, int id, string? musicId) => type switch
     {
         1 => this with { Songs = [.. Songs.Where(song => song != musicId)] },
+        2 => this with { Tones = [.. (Tones ?? []).Where(item => item != id)] },
         3 => this with { Kigurumi = [.. Kigurumi.Where(item => item != id)] },
         4 => this with { Body = [.. Body.Where(item => item != id)] },
         5 => this with { Head = [.. Head.Where(item => item != id)] },

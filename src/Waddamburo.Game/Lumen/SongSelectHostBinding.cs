@@ -653,10 +653,16 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             // Play options (the arcade's were for card players only; here anyone's): every item offered, the
             // drum's last choice selected. As the movie's own developer setup: Assign(p, 0b11111111),
             // SetDefaultSession(p, item bits, 真打), SetValidOptionMenu(p, session, tone).
-            // 音色 (drum sound): Green's tones 1-5 offered beside the plain drum (always listed), the drum's last.
+            // 音色 (drum sound): Green's tones offered beside the plain drum (always listed; the movie's Assign takes any
+            // number of bits), less those "Only what I earned" keeps locked; the drum's last, if still offered.
             if (_sides.Contains(player))
             {
-                tryInvoke("AssignTone", LumenHostValue.FromNumber(player), LumenHostValue.FromNumber((1 << TaikoGuest.ToneCount) - 2));
+                var lockedTones = TaikoGuest.Profiles.ElementAtOrDefault(player)?.Locked?.Tones ?? [];
+                var tones = Enumerable.Range(1, TaikoGuest.ToneCount - 1).Where(tone => !lockedTones.Contains(tone))
+                    .Aggregate(0, static (bits, tone) => bits | 1 << tone);
+                if (lockedTones.Contains(TaikoGuest.Tones[player]))
+                    TaikoGuest.Tones[player] = 0;
+                tryInvoke("AssignTone", LumenHostValue.FromNumber(player), LumenHostValue.FromNumber(tones));
                 tryInvoke("SetDefaultTone", LumenHostValue.FromNumber(player), LumenHostValue.FromNumber(TaikoGuest.Tones[player]));
                 var options = TaikoGuest.Options[player];
                 tryInvoke("AssignSession", LumenHostValue.FromNumber(player), LumenHostValue.FromNumber(0b11111111));
