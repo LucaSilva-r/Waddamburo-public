@@ -164,12 +164,17 @@ internal static class FlowScenes
         new SceneDefinition(SceneDefinition.CurrentVersion, GameOver, [
             new SceneLayerDefinition("reward_shop/packeddata.ddp", "shop_gameover/shop_gameover.lm", LumenMatrix.Identity, "gameover"),
             new SceneLayerDefinition("reward_shop/packeddata.ddp", "reward_shop/reward_shop.lm", LumenMatrix.Identity, "reward-shop"),
+            // The player's name board (traced scene 12: SetPlayer, Fadein), as in the shop.
+            indicatorPart("player_name", 60, 638),
+            indicatorPart("player_name", 948, 638),
         ]);
 
     // Home: Song Select's "New rewards" plays the medal screen with the rewards alone (no medals paid), then goes back.
     public static SceneDefinition HomeRewards { get; } =
         new SceneDefinition(SceneDefinition.CurrentVersion, RewardShop, [
             new SceneLayerDefinition("reward_shop/packeddata.ddp", "reward_shop/reward_shop.lm", LumenMatrix.Identity, "reward-shop"),
+            indicatorPart("player_name", 60, 638),
+            indicatorPart("player_name", 948, 638),
         ]);
 
     // The shop after a card entry (traced session-rewards-1 scene 21: SetNextScene(3) from the mode select), then Song Select.

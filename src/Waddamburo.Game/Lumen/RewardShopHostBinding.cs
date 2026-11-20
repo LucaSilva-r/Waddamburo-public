@@ -84,6 +84,7 @@ public sealed class RewardShopHostBinding(int season, string telop, RewardShopPl
     private int _answerIn = -1;
     private int _answerCode;
     private bool _counterStarted;
+    private bool _namesShown;
     private readonly int[] _spent = new int[2];
     // The Don wears a previewed costume: FinishCostumeLoad on the next tick (the 3D Don dresses at once).
     private int _costumeLoaded = -1;
@@ -247,12 +248,16 @@ public sealed class RewardShopHostBinding(int season, string telop, RewardShopPl
     public void Tick()
     {
         // The counter starts with the shop's timer, once its movie is set up (it can come after StartTimer).
+        // The name boards as soon as their movies are set up (traced: filled and faded in before Settings).
+        if (parts is not null && !_namesShown && parts.PollReady())
+        {
+            _namesShown = true;
+            parts.ShowShopNames(visit?.Joined ?? (player is { } medals ? [medals.Side] : []));
+        }
         if (parts is not null && parts.PollReady() && _timerTicks >= 0 && !_counterStarted)
         {
             _counterStarted = true;
             parts.StartCountdown(secondsLeft());
-            if (visit is not null)
-                parts.ShowShopNames(visit.Joined);
         }
         // A frozen timer (the operator's setting) never runs out.
         if (_timerTicks >= 0 && !_timerPaused && parts?.Countdown != false)

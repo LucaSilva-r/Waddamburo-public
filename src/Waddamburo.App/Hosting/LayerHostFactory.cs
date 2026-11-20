@@ -162,6 +162,9 @@ internal sealed class LayerHostFactory(
         // A front-end scene movie starts the indicator parts its following layers attach to.
         if (layer.HostId == "reward-shop-visit")
             _parts = new IndicatorParts(IndicatorPartsScene.RewardShop, counting) { ShowCounter = !hideArcadeHud };
+        // The medal screen: its name boards only.
+        if (layer.HostId == "reward-shop")
+            _parts = new IndicatorParts(IndicatorPartsScene.RewardShop, counting) { ShowCounter = false };
         if (layer.HostId == "player-entry")
         {
             _parts = new IndicatorParts(IndicatorPartsScene.Entry, counting) { ShowCounter = !hideArcadeHud };
@@ -490,7 +493,7 @@ internal sealed class LayerHostFactory(
     {
         var player = credit.RewardPlayer ?? throw new InvalidOperationException("reward_shop without a carded player.");
         var (season, telop) = Waddamburo.Game.Scores.DonMedals.Season(DateOnly.FromDateTime(DateTime.Now));
-        var binding = loaded.RewardShop = new RewardShopHostBinding(season, telop, player, sounds?.RewardShop);
+        var binding = loaded.RewardShop = new RewardShopHostBinding(season, telop, player, sounds?.RewardShop, parts: _parts);
         var layer = rewardShopLayer(binding, season);
         if (player.Rewards is not { Count: > 0 })
             return layer;
@@ -500,7 +503,7 @@ internal sealed class LayerHostFactory(
             .Where(static entry => entry.Song.Descriptor.Key.Source == SongSourceKind.Stock)
             .GroupBy(static entry => entry.Song.Descriptor.Key.StableId).ToDictionary(static group => group.Key, static group => group.First());
         var rewards = player.Rewards.Where(reward => installed(reward.Type, reward.Id, reward.MusicId, songs.ContainsKey)).ToList();
-        binding = loaded.RewardShop = new RewardShopHostBinding(season, telop, player with { Rewards = rewards }, sounds?.RewardShop);
+        binding = loaded.RewardShop = new RewardShopHostBinding(season, telop, player with { Rewards = rewards }, sounds?.RewardShop, parts: _parts);
         layer = rewardShopLayer(binding, season);
         return new LumenLayerHost(binding, movie =>
         {
