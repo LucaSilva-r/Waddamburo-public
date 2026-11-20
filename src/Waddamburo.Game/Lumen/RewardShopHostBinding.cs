@@ -31,7 +31,7 @@ public interface IRewardShopSoundController
 /// A carded player at the credit's end: their drum, medals before this credit and what it paid, and the rewards to hand
 /// over (the movie's TYPE_SONG 1 / SUIT 3 / BODY 4 / HEAD 5; traced PushReward after SetPlayerMedal).
 /// </summary>
-/// <paramref name="Alone"/>: no game over under it (home's "New rewards"): its last frame stays up for the fade out.
+/// <paramref name="Alone"/>: no game over with it (home's "New rewards").
 public sealed record RewardShopPlayer(int Side, int MedalsBefore, MedalCredit Credit, IReadOnlyList<RewardItem>? Rewards = null, bool Alone = false);
 
 /// <summary>A reward to hand over: the movie's type and id (songs by uniqueId, with their musicid for the title).</summary>
@@ -268,11 +268,9 @@ public sealed class RewardShopHostBinding(int season, string telop, RewardShopPl
             _costumeLoaded = -1;
         }
         tickPurchase();
-        if (visit is not null || _ticksSinceEnd < 0 || _ticksSinceEnd >= GameOverDelayTicks)
-            return;
-        // Its last frame stays up otherwise, over the game over under it.
-        if (++_ticksSinceEnd == GameOverDelayTicks && _movie is not null && player?.Alone != true)
-            _movie.Hidden = true;
+        // Its last frame stays up: the game over's curtain slides over it.
+        if (visit is null && _ticksSinceEnd >= 0 && _ticksSinceEnd < GameOverDelayTicks)
+            _ticksSinceEnd++;
     }
 
     // Traced: UpdateMedal(balance, spent so far) as the request goes, UpdateMedal(balance, spent with it) when it went through,
