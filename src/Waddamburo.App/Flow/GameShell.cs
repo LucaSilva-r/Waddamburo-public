@@ -877,8 +877,8 @@ internal sealed partial class GameShell : IDisposable
             {
                 TaikoGuest.Profiles[side] = card;
                 Sync.RefreshBests(card);
-                // The entry offers the reward shop once its goods are in (arcade; a server with medals).
-                if (!Arcade.Home && card.Medals is not null && Sync.ServerFor(card) is var (client, baid))
+                // The entry offers the reward shop once its goods are in (a card or a home account on a server with medals).
+                if (card.Medals is not null && Sync.ServerFor(card) is var (client, baid))
                 {
                     var goods = Task.Run(() => client.ShopAsync(baid));
                     Credit.Shops[side] = new(goods, no => client.PurchaseAsync(no, baid, goods.Result.Goods.FirstOrDefault(item => item.No == no)));
