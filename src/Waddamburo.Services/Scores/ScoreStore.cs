@@ -194,6 +194,9 @@ public sealed record MedalSong(Guid Id, long Baid, string Kind, string EngineVer
 {
     /// <summary>The arcade credit (paid once); null at home (every three songs) and for a course (its own credit).</summary>
     public Guid? CreditId { get; init; }
+
+    /// <summary>A song's chart (TaikOnline checks the credit's condition titles with it, failed songs too); null for a course.</summary>
+    public string? ChartSha256 { get; init; }
 }
 
 /// <summary>One song of an uploaded course play.</summary>
@@ -1120,10 +1123,10 @@ public sealed class ScoreStore : IDisposable
         {
             using var command = _connection.CreateCommand();
             command.CommandText = """
-                SELECT id, baid, 'song', engine_version, played_at, credit_id FROM plays
+                SELECT id, baid, 'song', engine_version, played_at, credit_id, chart_sha256 FROM plays
                     WHERE ($baid IS NULL OR baid = $baid) AND baid <> 0 AND medal_sent_at IS NULL
                 UNION ALL
-                SELECT id, baid, 'dan', engine_version, played_at, NULL FROM dan_plays
+                SELECT id, baid, 'dan', engine_version, played_at, NULL, NULL FROM dan_plays
                     WHERE ($baid IS NULL OR baid = $baid) AND baid <> 0 AND medal_sent_at IS NULL
                 ORDER BY 5 LIMIT $limit
                 """;
@@ -1134,7 +1137,10 @@ public sealed class ScoreStore : IDisposable
             while (reader.Read())
                 songs.Add(new MedalSong(Guid.Parse(reader.GetString(0)), reader.GetInt64(1), reader.GetString(2), reader.GetString(3),
                     DateTimeOffset.Parse(reader.GetString(4), CultureInfo.InvariantCulture))
-                { CreditId = reader.IsDBNull(5) ? null : Guid.Parse(reader.GetString(5)) });
+                {
+                    CreditId = reader.IsDBNull(5) ? null : Guid.Parse(reader.GetString(5)),
+                    ChartSha256 = reader.IsDBNull(6) ? null : reader.GetString(6),
+                });
             return songs;
         }
     }
