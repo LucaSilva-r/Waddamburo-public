@@ -211,7 +211,7 @@ public interface IGameOverSoundController
 /// until it ends and the card-recommendation music (a guest's) does not play (traced: only JINGLE_GOVER).
 /// </remarks>
 public sealed class GameOverHostBinding(IGameOverSoundController? sounds = null, int side = 0, bool twoPlayers = false,
-    Func<bool>? ready = null) : ILumenHostBinding
+    Func<bool>? ready = null, Func<int, bool>? carded = null) : ILumenHostBinding
 {
     private LumenPlayer? _player;
     private bool _infoRequested;
@@ -277,11 +277,12 @@ public sealed class GameOverHostBinding(IGameOverSoundController? sounds = null,
     }
 
     // ponytail: guests (no card data) on their drums.
+    // SetPlayerBasicData(playerID, isJoin, isData): isData, a card's data; without it the movie recommends a card
+    // (its RecommendScene) to that guest before the curtain.
     private void sendPlayers(LumenPlayer player)
     {
-        LumenPlayerCalls.Call(player, "SetPlayerBasicData", LumenHostValue.FromNumber(0),
-            LumenHostValue.FromBoolean(twoPlayers || side == 0), LumenHostValue.FromBoolean(false));
-        LumenPlayerCalls.Call(player, "SetPlayerBasicData", LumenHostValue.FromNumber(1),
-            LumenHostValue.FromBoolean(twoPlayers || side == 1), LumenHostValue.FromBoolean(false));
+        for (var index = 0; index < 2; index++)
+            LumenPlayerCalls.Call(player, "SetPlayerBasicData", LumenHostValue.FromNumber(index),
+                LumenHostValue.FromBoolean(twoPlayers || side == index), LumenHostValue.FromBoolean(carded?.Invoke(index) == true));
     }
 }

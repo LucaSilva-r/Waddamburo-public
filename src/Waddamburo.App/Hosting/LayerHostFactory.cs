@@ -485,7 +485,8 @@ internal sealed class LayerHostFactory(
     private LumenLayerHost gameOverHost()
     {
         var binding = loaded.GameOver = new GameOverHostBinding(sounds?.GameOver, credit.PlayerSide, credit.TwoPlayers,
-            credit.RewardPlayer is null ? null : () => loaded.RewardShop?.Ended ?? false);
+            credit.RewardPlayer is null ? null : () => loaded.RewardShop?.Ended ?? false,
+            static side => TaikoGuest.Profiles[side] is { Baid: > 0 });
         return new LumenLayerHost(binding, binding.Attach);
     }
 

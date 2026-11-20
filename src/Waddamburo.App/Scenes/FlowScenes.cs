@@ -160,13 +160,14 @@ internal static class FlowScenes
 
     // Green's ごほうびタイム: reward_shop in medal mode over the game over, which waits for it (traced
     // research/traces/session-rewards-1.md: shop_gameover at depth -890, under reward_shop).
+    // Front to back as traced: the curtain (shop_gameover, depth -890) over the name boards (90) over the medal screen.
     public static SceneDefinition RewardGameOver { get; } =
         new SceneDefinition(SceneDefinition.CurrentVersion, GameOver, [
-            new SceneLayerDefinition("reward_shop/packeddata.ddp", "shop_gameover/shop_gameover.lm", LumenMatrix.Identity, "gameover"),
             new SceneLayerDefinition("reward_shop/packeddata.ddp", "reward_shop/reward_shop.lm", LumenMatrix.Identity, "reward-shop"),
             // The player's name board (traced scene 12: SetPlayer, Fadein), as in the shop.
             indicatorPart("player_name", 60, 638),
             indicatorPart("player_name", 948, 638),
+            new SceneLayerDefinition("reward_shop/packeddata.ddp", "shop_gameover/shop_gameover.lm", LumenMatrix.Identity, "gameover"),
         ]);
 
     // Home: Song Select's "New rewards" plays the medal screen with the rewards alone (no medals paid), then goes back.
