@@ -53,7 +53,11 @@ public sealed record RewardShopVisit(
     Func<int, int, Task<ShopPurchase?>> Purchase,
     Func<int, int, int, bool> Preview,
     Func<int, int, int, LumenNativeSurfaceKey?> Fill,
-    Func<int, int, LumenNativeSurfaceKey?> BoxIcon);
+    Func<int, int, LumenNativeSurfaceKey?> BoxIcon)
+{
+    /// <summary>A purchase shows over_msg's "connecting" (arcade, for authenticity; home skips the wait it suggests).</summary>
+    public bool ServerMessages { get; init; }
+}
 
 /// <summary>
 /// reward_shop.lm, Green's ごほうびタイム (traced research/traces/session-rewards-1.md). Medal mode (scene 12): the credit's Don
@@ -156,6 +160,8 @@ public sealed class RewardShopHostBinding(int season, string telop, RewardShopPl
         {
             _purchaseSide = arg(call, 0) == 1 ? 1 : 0;
             _purchase = shop.Purchase(_purchaseSide, arg(call, 1));
+            if (shop.ServerMessages)
+                parts?.ShowMessage(0);
             return LumenHostValue.Undefined;
         });
         // Traced calls the game answers with nothing visible here.
@@ -282,6 +288,8 @@ public sealed class RewardShopHostBinding(int season, string telop, RewardShopPl
             {
                 spent = balance - answer.Medals;
                 LumenPlayerCalls.Call(_movie, "UpdateMedal", LumenHostValue.FromNumber(balance), LumenHostValue.FromNumber(spent));
+                if (visit.ServerMessages)
+                    parts?.ShowMessage(27);
                 sounds?.Bought();
                 _answerIn = AnswerDelayTicks;
                 _answerCode = 0;
@@ -296,6 +304,8 @@ public sealed class RewardShopHostBinding(int season, string telop, RewardShopPl
         if (_answerIn > 0 && --_answerIn == 0)
         {
             sounds?.Answered();
+            if (visit?.ServerMessages == true)
+                parts?.HideCardBand();
             LumenPlayerCalls.Call(_movie, "ResponseServer", LumenHostValue.FromNumber(_answerCode));
         }
     }

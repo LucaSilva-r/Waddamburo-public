@@ -174,13 +174,13 @@ internal static class FlowScenes
 
     // The shop after a card entry (traced session-rewards-1 scene 21: SetNextScene(3) from the mode select), then Song Select.
     // Its indicator parts as traced: the drums' name boards (left, right; at their Song Select places) and the counter.
-    // ponytail: over_msg ("connecting" during a purchase) left out.
     public static SceneDefinition RewardShopVisit { get; } =
         new SceneDefinition(SceneDefinition.CurrentVersion, RewardShop, [
             new SceneLayerDefinition("reward_shop/packeddata.ddp", "reward_shop/reward_shop.lm", LumenMatrix.Identity, "reward-shop-visit"),
             indicatorPart("player_name", 60, 638),
             indicatorPart("player_name", 948, 638),
             indicatorPart("time_counter"),
+            indicatorPart("over_msg"), // "connecting" during a purchase (arcade)
         ]);
 
     // A dan course's end (traced sessions 30 to 32): the same calls and sounds as the normal one, its own movie.

@@ -611,7 +611,7 @@ internal sealed class LayerHostFactory(
                 3 or 4 or 5 => slot is 6 or 7 ? CostumeIconTextures.NameKey(iconSet(type), id) : CostumeIconTextures.Key(iconSet(type), id),
                 _ => null,
             },
-            static (type, id) => type is 3 or 4 or 5 ? CostumeIconTextures.Key(iconSet(type), id) : null);
+            static (type, id) => type is 3 or 4 or 5 ? CostumeIconTextures.Key(iconSet(type), id) : null) { ServerMessages = !arcade.Home };
         // Shop TYPE_SUIT 3 / TYPE_HEAD 5 / TYPE_BODY 4 → the icon sets kigurumi 0, head 1, body 2.
         static int iconSet(int type) => type switch { 3 => 0, 5 => 1, _ => 2 };
         var binding = loaded.RewardShop = new RewardShopHostBinding(state.SeasonId, state.Telop, null, sounds?.RewardShop, visit, don, _parts);

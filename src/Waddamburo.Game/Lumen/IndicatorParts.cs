@@ -119,6 +119,18 @@ public sealed class IndicatorParts(IndicatorPartsScene scene, bool countdown)
             call(overMessage, "TweenVisible", LumenHostValue.FromBoolean(true), number(15), number(0));
     }
 
+    /// <summary>
+    /// over_msg showing message <paramref name="type"/> (its LABEL table): the shop's purchase shows 0 (connecting) then 27
+    /// (traced session-rewards-1), hidden by <see cref="HideCardBand"/>.
+    /// </summary>
+    public void ShowMessage(int type)
+    {
+        if (_overMessage is not { } overMessage)
+            return;
+        call(overMessage, "TweenVisible", LumenHostValue.FromBoolean(true), number(15), number(0));
+        call(overMessage, "SetType", number(type));
+    }
+
     public void HideCardBand()
     {
         if (_overMessage is { } overMessage)
