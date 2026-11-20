@@ -79,7 +79,17 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
             Shell.Previews?.Silence();
             foreach (var side in Shell.Players.JoinedSides)
                 Shell.Don?.SetLook(side, TaikoGuest.Profiles[side]?.Look);
-            Array.Clear(Shell.Credit.Shops); // one visit a credit
+            // Home's reward animation (Song Select's "New rewards") leaves the credit's shop alone.
+            if (Shell.Credit.RewardPlayer is not null)
+            {
+                Shell.Sounds?.GameOver.StopGameOverMusic();
+                Shell.RewardsShown?.Invoke();
+                Shell.RewardsShown = null;
+                Shell.Credit.RewardPlayer = null;
+                Shell.Catalog.Replace(FlowScenes.RewardShopVisit);
+            }
+            else
+                Array.Clear(Shell.Credit.Shops); // one visit a credit
             Shell.Loaded.RewardShop = null;
         }
         else if (scene == FlowScenes.GameOver)
@@ -199,7 +209,12 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
             Shell.Loaded.RewardShop?.Tick();
             // NotifyEndSequence (exit, or the 100 s are up): Song Select (traced scene 22).
             if (Shell.Loaded.RewardShop?.Ended == true)
+            {
+                // Home's reward animation: its medal music fades out with the picture (the fade takes a second).
+                if (Shell.Credit.RewardPlayer is not null)
+                    Shell.Sounds?.GameOver.StopGameOverMusic(TimeSpan.FromSeconds(1));
                 Shell.Scenes.FadeTo(FlowScenes.SongSelect);
+            }
         }
         else if (scene == FlowScenes.Retry)
         {

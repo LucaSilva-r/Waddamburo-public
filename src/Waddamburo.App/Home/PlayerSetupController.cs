@@ -299,6 +299,7 @@ internal sealed class PlayerSetupController : IDisposable
             {
                 shell.Sync.RefreshBests(profile); // a visitor's first, a stored account's again
                 shell.FetchShop(side, profile);
+                shell.RefreshPlayer(side);
             }
             shell.Don?.SetLook(side, profiles[side]?.Look);
             shell.Players.Join(side);
@@ -327,6 +328,7 @@ internal sealed class PlayerSetupController : IDisposable
             {
                 shell.Sync.RefreshBests(profile);
                 shell.FetchShop(side, profile);
+                shell.RefreshPlayer(side);
             }
             shell.Don?.SetLook(side, profiles[side]?.Look);
         }

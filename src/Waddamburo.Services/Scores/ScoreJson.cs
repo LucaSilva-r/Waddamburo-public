@@ -30,6 +30,7 @@ namespace Waddamburo.Services.Scores;
 [JsonSerializable(typeof(ShopState))]
 [JsonSerializable(typeof(ShopPurchase))]
 [JsonSerializable(typeof(ScoreClient.PurchaseRequest))]
+[JsonSerializable(typeof(ScoreClient.RewardsSeenRequest))]
 [JsonSerializable(typeof(ScoreClient.LeaderboardResult))]
 [JsonSerializable(typeof(ScoreClient.ScoresResult))]
 [JsonSerializable(typeof(ScoreClient.ReplayResult))]

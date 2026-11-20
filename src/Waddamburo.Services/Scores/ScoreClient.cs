@@ -196,6 +196,15 @@ public sealed class ScoreClient(HttpClient http)
         return (await response.Content.ReadFromJsonAsync(ScoreJson.Default.ShopPurchase, cancellationToken).ConfigureAwait(false))!;
     }
 
+    /// <summary>The game showed these rewards (Song Select's reward animation): they leave the profile's pending ones.</summary>
+    public async Task RewardsSeenAsync(IEnumerable<PendingReward> rewards, long? baid = null, CancellationToken cancellationToken = default)
+    {
+        using var response = await http.PostAsJsonAsync("api/wdb/rewards/seen",
+            new RewardsSeenRequest([.. rewards.Select(static reward => new[] { reward.Type, reward.Id })], baid), ScoreJson.Default.RewardsSeenRequest,
+            cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+    }
+
     /// <summary>The dan dojo catalogue (public: no account needed).</summary>
     public async Task<Waddamburo.Game.Dan.DanCatalogue> DanCatalogueAsync(CancellationToken cancellationToken = default)
     {
@@ -453,6 +462,8 @@ public sealed class ScoreClient(HttpClient http)
     internal sealed record MedalSongsRequest(List<UploadMedalSong> Songs);
 
     internal sealed record PurchaseRequest(int No, long? Baid, int? Type, int? Id);
+
+    internal sealed record RewardsSeenRequest(List<int[]> Items, long? Baid);
 
     internal sealed record MedalSongsResult(List<Guid> Accepted, List<MedalCredit> Credits, int? Wallet);
 

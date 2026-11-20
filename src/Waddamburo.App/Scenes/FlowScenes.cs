@@ -166,6 +166,12 @@ internal static class FlowScenes
             new SceneLayerDefinition("reward_shop/packeddata.ddp", "reward_shop/reward_shop.lm", LumenMatrix.Identity, "reward-shop"),
         ]);
 
+    // Home: Song Select's "New rewards" plays the medal screen with the rewards alone (no medals paid), then goes back.
+    public static SceneDefinition HomeRewards { get; } =
+        new SceneDefinition(SceneDefinition.CurrentVersion, RewardShop, [
+            new SceneLayerDefinition("reward_shop/packeddata.ddp", "reward_shop/reward_shop.lm", LumenMatrix.Identity, "reward-shop"),
+        ]);
+
     // The shop after a card entry (traced session-rewards-1 scene 21: SetNextScene(3) from the mode select), then Song Select.
     // Its indicator parts as traced: the drums' name boards (left, right; at their Song Select places) and the counter.
     // ponytail: over_msg ("connecting" during a purchase) left out.

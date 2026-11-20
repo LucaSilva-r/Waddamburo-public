@@ -439,7 +439,9 @@ internal sealed class ScoreSync : IDisposable
             if (TaikoGuest.Profiles[side] is { } joined && joined.Baid == baid)
                 TaikoGuest.Profiles[side] = joined with { Name = current.Name, Look = current.Look, Avatar = current.Avatar,
                     AccountName = current.AccountName, Title = current.Title, TitlePlate = current.TitlePlate,
-                    DanRank = current.DanRank, DanGold = current.DanGold };
+                    DanRank = current.DanRank, DanGold = current.DanGold, Medals = current.Medals ?? joined.Medals,
+                    LastMedalDay = current.LastMedalDay ?? joined.LastMedalDay, Locked = current.Locked ?? joined.Locked,
+                    PendingRewards = current.PendingRewards ?? joined.PendingRewards };
     }
 
     /// <summary>

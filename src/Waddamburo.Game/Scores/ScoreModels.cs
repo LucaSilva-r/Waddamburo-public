@@ -43,7 +43,13 @@ public sealed record ScoreProfile(long Baid, string Name)
 
     /// <summary>"Only what I earned": what stays locked for this player (null or empty: everything is unlocked).</summary>
     public ProfileLocks? Locked { get; init; }
+
+    /// <summary>Rewards earned here and not shown yet (Song Select's menu offers their animation); null or empty: none.</summary>
+    public List<PendingReward>? PendingRewards { get; init; }
 }
+
+/// <summary>A reward to show: reward_shop's type (1 song, 3 kigurumi, 4 body, 5 head) and id (songs by uniqueId, with their musicid).</summary>
+public sealed record PendingReward(int Type, int Id, string? MusicId);
 
 /// <summary>
 /// What the server keeps locked in "Only what I earned" (TaikOnline's WaddamburoUnlocks): the reward shop's goods not bought

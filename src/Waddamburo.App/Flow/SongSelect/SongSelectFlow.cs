@@ -31,6 +31,9 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         if (scene == FlowScenes.SongSelect)
         {
             Shell.Previews?.StartBackground(Shell.Credit.Waiwai, Shell.Credit.AiBattle);
+            if (Shell.Arcade.Home)
+                foreach (var side in Shell.Players.JoinedSides)
+                    Shell.RefreshPlayer(side); // rewards earned meanwhile (an AI battle win) show in the menu
             if (Shell.Arcade.Home && !Shell.Arcade.CustomUploadNoticeSeen
                 && Shell.SelectMemory.Library is SongSourceKind.Tja or SongSourceKind.OsuLazer or SongSourceKind.OsuStable)
                 Shell.CustomUploadPrompt.Open(static () => { });
@@ -108,6 +111,9 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
 
     public override void Tick(FlowInput input)
     {
+        // Song Select's "New rewards" fades out to the reward animation (GameShell.ShowRewards).
+        if (Shell.Scenes.FinishFade())
+            return;
         // Traced: the tutorial cuts in and out (its movie fades itself); Song Select comes back
         // without the folder, the cursor on the first genre.
         if (Shell.Active.Id == FlowScenes.WaiwaiTutorial || Shell.Active.Id == FlowScenes.AiTutorial)

@@ -938,6 +938,71 @@ internal sealed partial class GameShell : IDisposable
     private FlowScene flowOf(SceneId scene) => _scenes[scene];
 
     /// <summary>
+    /// A home account's live fields (Don Medals, locks, rewards to show) from the server, in the background: the stored
+    /// account keeps only its name and looks. At the player setup and each time Song Select comes back.
+    /// </summary>
+    public void RefreshPlayer(int side)
+    {
+        // A cabinet's cards come with their profile; only an account's token reads /me.
+        if (TaikoGuest.Profiles[side] is not { Token: not null } player || Sync.ServerFor(player) is not var (client, baid) || baid is not null)
+            return;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                if (await client.MeAsync().ConfigureAwait(false) is { } current && TaikoGuest.Profiles[side] is { } joined && joined.Baid == current.Baid)
+                    TaikoGuest.Profiles[side] = joined with { Medals = current.Medals, LastMedalDay = current.LastMedalDay,
+                        Locked = current.Locked, PendingRewards = current.PendingRewards };
+            }
+            catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+            {
+                Console.Error.WriteLine($"Warning ACCOUNT: player {side + 1}'s profile not refreshed ({exception.Message}).");
+            }
+        });
+    }
+
+    /// <summary>The first joined drum whose player has rewards to show (Song Select's "New rewards"); null: none.</summary>
+    public int? PendingRewardsSide() => Players.JoinedSides.Cast<int?>()
+        .FirstOrDefault(side => TaikoGuest.Profiles[side!.Value] is { PendingRewards.Count: > 0 } profile && Sync.ServerFor(profile) is not null);
+
+    /// <summary>Tells the server the reward animation was shown (set by <see cref="ShowRewards"/>, run as it ends).</summary>
+    public Action? RewardsShown { get; set; }
+
+    /// <summary>
+    /// Song Select's "New rewards": reward_shop's medal screen hands the player's pending rewards over (no medals paid),
+    /// then Song Select comes back; the server hears they were shown once it ends.
+    /// ponytail: one player's rewards per visit; a second player's wait for the next.
+    /// </summary>
+    public void ShowRewards()
+    {
+        if (PendingRewardsSide() is not { } side || TaikoGuest.Profiles[side] is not { PendingRewards: { } rewards } profile
+            || Sync.ServerFor(profile) is not var (client, baid))
+            return;
+        Credit.RewardPlayer = new Waddamburo.Game.Lumen.RewardShopPlayer(side, profile.Medals ?? 0,
+            new Waddamburo.Game.Scores.MedalCredit(0, false, false, false),
+            [.. rewards.Select(static reward => new Waddamburo.Game.Lumen.RewardItem(reward.Type, reward.Id, reward.MusicId))], Alone: true);
+        // Once the animation is over (CreditEndFlow leaving it): they were shown.
+        RewardsShown = () =>
+        {
+            if (TaikoGuest.Profiles[side] is { } shown && shown.Baid == profile.Baid)
+                TaikoGuest.Profiles[side] = shown with { PendingRewards = null };
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await client.RewardsSeenAsync(rewards, baid).ConfigureAwait(false);
+                }
+                catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
+                {
+                    Console.Error.WriteLine($"Warning REWARDS: the server did not hear the rewards were shown ({exception.Message}).");
+                }
+            });
+        };
+        Catalog.Replace(FlowScenes.HomeRewards);
+        Scenes.FadeTo(FlowScenes.RewardShop);
+    }
+
+    /// <summary>
     /// The entry offers the reward shop once its goods are in: a card read (arcade) or an account chosen in the home player
     /// setup, on a server.
     /// </summary>

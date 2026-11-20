@@ -45,6 +45,8 @@ internal enum HomeMenuAction
     Settings,
     /// <summary>Start the game again into the benchmark (it starts again as usual after).</summary>
     RunBenchmark,
+    /// <summary>Song Select: play the pending rewards' animation.</summary>
+    Rewards,
 }
 
 /// <summary>
@@ -491,7 +493,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     /// <paramref name="layout"/>: the song can open the layout editor (a local single-player song).
     /// </remarks>
     public void Open(bool gameplay, bool attract = false, bool songSelect = false, bool replayable = false, bool reviewing = false,
-        bool reportable = false, bool noResume = false, bool inRoom = false, bool quit = false, bool layout = false)
+        bool reportable = false, bool noResume = false, bool inRoom = false, bool quit = false, bool layout = false, bool rewards = false)
     {
         _noResume = noResume;
         _calibrationOffered = songSelect;
@@ -514,6 +516,9 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             _choices = ["menu.resume", "menu.settings", "online.leave"];
         if (quit && !gameplay && !PlatformInfo.IsMobile)
             _choices = [.. _choices, "menu.quit_game"];
+        // Only while there are rewards to show (Song Select).
+        if (rewards && songSelect && !inRoom)
+            _choices = [_choices[0], "menu.new_rewards", .. _choices[1..]];
         IsOpen = true;
         Selection = 0;
         _restartPrompt = _audioPrompt = _reportPrompt = _quitPrompt = _layoutsPage = _removePrompt = false;
@@ -635,6 +640,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
                 Selection = 0;
                 return HomeMenuAction.None;
             case "menu.song_select": return close(HomeMenuAction.SongSelect);
+            case "menu.new_rewards": return close(HomeMenuAction.Rewards);
             case "menu.return_to_title": return close(HomeMenuAction.Title);
             case "menu.quit_game":
                 _quitPrompt = true;

@@ -207,10 +207,10 @@ internal sealed class SoundBank
                 _audio.Mixer.Stop(handle, TimeSpan.FromMilliseconds(20));
     }
 
-    public void Stop(AudioPlaybackHandle? handle)
+    public void Stop(AudioPlaybackHandle? handle, TimeSpan? fade = null)
     {
         if (handle is { } value)
-            _audio.Mixer.Stop(value, TimeSpan.FromMilliseconds(20));
+            _audio.Mixer.Stop(value, fade ?? TimeSpan.FromMilliseconds(20));
     }
 
     /// <summary>Everything but the coin channel stops (leaving a scene that owns all its sounds).</summary>
