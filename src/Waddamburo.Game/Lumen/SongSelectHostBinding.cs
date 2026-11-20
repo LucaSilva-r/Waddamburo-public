@@ -349,6 +349,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             lumen.RegisterMethod("StopTimer", _ =>
             {
                 _timer.Stop();
+                recordPick();
                 _parts?.StopCountdown();
                 return LumenHostValue.Undefined;
             });
@@ -541,9 +542,19 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         });
     }
 
+    // A song was picked: the timer's value now counts for the titles that ask where it stopped.
+    private bool _picked;
+
+    private void recordPick()
+    {
+        if (_picked)
+            TaikoGuest.SelectSeconds = (_parts?.Countdown ?? true) ? (int)Math.Ceiling(_timer.Remaining.TotalSeconds) : null;
+    }
+
     public void Dispose()
     {
         _timer.Stop();
+        recordPick();
         // A host reload (library, grouping, order, search) keeps the music playing.
         if (!Reloading)
             _session.StopMusic();
@@ -1273,8 +1284,10 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     private LumenHostValue notifySelection(LumenHostCall call)
     {
         var request = AuthoredSongSelectionRequest.FromHostCall(call);
-        // Where the pick stopped the timer (Green's 668899 titles), as GetTimeSec shows it.
-        TaikoGuest.SelectSeconds = (_parts?.Countdown ?? true) ? (int)Math.Ceiling(_timer.Remaining.TotalSeconds) : null;
+        // Where the pick stops the timer (Green's 668899 titles), as GetTimeSec shows it; it still ticks once after the
+        // pick (players aimed a second above), so the timer's stop (StopTimer, or leaving) records it again.
+        _picked = true;
+        recordPick();
         static int course(int? authored) => authored is null or < 0 ? -1
             : AuthoredSongSelectionRequest.ToCatalogCourse(authored.Value);
         KeepOptions();
