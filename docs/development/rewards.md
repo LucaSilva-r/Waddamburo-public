@@ -124,7 +124,8 @@ everything from them.
    **Daily shop pool** (2026-11-20, user decisions): every kigurumi, head, body and stock song with no way to earn it by
    playing Green (Katsu Medal shop, older versions, expired campaigns and month-of-year titles; 429 items, lab
    `research/ghidra/green_item_routes.tsv`) is sold in Waddamburo's shop: each day the season's Green goods plus the
-   next pool items fill all 18 slots (reward_shop's `BOX_MAX`), so the pool comes round in about a month. TaikOnline
+   next pool items fill the movie's lineup areas (costume boxes 1-11, song boxes 12-17; box 0 is the exit; a costume past box
+   11 pushes the last song off the lineup), so the pool comes round in about six to seven weeks. TaikOnline
    `WaddamburoShopPool` + data file `green_shop_pool.json` (fixed shuffled order); pool goods lock in "Only what I
    earned". Green's prices for now (costumes 500, songs 1500), to tune from player feedback. Make (no shop art in
    Green), puchi (not in Waddamburo) and tones 6+ (not playable) stay free.
@@ -137,7 +138,8 @@ everything from them.
    shows it with Green's Winter goods and local purchases. Tested end to end on a local TaikOnline. Name boards, the 100 s counter
    and two players (each card buys with its own medals; a guest only looks; `--start-scene=reward-shop-2p`) done.
    Left out: over_msg "connecting", the first-visit tutorial, SE_TIMEUP's cue, 2P's own don/ka cues (1P's are used).
-5. **Home screens.** Toast and the pause menu entry.
+5. **Home screens.** Done 2026-11-20: the medals toast; the entry's mode select offers the shop at home too; Song Select's
+   pause menu offers "New rewards" while there are some (reward_shop's medal screen with PushReward, then back).
 6. **Condition titles.** Condition data file (from the reward names + wiki), then server evaluation.
 7. **Later.** Custom unlockables (own costumes and content) once the skin system can supply them.
 
