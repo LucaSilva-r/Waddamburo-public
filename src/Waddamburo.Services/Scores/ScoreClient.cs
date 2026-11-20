@@ -306,6 +306,36 @@ public sealed class ScoreClient(HttpClient http)
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(store);
+        // One upload at a time: a credit's end waits for the one the last song started.
+        await _syncLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await syncAsync(store, baid, uploadCustomSongs, canUploadChart, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _syncLock.Release();
+        }
+    }
+
+    private readonly SemaphoreSlim _syncLock = new(1, 1);
+
+    /// <summary>
+    /// An arcade credit's end: its songs uploaded (after any upload already running), then TaikOnline checks the credit's
+    /// condition titles and answers every reward the player has not seen (Green's medal screen shows them).
+    /// </summary>
+    public async Task<List<PendingReward>> CreditEndAsync(ScoreStore store, long? baid, Guid creditId, CancellationToken cancellationToken = default)
+    {
+        await SyncAsync(store, baid, cancellationToken: cancellationToken).ConfigureAwait(false);
+        using var response = await http.PostAsJsonAsync("api/wdb/medals/credit-end", new CreditEndRequest(creditId, baid),
+            ScoreJson.Default.CreditEndRequest, cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync(ScoreJson.Default.CreditEndResult, cancellationToken).ConfigureAwait(false))?.Rewards ?? [];
+    }
+
+    private async Task<int> syncAsync(ScoreStore store, long? baid, Func<bool>? uploadCustomSongs, Func<string, bool>? canUploadChart,
+        CancellationToken cancellationToken)
+    {
         var sent = 0;
         var devPlays = AcceptsDevPlays(http.BaseAddress);
         while (store.PendingPlays(baid, BatchSize, uploadCustomSongs?.Invoke() ?? true, canUploadChart) is { Count: > 0 } pending)
@@ -460,6 +490,10 @@ public sealed class ScoreClient(HttpClient http)
     internal sealed record UploadMedalSong(Guid Id, long Baid, DateTimeOffset PlayedAt, string Kind, Guid? CreditId, string? ChartSha256, int Side, int? SelectSeconds);
 
     internal sealed record MedalSongsRequest(List<UploadMedalSong> Songs);
+
+    internal sealed record CreditEndRequest(Guid CreditId, long? Baid);
+
+    internal sealed record CreditEndResult(List<PendingReward>? Rewards);
 
     internal sealed record PurchaseRequest(int No, long? Baid, int? Type, int? Id);
 

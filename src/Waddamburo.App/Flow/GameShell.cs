@@ -965,6 +965,34 @@ internal sealed partial class GameShell : IDisposable
     public int? PendingRewardsSide() => Players.JoinedSides.Cast<int?>()
         .FirstOrDefault(side => TaikoGuest.Profiles[side!.Value] is { PendingRewards.Count: > 0 } profile && Sync.ServerFor(profile) is not null);
 
+    /// <summary>
+    /// An arcade credit's end, asked for its rewards in the background (CreditSession.EndRewards): the first carded drum
+    /// on a server uploads its songs, then TaikOnline checks the credit's titles. Null: nobody to ask.
+    /// </summary>
+    public Task<(int Side, List<Waddamburo.Game.Scores.PendingReward> Rewards)>? AskCreditEndRewards()
+    {
+        var creditId = Credit.CreditId;
+        foreach (var side in Players.JoinedSides)
+        {
+            if (TaikoGuest.Profiles[side] is not { Baid: > 0 } profile || Sync.ServerFor(profile) is not var (client, baid)
+                || Sync.Scores is not { } store)
+                continue;
+            return Task.Run(async () =>
+            {
+                try
+                {
+                    return (side, await client.CreditEndAsync(store, baid, creditId).ConfigureAwait(false));
+                }
+                catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+                {
+                    Console.Error.WriteLine($"Warning REWARDS: the credit's rewards did not come ({exception.Message}).");
+                    return (side, new List<Waddamburo.Game.Scores.PendingReward>());
+                }
+            });
+        }
+        return null;
+    }
+
     /// <summary>Tells the server the reward animation was shown (set by <see cref="ShowRewards"/>, run as it ends).</summary>
     public Action? RewardsShown { get; set; }
 

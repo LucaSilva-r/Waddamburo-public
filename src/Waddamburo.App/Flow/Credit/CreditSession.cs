@@ -42,6 +42,12 @@ internal sealed class CreditSession
     /// <summary>The carded player whose Don Medals the credit's end shows (reward_shop over the game over); null: none.</summary>
     public RewardShopPlayer? RewardPlayer { get; set; }
 
+    /// <summary>
+    /// An arcade credit's last results ask TaikOnline for the rewards its titles gave (a carded drum's): Green's medal
+    /// screen shows them if the answer is in by then. Null: none asked.
+    /// </summary>
+    public Task<(int Side, List<Waddamburo.Game.Scores.PendingReward> Rewards)>? EndRewards { get; set; }
+
     /// <summary>Each drum's card's reward shop (fetched at the card read; the entry offers it once one is in); null: none.</summary>
     public CreditShop?[] Shops { get; } = new CreditShop?[2];
 
