@@ -29,8 +29,8 @@ public interface ISongBoardTextureService
         SongBoardTextureKind kind);
 
     /// <summary>
-    /// A song's title drawn horizontally at 720x103 (scene_change's song name), which is also reward_shop's song plates'
-    /// shape (Songname_hlong's fill is 360x52): Song Select's boards are vertical, these screens are not.
+    /// A song's title drawn horizontally at 720x103 (scene_change's song name), which is also the reward animation's song plates'
+    /// shape (Songname_hlong's fill is 360x52). The shop's song detail is vertical, like Song Select's boards.
     /// </summary>
     LumenNativeSurfaceKey GetTransitionTitle(SongSelectSong song, string? subtitle = null) => default;
 

@@ -877,12 +877,7 @@ internal sealed partial class GameShell : IDisposable
             {
                 TaikoGuest.Profiles[side] = card;
                 Sync.RefreshBests(card);
-                // The entry offers the reward shop once its goods are in (a card or a home account on a server with medals).
-                if (card.Medals is not null && Sync.ServerFor(card) is var (client, baid))
-                {
-                    var goods = Task.Run(() => client.ShopAsync(baid));
-                    Credit.Shops[side] = new(goods, no => client.PurchaseAsync(no, baid, goods.Result.Goods.FirstOrDefault(item => item.No == no)));
-                }
+                FetchShop(side, card);
             },
             // A card given to the drum, or the account chosen for it in the home player setup.
             Dan = _danCourses,
@@ -941,6 +936,22 @@ internal sealed partial class GameShell : IDisposable
     }
 
     private FlowScene flowOf(SceneId scene) => _scenes[scene];
+
+    /// <summary>
+    /// The entry offers the reward shop once its goods are in: a card read (arcade) or an account chosen in the home player
+    /// setup, on a server.
+    /// </summary>
+    public void FetchShop(int side, ScoreProfile player)
+    {
+        // A server without the shop answers 404: the fetch fails and the entry offers no shop.
+        if (Sync.ServerFor(player) is not var (client, baid))
+            return;
+        var goods = Task.Run(() => client.ShopAsync(baid));
+        _ = goods.ContinueWith(task => Console.WriteLine(task.IsCompletedSuccessfully
+            ? $"Reward shop for side {side}: {task.Result.Goods.Count} goods."
+            : $"Reward shop for side {side} unavailable: {task.Exception?.GetBaseException().Message}"), TaskScheduler.Default);
+        Credit.Shops[side] = new(goods, no => client.PurchaseAsync(no, baid, goods.Result.Goods.FirstOrDefault(item => item.No == no)));
+    }
 
     private int run()
     {

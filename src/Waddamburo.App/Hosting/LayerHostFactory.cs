@@ -605,7 +605,9 @@ internal sealed class LayerHostFactory(
             },
             (slot, type, id) => type switch
             {
-                1 when slot is 10 or 11 && song(id) is var (entry, _) => textures.GetTransitionTitle(entry),
+                // The detail's song name is vertical, like Song Select's boards.
+                1 when slot is 10 or 11 && song(id) is var (entry, category) =>
+                    textures.GetSongTitle(entry, category.BoardStyle, SongBoardTextureKind.Expanded),
                 3 or 4 or 5 => slot is 6 or 7 ? CostumeIconTextures.NameKey(iconSet(type), id) : CostumeIconTextures.Key(iconSet(type), id),
                 _ => null,
             },

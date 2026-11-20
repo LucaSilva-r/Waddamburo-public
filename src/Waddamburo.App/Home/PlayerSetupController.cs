@@ -296,7 +296,10 @@ internal sealed class PlayerSetupController : IDisposable
                 continue;
             TaikoGuest.Profiles[side] = profiles[side];
             if (profiles[side] is { } profile)
+            {
                 shell.Sync.RefreshBests(profile); // a visitor's first, a stored account's again
+                shell.FetchShop(side, profile);
+            }
             shell.Don?.SetLook(side, profiles[side]?.Look);
             shell.Players.Join(side);
         }
@@ -321,7 +324,10 @@ internal sealed class PlayerSetupController : IDisposable
                 continue;
             TaikoGuest.Profiles[side] = profiles[side];
             if (profiles[side] is { } profile)
+            {
                 shell.Sync.RefreshBests(profile);
+                shell.FetchShop(side, profile);
+            }
             shell.Don?.SetLook(side, profiles[side]?.Look);
         }
         entry.FinishSetup(playing); // PlayerJoined -> JoinPlayer per side
