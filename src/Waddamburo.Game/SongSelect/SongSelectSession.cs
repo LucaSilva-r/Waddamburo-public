@@ -28,6 +28,12 @@ public interface ISongBoardTextureService
         SongBoardTextureStyle style,
         SongBoardTextureKind kind);
 
+    /// <summary>
+    /// A song's title drawn horizontally at 720x103 (scene_change's song name), which is also reward_shop's song plates'
+    /// shape (Songname_hlong's fill is 360x52): Song Select's boards are vertical, these screens are not.
+    /// </summary>
+    LumenNativeSurfaceKey GetTransitionTitle(SongSelectSong song, string? subtitle = null) => default;
+
     /// <summary>A folder name: Compact = vertical spine text, Expanded = horizontal banner.</summary>
     LumenNativeSurfaceKey GetFolderName(string name, SongBoardTextureKind kind, uint outlineRgb = 0);
 

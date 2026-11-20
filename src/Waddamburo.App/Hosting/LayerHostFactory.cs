@@ -491,7 +491,31 @@ internal sealed class LayerHostFactory(
         var player = credit.RewardPlayer ?? throw new InvalidOperationException("reward_shop without a carded player.");
         var (season, telop) = Waddamburo.Game.Scores.DonMedals.Season(DateOnly.FromDateTime(DateTime.Now));
         var binding = loaded.RewardShop = new RewardShopHostBinding(season, telop, player, sounds?.RewardShop);
-        return rewardShopLayer(binding, season);
+        var layer = rewardShopLayer(binding, season);
+        if (player.Rewards is not { Count: > 0 } rewards)
+            return layer;
+        // The reward sliders' fills (rewardicon_/rewardname_<n>p_<index>, in PushReward order): a costume's icon and name
+        // plate, a song's title.
+        var songs = new SongSelectCatalogView(catalog).Categories.SelectMany(category => category.Songs.Select(song => (Song: song, Category: category)))
+            .Where(static entry => entry.Song.Descriptor.Key.Source == SongSourceKind.Stock)
+            .GroupBy(static entry => entry.Song.Descriptor.Key.StableId).ToDictionary(static group => group.Key, static group => group.First());
+        return new LumenLayerHost(binding, movie =>
+        {
+            layer.Initialize?.Invoke(movie);
+            var side = $"{player.Side + 1}p";
+            for (var index = 0; index < rewards.Count; index++)
+            {
+                var reward = rewards[index];
+                if (reward.Type is 3 or 4 or 5)
+                {
+                    var set = reward.Type switch { 3 => 0, 5 => 1, _ => 2 };
+                    movie.SetNativeFill($"rewardicon_{side}_{index}", CostumeIconTextures.Key(set, reward.Id));
+                    movie.SetNativeFill($"rewardname_{side}_{index}", CostumeIconTextures.NameKey(set, reward.Id));
+                }
+                else if (reward.MusicId is { } musicId && songs.TryGetValue(musicId, out var entry))
+                    movie.SetNativeFill($"rewardname_{side}_{index}", textures.GetTransitionTitle(entry.Song));
+            }
+        });
     }
 
     // The season's art in reward_shop's fills and the players' Don-chan in their costumes (don1pM / don2pM), as at the entry.
@@ -581,8 +605,7 @@ internal sealed class LayerHostFactory(
             },
             (slot, type, id) => type switch
             {
-                1 when slot is 10 or 11 && song(id) is var (entry, category) =>
-                    textures.GetSongTitle(entry, category.BoardStyle, SongBoardTextureKind.Expanded),
+                1 when slot is 10 or 11 && song(id) is var (entry, _) => textures.GetTransitionTitle(entry),
                 3 or 4 or 5 => slot is 6 or 7 ? CostumeIconTextures.NameKey(iconSet(type), id) : CostumeIconTextures.Key(iconSet(type), id),
                 _ => null,
             },

@@ -27,8 +27,14 @@ public interface IRewardShopSoundController
     void StopMusic() { }
 }
 
-/// <summary>A carded player at the credit's end: their drum, medals before this credit and what it paid.</summary>
-public sealed record RewardShopPlayer(int Side, int MedalsBefore, MedalCredit Credit);
+/// <summary>
+/// A carded player at the credit's end: their drum, medals before this credit and what it paid, and the rewards to hand
+/// over (the movie's TYPE_SONG 1 / SUIT 3 / BODY 4 / HEAD 5; traced PushReward after SetPlayerMedal).
+/// </summary>
+public sealed record RewardShopPlayer(int Side, int MedalsBefore, MedalCredit Credit, IReadOnlyList<RewardItem>? Rewards = null);
+
+/// <summary>A reward to hand over: the movie's type and id (songs by uniqueId, with their musicid for the title).</summary>
+public sealed record RewardItem(int Type, int Id, string? MusicId = null);
 
 /// <summary>A goods slot as the movie takes it: owned per side (1P, 2P); songs add their genre (1-8) and the four courses' stars.</summary>
 public sealed record RewardShopGoods(ShopGoods Goods, bool[] Owned, int Genre = 0, int[]? Stars = null);
@@ -205,6 +211,8 @@ public sealed class RewardShopHostBinding(int season, string telop, RewardShopPl
             // (earned, cap, spent, this credit): Waddamburo's wallet is already earned minus spent.
             LumenPlayerCalls.Call(lumenPlayer, "SetPlayerMedal", number(player.MedalsBefore + credit.Medals), number(DonMedals.Cap),
                 number(0), number(credit.Medals));
+            foreach (var reward in player.Rewards ?? [])
+                LumenPlayerCalls.Call(lumenPlayer, "PushReward", number(reward.Type), number(reward.Id));
         }
         else if (visit is not null)
             foreach (var side in new[] { 0, 1 }.OrderBy(side => visit.Joined.Contains(side)))

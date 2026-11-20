@@ -966,8 +966,9 @@ internal sealed partial class GameShell : IDisposable
         if (Options.StartScene == StartScene.RewardGameOver)
         {
             // A first credit ever: 900 medals before it, every bonus.
+            // Traced session-rewards-6's two kigurumi (43, 44), plus a head and a song.
             Credit.RewardPlayer = new Waddamburo.Game.Lumen.RewardShopPlayer(0, 900,
-                Waddamburo.Game.Scores.DonMedals.ForCredit(null, DateOnly.FromDateTime(DateTime.Now)));
+                Waddamburo.Game.Scores.DonMedals.ForCredit(null, DateOnly.FromDateTime(DateTime.Now)), [new(3, 43), new(3, 44), new(5, 119), new(1, 819, "csmclr")]);
             Catalog.Replace(FlowScenes.RewardGameOver);
         }
         if (Options.StartScene is StartScene.RewardShop or StartScene.RewardShop2P)

@@ -1416,7 +1416,7 @@ public sealed class LumenPlayer : IAvm1Host
             context.SetMember(array, "length", newLength);
             return new Avm1Lookup(true, newLength);
         }
-        if (target is Avm1ArrayObject listArray && name is "pop" or "shift" or "join")
+        if (target is Avm1ArrayObject listArray && name is "pop" or "shift" or "join" or "reverse")
         {
             var lengthLookup = context.GetMember(listArray, "length");
             var length = lengthLookup.Found ? toNumber(lengthLookup.Value) : 0;
@@ -1428,6 +1428,14 @@ public sealed class LumenPlayer : IAvm1Host
                 return new Avm1Lookup(true, string.Join(separator, Enumerable.Range(0, count).Select(index =>
                     context.GetMember(listArray, key(index)) is { Found: true, Value: not (null or Avm1Undefined) } item
                         ? toAvmString(item.Value) : "")));
+            }
+            // In place, and the array itself (reward_shop's reward list).
+            if (name == "reverse")
+            {
+                var items = Enumerable.Range(0, count).Select(index => context.GetMember(listArray, key(index)).Value).ToList();
+                for (var index = 0; index < count; index++)
+                    context.SetMember(listArray, key(index), items[count - 1 - index]);
+                return new Avm1Lookup(true, listArray);
             }
             if (count == 0)
                 return new Avm1Lookup(true, Avm1Undefined.Instance);
@@ -1552,6 +1560,40 @@ public sealed class LumenPlayer : IAvm1Host
             context.SetTransientChild(attachTarget, attachDepth, attached);
             context.OnCommit(() => placeScriptChild(attachTarget, attached));
             return new Avm1Lookup(true, attached);
+        }
+        // A copy of the clip beside it (same parent): its symbol at its first frame, its colour, blend and class
+        // (reward_shop's reward sliders). Unlike Flash, the copy starts at the parent's origin, not at the original's
+        // place: Green's sliders sit there (the template is authored at y -90, then SetAndStart moves the copy up 90;
+        // with Flash's copied transform they end a row too high, under the title; checked against Green in
+        // TaikoRecomp, session-rewards-7).
+        if (target is DisplayInstance original
+            && name == "duplicateMovieClip"
+            && original.Parent is { } duplicateParent
+            && arguments.Count >= 2
+            && arguments[0] is string duplicateName
+            && tryAvmDepth(arguments[1], out var duplicateDepth))
+        {
+            var duplicate = new DisplayInstance(original.CharacterId, original.HierarchyDepth, duplicateParent)
+            {
+                Name = duplicateName,
+                Depth = duplicateDepth,
+                Color = original.Color,
+                BlendMode = original.BlendMode,
+                Visible = original.Visible,
+                ScriptTransformed = true,
+            };
+            if (arguments.Count >= 3 && arguments[2] is Avm1Object duplicateValues)
+            {
+                foreach (var (propertyName, propertyValue) in duplicateValues.Properties)
+                    writeMember(duplicate, propertyName, propertyValue);
+            }
+            enterFrame(duplicate, 0, queueActions: true);
+            if (original.ConstructedClass is { } duplicateClass)
+                constructInstance(duplicate, duplicateClass);
+            context.SetTransientMember(duplicateParent, duplicateName, duplicate);
+            context.SetTransientChild(duplicateParent, duplicateDepth, duplicate);
+            context.OnCommit(() => placeScriptChild(duplicateParent, duplicate));
+            return new Avm1Lookup(true, duplicate);
         }
         if (target is DisplayInstance targetInstance && name is "play" or "stop")
         {
