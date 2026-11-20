@@ -56,17 +56,12 @@ internal sealed class FrontendSounds(SoundBank bank) : ISongSelectSoundControlle
 
     // The tone board's preview, by name: the game's nuSound2BankStr.bin gives ids 7-9 to SE_SELECT_NEIRO_000_004
     // (a later tone layout), but song_select's SoundDef means 000_005, whose cue n is tone n (SE_GAME_NEIRO_00n).
-    // Later tones are in the banks named after their range (005_009, 010_014, 015_019), cue = tone - the range's first.
-    // ponytail: the later banks' cue layout is guessed from their names; checked by ear.
+    // Later tones: the banks named after their five tones (005_009, 010_014, 015_019) hold a don and a ka cue per tone
+    // (cues 2n, 2n + 1; the ka's header delays it 360 ms), played together.
     private static readonly string[] TonePreviewBanks = ["SE_SELECT_NEIRO_000_005_C", "SE_SELECT_NEIRO_000_005_L", "SE_SELECT_NEIRO_000_005_R"];
 
-    private static (string Bank, int Cue) tonePreview(int tone) => tone switch
-    {
-        <= 5 => ("SE_SELECT_NEIRO_000_005", tone),
-        <= 9 => ("SE_SELECT_NEIRO_005_009", tone - 5),
-        <= 14 => ("SE_SELECT_NEIRO_010_014", tone - 10),
-        _ => ("SE_SELECT_NEIRO_015_019", tone - 15),
-    };
+    private static (string Bank, int[] Cues) tonePreview(int tone) => tone <= 5 ? ("SE_SELECT_NEIRO_000_005", [tone])
+        : ($"SE_SELECT_NEIRO_{tone / 5 * 5:000}_{tone / 5 * 5 + 4:000}", [tone % 5 * 2, tone % 5 * 2 + 1]);
 
     private void playTonePreview(ImmutableArray<LumenHostValue> arguments)
     {
@@ -77,8 +72,9 @@ internal sealed class FrontendSounds(SoundBank bank) : ISongSelectSoundControlle
             foreach (var side in new[] { "_C", "_L", "_R" })
                 bank.StopBank($"SE_SELECT_NEIRO_{range}{side}");
         // A drum sound: on the drum hit bus, as in play (its volume setting), not the menu bus.
-        var (name, cue) = tonePreview(tone);
-        bank.Play(name + TonePreviewBanks[bankId - 7][^2..], cue, AudioBus.DrumHit);
+        var (name, cues) = tonePreview(tone);
+        foreach (var cue in cues)
+            bank.Play(name + TonePreviewBanks[bankId - 7][^2..], cue, AudioBus.DrumHit);
     }
 
     public void PlayEntryVoice(int cue) => bank.Play("VO_ENTRY", cue);
