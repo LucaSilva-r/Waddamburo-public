@@ -564,6 +564,7 @@ public sealed class ScoreSavingTests
                     ALTER TABLE plays DROP COLUMN ai_section_counts;
                     ALTER TABLE plays DROP COLUMN medal_sent_at; ALTER TABLE dan_plays DROP COLUMN medal_sent_at;
                     ALTER TABLE plays DROP COLUMN credit_id;
+                    ALTER TABLE plays DROP COLUMN side; ALTER TABLE plays DROP COLUMN select_seconds;
                     DROP TABLE remote_ai_plays;
                     PRAGMA user_version = 8;
                     """;

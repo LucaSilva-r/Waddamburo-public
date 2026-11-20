@@ -76,6 +76,9 @@ public sealed record DeviceLoginStart(string DeviceCode, string UserCode, int Ex
 public sealed class TwoFactorRequiredException() : Exception("The account needs a two-factor code.");
 
 /// <summary>TaikOnline's Waddamburo API (api/wdb): login, and the play/chart upload outbox.</summary>
+// Its upload lock is a SemaphoreSlim whose wait handle is never asked for: there is nothing to dispose.
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA1001:Types that own disposable fields should be disposable",
+    Justification = "SemaphoreSlim without AvailableWaitHandle holds no unmanaged resource.")]
 public sealed class ScoreClient(HttpClient http)
 {
     private const int BatchSize = 50;

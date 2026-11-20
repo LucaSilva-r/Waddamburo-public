@@ -223,7 +223,7 @@ public sealed class RewardShopHostBinding(int season, string telop, RewardShopPl
                 LumenPlayerCalls.Call(lumenPlayer, "PushReward", number(reward.Type), number(reward.Id));
         }
         else if (visit is not null)
-            foreach (var side in new[] { 0, 1 }.OrderBy(side => visit.Joined.Contains(side)))
+            foreach (var side in Enumerable.Range(0, 2).OrderBy(side => visit.Joined.Contains(side)))
             {
                 var medals = visit.Medals[side];
                 LumenPlayerCalls.Call(lumenPlayer, "SetPlayerEnter", number(side), boolean(visit.Joined.Contains(side)), boolean(medals is not null));
