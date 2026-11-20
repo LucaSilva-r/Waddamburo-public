@@ -1267,6 +1267,8 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     private LumenHostValue notifySelection(LumenHostCall call)
     {
         var request = AuthoredSongSelectionRequest.FromHostCall(call);
+        // Where the pick stopped the timer (Green's 668899 titles), as GetTimeSec shows it.
+        TaikoGuest.SelectSeconds = (_parts?.Countdown ?? true) ? (int)Math.Ceiling(_timer.Remaining.TotalSeconds) : null;
         static int course(int? authored) => authored is null or < 0 ? -1
             : AuthoredSongSelectionRequest.ToCatalogCourse(authored.Value);
         KeepOptions();

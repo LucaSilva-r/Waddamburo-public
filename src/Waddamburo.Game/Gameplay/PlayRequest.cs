@@ -43,6 +43,9 @@ public static class TaikoGuest
     /// <summary>Each drum's drum sound (音色, 0-5: SE_GAME_NEIRO_00n), chosen on Song Select's tone board.</summary>
     public static int[] Tones { get; } = new int[2];
 
+    /// <summary>Song Select's timer (whole seconds, as shown) when the last song was picked; null with the countdown off.</summary>
+    public static int? SelectSeconds { get; set; }
+
     /// <summary>Each drum unlocked Oni (right-rim hits on the course board): it stays shown for the rest of the credit.</summary>
     public static bool[] Mania { get; } = new bool[2];
 

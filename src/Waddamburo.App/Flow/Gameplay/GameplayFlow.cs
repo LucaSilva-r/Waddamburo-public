@@ -959,6 +959,8 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
                     {
                         UploadBlocked = _play.UploadProtectedCharts.Contains(player.Chart) || Shell.Assets.UploadBlocked(player.ChartAsset),
                         CreditId = Shell.Arcade.Home ? null : Shell.Credit.CreditId,
+                        Side = (int)player.Player,
+                        SelectSeconds = Shell.Arcade.Home ? null : TaikoGuest.SelectSeconds,
                         AudioOffsetMs = (int)_play.AudioOffset.TotalMilliseconds,
                         InputOffsetMs = (int)_play.InputOffset.TotalMilliseconds,
                         // AI-don's decisions use the seed even without random chart options.

@@ -161,6 +161,12 @@ public sealed record PlayRecord(
     /// <summary>The arcade credit it was played in (Don Medals are paid per credit); null at home.</summary>
     public Guid? CreditId { get; init; }
 
+    /// <summary>The drum it was played on (0 = 1P), and Song Select's timer when the song was picked (arcade only; null at
+    /// home, which shows no timer): some condition titles ask for them.</summary>
+    public int Side { get; init; }
+
+    public int? SelectSeconds { get; init; }
+
     public int ScoringVersion { get; init; } = CurrentScoringVersion;
 
     public static string CurrentEngineVersion { get; } =
@@ -197,6 +203,11 @@ public sealed record MedalSong(Guid Id, long Baid, string Kind, string EngineVer
 
     /// <summary>A song's chart (TaikOnline checks the credit's condition titles with it, failed songs too); null for a course.</summary>
     public string? ChartSha256 { get; init; }
+
+    /// <summary>The song's drum and Song Select's timer (<see cref="PlayRecord.Side"/>).</summary>
+    public int Side { get; init; }
+
+    public int? SelectSeconds { get; init; }
 }
 
 /// <summary>One song of an uploaded course play.</summary>
@@ -392,6 +403,11 @@ public sealed class ScoreStore : IDisposable
         // The arcade credit a song was played in: TaikOnline pays a credit's medals once (home: every three songs).
         """
         ALTER TABLE plays ADD COLUMN credit_id TEXT;
+        """,
+        // The drum and Song Select's timer, for condition titles (TaikOnline checks a credit's songs).
+        """
+        ALTER TABLE plays ADD COLUMN side INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE plays ADD COLUMN select_seconds INTEGER;
         """,
     ];
 
@@ -706,11 +722,13 @@ public sealed class ScoreStore : IDisposable
             INSERT INTO plays (id, baid, chart_sha256, chart_key, course, mode, score, great, good, miss,
                 max_combo, rolls, gauge, cleared, scoring_version, engine_version, played_at, replay,
                 audio_offset_ms, input_offset_ms, options, seed, ai_won, ai_sections, ai_support, ai_points,
-                hit_median, hit_variance, ai_session_id, ai_ranked, ai_base_sha256, ai_prior_median, ai_prior_variance, upload_blocked, ai_section_counts, credit_id)
+                hit_median, hit_variance, ai_session_id, ai_ranked, ai_base_sha256, ai_prior_median, ai_prior_variance, upload_blocked, ai_section_counts, credit_id, side, select_seconds)
             VALUES ($id, $baid, $sha, $key, $course, $mode, $score, $great, $good, $miss,
                 $combo, $rolls, $gauge, $cleared, $version, $engine, $at, $replay, $audio_offset, $input_offset,
-                $options, $seed, $ai_won, $ai_sections, $ai_support, $ai_points, $hit_median, $hit_variance, $ai_session_id, $ai_ranked, $ai_base, $ai_prior_median, $ai_prior_variance, $upload_blocked, $ai_section_counts, $credit_id)
+                $options, $seed, $ai_won, $ai_sections, $ai_support, $ai_points, $hit_median, $hit_variance, $ai_session_id, $ai_ranked, $ai_base, $ai_prior_median, $ai_prior_variance, $upload_blocked, $ai_section_counts, $credit_id, $side, $select_seconds)
             """;
+        command.Parameters.AddWithValue("$side", play.Side);
+        command.Parameters.AddWithValue("$select_seconds", (object?)play.SelectSeconds ?? DBNull.Value);
         command.Parameters.AddWithValue("$ai_section_counts", (object?)play.Battle?.SectionCounts ?? DBNull.Value);
         command.Parameters.AddWithValue("$credit_id", (object?)play.CreditId?.ToString() ?? DBNull.Value);
         command.Parameters.AddWithValue("$id", play.Id.ToString());
@@ -1123,10 +1141,10 @@ public sealed class ScoreStore : IDisposable
         {
             using var command = _connection.CreateCommand();
             command.CommandText = """
-                SELECT id, baid, 'song', engine_version, played_at, credit_id, chart_sha256 FROM plays
+                SELECT id, baid, 'song', engine_version, played_at, credit_id, chart_sha256, side, select_seconds FROM plays
                     WHERE ($baid IS NULL OR baid = $baid) AND baid <> 0 AND medal_sent_at IS NULL
                 UNION ALL
-                SELECT id, baid, 'dan', engine_version, played_at, NULL, NULL FROM dan_plays
+                SELECT id, baid, 'dan', engine_version, played_at, NULL, NULL, 0, NULL FROM dan_plays
                     WHERE ($baid IS NULL OR baid = $baid) AND baid <> 0 AND medal_sent_at IS NULL
                 ORDER BY 5 LIMIT $limit
                 """;
@@ -1140,6 +1158,8 @@ public sealed class ScoreStore : IDisposable
                 {
                     CreditId = reader.IsDBNull(5) ? null : Guid.Parse(reader.GetString(5)),
                     ChartSha256 = reader.IsDBNull(6) ? null : reader.GetString(6),
+                    Side = reader.GetInt32(7),
+                    SelectSeconds = reader.IsDBNull(8) ? null : reader.GetInt32(8),
                 });
             return songs;
         }
