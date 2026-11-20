@@ -492,13 +492,16 @@ internal sealed class LayerHostFactory(
         var (season, telop) = Waddamburo.Game.Scores.DonMedals.Season(DateOnly.FromDateTime(DateTime.Now));
         var binding = loaded.RewardShop = new RewardShopHostBinding(season, telop, player, sounds?.RewardShop);
         var layer = rewardShopLayer(binding, season);
-        if (player.Rewards is not { Count: > 0 } rewards)
+        if (player.Rewards is not { Count: > 0 })
             return layer;
         // The reward sliders' fills (rewardicon_/rewardname_<n>p_<index>, in PushReward order): a costume's icon and name
         // plate, a song's title.
         var songs = new SongSelectCatalogView(catalog).Categories.SelectMany(category => category.Songs.Select(song => (Song: song, Category: category)))
             .Where(static entry => entry.Song.Descriptor.Key.Source == SongSourceKind.Stock)
             .GroupBy(static entry => entry.Song.Descriptor.Key.StableId).ToDictionary(static group => group.Key, static group => group.First());
+        var rewards = player.Rewards.Where(reward => installed(reward.Type, reward.Id, reward.MusicId, songs.ContainsKey)).ToList();
+        binding = loaded.RewardShop = new RewardShopHostBinding(season, telop, player with { Rewards = rewards }, sounds?.RewardShop);
+        layer = rewardShopLayer(binding, season);
         return new LumenLayerHost(binding, movie =>
         {
             layer.Initialize?.Invoke(movie);
@@ -534,6 +537,15 @@ internal sealed class LayerHostFactory(
         binding.Attach(movie);
     });
 
+    // Whether this install can show a good TaikOnline serves (the latest Green revision's): a stock song in the library, a
+    // costume with its model. Tones and puchi always pass.
+    private bool installed(int type, int id, string? musicId, Func<string, bool> hasSong) => type switch
+    {
+        1 => musicId is { } music && hasSong(music),
+        3 or 4 or 5 => don?.HasCostume(type, id) ?? true,
+        _ => true,
+    };
+
     // The movie's GENRELABEL order (1-8).
     private static readonly string[] ShopGenres = ["J-POP", "アニメ", "ボーカロイド", "童謡", "バラエティ", "クラシック", "ゲームミュージック", "ナムコオリジナル"];
 
@@ -556,7 +568,7 @@ internal sealed class LayerHostFactory(
             state.Goods.FirstOrDefault(goods => goods.Type == 1 && goods.Id == id)?.MusicId is { } musicId
             && songs.TryGetValue(musicId, out var entry) ? entry : null;
         bool[] owned(ShopGoods item) => [.. shops.Select(shop => shop?.State.Result.Goods.Any(goods => goods.No == item.No && goods.Owned) == true)];
-        var goods = state.Goods.Select(item => song(item.Id) is { } entry && item.Type == 1
+        var goods = state.Goods.Where(item => installed(item.Type, item.Id, item.MusicId, songs.ContainsKey)).Select(item => song(item.Id) is { } entry && item.Type == 1
             ? new RewardShopGoods(item, owned(item), Array.IndexOf(ShopGenres, entry.Category.AuthoredLabel) + 1,
                 [.. new[] { TaikoCourse.Easy, TaikoCourse.Normal, TaikoCourse.Hard, TaikoCourse.Oni }.Select(course => entry.Song.Level(course) ?? 0)])
             : new RewardShopGoods(item, owned(item))).ToList();

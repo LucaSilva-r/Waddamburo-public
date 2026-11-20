@@ -510,6 +510,14 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         return new Accessory(frames, skeleton, inverseBind, loop);
     }
 
+    /// <summary>Whether the data has a shop costume's model: kigurumi 3, body 4, head 5.</summary>
+    public bool HasCostume(int type, int id) => assetExists(type switch
+    {
+        3 => $"full/cos/cos_{id:000}000.nud",
+        4 => $"parts/body/body_{id:000}000.nud",
+        _ => $"parts/head/head_{id:000}000.nud",
+    });
+
     private bool assetExists(string relativePath) => File.Exists(Path.Combine(_assetRoot, relativePath));
 
     private List<GpuMesh> model(string relativePath)
