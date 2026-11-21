@@ -80,6 +80,12 @@ internal sealed class GameFolder(Activity activity)
     }
 
     private const int PickRequest = 0x6EE1;
+
+    private static readonly string[] ArchiveTypes =
+    [
+        "application/zip", "application/x-zip-compressed", "application/x-7z-compressed",
+        "application/rar", "application/vnd.rar", "application/x-rar-compressed",
+    ];
     private Action<IReadOnlyList<Func<System.IO.Stream>>>? _picked;
 
     /// <summary>Android's file picker for one archive (no storage permission: the player grants the file they pick).</summary>
@@ -89,11 +95,7 @@ internal sealed class GameFolder(Activity activity)
     {
         _picked = picked;
         var intent = new Intent(Intent.ActionOpenDocument).AddCategory(Intent.CategoryOpenable).SetType("*/*")
-            .PutExtra(Intent.ExtraMimeTypes, new[]
-            {
-                "application/zip", "application/x-zip-compressed", "application/x-7z-compressed",
-                "application/rar", "application/vnd.rar", "application/x-rar-compressed",
-            });
+            .PutExtra(Intent.ExtraMimeTypes, ArchiveTypes);
         activity.RunOnUiThread(() => activity.StartActivityForResult(intent, PickRequest));
     }
 
