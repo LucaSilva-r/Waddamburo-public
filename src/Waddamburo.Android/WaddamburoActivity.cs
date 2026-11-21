@@ -32,6 +32,11 @@ public sealed class WaddamburoActivity : SDLActivity
         base.OnCreate(savedInstanceState);
     }
 
+    protected override void OnActivityResult(int requestCode, Result resultCode, Intent? data)
+    {
+        base.OnActivityResult(requestCode, resultCode, data);
+        _gameFolder?.Picked(requestCode, resultCode, data);
+    }
 
     protected override void Main()
     {

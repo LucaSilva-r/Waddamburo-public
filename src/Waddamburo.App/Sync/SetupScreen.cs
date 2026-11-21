@@ -19,7 +19,7 @@ public static class SetupScreen
     /// <paramref name="greenFolder"/>: where a player copies the files by hand instead.
     /// </summary>
     public static bool Run(GreenSetup setup, Func<Cli.GreenSetupProgress> status, string greenFolder,
-        string? shot = null)
+        string? shot = null, DeviceImport? import = null)
     {
         var frames = 0;
         var fonts = Cli.BundledFonts.Extract(Path.Combine(Boot.AppHome ?? Path.GetTempPath(), "fonts"));
@@ -27,8 +27,12 @@ public static class SetupScreen
         using var menu = new OverlayMenu(application, fonts.Service);
         using var painter = new OverlayPainter(application, fonts.Service);
         var startAnyway = false;
-        menu.Open(new OverlayPage(() => Strings.T("first_setup.title"), () => status().Essentials
-            ? [new OverlayRow(Strings.T("first_setup.start_anyway"), Enter: () => { startAnyway = true; application.RequestQuit(); })] : [],
+        menu.Open(new OverlayPage(() => Strings.T("first_setup.title"), () =>
+            [
+                .. import is null || import.Busy ? [] : new[] { new OverlayRow(Strings.T("first_setup.import"), Enter: import.Pick) },
+                .. status().Essentials && import?.Busy != true
+                    ? [new OverlayRow(Strings.T("first_setup.start_anyway"), Enter: () => { startAnyway = true; application.RequestQuit(); })] : Array.Empty<OverlayRow>(),
+            ],
             Centred: true, Legend: false, Body: () =>
             {
                 var progress = status();
@@ -44,6 +48,8 @@ public static class SetupScreen
                     ("", OverlayMenu.White),
                     ("", OverlayMenu.White),
                     ($"[{new string('#', filled)}{new string('-', 30 - filled)}] {Strings.T("first_setup.progress", progress.Received, progress.Total)}", OverlayMenu.Green),
+                    .. import?.Message is { } imported ? [("", OverlayMenu.White), (imported.Text, imported.Failed ? OverlayMenu.Red : OverlayMenu.Yellow)]
+                        : Array.Empty<(string, RenderColor)>(),
                 ];
             }, Footer: () =>
             [
@@ -51,6 +57,7 @@ public static class SetupScreen
                     : (OverlayMenu.upper(Strings.T("first_setup.offline")), OverlayMenu.Red),
                 (OverlayMenu.upper(Strings.T(status().Essentials ? "first_setup.essentials" : "first_setup.auto")), OverlayMenu.Green),
                 (OverlayMenu.upper(Strings.T("first_setup.copy", greenFolder)), OverlayMenu.White),
+                .. import is null ? [] : new[] { (OverlayMenu.upper(Strings.T("first_setup.import_hint")), OverlayMenu.White) },
             ]), home: true);
         application.Run(_ =>
         {
@@ -65,10 +72,68 @@ public static class SetupScreen
         }, keys =>
         {
             menu.Tick(keys, keys, false); // the back button does nothing here: there is nowhere to go back to
-            if (status().Complete)
+            if (status().Complete && import?.Busy != true)
                 application.RequestQuit();
         });
         return startAnyway || status().Complete;
+    }
+}
+
+/// <summary>
+/// The setup's import of a download on the device itself (<see cref="Cli.GreenImport"/>): <c>pick</c> asks the player
+/// for files (Android's file picker) and hands back how to open each, or nothing when they cancel. The files are
+/// imported one after another off the screen's thread.
+/// </summary>
+public sealed class DeviceImport(string root, Action<Action<IReadOnlyList<Func<Stream>>>> pick)
+{
+    private volatile Cli.GreenImport? _current;
+    private volatile string? _done;
+    private volatile bool _failed, _busy;
+    private int _index, _count;
+
+    public bool Busy => _busy;
+
+    /// <summary>How the import goes, or how it went (null before one).</summary>
+    public (string Text, bool Failed)? Message => _current is { } current && _busy
+        ? (Strings.T("first_setup.importing", Volatile.Read(ref _index) + 1, _count, current.Progress, current.Files), false)
+        : _done is { } done ? (done, _failed) : null;
+
+    public void Pick()
+    {
+        if (!_busy)
+            pick(start);
+    }
+
+    private void start(IReadOnlyList<Func<Stream>> sources)
+    {
+        if (sources.Count == 0 || _busy)
+            return;
+        (_busy, _count, _index, _done) = (true, sources.Count, 0, null);
+        _current = new Cli.GreenImport(root);
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                foreach (var source in sources)
+                {
+                    using (var stream = source())
+                        _current.Import(stream);
+                    Interlocked.Increment(ref _index);
+                }
+                var missing = Cli.GreenData.Missing(root).Count;
+                (_done, _failed) = (missing == 0 ? Strings.T("first_setup.imported", _current.Files)
+                    : Strings.T("first_setup.imported_missing", missing), false);
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine($"Import failed: {exception}");
+                (_done, _failed) = (Strings.T("first_setup.import_failed", exception.Message), true);
+            }
+            finally
+            {
+                _busy = false;
+            }
+        });
     }
 }
 
@@ -168,7 +233,8 @@ internal static class SetupPreview
         {
             var arrived = (int)Math.Min(Total, (Environment.TickCount64 - start) / 2);
             return new Cli.GreenSetupProgress(arrived, arrived, Total, arrived > Total / 3);
-        }, "Android/data/org.waddamburo.game/files/Green", shot);
+        }, "Android/data/org.waddamburo.game/files/Green", shot,
+            new DeviceImport(ReceivedLibraries.GreenFolder, static _ => { })); // the import row, picking nothing
         return 0;
     }
 }

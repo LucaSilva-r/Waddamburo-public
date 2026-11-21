@@ -14,7 +14,7 @@ public sealed record GreenSetupProgress(int Received, int Installed, int Total, 
 /// </summary>
 public static class GreenData
 {
-    private static readonly Lazy<string[]> s_files = new(load);
+    private static readonly Lazy<(string[] Release, string[] Updates)> s_lists = new(load);
 
     /// <summary>Files the boot reads first: with these the game can start even if others are missing.</summary>
     private static readonly string[] Essentials =
@@ -22,11 +22,11 @@ public static class GreenData
         "data/lumendata/packed", "data/don3d", "data/sound/se", "data/sound/bgm", "data/sound/config/nuSound2BankStr.bin",
     ];
 
-    public static int FileCount => s_files.Value.Length;
+    public static int FileCount => s_lists.Value.Release.Length;
 
     /// <summary>The listed files missing from <paramref name="root"/> (Green's USRDIR).</summary>
     public static IReadOnlyList<string> Missing(string root) =>
-        [.. s_files.Value.Where(path => !File.Exists(Path.Combine(root, path)))];
+        [.. s_lists.Value.Release.Where(path => !File.Exists(Path.Combine(root, path)))];
 
     public static GreenSetupProgress SetupProgress(string root)
     {
@@ -34,7 +34,7 @@ public static class GreenData
         var hasStaging = Directory.Exists(staging);
         var received = 0;
         var installed = 0;
-        foreach (var path in s_files.Value)
+        foreach (var path in s_lists.Value.Release)
         {
             // Check the staging path first because a completed file only moves from staging to its final path.
             var staged = hasStaging && File.Exists(Path.Combine(staging, path));
@@ -53,14 +53,21 @@ public static class GreenData
     internal static bool IsEssentialFile(string path) => Essentials.Any(essential =>
         path == essential || path.StartsWith(essential + "/", StringComparison.Ordinal));
 
-    private static string[] load()
+    /// <summary>Every file an import takes: the release's, then those its updates (S111_01 to _13) add, which a Green
+    /// without them plays without.</summary>
+    public static IEnumerable<string> ImportFiles => s_lists.Value.Release.Concat(s_lists.Value.Updates);
+
+    private static (string[], string[]) load()
     {
         using var stream = typeof(GreenData).Assembly.GetManifestResourceStream("Waddamburo.GreenData.txt.gz")
             ?? throw new InvalidOperationException("The Green data list is missing from the build.");
         using var reader = new StreamReader(new GZipStream(stream, CompressionMode.Decompress));
-        List<string> files = [];
+        List<string> files = [], updates = [];
         while (reader.ReadLine() is { Length: > 0 } line)
-            files.Add(line);
-        return [.. files];
+            if (line[0] == '+')
+                updates.Add(line[1..]);
+            else
+                files.Add(line);
+        return ([.. files], [.. updates]);
     }
 }

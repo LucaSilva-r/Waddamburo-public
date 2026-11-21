@@ -46,6 +46,19 @@ public static class Boot
             ReleaseConsole.Begin();
             if (SelfUpdate.HandOff(ref args))
                 return 0;
+            // --import-green GREEN SOURCE...: the phone setup's import, on a PC (testing, or a dump downloaded there).
+            if (args is ["--import-green", var green, .. var sources] && sources.Length > 0)
+            {
+                var import = new GreenImport(green);
+                foreach (var source in sources)
+                {
+                    using var stream = File.OpenRead(source);
+                    import.Import(stream);
+                    Console.WriteLine($"{source}: {import.Files} files so far");
+                }
+                Console.WriteLine($"{GreenData.Missing(green).Count} of {GreenData.FileCount} release files missing");
+                return 0;
+            }
             if (args.Contains("--setup-preview", StringComparer.Ordinal) || args.Any(static arg => arg.StartsWith("--setup-preview=", StringComparison.Ordinal)))
                 return Sync.SetupPreview.Run(new BootArguments(args).Option("--setup-preview="));
             var a = BootArguments.Parse(args);

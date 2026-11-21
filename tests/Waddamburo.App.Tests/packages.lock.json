@@ -153,6 +153,7 @@
         "type": "Project",
         "dependencies": {
           "QRCoder": "[1.6.0, )",
+          "SharpCompress": "[0.50.4, )",
           "Waddamburo.Catalog": "[0.0.0-dev, )",
           "Waddamburo.Editor": "[0.0.0-dev, )",
           "Waddamburo.Game": "[0.0.0-dev, )",
@@ -273,6 +274,12 @@
           "MongoDB.Bson": "2.21.0",
           "Remotion.Linq": "2.2.0"
         }
+      },
+      "SharpCompress": {
+        "type": "CentralTransitive",
+        "requested": "[0.50.4, )",
+        "resolved": "0.50.4",
+        "contentHash": "/hxjUR7DEX6mky8/LQXyrnrKioOL6D6veAID1EZpro+q4s02x5dHEYBV3qjEN6lDYYilDoQQ76BcmQj+lRx51w=="
       }
     },
     "net10.0/linux-x64": {

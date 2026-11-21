@@ -1,3 +1,4 @@
+using Android.Content;
 using Android.Media;
 using Waddamburo.App.Cli;
 using Waddamburo.App.Sync;
@@ -66,13 +67,47 @@ internal sealed class GameFolder(Activity activity)
                 catch (OperationCanceledException) { }
             }
         });
+        // Imported into the folder the count looks at (a USRDIR copied in whole is completed where it is).
+        var import = new DeviceImport(gameRoot(green), Pick);
         var started = SetupScreen.Run(setup, () => Volatile.Read(ref status),
-            $"Android/data/{activity.PackageName}/files/{Green}");
+            $"Android/data/{activity.PackageName}/files/{Green}", import: import);
         stop.Cancel();
         poll.Wait();
         if (!started)
             return null;
         return GreenData.Missing(gameRoot(green)) is [] ? verified(gameRoot(green)) : gameRoot(green);
+    }
+
+    private const int PickRequest = 0x6EE1;
+    private Action<IReadOnlyList<Func<System.IO.Stream>>>? _picked;
+
+    /// <summary>Android's file picker (no storage permission: the player grants each file they pick).</summary>
+    private void Pick(Action<IReadOnlyList<Func<System.IO.Stream>>> picked)
+    {
+        _picked = picked;
+        var intent = new Intent(Intent.ActionOpenDocument).AddCategory(Intent.CategoryOpenable).SetType("*/*")
+            .PutExtra(Intent.ExtraAllowMultiple, true);
+        activity.RunOnUiThread(() => activity.StartActivityForResult(intent, PickRequest));
+    }
+
+    /// <summary>The picker's answer (the activity's OnActivityResult).</summary>
+    public void Picked(int request, Result result, Intent? data)
+    {
+        if (request != PickRequest || Interlocked.Exchange(ref _picked, null) is not { } picked)
+            return;
+        List<global::Android.Net.Uri> uris = [];
+        if (result == Result.Ok && data?.ClipData is { } clip)
+            for (var index = 0; index < clip.ItemCount; index++)
+                uris.Add(clip.GetItemAt(index)!.Uri!);
+        else if (result == Result.Ok && data?.Data is { } single)
+            uris.Add(single);
+        // A file descriptor, not the content stream: seekable, which zip and 7z need.
+        picked([.. uris.Select(uri => (Func<System.IO.Stream>)(() =>
+        {
+            using var descriptor = activity.ContentResolver!.OpenFileDescriptor(uri, "r")
+                ?? throw new IOException($"Cannot open {uri}");
+            return new FileStream(new Microsoft.Win32.SafeHandles.SafeFileHandle(descriptor.DetachFd(), ownsHandle: true), FileAccess.Read);
+        }))]);
     }
 
     /// <summary>How other devices list this one.</summary>

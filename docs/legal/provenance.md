@@ -300,3 +300,9 @@ The editor's asynchronous open/save picker is original Platform.Sdl code against
 <https://wiki.libsdl.org/SDL3/SDL_ShowSaveFileDialog>, accessed 2026-11-07).
 Filter buffers live until SDL's callback completes. No upstream dialog implementation is copied;
 the existing SDL binding/native dependency and notices are unchanged.
+
+The arcade update package reader (`src/Waddamburo.Formats/Packages/ArcadePackage.cs`) is independently implemented
+from the publicly described algorithm in [RPCS3 issue 7482](https://github.com/RPCS3/rpcs3/issues/7482) (credited
+there to SSL and zecoxao): the payload is XORed with SHA-1 of a header-derived seed and the block index. Entry layout
+was checked on user-supplied update files. No code is copied; no key is embedded (the seed comes from each package's
+header). The Green import's file list comes from the user's game manifests (`eng/green-data-list.py`).

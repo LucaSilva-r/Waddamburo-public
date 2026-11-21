@@ -64,6 +64,7 @@
   <ItemGroup>
     <!-- QR codes for the home setup's sign-in and friend codes (MIT). -->
     <PackageReference Include="QRCoder" />
+    <PackageReference Include="SharpCompress" />
   </ItemGroup>
 
   <!-- NuGet runtime assets must enter the single-file bundle (not a loose cimgui.dll). -->

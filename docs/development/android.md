@@ -74,6 +74,14 @@ Wi-Fi (~3 MB/s), only what it lacks; a file takes its name only once complete, s
 appears once the boot's essentials are in. A complete copy is remembered (`files/green-verified`). Or the player copies
 USRDIR's contents into `Green/` over USB.
 
+Without a PC, **Import a download from this device** opens Android's file picker (several files at once, no storage
+permission) and `DeviceImport`/`GreenImport` take Green out of what was downloaded: a dump archive (zip, 7z, rar, tar,
+SharpCompress, any folder layout: each entry's path is matched from its `data/` segment against the list) or arcade update
+packages (`DATA00010.BIN`-`DATA00012.BIN`, `Formats/Packages/ArcadePackage`, also inside an archive, streamed). Only listed
+files are written: the release's (`S111_00.md5`) and those its updates add (`S111_01`-`_13`, `+` lines in the list,
+optional). Each file is written as `.import` and moved in when whole; one already there at its size is skipped, so a
+retry resumes. PC test: `Waddamburo --import-green <Green folder> <sources...>`.
+
 Afterwards select the paired PC in Settings › Devices to mirror its libraries into `Received/` (`ReceivedLibraries`): see
 [song-sync-plan.md](song-sync-plan.md). `Arcade/`, `Wii/`, `Wii U/` stay for releases copied by hand.
 The PC prepares Nijiiro music as Ogg Opus and transfers the library's configured keys to app-private storage.
