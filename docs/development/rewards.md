@@ -130,7 +130,7 @@ everything from them.
    earned". Green's prices for now (costumes 500, songs 1500), to tune from player feedback. Make (no shop art in
    Green) stays free. **Weekly since 2026-11-20** (a new set each Monday).
    **Katsu Medal shop** (2026-11-20, TaikOnline website, as Donder Hiroba's): 100 Katsu Medals a card credit (dan none,
-   never reset); Green's Katsu goods (`green_katsu_shop.json`: songs, costumes, the 8 Katsu tones, Taiko's own 17 puchi
+   never reset); Green's Katsu goods (`green_katsu_shop.json`: songs, costumes, the 8 Katsu tones, the 7 Katsu puchi
    charas) leave the cabinet pool and sell there, any time, by version. The title parts gacha (20 a pull, 14 banners)
    and the title builder (part + connector + part, read from Donder Hiroba's editor) are there too. **Default mode
    since 2026-11-21: Only what I earned.**
@@ -155,7 +155,8 @@ everything from them.
    after the event. Plan: TaikOnline campaigns (period, target songs, rewards with prices) on a calendar; tickets
    counted from the medal songs already uploaded (their charts give genre and tags); an exchange page beside the Katsu
    Shop; the event folder in Song Select. Collab puchi (Idolmaster, Cinderella Girls, Touhou, Love Live, Macross,
-   Puzzle & Dragons, A3!, COMPASS, LDH, ドコドン...) and the wiki's collab title parts (X-CAMP rows) are free until
+   Puzzle & Dragons, A3!, COMPASS, LDH, ドコドン...), the campaign puchi (tournament gacha, スタートダッシュ) and the
+   wiki's collab title parts (X-CAMP rows) are free until
    then (not sold, so not locked); they lock once their event exists.
 8. **Later.** Custom unlockables (own costumes and content) once the skin system can supply them.
 
