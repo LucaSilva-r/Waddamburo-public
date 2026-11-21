@@ -58,7 +58,7 @@ public sealed partial class LanguageFileTests
     [GeneratedRegex(@"\{(\d+)")]
     private static partial Regex Placeholder();
 
-    [GeneratedRegex("\"([a-z_]+(?:\\.[a-z_]+)+)\"")]
+    [GeneratedRegex("\"([a-z_]+(?:\\.[a-z_0-9]+)+)\"")]
     private static partial Regex KeyLiteral();
 
     private static string FindRoot()

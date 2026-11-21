@@ -267,10 +267,10 @@ internal sealed class OverlayMenu(SdlApplication application, string fontPath) :
             var slots = rows.Length + rows.Skip(1).Count(static row => row.Gap);
             var bottom = rows.Any(static row => row.Hint.Length > 0) ? 560 : 610;
             var spacing = Math.Min(RowSpacing, (bottom - FirstRow) / (float)Math.Max(1, slots - 1));
-            // A phone's larger text can't close up that far: there the page scrolls instead, a window of rows around the
-            // selection (the desktop keeps its cabinet look).
+            // Past what the text can close up to (sooner with a phone's larger text), the page scrolls instead, a window
+            // of rows around the selection with arrows at its ends (#49).
             var scroll = 0f;
-            var scrolling = Zoom > 1 && spacing < FontSize * 1.2f;
+            var scrolling = spacing < FontSize * 1.2f;
             if (scrolling)
             {
                 spacing = FontSize * 1.2f;
