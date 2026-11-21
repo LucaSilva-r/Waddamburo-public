@@ -50,6 +50,7 @@ public static class SetupScreen
                     ($"[{new string('#', filled)}{new string('-', 30 - filled)}] {Strings.T("first_setup.progress", progress.Received, progress.Total)}", OverlayMenu.Green),
                     .. import?.Message is { } imported ? [("", OverlayMenu.White), (imported.Text, imported.Failed ? OverlayMenu.Red : OverlayMenu.Yellow)]
                         : Array.Empty<(string, RenderColor)>(),
+                    .. import?.Detail is { } detail ? [(detail, OverlayMenu.White)] : Array.Empty<(string, RenderColor)>(),
                 ];
             }, Footer: () =>
             [
@@ -72,10 +73,10 @@ public static class SetupScreen
         }, keys =>
         {
             menu.Tick(keys, keys, false); // the back button does nothing here: there is nowhere to go back to
-            if (status().Complete && import?.Busy != true)
+            if ((status().Complete || import?.Ready == true) && import?.Busy != true)
                 application.RequestQuit();
         });
-        return startAnyway || status().Complete;
+        return startAnyway || status().Complete || import?.Ready == true;
     }
 }
 
@@ -92,6 +93,16 @@ public sealed class DeviceImport(string root, Action<Action<IReadOnlyList<Func<S
     private int _index, _count;
 
     public bool Busy => _busy;
+
+    /// <summary>The import is over and nothing but songs' files is missing (a shrunk Green): the game can start.</summary>
+    public bool Ready { get; private set; }
+
+    /// <summary>What is being read right now (null when idle).</summary>
+    public string? Detail => _busy && _current?.Current is var (entry, taken)
+        ? Strings.T(taken ? "first_setup.import_writing" : "first_setup.import_skipping", tail(entry.Replace('\\', '/'), 64))
+        : null;
+
+    private static string tail(string text, int length) => text.Length <= length ? text : "…" + text[^(length - 1)..];
 
     /// <summary>How the import goes, or how it went (null before one).</summary>
     public (string Text, bool Failed)? Message => _current is { } current && _busy
@@ -114,15 +125,22 @@ public sealed class DeviceImport(string root, Action<Action<IReadOnlyList<Func<S
         {
             try
             {
+                // Files cut short when the app was closed midway (complete ones were moved in already).
+                if (Directory.Exists(root))
+                    foreach (var leftover in Directory.EnumerateFiles(root, "*.import", SearchOption.AllDirectories))
+                        File.Delete(leftover);
                 foreach (var source in sources)
                 {
                     using (var stream = source())
                         _current.Import(stream);
                     Interlocked.Increment(ref _index);
                 }
-                var missing = Cli.GreenData.Missing(root).Count;
-                (_done, _failed) = (missing == 0 ? Strings.T("first_setup.imported", _current.Files)
-                    : Strings.T("first_setup.imported_missing", missing), false);
+                var missing = Cli.GreenData.Missing(root);
+                var required = missing.Count(static path => !Cli.GreenData.IsSongFile(path));
+                (_done, _failed) = (missing.Count == 0 ? Strings.T("first_setup.imported", _current.Files)
+                    : required == 0 ? Strings.T("first_setup.imported_shrunk", _current.Files, missing.Count)
+                    : Strings.T("first_setup.imported_missing", required), false);
+                Ready = required == 0;
             }
             catch (Exception exception)
             {

@@ -75,7 +75,8 @@ internal sealed class GameFolder(Activity activity)
         poll.Wait();
         if (!started)
             return null;
-        return GreenData.Missing(gameRoot(green)) is [] ? verified(gameRoot(green)) : gameRoot(green);
+        // A Green without (some) songs is whole too: remembered, the setup is not shown again.
+        return GreenData.MissingRequired(gameRoot(green)) is [] ? verified(gameRoot(green)) : gameRoot(green);
     }
 
     private const int PickRequest = 0x6EE1;

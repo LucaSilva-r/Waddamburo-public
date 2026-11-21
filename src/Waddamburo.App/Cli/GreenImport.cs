@@ -22,6 +22,13 @@ public sealed class GreenImport(string root)
     public int Files => Volatile.Read(ref _files);
 
     private int _files;
+    private readonly HashSet<string> _seen = new(StringComparer.Ordinal);
+
+    /// <summary>The entry being read (inside the archive or package), and whether it is written (else skipped: a solid
+    /// archive still has to decompress it).</summary>
+    public (string Entry, bool Taken)? Current => _current is { } current ? (current.Item1, current.Item2) : null;
+
+    private volatile Tuple<string, bool>? _current; // a reference: read whole from the screen's thread
 
     /// <summary>How far through the source being read (0 to 1).</summary>
     public double Progress => _source is { CanSeek: true, Length: > 0 } source ? (double)source.Position / source.Length : 0;
@@ -49,8 +56,19 @@ public sealed class GreenImport(string root)
             ArcadePackage.Extract(source, open, token);
             return;
         }
-        using var archive = ArchiveFactory.OpenArchive(source);
         var magic = new byte[4];
+        if (head[..read] is [(byte)'P', (byte)'K', ..])
+        {
+            // Zip through .NET's own reader: SharpCompress's (0.50.4) ends some large deflated entries a few KB early.
+            // Loose files first, then update packages by name (DATA.BIN, the base, before DATA00010.BIN and on): the
+            // order a cabinet applies them in, so the newest copy of a file wins.
+            using var zip = new System.IO.Compression.ZipArchive(source, System.IO.Compression.ZipArchiveMode.Read, leaveOpen: true);
+            foreach (var entry in zip.Entries.OrderBy(static entry => isPackage(entry.FullName, entry.Length))
+                         .ThenBy(static entry => isPackage(entry.FullName, entry.Length) ? entry.Name : "", StringComparer.OrdinalIgnoreCase))
+                take(entry.FullName, entry.FullName.EndsWith('/'), entry.Length, entry.Open, magic, token);
+            return;
+        }
+        using var archive = ArchiveFactory.OpenArchive(source);
         if (!archive.IsSolid && archive.Type != SharpCompress.Common.ArchiveType.SevenZip)
         {
             foreach (var entry in archive.Entries)
@@ -58,6 +76,7 @@ public sealed class GreenImport(string root)
             return;
         }
         // Front to back, the only fast way through a solid 7z or rar.
+        // ponytail: archive order, so packages inside a solid archive layer as stored; sort them like above if one ships so.
         using var reader = archive.ExtractAllEntries();
         while (reader.MoveToNextEntry())
             take(reader.Entry.Key, reader.Entry.IsDirectory, reader.Entry.Size, reader.OpenEntryStream, magic, token);
@@ -68,6 +87,7 @@ public sealed class GreenImport(string root)
         token.ThrowIfCancellationRequested();
         if (folder || key is null)
             return;
+        _current = Tuple.Create(key, Match(key) is not null);
         if (Match(key) is not null)
         {
             using var target = open(key, size);
@@ -76,28 +96,43 @@ public sealed class GreenImport(string root)
             using var data = read();
             data.CopyTo(target);
         }
-        else if (size > 1 << 20 && (key.EndsWith(".bin", StringComparison.OrdinalIgnoreCase) || key.EndsWith(".pkg", StringComparison.OrdinalIgnoreCase)))
+        else if (isPackage(key, size))
         {
             // An update package inside the archive: streamed, never written out whole.
             using var data = read();
             if (data.ReadAtLeast(magic, 4, throwOnEndOfStream: false) == 4 && ArcadePackage.IsPackage(magic))
-                ArcadePackage.Extract(new PrefixedStream(magic, data), open, token);
+                try
+                {
+                    ArcadePackage.Extract(new EntryStream(magic, data), open, token);
+                }
+                catch (Exception error) when (error is EndOfStreamException or InvalidDataException)
+                {
+                    throw new InvalidDataException($"{key}: {error.Message}", error);
+                }
         }
     }
+
+    private static bool isPackage(string? key, long size) =>
+        size > 1 << 20 && key is not null && Match(key) is null
+        && (key.EndsWith(".bin", StringComparison.OrdinalIgnoreCase) || key.EndsWith(".pkg", StringComparison.OrdinalIgnoreCase));
 
     // Where a file goes, or null when Green does not use it or it is already there whole.
     private Stream? open(string entry, long size)
     {
         if (Match(entry) is not { } path)
             return null;
+        _current = Tuple.Create(entry, true);
         var target = Path.Combine(root, path);
-        if (new FileInfo(target) is { Exists: true } existing && existing.Length == size)
+        // A file met again in this import (an update over the base) is always written; one only left by an earlier,
+        // cut import is kept when its size matches.
+        var first = _seen.Add(path);
+        if (first && new FileInfo(target) is { Exists: true } existing && existing.Length == size)
         {
             Interlocked.Increment(ref _files);
             return null;
         }
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-        return new Landing(target, size, () => Interlocked.Increment(ref _files));
+        return new Landing(target, size, first ? () => Interlocked.Increment(ref _files) : static () => { });
     }
 
     // Writes beside the target and is moved in when closed with all of it written (a source that broke off midway
@@ -121,7 +156,8 @@ public sealed class GreenImport(string root)
         }
     }
 
-    private sealed class PrefixedStream(byte[] prefix, Stream rest) : Stream
+    // An archive entry, read with a prefix put back in front.
+    private sealed class EntryStream(byte[] prefix, Stream rest) : Stream
     {
         private int _at;
 
@@ -148,5 +184,12 @@ public sealed class GreenImport(string root)
         public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
         public override void SetLength(long value) => throw new NotSupportedException();
         public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+                rest.Dispose();
+            base.Dispose(disposing);
+        }
     }
 }

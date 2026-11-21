@@ -24,6 +24,16 @@ public static class GreenData
 
     public static int FileCount => s_lists.Value.Release.Length;
 
+    /// <summary>A song's chart or music: a Green may lack it (one shrunk to its system files, played with custom songs);
+    /// the catalog leaves out songs whose files are missing.</summary>
+    public static bool IsSongFile(string path) =>
+        path.StartsWith("data/fumen/", StringComparison.Ordinal)
+        || path.StartsWith("data/sound/bgm/nub/SONG_", StringComparison.Ordinal)
+        || path.StartsWith("data/sound/bgm/nsh/SONG_", StringComparison.Ordinal);
+
+    /// <summary>The listed files missing from <paramref name="root"/>, songs' files aside: none, and the game is whole.</summary>
+    public static IReadOnlyList<string> MissingRequired(string root) => [.. Missing(root).Where(static path => !IsSongFile(path))];
+
     /// <summary>The listed files missing from <paramref name="root"/> (Green's USRDIR).</summary>
     public static IReadOnlyList<string> Missing(string root) =>
         [.. s_lists.Value.Release.Where(path => !File.Exists(Path.Combine(root, path)))];

@@ -235,7 +235,7 @@ internal sealed class OverlayMenu(SdlApplication application, string fontPath) :
             // The message's lines (each wrapped), the title above them, then a window of the choices around the
             // selection (a long list, the public rooms, scrolls with arrows at its ends).
             var lines = page.Body?.Invoke() is { } body
-                ? body.SelectMany(line => wrapped(upper(line.Text), Wrap).Select(part => (Text: part, line.Colour))).Take(8).ToList()
+                ? body.SelectMany(line => wrapped(upper(line.Text), Wrap).Select(part => (Text: part, line.Colour))).Take(11).ToList()
                 : page.Message?.Invoke() is { } message
                     ? message.Split('\n').SelectMany(line => wrapped(upper(line), Wrap)).Take(5).Select(static part => (Text: part, Colour: White)).ToList()
                     : [];

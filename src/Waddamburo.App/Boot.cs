@@ -50,7 +50,7 @@ public static class Boot
             if (args is ["--import-green", var green, .. var sources] && sources.Length > 0)
             {
                 var import = new GreenImport(green);
-                foreach (var source in sources)
+                foreach (var source in sources.Where(static source => !source.StartsWith("--", StringComparison.Ordinal)))
                 {
                     using var stream = File.OpenRead(source);
                     import.Import(stream);
