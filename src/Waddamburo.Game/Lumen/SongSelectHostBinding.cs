@@ -1305,7 +1305,13 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
         // The by-difficulty panel's 前回 board: each drum's course and ★ (Ura is not on the panel).
         foreach (var player in _sides)
             if ((player == 0 ? request.PlayerOneCourse : request.PlayerTwoCourse) is { } picked and >= 0)
+            {
                 TaikoGuest.LastCourse[player] = picked % 4;
+                // Oni picked where it showed at once (a song missing a course: no right-ka presses, no isMania) stays
+                // shown, or the next song's cursor starts on its hidden slot.
+                if (picked % 4 == 3)
+                    TaikoGuest.Mania[player] = true;
+            }
         if (_session.Catalog.TryGetSong(request.Category, request.Song, out var played))
             foreach (var player in _sides)
                 if ((player == 0 ? request.PlayerOneCourse : request.PlayerTwoCourse) is { } authored and >= 0 and < 4
