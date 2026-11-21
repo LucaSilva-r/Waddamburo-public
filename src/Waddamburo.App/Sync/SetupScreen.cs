@@ -7,9 +7,10 @@ namespace Waddamburo.App.Sync;
 
 /// <summary>
 /// A device's first start without Green, as the update screen looks (the menus' centred page in the bundled font,
-/// nothing of Green's): how to pair with a PC and this device's code (then where Green comes from), a bar of what has arrived, and the
-/// connection and copy-by-hand hints at the bottom; START ANYWAY once the boot's essentials are in. Closes by itself
-/// when Green is complete.
+/// nothing of Green's). With an import (a phone): a welcome asking where Green comes from, then either the import (what
+/// to pick, Android's file picker, its progress) or the PC's pairing page. Without: the pairing page alone (this
+/// device's code, a bar of what has arrived, the connection and copy-by-hand hints). START ANYWAY once the boot's
+/// essentials are in; closes by itself when Green is complete.
 /// </summary>
 public static class SetupScreen
 {
@@ -27,39 +28,95 @@ public static class SetupScreen
         using var menu = new OverlayMenu(application, fonts.Service);
         using var painter = new OverlayPainter(application, fonts.Service);
         var startAnyway = false;
-        menu.Open(new OverlayPage(() => Strings.T("first_setup.title"), () =>
+        OverlayRow[] anyway() => status().Essentials && import?.Busy != true
+            ? [new OverlayRow(Strings.T("first_setup.start_anyway"), Enter: () => { startAnyway = true; application.RequestQuit(); })] : [];
+        (string, RenderColor) blank = ("", OverlayMenu.White);
+        (string, RenderColor) bar()
+        {
+            var progress = status();
+            var filled = progress.Received * 30 / Math.Max(1, progress.Total);
+            return ($"[{new string('#', filled)}{new string('-', 30 - filled)}] {Strings.T("first_setup.progress", progress.Received, progress.Total)}", OverlayMenu.Green);
+        }
+
+        // From a PC: this device's pairing code, the bar, how to connect.
+        var fromPc = new OverlayPage(() => Strings.T("first_setup.title"), () =>
             [
-                .. import is null || import.Busy ? [] : new[] { new OverlayRow(Strings.T("first_setup.import"), Enter: import.Pick) },
-                .. status().Essentials && import?.Busy != true
-                    ? [new OverlayRow(Strings.T("first_setup.start_anyway"), Enter: () => { startAnyway = true; application.RequestQuit(); })] : Array.Empty<OverlayRow>(),
+                .. anyway(),
+                .. import is null ? [] : new[] { new OverlayRow(Strings.T("first_setup.import_back"), Enter: menu.Pop) },
             ],
             Centred: true, Legend: false, Body: () =>
-            {
-                var progress = status();
-                var filled = progress.Received * 30 / Math.Max(1, progress.Total);
-                // Blank lines space it out: the code in the middle of the screen, the bar under it.
-                return
-                [
-                    ("", OverlayMenu.White),
-                    .. setup.Message is { } message
-                        ? [(message, setup.Failed ? OverlayMenu.Red : OverlayMenu.Cyan), ("", OverlayMenu.White), ("", OverlayMenu.White)]
-                        : new[] { (Strings.T("first_setup.step_open", setup.Name), OverlayMenu.White), ("", OverlayMenu.White),
-                            (Strings.T("first_setup.code", setup.Code), OverlayMenu.Yellow) },
-                    ("", OverlayMenu.White),
-                    ("", OverlayMenu.White),
-                    ($"[{new string('#', filled)}{new string('-', 30 - filled)}] {Strings.T("first_setup.progress", progress.Received, progress.Total)}", OverlayMenu.Green),
-                    .. import?.Message is { } imported ? [("", OverlayMenu.White), (imported.Text, imported.Failed ? OverlayMenu.Red : OverlayMenu.Yellow)]
-                        : Array.Empty<(string, RenderColor)>(),
-                    .. import?.Detail is { } detail ? [(detail, OverlayMenu.White)] : Array.Empty<(string, RenderColor)>(),
-                ];
-            }, Footer: () =>
+            [
+                blank,
+                .. setup.Message is { } message
+                    ? [(message, setup.Failed ? OverlayMenu.Red : OverlayMenu.Cyan), blank, blank]
+                    : new[] { (Strings.T("first_setup.step_open", setup.Name), OverlayMenu.White), blank,
+                        (Strings.T("first_setup.code", setup.Code), OverlayMenu.Yellow) },
+                blank,
+                blank,
+                bar(),
+            ], Footer: () =>
             [
                 SyncWire.Addresses().Count > 0 ? (OverlayMenu.upper(Strings.T("first_setup.step_connect")), OverlayMenu.Cyan)
                     : (OverlayMenu.upper(Strings.T("first_setup.offline")), OverlayMenu.Red),
                 (OverlayMenu.upper(Strings.T(status().Essentials ? "first_setup.essentials" : "first_setup.auto")), OverlayMenu.Green),
                 (OverlayMenu.upper(Strings.T("first_setup.copy", greenFolder)), OverlayMenu.White),
-                .. import is null ? [] : new[] { (OverlayMenu.upper(Strings.T("first_setup.import_hint")), OverlayMenu.White) },
-            ]), home: true);
+            ]);
+        if (import is null)
+            menu.Open(fromPc, home: true);
+        else
+        {
+            // The import's own page: the bar and what is being read; picking again or going back once it is over.
+            var importing = new OverlayPage(() => Strings.T("first_setup.import_title"), () =>
+                import.Busy ? [] :
+                [
+                    new OverlayRow(Strings.T(import.Message is null ? "first_setup.import_pick" : "first_setup.import_again"), Enter: import.Pick),
+                    .. anyway(),
+                    new OverlayRow(Strings.T("first_setup.import_back"), Enter: menu.Pop),
+                ],
+                Centred: true, Legend: false, Body: () =>
+                [
+                    blank,
+                    bar(),
+                    blank,
+                    .. import.Message is { } imported ? [(imported.Text, imported.Failed ? OverlayMenu.Red : OverlayMenu.Yellow)]
+                        : new[] { (Strings.T("first_setup.import_waiting"), OverlayMenu.White) },
+                    .. import.Detail is { } detail ? [(detail, OverlayMenu.White)] : Array.Empty<(string, RenderColor)>(),
+                ], Footer: () => import.Busy ? [(OverlayMenu.upper(Strings.T("first_setup.import_keep_open")), OverlayMenu.Cyan)] : []);
+            // What the import does and what to pick, before Android's file picker opens.
+            var steps = new OverlayPage(() => Strings.T("first_setup.import_title"), () =>
+                [
+                    new OverlayRow(Strings.T("service.ok"), Enter: () => { menu.Pop(); menu.Push(importing); import.Pick(); }),
+                    new OverlayRow(Strings.T("first_setup.import_back"), Enter: menu.Pop),
+                ],
+                Centred: true, Legend: false, Body: () =>
+                [
+                    blank,
+                    (Strings.T("first_setup.import_auto"), OverlayMenu.Yellow),
+                    blank,
+                    (Strings.T("first_setup.import_step1"), OverlayMenu.White),
+                    (Strings.T("first_setup.import_step2"), OverlayMenu.White),
+                    (Strings.T("first_setup.import_step3"), OverlayMenu.White),
+                    blank,
+                    (Strings.T("first_setup.import_after"), OverlayMenu.Cyan),
+                ]);
+            // Welcome: where Green's files come from.
+            menu.Open(new OverlayPage(() => Strings.T("first_setup.welcome_title"), () =>
+                [
+                    new OverlayRow(Strings.T("first_setup.choose_import"), Enter: () => menu.Push(steps)),
+                    new OverlayRow(Strings.T("first_setup.choose_pc"), Enter: () => menu.Push(fromPc)),
+                    .. anyway(),
+                ],
+                Centred: true, Legend: false, Body: () =>
+                [
+                    blank,
+                    (Strings.T("first_setup.welcome"), OverlayMenu.White),
+                    blank,
+                    (Strings.T("first_setup.welcome_ask"), OverlayMenu.Yellow),
+                ]), home: true);
+            if (Environment.GetEnvironmentVariable("WADDAMBURO_SETUP_PAGE") is { } page) // --setup-preview of the other pages
+                foreach (var next in page switch { "steps" => [steps], "importing" => [steps, importing], "pc" => new[] { fromPc }, _ => [] })
+                    menu.Push(next);
+        }
         application.Run(_ =>
         {
             // --setup-preview=FILE: one frame saved once its text is drawn, then the screen closes.
@@ -72,7 +129,8 @@ public static class SetupScreen
                 TouchDrumOverlay.MenuQuads(painter, application.TouchHits, SdlApplication.TicksNs)), frame.ContentAspectRatio);
         }, keys =>
         {
-            menu.Tick(keys, keys, false); // the back button does nothing here: there is nowhere to go back to
+            // Presses, not held keys: a held OK would pick on the next page too. The back button does nothing here.
+            menu.Tick(new SdlKeyboardSnapshot(keys.Presses.Select(static press => press.Key)), keys, false);
             if ((status().Complete || import?.Ready == true) && import?.Busy != true)
                 application.RequestQuit();
         });
@@ -98,9 +156,10 @@ public sealed class DeviceImport(string root, Action<Action<IReadOnlyList<Func<S
     public bool Ready { get; private set; }
 
     /// <summary>What is being read right now (null when idle).</summary>
-    public string? Detail => _busy && _current?.Current is var (entry, taken)
-        ? Strings.T(taken ? "first_setup.import_writing" : "first_setup.import_skipping", tail(entry.Replace('\\', '/'), 64))
-        : null;
+    public string? Detail => !_busy ? null
+        : _current?.Current is var (entry, taken)
+            ? Strings.T(taken ? "first_setup.import_writing" : "first_setup.import_skipping", tail(entry.Replace('\\', '/'), 64))
+            : Strings.T("first_setup.import_opening");
 
     private static string tail(string text, int length) => text.Length <= length ? text : "…" + text[^(length - 1)..];
 

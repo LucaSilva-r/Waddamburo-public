@@ -74,10 +74,12 @@ Wi-Fi (~3 MB/s), only what it lacks; a file takes its name only once complete, s
 appears once the boot's essentials are in. A complete copy is remembered (`files/green-verified`). Or the player copies
 USRDIR's contents into `Green/` over USB.
 
-Without a PC, **Import a download from this device** opens Android's file picker (several files at once, no storage
-permission) and `DeviceImport`/`GreenImport` take Green out of what was downloaded: a dump archive (zip, 7z, rar, tar,
-SharpCompress, any folder layout: each entry's path is matched from its `data/` segment against the list) or arcade update
-packages (`DATA00010.BIN`-`DATA00012.BIN`, `Formats/Packages/ArcadePackage`, also inside an archive, streamed). Only listed
+On a phone the setup opens on a welcome asking where Green is. **I downloaded it on this phone** explains the import
+(no need to extract), then opens Android's file picker for one zip, 7z or rar (no storage permission), and
+`DeviceImport`/`GreenImport` take Green out of it on an import page (bar, entry being written or skipped): any folder
+layout (each entry's path is matched from its `data/` segment against the list; zip through System.IO.Compression,
+7z and rar through SharpCompress), arcade update packages inside it (`DATA.BIN`, `DATA00010.BIN` and on,
+`Formats/Packages/ArcadePackage`, streamed, applied after loose files by name). **It is on my PC** is the pairing page. Only listed
 files are written: the release's (`S111_00.md5`) and those its updates add (`S111_01`-`_13`, `+` lines in the list,
 optional). Each file is written as `.import` and moved in when whole; one already there at its size is skipped, so a
 retry resumes. PC test: `Waddamburo --import-green <Green folder> <sources...>`.

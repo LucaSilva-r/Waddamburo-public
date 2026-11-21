@@ -82,12 +82,18 @@ internal sealed class GameFolder(Activity activity)
     private const int PickRequest = 0x6EE1;
     private Action<IReadOnlyList<Func<System.IO.Stream>>>? _picked;
 
-    /// <summary>Android's file picker (no storage permission: the player grants each file they pick).</summary>
+    /// <summary>Android's file picker for one archive (no storage permission: the player grants the file they pick).</summary>
+    // ponytail: by MIME type, so a provider that calls a .7z or .rar "application/octet-stream" greys it out; add
+    // octet-stream back if players report it.
     private void Pick(Action<IReadOnlyList<Func<System.IO.Stream>>> picked)
     {
         _picked = picked;
         var intent = new Intent(Intent.ActionOpenDocument).AddCategory(Intent.CategoryOpenable).SetType("*/*")
-            .PutExtra(Intent.ExtraAllowMultiple, true);
+            .PutExtra(Intent.ExtraMimeTypes, new[]
+            {
+                "application/zip", "application/x-zip-compressed", "application/x-7z-compressed",
+                "application/rar", "application/vnd.rar", "application/x-rar-compressed",
+            });
         activity.RunOnUiThread(() => activity.StartActivityForResult(intent, PickRequest));
     }
 
