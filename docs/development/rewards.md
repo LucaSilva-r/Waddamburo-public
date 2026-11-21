@@ -128,7 +128,12 @@ everything from them.
    11 pushes the last song off the lineup), so the pool comes round in about six to seven weeks. TaikOnline
    `WaddamburoShopPool` + data file `green_shop_pool.json` (fixed shuffled order); pool goods lock in "Only what I
    earned". Green's prices for now (costumes 500, songs 1500), to tune from player feedback. Make (no shop art in
-   Green), puchi (not in Waddamburo) and tones 6+ (not playable) stay free.
+   Green) stays free. **Weekly since 2026-11-20** (a new set each Monday).
+   **Katsu Medal shop** (2026-11-20, TaikOnline website, as Donder Hiroba's): 100 Katsu Medals a card credit (dan none,
+   never reset); Green's Katsu goods (`green_katsu_shop.json`: songs, costumes, the 8 Katsu tones, Taiko's own 17 puchi
+   charas) leave the cabinet pool and sell there, any time, by version. The title parts gacha (20 a pull, 14 banners)
+   and the title builder (part + connector + part, read from Donder Hiroba's editor) are there too. **Default mode
+   since 2026-11-21: Only what I earned.**
 3. **Client gating.** Song Select hides stock songs locked for every joined player (a guest locks nothing); a purchase
    unlocks at once. The entry's costume lists only hold guest defaults and the website's presets (validated there).
    Titles and tones: nothing sold, nothing locked yet.
@@ -140,13 +145,24 @@ everything from them.
    Left out: over_msg "connecting", the first-visit tutorial, SE_TIMEUP's cue, 2P's own don/ka cues (1P's are used).
 5. **Home screens.** Done 2026-11-20: the medals toast; the entry's mode select offers the shop at home too; Song Select's
    pause menu offers "New rewards" while there are some (reward_shop's medal screen with PushReward, then back).
-6. **Condition titles.** Condition data file (from the reward names + wiki), then server evaluation.
-7. **Later.** Custom unlockables (own costumes and content) once the skin system can supply them.
+6. **Condition titles.** Done 2026-11-20: 356 of Green's titles checked per credit on TaikOnline (`WaddamburoTitles`,
+   `green_title_conditions.json`); arcade credits report their end (`medals/credit-end`) so the medal screen shows
+   their rewards; the play upload carries the drum and Song Select's timer.
+7. **Events (next).** Green's collab campaigns, as Donder Hiroba ran them (player screenshots of the 2026 Touhou
+   collab; the wiki's "チケットで交換"): during an event's period, each card play of one of its target songs (a genre or
+   song tag; in game, its event folder) earns 1 collab ticket, normal play or AI battle; the campaign page exchanges
+   tickets for that collab's rewards, each a fixed price (puchi 1-10 tickets, title parts 1), no gacha. Rewards stay
+   after the event. Plan: TaikOnline campaigns (period, target songs, rewards with prices) on a calendar; tickets
+   counted from the medal songs already uploaded (their charts give genre and tags); an exchange page beside the Katsu
+   Shop; the event folder in Song Select. Collab puchi (Idolmaster, Cinderella Girls, Touhou, Love Live, Macross,
+   Puzzle & Dragons, A3!, COMPASS, LDH, ドコドン...) and the wiki's collab title parts (X-CAMP rows) are free until
+   then (not sold, so not locked); they lock once their event exists.
+8. **Later.** Custom unlockables (own costumes and content) once the skin system can supply them.
 
 ## Open questions
 
 - `SetPlayerMedal(balance, 7600, 0, gained)`: is 7600 the cap? What is the third argument?
 - Exact conditions behind each title name (difficulty? song count?). The game's checker code is the source;
   not yet located.
-- Do condition titles depend on the song select timer? The "Awakener" titles stop the timer at an odd or
-  even number. That needs the timer value in the play upload.
+- Resolved: the "Awakener" titles use where the pick stops Song Select's timer (it ticks once more after the pick);
+  the medal song upload carries it (arcade only).
