@@ -27,7 +27,7 @@ public sealed class AiSectionResultBindingTests
         Assert.Equal(2, calls.Single(call => call.Name == "SetRankNumber").Arguments[0].AsNumber());
         Assert.Equal(3, calls.Single(call => call.Name == "SetRankNumber").Arguments[1].AsNumber());
         Assert.False(calls.Single(call => call.Name == "SetRankNumber").Arguments[2].AsBoolean());
-        Assert.Equal(new[] { 13d, 1d }, calls.Single(call => call.Name == "SetWinNumber").Arguments.Select(value => value.AsNumber()));
+        Assert.Equal((double[])[13, 1], calls.Single(call => call.Name == "SetWinNumber").Arguments.Select(value => value.AsNumber()));
         Assert.Equal(15, Assert.Single(calls.Single(call => call.Name == "SetNextRankNumber").Arguments).AsNumber());
         Assert.Equal(20, calls.Single(call => call.Name == "SetNextRewardNumber").Arguments[0].AsNumber());
         Assert.Equal("Start", calls[^1].Name);
