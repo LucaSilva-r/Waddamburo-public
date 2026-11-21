@@ -7,14 +7,12 @@ namespace Waddamburo.Game.Tests;
 
 public sealed class AiSectionResultBindingTests
 {
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void ResultsWaitForSetupThenStartOnceWithProvisionalProgress(bool ranked)
+    [Fact]
+    public void ResultsWaitForSetupThenStartOnceWithProvisionalProgress()
     {
         var calls = new List<(string Name, ImmutableArray<LumenHostValue> Arguments)>();
         var outcome = new AiBattleOutcome([new(true, default, default), new(false, default, default), new(true, default, default)]);
-        var numbers = new AiResultNumbers(2, 3, 12, 3, true, true, 15, 13, 20) { ShowProgress = ranked };
+        var numbers = new AiResultNumbers(2, 3, 12, 3, true, true, 15, 13, 20);
         var binding = new AiSectionResultBinding(outcome, numbers, null);
         var player = new LumenPlayer(movie(), 1280, 720, rootCharacterId: 1, hostBinding: new RecordingHost(binding, calls));
         binding.Attach(player);
@@ -29,7 +27,7 @@ public sealed class AiSectionResultBindingTests
         Assert.Equal(2, calls.Single(call => call.Name == "SetRankNumber").Arguments[0].AsNumber());
         Assert.Equal(3, calls.Single(call => call.Name == "SetRankNumber").Arguments[1].AsNumber());
         Assert.False(calls.Single(call => call.Name == "SetRankNumber").Arguments[2].AsBoolean());
-        Assert.Equal(new[] { 13d, ranked ? 1d : 0d }, calls.Single(call => call.Name == "SetWinNumber").Arguments.Select(value => value.AsNumber()));
+        Assert.Equal(new[] { 13d, 1d }, calls.Single(call => call.Name == "SetWinNumber").Arguments.Select(value => value.AsNumber()));
         Assert.Equal(15, Assert.Single(calls.Single(call => call.Name == "SetNextRankNumber").Arguments).AsNumber());
         Assert.Equal(20, calls.Single(call => call.Name == "SetNextRewardNumber").Arguments[0].AsNumber());
         Assert.Equal("Start", calls[^1].Name);

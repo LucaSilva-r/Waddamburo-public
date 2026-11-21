@@ -104,8 +104,7 @@ internal sealed partial class GameplayFlow
             Shell.Credit.AiSectionBest = scores.AiSectionBest(profile.Baid, sha);
             var rank = ranks.RankOf(before.Points);
             Shell.Credit.AiNumbers = new(rank, ranks.RankOf(before.Points + award.Points), ranks.PointsIntoRank(before.Points),
-                award.Points, award.FirstWin, award.HighLevel, ranks.StepSize(rank), before.Wins, AiBattleRanks.NextRewardWins(before.Wins))
-                { ShowProgress = ranked };
+                award.Points, award.FirstWin, award.HighLevel, ranks.StepSize(rank), before.Wins, AiBattleRanks.NextRewardWins(before.Wins));
             Console.WriteLine($"AI battle saved: {(outcome.Won ? "won" : "lost")} {battle.Sections}, {award.Points} rank point(s).");
             return battle;
         }

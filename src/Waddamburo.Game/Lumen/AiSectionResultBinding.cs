@@ -48,9 +48,6 @@ public sealed record AiResultNumbers(int RankBefore, int RankAfter, int PointsIn
     bool HighLevelBonus, int RankStep, int WinsBefore, int NextRewardWins)
 {
     public static AiResultNumbers NewPlayer { get; } = new(0, 0, 0, 0, false, false, 1, 0, 1);
-
-    /// <summary>False: an unranked battle (no server setup); it shows no win gained.</summary>
-    public bool ShowProgress { get; init; } = true;
 }
 
 /// <summary>An AI battle song's sections, for its results.</summary>
@@ -85,7 +82,9 @@ public sealed class AiSectionResultBinding(AiBattleOutcome outcome, AiResultNumb
     public void Install(LumenHostContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
-        foreach (var name in new[] { "LumenMethod", "Lumen" })
+        // Its ResultSound plays every sound through _global.LumenAI.PlaySound(bank, tone) (the counts, the logo, the
+        // ka that flips to the details: issue #50).
+        foreach (var name in new[] { "LumenMethod", "Lumen", "LumenAI" })
             context.RegisterObject(name, method =>
             {
                 method.RegisterMethod("Start", _ =>
@@ -164,8 +163,9 @@ public sealed class AiSectionResultBinding(AiBattleOutcome outcome, AiResultNumb
         rows("SetKaNoteNumber", static counts => counts.Good);
         rows("SetFukaNoteNumber", static counts => counts.Miss);
         rows("SetRendaNoteNumber", static counts => counts.Rolls);
-        // SetWinNumber(wins before, wins gained): any gained means the battle was won (the movie's is_win_total).
-        call("SetWinNumber", number(numbers.WinsBefore), number(numbers.ShowProgress && outcome.Won ? 1 : 0));
+        // SetWinNumber(wins before, wins gained): any gained means the battle was won (the movie's is_win_total, its
+        // win/lose character), so an unranked win still sends 1 or it reads as バトル敗北 (issue #50).
+        call("SetWinNumber", number(numbers.WinsBefore), number(outcome.Won ? 1 : 0));
         Backdrop?.Invoke()?.TryInvokeCallback("SetWinTotalFlag", [LumenHostValue.FromBoolean(outcome.Won)]);
         begin();
     }
