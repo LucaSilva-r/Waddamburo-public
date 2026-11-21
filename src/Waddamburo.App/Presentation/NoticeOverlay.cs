@@ -136,7 +136,9 @@ internal sealed class NoticeOverlay : IDisposable
         var (from, filled) = job.Fraction is { } fraction
             ? (0f, (float)fraction * width)
             : ((float)(DateTimeOffset.UtcNow - job.StartedAt).TotalSeconds % 1.5f / 1.5f * (width - 80), 80f);
-        quads.Add(_painter.Rect(x + from, y, job.EndedAt is null || job.Failure is not null ? filled : width, 6, colour));
+        if (job.EndedAt is not null && job.Failure is null)
+            (from, filled) = (0f, width); // done: the whole bar, not the sweep's offset plus a full width
+        quads.Add(_painter.Rect(x + from, y, filled, 6, colour));
         return y + 6 + Gap;
     }
 
