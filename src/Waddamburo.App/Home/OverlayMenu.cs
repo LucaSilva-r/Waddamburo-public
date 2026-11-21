@@ -175,7 +175,9 @@ internal sealed class OverlayMenu(SdlApplication application, string fontPath) :
             if (step != 0)
             {
                 Sound?.Invoke(false);
-                row.Step!(step);
+                // Every number steps 1 a tap and 10 once an arrow is held about a second; a row of choices takes
+                // the sign only.
+                row.Step!(_repeatTicks >= 60 ? step * 10 : step);
                 _movedAt = _tick;
             }
             if (centre)

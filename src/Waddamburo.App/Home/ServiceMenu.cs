@@ -311,7 +311,8 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
 
     private static string folderName(string? path) =>
         path is null ? S("service.not_set") : upper(Path.GetFileName(Path.TrimEndingDirectorySeparator(path)));
-    private static int wrap(int value, int step, int min, int max) => value + step > max ? min : value + step < min ? max : value + step;
+    private static int wrap(int value, int step, int min, int max) =>
+        value + Math.Sign(step) > max ? min : value + Math.Sign(step) < min ? max : value + Math.Sign(step);
 
     private Row[] rowsFor(Page page, string section) => page switch
     {
@@ -378,16 +379,16 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
             new(S("service.lyrics"), 400, () => $"{{{S(_settings.Lyrics ? "service.on" : "service.off")}}}", 800,
                 Step: _ => set(s => s with { Lyrics = !s.Lyrics }), IsDefault: () => _settings.Lyrics == Defaults.Lyrics,
                 Hint: S("service.lyrics.hint")),
-            lyricsNumber("service.lyrics_x", static s => s.LyricsX, static (s, v) => s with { LyricsX = v }, -640, 640, 10),
-            lyricsNumber("service.lyrics_y", static s => s.LyricsY, static (s, v) => s with { LyricsY = v }, -700, 0, 10),
-            lyricsNumber("service.lyrics_scale", static s => s.LyricsScale, static (s, v) => s with { LyricsScale = v }, 50, 200, 10, "%"),
+            lyricsNumber("service.lyrics_x", static s => s.LyricsX, static (s, v) => s with { LyricsX = v }, -640, 640),
+            lyricsNumber("service.lyrics_y", static s => s.LyricsY, static (s, v) => s with { LyricsY = v }, -700, 0),
+            lyricsNumber("service.lyrics_scale", static s => s.LyricsScale, static (s, v) => s with { LyricsScale = v }, 50, 200, "%"),
             lyricsNumber("service.lyrics_red", static s => s.LyricsOutline >> 16 & 0xFF,
-                static (s, v) => s with { LyricsOutline = s.LyricsOutline & 0x00FFFF | v << 16 }, 0, 255, 5),
+                static (s, v) => s with { LyricsOutline = s.LyricsOutline & 0x00FFFF | v << 16 }, 0, 255),
             lyricsNumber("service.lyrics_green", static s => s.LyricsOutline >> 8 & 0xFF,
-                static (s, v) => s with { LyricsOutline = s.LyricsOutline & 0xFF00FF | v << 8 }, 0, 255, 5),
+                static (s, v) => s with { LyricsOutline = s.LyricsOutline & 0xFF00FF | v << 8 }, 0, 255),
             lyricsNumber("service.lyrics_blue", static s => s.LyricsOutline & 0xFF,
-                static (s, v) => s with { LyricsOutline = s.LyricsOutline & 0xFFFF00 | v }, 0, 255, 5),
-            lyricsNumber("service.lyrics_background", static s => s.LyricsBackground, static (s, v) => s with { LyricsBackground = v }, 0, 100, 10, "%"),
+                static (s, v) => s with { LyricsOutline = s.LyricsOutline & 0xFFFF00 | v }, 0, 255),
+            lyricsNumber("service.lyrics_background", static s => s.LyricsBackground, static (s, v) => s with { LyricsBackground = v }, 0, 100, "%"),
             new(S("service.exit"), 400, Gap: true, Enter: _menu.Pop),
         ],
         Page.Sound =>
@@ -573,9 +574,9 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
 
     // A LYRICS number: the arrows step it within its range, green at its default.
     private Row lyricsNumber(string key, Func<ArcadeSettings, int> get, Func<ArcadeSettings, int, ArcadeSettings> with,
-        int minimum, int maximum, int step, string unit = "") =>
+        int minimum, int maximum, string unit = "") =>
         new(S(key), 400, () => $"{{{get(_settings).ToString(CultureInfo.InvariantCulture)}{unit}}}", 800,
-            Step: direction => set(s => with(s, Math.Clamp(get(s) + Math.Sign(direction) * step, minimum, maximum))),
+            Step: step => set(s => with(s, Math.Clamp(get(s) + step, minimum, maximum))),
             IsDefault: () => get(_settings) == get(Defaults), Hint: S(key + ".hint"));
 
     private RenderColor linkColour() => Health?.IconType switch { 0 => OverlayMenu.Green, 2 => OverlayMenu.Red, _ => OverlayMenu.Yellow };
