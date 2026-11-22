@@ -435,7 +435,10 @@ internal sealed partial class GameShell : IDisposable
         for (var index = 0; index < scenes.Length && bytes < PreloadBytes; index++)
         {
             boot.Progress(index * 100 / scenes.Length);
-            bytes += _presenter.Preload(scenes[index], boot.Draw);
+            // The first that does not fit ends it (the list is in order of use): decoding the rest to drop it took 5 s.
+            if (_presenter.Preload(scenes[index], boot.Draw) is not { } taken)
+                break;
+            bytes += taken;
             Console.WriteLine($"Preloaded {scenes[index].Id} ({index + 1}/{scenes.Length}): {bytes / 1048576d:F0} MiB in all, "
                 + $"{System.Diagnostics.Stopwatch.GetElapsedTime(start).TotalSeconds:F1} s.");
         }

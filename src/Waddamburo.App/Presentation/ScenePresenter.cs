@@ -58,11 +58,11 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
 
     /// <summary>
     /// Loads a scene's movies and keeps them for good (at boot: <paramref name="draw"/> draws a frame, while they decode
-    /// and between slices of their upload); the bytes their textures take on the GPU. A movie that fails to load is left for its scene to report.
+    /// and between slices of their upload); the bytes their textures take on the GPU, or null when they are
+    /// too many to keep (the scene loads at its first visit as before). A movie that fails to load is left for its scene to report.
     /// </summary>
-    public long Preload(SceneDefinition scene, Action draw)
+    public long? Preload(SceneDefinition scene, Action draw)
     {
-        // The scene in full, its textures counted once decoded: too many, and it loads at its first visit as before.
         releaseUploadedAhead();
         dropStale();
         movies.Prefetch(scene.Layers.Select(static layer => (layer.ArchiveId, layer.MovieId)).Where(key => !_kept.ContainsKey(key)).Distinct());
@@ -75,7 +75,7 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
         {
             Console.WriteLine($"Not preloaded: {scene.Id} ({_keptTextures.Count} textures kept of {MaximumKeptTextures}).");
             movies.Prefetch([]);
-            return 0;
+            return null;
         }
         foreach (var (key, content) in loaded)
         {
