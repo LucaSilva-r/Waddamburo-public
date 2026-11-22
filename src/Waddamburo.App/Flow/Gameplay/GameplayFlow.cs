@@ -121,6 +121,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         Playing = false;
         PlayingChart = null;
         Presence = null;
+        dropPrepared();
         _mode.Exit();
     }
 
@@ -145,6 +146,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
     public override void Enter(SceneId scene)
     {
         _play.Review?.Dispose();
+        dropPrepared();
         _play = new Play();
         _mode.Begin();
         var request = Shell.PlayRequests.ActivatePending();
@@ -242,6 +244,8 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             _play.Clock.Restart();
             _mode.SongStarts();
         }
+        else if (_play.Review is null && !silentHeadless && Shell.Audio is { } device && request.AudioAsset is { } music)
+            _prepared = (music, decodeAhead(music, device));
         Console.WriteLine(
             $"Loaded covered gameplay for '{request.Song}' with {request.Players.Length} player(s), "
             + $"{_play.Charts.Sum(static chart => chart.NoteCount)} notes at tick {Shell.Tick}.");
@@ -713,7 +717,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             return;
         var overlay = Shell.Overlay;
         // Online: both games open the rainbow together, once both could.
-        if (overlay.Player is { } rainbow && Rainbow.ShouldStartReveal(Shell.Tick) && Shell.Match.MayReveal())
+        if (overlay.Player is { } rainbow && Rainbow.ShouldStartReveal(Shell.Tick) && musicReady && Shell.Match.MayReveal())
         {
             var request = Shell.PlayRequests.Active
                 ?? throw new InvalidOperationException("Covered gameplay has no active play request.");
@@ -998,41 +1002,77 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
     {
         if (Shell.Audio is not { } audio || asset is not { } audioAsset)
             return null;
-        Stream inputStream;
-        try
-        {
-            inputStream = Shell.Assets.OpenReadAsync(audioAsset).AsTask().GetAwaiter().GetResult();
-        }
-        catch (IOException exception)
-        {
-            // A chart whose WAVE file is missing plays silent rather than leaving the load waiting forever.
-            Console.Error.WriteLine($"Song audio unavailable, playing silent: {exception.Message}");
-            return null;
-        }
+        var ahead = _prepared is { } prepared && prepared.Asset.Equals(audioAsset) ? prepared.Source : decodeAhead(audioAsset, audio);
+        if (_prepared?.Source == ahead)
+            _prepared = null;
         BufferedAudioSource? source = null;
         try
         {
-            try
-            {
-                source = new BufferedAudioSource(inputStream, audio.Mixer.Format);
-            }
-            catch
-            {
-                inputStream.Dispose();
-                throw;
-            }
-            source.Ready.GetAwaiter().GetResult();
+            source = ahead.GetAwaiter().GetResult();
             var playback = audio.PlayTransport(new ScheduledAudioSource(source,
                 _play.Timeline!.AudioStart, _play.Timeline.LeadIn + duration + TimeSpan.FromSeconds(1)),
                 volume: SongLoudness.Volume(Shell.Assets, audioAsset, audio.Mixer.Format));
             source = null;
             return playback;
         }
+        catch (IOException exception) when (source is null)
+        {
+            // A chart whose WAVE file is missing plays silent rather than leaving the load waiting forever.
+            Console.Error.WriteLine($"Song audio unavailable, playing silent: {exception.Message}");
+            return null;
+        }
         finally
         {
             source?.Dispose();
         }
     }
+
+    // The song's music, decoding under the rainbow: opening it at the reveal stalled the game there.
+    private (CatalogAssetKey Asset, Task<BufferedAudioSource> Source)? _prepared;
+
+    // The rainbow waits for it (a headless run goes by its ticks alone: it waits at the reveal).
+    private bool musicReady => Shell.Headless || _prepared is not { } prepared || prepared.Source.IsCompleted;
+
+    private void dropPrepared()
+    {
+        drop(_prepared?.Source);
+        _prepared = null;
+    }
+
+    /// <summary>A song's music opened and its first seconds decoded off this thread, where that would stall the game.</summary>
+    private Task<BufferedAudioSource> decodeAhead(CatalogAssetKey asset, AudioEngine audio) => Task.Run(async () =>
+    {
+        SongLoudness.Volume(Shell.Assets, asset, audio.Mixer.Format); // measured now, read back when it starts
+        var stream = await Shell.Assets.OpenReadAsync(asset).ConfigureAwait(false);
+        BufferedAudioSource source;
+        try
+        {
+            source = new BufferedAudioSource(stream, audio.Mixer.Format);
+        }
+        catch
+        {
+            await stream.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+        try
+        {
+            await source.Ready.ConfigureAwait(false);
+        }
+        catch
+        {
+            source.Dispose();
+            throw;
+        }
+        return source;
+    });
+
+    private static void drop(Task<BufferedAudioSource>? ahead) => ahead?.ContinueWith(static task =>
+    {
+        if (task.IsCompletedSuccessfully)
+            task.Result.Dispose();
+        else
+            _ = task.Exception; // observed: a song nobody plays any more
+    }, TaskScheduler.Default);
 
     /// <summary>What the run printed if it stopped mid-song.</summary>
     public void ReportFinal(SceneId active)

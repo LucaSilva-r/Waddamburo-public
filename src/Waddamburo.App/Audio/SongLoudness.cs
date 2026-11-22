@@ -25,12 +25,15 @@ internal static class SongLoudness
     private static readonly Lazy<ConcurrentDictionary<string, double>> Measured = new(load);
     private static readonly object SaveGate = new();
 
+    // The reveal asks again, on the main thread: it must not open the bank there.
+    private static readonly ConcurrentDictionary<string, float> StockGains = new();
+
     /// <summary>The volume to play <paramref name="asset"/> at; measures it first when it never was (blocking).</summary>
     public static float Volume(CatalogAssetRouter assets, CatalogAssetKey asset, SdlAudioFormat format,
         CancellationToken cancellationToken = default)
     {
         if (asset.Provider.Value == "stock")
-            return stockGain(assets, asset, cancellationToken);
+            return StockGains.GetOrAdd(asset.StableId, _ => stockGain(assets, asset, cancellationToken));
         // ponytail: keyed by the provider's id, so a TJA whose audio file is swapped keeps its old level; clear the cache then.
         var key = $"{asset.Provider.Value}/{asset.StableId}";
         if (!Measured.Value.TryGetValue(key, out var lufs))

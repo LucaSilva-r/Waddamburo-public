@@ -132,32 +132,12 @@ internal sealed partial class GameplayFlow
             var next = songs[_song + 1];
             _ = Shell.Titles.Resolve(Shell.Titles.GetTransitionTitle(next));
             _ = Shell.Titles.Resolve(Shell.Titles.GetGameplayTitle(next));
-            _nextAudio = Task.Run(async () =>
-            {
-                SongLoudness.Volume(Shell.Assets, asset, audio.Mixer.Format); // measured now, read back when it starts
-                var stream = await Shell.Assets.OpenReadAsync(asset).ConfigureAwait(false);
-                BufferedAudioSource source;
-                try
-                {
-                    source = new BufferedAudioSource(stream, audio.Mixer.Format);
-                }
-                catch
-                {
-                    await stream.DisposeAsync().ConfigureAwait(false);
-                    throw;
-                }
-                await source.Ready.ConfigureAwait(false);
-                return source;
-            });
+            _nextAudio = Flow.decodeAhead(asset, audio);
         }
 
         private void dropNextAudio()
         {
-            _nextAudio?.ContinueWith(static task =>
-            {
-                if (task.IsCompletedSuccessfully)
-                    task.Result.Dispose();
-            }, TaskScheduler.Default);
+            drop(_nextAudio);
             _nextAudio = null;
         }
 
