@@ -212,8 +212,9 @@ public sealed class DeviceImport(string root, Action<Action<IReadOnlyList<Import
             report.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"Green folder: {root}");
             try
             {
-                report.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"Free space there: {new DriveInfo(Path.GetPathRoot(Path.GetFullPath(root))!).AvailableFreeSpace / 1048576:N0} MB "
-                    + $"(this folder's volume as .NET sees it)");
+                // The folder's own volume: its root "/" is Android's system partition (reported as 0 MB free).
+                var volume = new DriveInfo(Directory.Exists(root) ? Path.GetFullPath(root) : Path.GetDirectoryName(Path.GetFullPath(root))!);
+                report.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"Free space there: {volume.AvailableFreeSpace / 1048576:N0} MB");
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
             {
