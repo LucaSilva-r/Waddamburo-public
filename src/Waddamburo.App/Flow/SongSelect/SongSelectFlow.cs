@@ -81,14 +81,17 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
     {
         var (category, song) = find(request.Song);
         var side = request.Players[0].Player == LocalPlayerSlot.PlayerTwo ? 1 : 0;
-        var twoPlayers = request.Players.Length == 2;
+        // AI-don plays a lane of its own, on the battle's fixed layout (startSong picks the same scene).
+        var aiBattle = Shell.Credit.AiBattle && Shell.Gameplay.Dan is null;
+        var twoPlayers = request.Players.Length == 2 || aiBattle;
         // Waiwai's fixed layout (its charts only reshape the notes).
         var waiwai = Shell.Credit.Waiwai && twoPlayers && song.Descriptor.WaiwaiComposition is not null;
         var dojo = Shell.Gameplay.Dan is not null;
         _cover.Composing = Task.Run(() =>
         {
-            var theme = waiwai ? null : Shell.Skins.Resolve(song.Descriptor, category, Shell.Arcade.GameplaySkin);
-            var scene = waiwai ? GameplaySceneComposition.CreateWaiwai(FlowScenes.Gameplay, Shell.EnsoLayout)
+            var theme = waiwai || aiBattle ? null : Shell.Skins.Resolve(song.Descriptor, category, Shell.Arcade.GameplaySkin);
+            var scene = aiBattle ? GameplaySceneComposition.CreateAiBattle(FlowScenes.Gameplay, Shell.EnsoLayout)
+                : waiwai ? GameplaySceneComposition.CreateWaiwai(FlowScenes.Gameplay, Shell.EnsoLayout)
                 : GameplaySceneComposition.Create(FlowScenes.Gameplay, Random.Shared, Shell.EnsoLayout, theme, side, twoPlayers, dojo);
             return new Prefetched(request.Song, side, twoPlayers, waiwai, theme, scene);
         });
