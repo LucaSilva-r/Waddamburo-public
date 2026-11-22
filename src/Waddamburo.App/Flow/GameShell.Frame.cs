@@ -1,3 +1,4 @@
+using Waddamburo.Game.Scenes;
 using Waddamburo.App.Presentation;
 using Waddamburo.App.Scenes;
 using Waddamburo.Catalog;
@@ -106,7 +107,7 @@ internal sealed partial class GameShell
                 : held.Frame);
         }
         Titles.UploadCompleted();
-        _presenter.UploadAhead();
+        _presenter.UploadAhead(still: _gameplay.Rainbow.State == RainbowTransitionState.Covered);
         if (SceneTextures.Upscaler is { } upscaler)
         {
             upscaler.Paused = Scenes.OnLane || Bake?.Running == true;

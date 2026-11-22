@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Waddamburo.App.Scenes;
 using Waddamburo.Game;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Scenes;
@@ -14,7 +15,7 @@ namespace Waddamburo.App.Presentation;
 /// </summary>
 internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenMovieContentSource movies, Func<bool>? upscaling = null) : IDisposable
 {
-    private static readonly TimeSpan UploadAheadBudget = TimeSpan.FromMilliseconds(4);
+    private static readonly TimeSpan UploadAheadBudget = TimeSpan.FromMilliseconds(4), StillBudget = TimeSpan.FromMilliseconds(12);
     private readonly Dictionary<LumenMovieContent, RenderTextureId[]> _uploadedAhead = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<LumenMovieContent, (RenderTextureId[] Uploaded, int Next)> _partial = new(ReferenceEqualityComparer.Instance);
     // Screens' movies stay decoded, their textures up, between visits: a load not prefetched (leaving a song early, a
@@ -24,6 +25,9 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
     // textures a song until bgfx ran out of handles).
     private readonly Dictionary<(string ArchiveId, string MovieId), (LumenMovieContent Content, RenderTextureId[] Textures, SceneId Scene)> _kept = [];
     private readonly HashSet<RenderTextureId> _keptTextures = [];
+    // Every texture is a GPU buffer, and a driver has only so many: 4,096 on a Switch, past which textures come out
+    // broken (2026-11-22). Song Select and gameplay (~2,200 together) stay whatever the count, as they always have.
+    private const int MaximumKeptTextures = 2400;
     // Preloaded at boot: kept for good, whatever scene shows what.
     private readonly HashSet<(string ArchiveId, string MovieId)> _pinned = [];
     // Copies hold the upscales as they were when decoded: the setting changing drops them all.
@@ -53,21 +57,39 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
     }
 
     /// <summary>
-    /// Loads a scene's movies and keeps them for good (at boot: <paramref name="wait"/> keeps the screen drawing while they
-    /// decode); the bytes their textures take on the GPU. A movie that fails to load is left for its scene to report.
+    /// Loads a scene's movies and keeps them for good (at boot: <paramref name="draw"/> draws a frame, while they decode
+    /// and between slices of their upload); the bytes their textures take on the GPU. A movie that fails to load is left for its scene to report.
     /// </summary>
-    public long Preload(SceneDefinition scene, Action<Task> wait)
+    public long Preload(SceneDefinition scene, Action draw)
     {
+        // The scene in full, its textures counted once decoded: too many, and it loads at its first visit as before.
         releaseUploadedAhead();
         dropStale();
         movies.Prefetch(scene.Layers.Select(static layer => (layer.ArchiveId, layer.MovieId)).Where(key => !_kept.ContainsKey(key)).Distinct());
-        wait(movies.WhenPrefetched());
+        for (var decoding = movies.WhenPrefetched(); !decoding.IsCompleted; Thread.Sleep(5))
+            draw();
+        var sliceStart = Stopwatch.GetTimestamp();
         var bytes = 0L;
         var loaded = movies.DecodedPrefetchMovies.ToArray();
+        if (_keptTextures.Count + loaded.Sum(static movie => movie.Content.Textures.Length) > MaximumKeptTextures)
+        {
+            Console.WriteLine($"Not preloaded: {scene.Id} ({_keptTextures.Count} textures kept of {MaximumKeptTextures}).");
+            movies.Prefetch([]);
+            return 0;
+        }
         foreach (var (key, content) in loaded)
         {
             bytes += content.Textures.Sum(static texture => (long)texture.Rgba8.Length + texture.Bc7.Length + texture.Blocks.Length);
-            var textures = SceneTextures.Upload(application, content);
+            var textures = new RenderTextureId[content.Textures.Length];
+            for (var index = 0; index < textures.Length; index++)
+            {
+                textures[index] = SceneTextures.UploadOne(application, content.Textures[index]);
+                if (Stopwatch.GetElapsedTime(sliceStart) < StillBudget)
+                    continue;
+                draw();
+                sliceStart = Stopwatch.GetTimestamp();
+            }
+            content.ReleaseDecodedTexturePixels();
             _kept[key] = (content, textures, scene.Id);
             _keptTextures.UnionWith(textures);
         }
@@ -98,8 +120,10 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
     /// Uploads decoded prefetches within a small time budget (once per frame), a texture at a time: a
     /// whole movie at once stalled the frame (and the audio) as Song Select's course select opened.
     /// </summary>
-    public void UploadAhead()
+    /// <param name="still">Nothing moves on screen (the rainbow holding its title): frames may take longer.</param>
+    public void UploadAhead(bool still = false)
     {
+        var budget = still ? StillBudget : UploadAheadBudget;
         var start = Stopwatch.GetTimestamp();
         foreach (var content in movies.DecodedPrefetches)
         {
@@ -108,7 +132,7 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
             var (uploaded, next) = _partial.GetValueOrDefault(content, (new RenderTextureId[content.Textures.Length], 0));
             for (; next < uploaded.Length; next++)
             {
-                if (Stopwatch.GetElapsedTime(start) > UploadAheadBudget)
+                if (Stopwatch.GetElapsedTime(start) > budget)
                 {
                     _partial[content] = (uploaded, next);
                     return;
@@ -191,6 +215,8 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
                 unkeep(old.Textures);
             }
             var textures = _textures[(int)layer.TextureOffset..(int)(layer.TextureOffset + layer.TextureCount)];
+            if (_keptTextures.Count + textures.Length > MaximumKeptTextures && keep!.Id != FlowScenes.SongSelect && keep.Id != FlowScenes.Gameplay)
+                continue;
             _kept[key] = (layer.Content, textures, keep!.Id);
             _keptTextures.UnionWith(textures);
         }

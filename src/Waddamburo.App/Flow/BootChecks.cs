@@ -200,16 +200,8 @@ internal sealed class BootChecks : IDisposable
         _ => "service.boot.system",
     }));
 
-    /// <summary>Waits for <paramref name="task"/> while the screen keeps drawing (the part under way goes on).</summary>
-    public void Wait(Task task)
-    {
-        do
-        {
-            present();
-            Thread.Sleep(5);
-        }
-        while (!task.IsCompleted);
-    }
+    /// <summary>One frame of the screen (the part under way goes on).</summary>
+    public void Draw() => present();
 
     private void present()
     {

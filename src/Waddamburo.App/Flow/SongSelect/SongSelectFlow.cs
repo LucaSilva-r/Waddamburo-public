@@ -258,6 +258,9 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
     {
         if (_cover.Composing is not { IsCompleted: true } composed)
             return;
+        // Slow storage: the files are read once the rainbow stands still, where loading cannot be seen (its cover stuttered).
+        if (DiagnosticSwitches.Preload && _cover.CoveredAt is null)
+            return;
         _cover.Composing = null;
         if (composed.IsCompletedSuccessfully)
         {

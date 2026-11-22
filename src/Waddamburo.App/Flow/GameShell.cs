@@ -435,13 +435,15 @@ internal sealed partial class GameShell : IDisposable
         for (var index = 0; index < scenes.Length && bytes < PreloadBytes; index++)
         {
             boot.Progress(index * 100 / scenes.Length);
-            bytes += _presenter.Preload(scenes[index], boot.Wait);
+            bytes += _presenter.Preload(scenes[index], boot.Draw);
             Console.WriteLine($"Preloaded {scenes[index].Id} ({index + 1}/{scenes.Length}): {bytes / 1048576d:F0} MiB in all, "
                 + $"{System.Diagnostics.Stopwatch.GetElapsedTime(start).TotalSeconds:F1} s.");
         }
         // The archives read and their textures' pixels are garbage now: collected here, not in the first screens.
         Scenes.Collect();
+        boot.Progress(100);
         boot.Done();
+        boot.Draw();
     }
 
     private void askOsuLibraries(BootChecks boot)
