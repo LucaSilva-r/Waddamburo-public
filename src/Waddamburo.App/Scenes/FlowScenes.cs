@@ -91,7 +91,7 @@ internal static class FlowScenes
             LumenMatrix.Identity, RainbowTransitionComposition.StaticHostId),
     ]);
 
-    /// <summary>What loads at boot to stay (WADDAMBURO_PRELOAD): first what the play goes through most. Boot and gameplay do not.</summary>
+    /// <summary>What loads at boot to stay (the Switch): first what the play goes through most. Boot and gameplay do not.</summary>
     public static IEnumerable<SceneDefinition> Preloaded()
     {
         var initial = Initial([]);

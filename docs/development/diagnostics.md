@@ -289,7 +289,6 @@ that uses it). A switch is on with `1` unless its line says otherwise.
 | `WADDAMBURO_ONLINE_RELAY_ONLY` | 1: online play through the server's relay only, no direct link. | App |
 | `WADDAMBURO_ONLINE_SERVER` | The online rooms' server instead of the settings' one. | App |
 | `WADDAMBURO_ONLINE_TOKEN` | The online rooms' login token instead of the player's. | App |
-| `WADDAMBURO_PRELOAD` | 1: every screen and jingle loads at boot and stays in memory (slow storage). | App |
 | `WADDAMBURO_PRESENT_MODE` | immediate or mailbox: the swap chain's present mode. | Platform.Sdl |
 | `WADDAMBURO_PROFILE` | 1: load and boot timings, full exception traces. | App, Game, Platform.Sdl |
 | `WADDAMBURO_READ` | Movie viewer: a script value read and printed (path). | App |

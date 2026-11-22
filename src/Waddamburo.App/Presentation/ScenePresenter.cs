@@ -23,13 +23,12 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
     // Each copy remembers the scene that kept it: keeping that scene again drops the copies it no longer
     // shows (gameplay picks a random background/dancer mix per song; never evicting them leaked ~150
     // textures a song until bgfx ran out of handles).
-    private readonly Dictionary<(string ArchiveId, string MovieId), (LumenMovieContent Content, RenderTextureId[] Textures, SceneId Scene)> _kept = [];
+    private readonly Dictionary<(string ArchiveId, string MovieId), Kept> _kept = [];
     private readonly HashSet<RenderTextureId> _keptTextures = [];
-    // Every texture is a GPU buffer, and a driver has only so many: 4,096 on a Switch, past which textures come out
-    // broken (2026-11-22). Song Select and gameplay (~2,200 together) stay whatever the count, as they always have.
+    private readonly record struct Kept(LumenMovieContent Content, RenderTextureId[] Textures, SceneId Scene, bool Pinned = false);
+    // ponytail: a Switch's number. Every texture is a GPU buffer there, and textures came out broken past 4,096 of them
+    // (2026-11-22; 3,495 in use at most with this). Song Select and gameplay stay whatever the count, as on every platform.
     private const int MaximumKeptTextures = 2400;
-    // Preloaded at boot: kept for good, whatever scene shows what.
-    private readonly HashSet<(string ArchiveId, string MovieId)> _pinned = [];
     // Copies hold the upscales as they were when decoded: the setting changing drops them all.
     private bool? _keptUpscaled;
     private RenderTextureId[] _textures = [];
@@ -57,46 +56,32 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
     }
 
     /// <summary>
-    /// Loads a scene's movies and keeps them for good (at boot: <paramref name="draw"/> draws a frame, while they decode
-    /// and between slices of their upload); the bytes their textures take on the GPU, or null when they are
-    /// too many to keep (the scene loads at its first visit as before). A movie that fails to load is left for its scene to report.
+    /// Loads a scene's movies and keeps them for good, whatever scene shows what (at boot: <paramref name="draw"/> draws a
+    /// frame meanwhile). False when they are too many to keep: the scene loads at its first visit, as without this. A movie
+    /// that fails to load is left for its scene to report.
     /// </summary>
-    public long? Preload(SceneDefinition scene, Action draw)
+    public bool Preload(SceneDefinition scene, Action draw)
     {
-        releaseUploadedAhead();
-        dropStale();
-        movies.Prefetch(scene.Layers.Select(static layer => (layer.ArchiveId, layer.MovieId)).Where(key => !_kept.ContainsKey(key)).Distinct());
-        for (var decoding = movies.WhenPrefetched(); !decoding.IsCompleted; Thread.Sleep(5))
+        Prefetch(scene);
+        for (; !movies.PrefetchComplete; Thread.Sleep(5))
             draw();
-        var sliceStart = Stopwatch.GetTimestamp();
-        var bytes = 0L;
-        var loaded = movies.DecodedPrefetchMovies.ToArray();
-        if (_keptTextures.Count + loaded.Sum(static movie => movie.Content.Textures.Length) > MaximumKeptTextures)
+        var loaded = movies.DecodedPrefetches.ToArray();
+        var fits = _keptTextures.Count + loaded.Sum(static movie => movie.Content.Textures.Length) <= MaximumKeptTextures;
+        while (fits && !PrefetchReady)
         {
-            Console.WriteLine($"Not preloaded: {scene.Id} ({_keptTextures.Count} textures kept of {MaximumKeptTextures}).");
-            movies.Prefetch([]);
-            return null;
+            UploadAhead(still: true);
+            draw();
         }
-        foreach (var (key, content) in loaded)
+        foreach (var (key, content) in fits ? loaded : [])
         {
-            bytes += content.Textures.Sum(static texture => (long)texture.Rgba8.Length + texture.Bc7.Length + texture.Blocks.Length);
-            var textures = new RenderTextureId[content.Textures.Length];
-            for (var index = 0; index < textures.Length; index++)
-            {
-                textures[index] = SceneTextures.UploadOne(application, content.Textures[index]);
-                if (Stopwatch.GetElapsedTime(sliceStart) < StillBudget)
-                    continue;
-                draw();
-                sliceStart = Stopwatch.GetTimestamp();
-            }
-            content.ReleaseDecodedTexturePixels();
-            _kept[key] = (content, textures, scene.Id);
-            _keptTextures.UnionWith(textures);
+            _uploadedAhead.Remove(content, out var textures);
+            _kept[key] = new(content, textures!, scene.Id, Pinned: true);
+            _keptTextures.UnionWith(textures!);
         }
-        _pinned.UnionWith(scene.Layers.Select(static layer => (layer.ArchiveId, layer.MovieId)));
-        movies.Forget([.. loaded.Select(static movie => movie.Content)]); // their pixels went with the upload
         movies.Prefetch([]);
-        return bytes;
+        releaseUploadedAhead();
+        Prefetched = null;
+        return fits;
     }
 
     private void dropStale()
@@ -114,7 +99,7 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
     public SceneId? Prefetched { get; private set; }
 
     /// <summary>Every prefetched movie is decoded and uploaded ahead.</summary>
-    public bool PrefetchReady => movies.PrefetchComplete && movies.DecodedPrefetches.All(_uploadedAhead.ContainsKey);
+    public bool PrefetchReady => movies.PrefetchComplete && movies.DecodedPrefetches.All(movie => _uploadedAhead.ContainsKey(movie.Content));
 
     /// <summary>
     /// Uploads decoded prefetches within a small time budget (once per frame), a texture at a time: a
@@ -125,7 +110,7 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
     {
         var budget = still ? StillBudget : UploadAheadBudget;
         var start = Stopwatch.GetTimestamp();
-        foreach (var content in movies.DecodedPrefetches)
+        foreach (var (_, content) in movies.DecodedPrefetches)
         {
             if (_uploadedAhead.ContainsKey(content))
                 continue;
@@ -199,7 +184,7 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
         if (keep is not null)
         {
             var shown = keep.Layers.Select(static layer => (layer.Definition.ArchiveId, layer.Definition.MovieId)).ToHashSet();
-            foreach (var (key, old) in _kept.Where(pair => pair.Value.Scene == keep.Id && !shown.Contains(pair.Key) && !_pinned.Contains(pair.Key)).ToArray())
+            foreach (var (key, old) in _kept.Where(pair => pair.Value.Scene == keep.Id && !shown.Contains(pair.Key) && !pair.Value.Pinned).ToArray())
             {
                 _kept.Remove(key);
                 unkeep(old.Textures);
@@ -217,7 +202,7 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
             var textures = _textures[(int)layer.TextureOffset..(int)(layer.TextureOffset + layer.TextureCount)];
             if (_keptTextures.Count + textures.Length > MaximumKeptTextures && keep!.Id != FlowScenes.SongSelect && keep.Id != FlowScenes.Gameplay)
                 continue;
-            _kept[key] = (layer.Content, textures, keep!.Id);
+            _kept[key] = new(layer.Content, textures, keep!.Id);
             _keptTextures.UnionWith(textures);
         }
         if (!ReferenceEquals(_heldTextures, _textures))

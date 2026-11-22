@@ -420,31 +420,25 @@ internal sealed partial class GameShell : IDisposable
 
     // osu! libraries are read only once chosen (#46): the first start finding an install not set yet offers it, off
     // until the player turns it on. Escape asks again next start.
-    // Every screen's movies decoded and up, its jingles decoded, before the game starts: no file is read where a screen
-    // changes (an SD card took 0.3-1.2 s there). The budget keeps the rest of a console's memory for the songs.
-    // ponytail: 512 MiB of textures; log says what it took, tune with it.
-    private const long PreloadBytes = 512L << 20;
-
+    // The screens' movies decoded and up, their jingles decoded, before the game starts: no file is read where a screen
+    // changes (a Switch's SD card took 0.3-1.2 s there).
     private void preloadScreens(BootChecks boot)
     {
         boot.Begin("SCREENS");
-        Sounds?.Bank.PreloadMusic("JINGLE_SEISEKI", "JINGLE_RENDA", "JINGLE_GOVER", "JINGLE_GOHOBI", "JINGLE_WAIRSLT", "JINGLE_AIBTL_RSLT",
-            "JINGLE_AIBTL_REMIND", "JINGLE_DANI", "JINGLE_ENTRY");
+        Sounds?.PreloadMusic();
         var scenes = FlowScenes.Preloaded().ToArray();
-        var (bytes, start) = (0L, System.Diagnostics.Stopwatch.GetTimestamp());
-        for (var index = 0; index < scenes.Length && bytes < PreloadBytes; index++)
+        for (var index = 0; index < scenes.Length; index++)
         {
             boot.Progress(index * 100 / scenes.Length);
-            // The first that does not fit ends it (the list is in order of use): decoding the rest to drop it took 5 s.
-            if (_presenter.Preload(scenes[index], boot.Draw) is not { } taken)
+            // The first that does not fit ends it: the list is in order of use.
+            if (!_presenter.Preload(scenes[index], boot.Draw))
+            {
+                Console.WriteLine($"Preloaded {index} of {scenes.Length} screens: {scenes[index].Id} does not fit.");
                 break;
-            bytes += taken;
-            Console.WriteLine($"Preloaded {scenes[index].Id} ({index + 1}/{scenes.Length}): {bytes / 1048576d:F0} MiB in all, "
-                + $"{System.Diagnostics.Stopwatch.GetElapsedTime(start).TotalSeconds:F1} s.");
+            }
         }
         // The archives read and their textures' pixels are garbage now: collected here, not in the first screens.
         Scenes.Collect();
-        boot.Progress(100);
         boot.Done();
         boot.Draw();
     }
@@ -788,7 +782,7 @@ internal sealed partial class GameShell : IDisposable
             // The intermissions are loaded once, up front: the rainbow must never stall a song's start.
             foreach (var intermission in new[] { FlowScenes.Rainbow, FlowScenes.Shutter, FlowScenes.Fade, FlowScenes.DanCover, FlowScenes.DanExitCover, FlowScenes.DanShutter })
                 Overlay.Preload(intermission);
-            if (DiagnosticSwitches.Preload && !Arcade.UpscaleTextures)
+            if (PlatformInfo.IsSwitch)
                 preloadScreens(_boot);
 
             _gameplay = new GameplayFlow(this);

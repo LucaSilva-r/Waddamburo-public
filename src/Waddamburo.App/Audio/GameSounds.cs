@@ -28,6 +28,11 @@ internal sealed class GameSounds
     public GameOverSounds GameOver { get; }
     public RewardShopSounds RewardShop { get; }
 
+    /// <summary>The scenes' music, decoded in the background and kept: it starts at once, however slow the storage.</summary>
+    // ponytail: the scene classes' own names listed again; a missing one only starts late, as without this.
+    public void PreloadMusic() => Bank.PreloadMusic("JINGLE_ENTRY", "JINGLE_SEISEKI", "JINGLE_RENDA", "JINGLE_GOVER", "JINGLE_GOHOBI",
+        "JINGLE_WAIRSLT", "JINGLE_AIBTL_RSLT", "JINGLE_AIBTL_REMIND", "JINGLE_DANI");
+
     /// <summary>Everything but the coin stops, and the next credit starts fresh.</summary>
     public void StopAll()
     {

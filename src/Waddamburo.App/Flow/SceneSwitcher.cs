@@ -111,9 +111,8 @@ internal sealed class SceneSwitcher(
         int gen0 = GC.CollectionCount(0), gen1 = GC.CollectionCount(1), gen2 = GC.CollectionCount(2);
         presenter.Hold(shell.Tick, black: shell.Overlay.IsShown || Active.Id == FlowScenes.Movie, loadingFrame);
         flowOf(Active.Id).Exit(Active.Id);
-        // Upscaled, every screen at once is too much for a GPU: the two the play goes back and forth between.
         presenter.ReleaseScene(Active.Id == FlowScenes.SongSelect || Active.Id == FlowScenes.Gameplay
-            || Active.Id != FlowScenes.Boot && !shell.Arcade.UpscaleTextures ? Active : null);
+            || PlatformInfo.IsSwitch && Active.Id != FlowScenes.Boot ? Active : null);
         var released = Stopwatch.GetTimestamp();
         presenter.Switching = true;
         try
