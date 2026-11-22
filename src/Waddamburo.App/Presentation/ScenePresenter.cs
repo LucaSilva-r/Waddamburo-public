@@ -12,18 +12,22 @@ namespace Waddamburo.App.Presentation;
 /// scene's last frame (or black while loading) until the new one has drawn. The next scene's movies,
 /// prefetched in the background, go up a few per frame so its switch does not stall.
 /// </summary>
-internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenMovieContentSource movies) : IDisposable
+internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenMovieContentSource movies, Func<bool>? upscaling = null) : IDisposable
 {
     private static readonly TimeSpan UploadAheadBudget = TimeSpan.FromMilliseconds(4);
     private readonly Dictionary<LumenMovieContent, RenderTextureId[]> _uploadedAhead = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<LumenMovieContent, (RenderTextureId[] Uploaded, int Next)> _partial = new(ReferenceEqualityComparer.Instance);
-    // Song Select's and gameplay's movies stay decoded, their textures up, between visits: a load not
-    // prefetched (leaving a song early, a retry) reuses them instead of decoding again (~0.5 s).
+    // Screens' movies stay decoded, their textures up, between visits: a load not prefetched (leaving a song early, a
+    // retry) reuses them instead of decoding again (~0.5 s; an SD card takes longer still).
     // Each copy remembers the scene that kept it: keeping that scene again drops the copies it no longer
     // shows (gameplay picks a random background/dancer mix per song; never evicting them leaked ~150
     // textures a song until bgfx ran out of handles).
     private readonly Dictionary<(string ArchiveId, string MovieId), (LumenMovieContent Content, RenderTextureId[] Textures, SceneId Scene)> _kept = [];
     private readonly HashSet<RenderTextureId> _keptTextures = [];
+    // Preloaded at boot: kept for good, whatever scene shows what.
+    private readonly HashSet<(string ArchiveId, string MovieId)> _pinned = [];
+    // Copies hold the upscales as they were when decoded: the setting changing drops them all.
+    private bool? _keptUpscaled;
     private RenderTextureId[] _textures = [];
     private RenderTextureId[] _heldTextures = [];
     private RenderFrame? _heldFrame;
@@ -40,13 +44,48 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
     public void Prefetch(SceneDefinition scene)
     {
         releaseUploadedAhead();
-        // A prefetch decodes afresh (settings may have changed): it replaces the kept copies.
-        foreach (var layer in scene.Layers)
-            if (_kept.Remove((layer.ArchiveId, layer.MovieId), out var dropped))
-                unkeep(dropped.Textures);
-        movies.Prefetch(scene.Layers.Select(static layer => (layer.ArchiveId, layer.MovieId)));
+        dropStale();
+        // What is kept needs no decoding.
+        var missing = scene.Layers.Select(static layer => (layer.ArchiveId, layer.MovieId)).Where(key => !_kept.ContainsKey(key)).Distinct().ToArray();
+        movies.Prefetch(missing);
         Prefetched = scene.Id;
-        Console.WriteLine($"Prefetching {scene.Id} ({scene.Layers.Length} movies).");
+        Console.WriteLine($"Prefetching {scene.Id} ({missing.Length} of {scene.Layers.Length} movies).");
+    }
+
+    /// <summary>
+    /// Loads a scene's movies and keeps them for good (at boot: <paramref name="wait"/> keeps the screen drawing while they
+    /// decode); the bytes their textures take on the GPU. A movie that fails to load is left for its scene to report.
+    /// </summary>
+    public long Preload(SceneDefinition scene, Action<Task> wait)
+    {
+        releaseUploadedAhead();
+        dropStale();
+        movies.Prefetch(scene.Layers.Select(static layer => (layer.ArchiveId, layer.MovieId)).Where(key => !_kept.ContainsKey(key)).Distinct());
+        wait(movies.WhenPrefetched());
+        var bytes = 0L;
+        var loaded = movies.DecodedPrefetchMovies.ToArray();
+        foreach (var (key, content) in loaded)
+        {
+            bytes += content.Textures.Sum(static texture => (long)texture.Rgba8.Length + texture.Bc7.Length + texture.Blocks.Length);
+            var textures = SceneTextures.Upload(application, content);
+            _kept[key] = (content, textures, scene.Id);
+            _keptTextures.UnionWith(textures);
+        }
+        _pinned.UnionWith(scene.Layers.Select(static layer => (layer.ArchiveId, layer.MovieId)));
+        movies.Forget([.. loaded.Select(static movie => movie.Content)]); // their pixels went with the upload
+        movies.Prefetch([]);
+        return bytes;
+    }
+
+    private void dropStale()
+    {
+        var now = upscaling?.Invoke() == true;
+        if (_keptUpscaled == now)
+            return;
+        _keptUpscaled = now;
+        foreach (var kept in _kept.Values.ToArray())
+            unkeep(kept.Textures);
+        _kept.Clear();
     }
 
     /// <summary>The scene being prefetched (null once a scene took it).</summary>
@@ -132,10 +171,11 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
     /// <summary>The old scene is gone: its textures go, unless its held frame still shows them.</summary>
     public void ReleaseScene(LumenGameSceneInstance? keep = null)
     {
+        dropStale();
         if (keep is not null)
         {
             var shown = keep.Layers.Select(static layer => (layer.Definition.ArchiveId, layer.Definition.MovieId)).ToHashSet();
-            foreach (var (key, old) in _kept.Where(pair => pair.Value.Scene == keep.Id && !shown.Contains(pair.Key)).ToArray())
+            foreach (var (key, old) in _kept.Where(pair => pair.Value.Scene == keep.Id && !shown.Contains(pair.Key) && !_pinned.Contains(pair.Key)).ToArray())
             {
                 _kept.Remove(key);
                 unkeep(old.Textures);
@@ -176,7 +216,7 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
         _textures = SceneTextures.Upload(application, scene, takeAhead);
         Console.WriteLine($"Scene {scene.Id}: {ahead - _uploadedAhead.Count - _partial.Count} of {scene.Layers.Length} movies "
             + $"uploaded ahead ({ahead} ready, {decoded} decoded ahead); textures {application.TextureUsage}.");
-        if (ahead - _uploadedAhead.Count - _partial.Count > 0)
+        if (Prefetched == scene.Id || ahead - _uploadedAhead.Count - _partial.Count > 0)
         {
             releaseUploadedAhead(); // this scene took its prefetch; the rest is unused
             Prefetched = null;

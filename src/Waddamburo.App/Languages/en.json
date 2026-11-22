@@ -669,6 +669,7 @@
   "service.boot.gameplay_data": "GAMEPLAY DATA",
   "service.boot.ai_battle": "AI BATTLE",
   "service.boot.movies": "MOVIES",
+  "service.boot.screens": "SCREENS",
   "service.boot.system_setup": "SYSTEM SETUP",
   "service.boot.system": "SYSTEM",
   "service.boot.startup": "STARTUP",

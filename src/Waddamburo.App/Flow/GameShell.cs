@@ -420,6 +420,31 @@ internal sealed partial class GameShell : IDisposable
 
     // osu! libraries are read only once chosen (#46): the first start finding an install not set yet offers it, off
     // until the player turns it on. Escape asks again next start.
+    // Every screen's movies decoded and up, its jingles decoded, before the game starts: no file is read where a screen
+    // changes (an SD card took 0.3-1.2 s there). The budget keeps the rest of a console's memory for the songs.
+    // ponytail: 512 MiB of textures; log says what it took, tune with it.
+    private const long PreloadBytes = 512L << 20;
+
+    private void preloadScreens(BootChecks boot)
+    {
+        boot.Begin("SCREENS");
+        Sounds?.Bank.PreloadMusic("JINGLE_SEISEKI", "JINGLE_RENDA", "JINGLE_GOVER", "JINGLE_GOHOBI", "JINGLE_WAIRSLT", "JINGLE_AIBTL_RSLT",
+            "JINGLE_AIBTL_REMIND", "JINGLE_DANI", "JINGLE_ENTRY");
+        var scenes = FlowScenes.Preloaded().ToArray();
+        var (bytes, start) = (0L, System.Diagnostics.Stopwatch.GetTimestamp());
+        for (var index = 0; index < scenes.Length && bytes < PreloadBytes; index++)
+        {
+            boot.Progress(index * 100 / scenes.Length);
+            bytes += _presenter.Preload(scenes[index], boot.Wait);
+            Console.WriteLine($"Preloaded {scenes[index].Id} ({index + 1}/{scenes.Length}): {bytes / 1048576d:F0} MiB in all, "
+                + $"{System.Diagnostics.Stopwatch.GetElapsedTime(start).TotalSeconds:F1} s.");
+        }
+        // The archives read and their textures' pixels are garbage now: collected here, not in the first screens.
+        System.Runtime.GCSettings.LargeObjectHeapCompactionMode = System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+        boot.Done();
+    }
+
     private void askOsuLibraries(BootChecks boot)
     {
         var lazer = string.IsNullOrEmpty(Arcade.OsuFolder) ? Waddamburo.Providers.OsuLazer.OsuLazerCatalogProvider.FindDataFolder(null) : null;
@@ -749,7 +774,7 @@ internal sealed partial class GameShell : IDisposable
             var cacheRoot = options.ArcadePath is { } settings
                 ? ArcadeSettings.CacheRoot(Path.GetDirectoryName(Path.GetFullPath(settings))!, Arcade.CacheFolder) : null;
             (MovieContent, Upscale) = GameMovieContent.Create(Application, Path.GetFullPath(assetRoot), cacheRoot, () => Arcade);
-            _presenter = new ScenePresenter(Application, MovieContent);
+            _presenter = new ScenePresenter(Application, MovieContent, () => Arcade.UpscaleTextures && Application.ShowUpscaled);
             Scenes = new SceneSwitcher(this, _presenter, flowOf, () => _home?.Covering == true, blackLoadingFrame);
             MovieContent.Reuse = _presenter.Reuse;
             ApplyDisplay();
@@ -759,6 +784,8 @@ internal sealed partial class GameShell : IDisposable
             // The intermissions are loaded once, up front: the rainbow must never stall a song's start.
             foreach (var intermission in new[] { FlowScenes.Rainbow, FlowScenes.Shutter, FlowScenes.Fade, FlowScenes.DanCover, FlowScenes.DanExitCover, FlowScenes.DanShutter })
                 Overlay.Preload(intermission);
+            if (DiagnosticSwitches.Preload && !Arcade.UpscaleTextures)
+                preloadScreens(_boot);
 
             _gameplay = new GameplayFlow(this);
             _rumble = new Rumble(this, _gameplay);
@@ -1221,6 +1248,7 @@ internal sealed partial class GameShell : IDisposable
             _service?.Dispose();
             _search?.Dispose();
             Book.Save();
+            Book.Flush();
             _indicators?.Scene.DisposeAsync().AsTask().GetAwaiter().GetResult();
             Coordinator.StopAsync().AsTask().GetAwaiter().GetResult();
         }
@@ -1248,7 +1276,6 @@ internal sealed partial class GameShell : IDisposable
     public void ReturnToAttract() => _returnToAttract = true;
 
     /// <summary>Fades picture and sound out, runs <paramref name="action"/> under the black, fades the new scene in.</summary>
-            Book.Flush();
     public void FadeThen(Action action) => _home.FadeThen(action);
 
     /// <summary>Back to the attract loop now (false when a song or boot is on: nothing happens).</summary>

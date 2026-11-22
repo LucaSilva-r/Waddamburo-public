@@ -669,6 +669,7 @@
   "service.boot.gameplay_data": "ゲームデータ",
   "service.boot.ai_battle": "AIバトル",
   "service.boot.movies": "ムービー",
+  "service.boot.screens": "画面データ",
   "service.boot.system_setup": "システム設定",
   "service.boot.system": "システム",
   "service.boot.startup": "起動",

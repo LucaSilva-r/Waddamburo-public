@@ -69,6 +69,13 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
     public IEnumerable<LumenMovieContent> DecodedPrefetches => _prefetched.Values
         .Where(static task => task.IsCompletedSuccessfully).Select(static task => task.Result);
 
+    /// <summary>Prefetched movies already decoded and not yet taken by a load, by archive and movie.</summary>
+    public IEnumerable<((string ArchiveId, string MovieId) Key, LumenMovieContent Content)> DecodedPrefetchMovies => _prefetched
+        .Where(static pair => pair.Value.IsCompletedSuccessfully).Select(static pair => (pair.Key, pair.Value.Result));
+
+    /// <summary>Waits for every prefetched movie to decode (or fail).</summary>
+    public Task WhenPrefetched() => Task.WhenAll(_prefetched.Values.Select(static task => task.ContinueWith(static _ => { }, TaskScheduler.Default)));
+
     /// <summary>Drops these prefetched movies (their pixels were freed after an upload since released).</summary>
     public void Forget(IReadOnlyCollection<LumenMovieContent> contents)
     {

@@ -192,12 +192,24 @@ internal sealed class BootChecks : IDisposable
         "GRAPHICS" => "service.boot.graphics",
         "GAMEPLAY DATA" => "service.boot.gameplay_data",
         "MOVIES" => "service.boot.movies",
+        "SCREENS" => "service.boot.screens",
         "AI BATTLE" => "service.boot.ai_battle",
         "SYSTEM SETUP" => "service.boot.system_setup",
         "STARTUP" => "service.boot.startup",
         "GAME" => "service.boot.game",
         _ => "service.boot.system",
     }));
+
+    /// <summary>Waits for <paramref name="task"/> while the screen keeps drawing (the part under way goes on).</summary>
+    public void Wait(Task task)
+    {
+        do
+        {
+            present();
+            Thread.Sleep(5);
+        }
+        while (!task.IsCompleted);
+    }
 
     private void present()
     {

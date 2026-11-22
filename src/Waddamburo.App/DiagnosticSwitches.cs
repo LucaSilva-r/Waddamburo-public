@@ -76,6 +76,9 @@ internal static class DiagnosticSwitches
     /// <summary>WADDAMBURO_RENDERER: The renderer (vulkan, gles, opengl, d3d11, metal); config.cfg's renderer sets it when unset.</summary>
     public static string? Renderer => Environment.GetEnvironmentVariable("WADDAMBURO_RENDERER");
 
+    /// <summary>WADDAMBURO_PRELOAD: 1: every screen and jingle loads at boot and stays in memory (a console's slow SD card).</summary>
+    public static bool Preload => Environment.GetEnvironmentVariable("WADDAMBURO_PRELOAD") == "1";
+
     /// <summary>WADDAMBURO_RESULT_PLAYERS: 2: --start-scene results show the diagnostic result for both players.</summary>
     public static string? ResultPlayers => Environment.GetEnvironmentVariable("WADDAMBURO_RESULT_PLAYERS");
 

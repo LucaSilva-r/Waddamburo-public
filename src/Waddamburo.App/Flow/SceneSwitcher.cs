@@ -111,7 +111,9 @@ internal sealed class SceneSwitcher(
         int gen0 = GC.CollectionCount(0), gen1 = GC.CollectionCount(1), gen2 = GC.CollectionCount(2);
         presenter.Hold(shell.Tick, black: shell.Overlay.IsShown || Active.Id == FlowScenes.Movie, loadingFrame);
         flowOf(Active.Id).Exit(Active.Id);
-        presenter.ReleaseScene(Active.Id == FlowScenes.SongSelect || Active.Id == FlowScenes.Gameplay ? Active : null);
+        // Upscaled, every screen at once is too much for a GPU: the two the play goes back and forth between.
+        presenter.ReleaseScene(Active.Id == FlowScenes.SongSelect || Active.Id == FlowScenes.Gameplay
+            || Active.Id != FlowScenes.Boot && !shell.Arcade.UpscaleTextures ? Active : null);
         var released = Stopwatch.GetTimestamp();
         presenter.Switching = true;
         try
@@ -154,8 +156,6 @@ internal sealed class SceneSwitcher(
     // keeps moving over a normal start, so the next switch out collects instead. On a lane the GC also
     // avoids blocking full collections of its own.
     // ponytail: 128 MiB grown since the last clean-up (garbage and all); tune if RSS creeps.
-    private void tidyMemory()
-    {
     // What the mix queues ahead of a collection: what the last ones took (500 ms on a Switch, 75 ms on a PC), so the sound
     // plays through. The first one is a guess.
     private TimeSpan _collectCover = TimeSpan.FromMilliseconds(150);
@@ -163,6 +163,8 @@ internal sealed class SceneSwitcher(
     private void cover(TimeSpan collected) =>
         _collectCover = TimeSpan.FromMilliseconds(Math.Clamp(Math.Max(collected.TotalMilliseconds * 1.2, _collectCover.TotalMilliseconds * 0.8), 150, 700));
 
+    private void tidyMemory()
+    {
         System.Runtime.GCSettings.LatencyMode = OnLane
             ? System.Runtime.GCLatencyMode.SustainedLowLatency
             : System.Runtime.GCLatencyMode.Interactive;
@@ -174,13 +176,11 @@ internal sealed class SceneSwitcher(
             shell.Audio?.FillAhead(_collectCover);
             GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
             _liveAfterCollect = GC.GetTotalMemory(false);
+            cover(Stopwatch.GetElapsedTime(started));
         }
         // Into a lane under the rainbow: a background collection instead (a few ms of pauses), which frees
-            cover(Stopwatch.GetElapsedTime(started));
         // Song Select's leftovers (the gameplay prefetch's decoded pixels) early in the song.
         else if (OnLane)
-            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false);
-    }
         {
             // The load's survivors first, while the switch stalls anyway: left to the song's first gen0/gen1 collection
             // they cost it one long pause (88 ms traced on a Switch, 14 s in). Twice: each collection promotes one
@@ -190,5 +190,7 @@ internal sealed class SceneSwitcher(
             GC.Collect(1, GCCollectionMode.Forced, blocking: true);
             GC.Collect(1, GCCollectionMode.Forced, blocking: true);
             cover(Stopwatch.GetElapsedTime(started));
-}
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false);
         }
+    }
+}
