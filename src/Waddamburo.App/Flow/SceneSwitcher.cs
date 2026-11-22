@@ -163,6 +163,14 @@ internal sealed class SceneSwitcher(
     private void cover(TimeSpan collected) =>
         _collectCover = TimeSpan.FromMilliseconds(Math.Clamp(Math.Max(collected.TotalMilliseconds * 1.2, _collectCover.TotalMilliseconds * 0.8), 150, 700));
 
+    /// <summary>A full collection now; what is live after it is what the next clean-up measures growth from.</summary>
+    public void Collect()
+    {
+        System.Runtime.GCSettings.LargeObjectHeapCompactionMode = System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+        _liveAfterCollect = GC.GetTotalMemory(false);
+    }
+
     private void tidyMemory()
     {
         System.Runtime.GCSettings.LatencyMode = OnLane
@@ -170,12 +178,10 @@ internal sealed class SceneSwitcher(
             : System.Runtime.GCLatencyMode.Interactive;
         if ((!OnLane || covering()) && GC.GetTotalMemory(false) - _liveAfterCollect > 128L << 20)
         {
-            System.Runtime.GCSettings.LargeObjectHeapCompactionMode = System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
             // The collection stops the audio mix thread too: queue past it (it took up to 75 ms traced).
             var started = Stopwatch.GetTimestamp();
             shell.Audio?.FillAhead(_collectCover);
-            GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
-            _liveAfterCollect = GC.GetTotalMemory(false);
+            Collect();
             cover(Stopwatch.GetElapsedTime(started));
         }
         // Into a lane under the rainbow: a background collection instead (a few ms of pauses), which frees

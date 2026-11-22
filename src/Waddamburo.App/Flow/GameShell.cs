@@ -440,8 +440,7 @@ internal sealed partial class GameShell : IDisposable
                 + $"{System.Diagnostics.Stopwatch.GetElapsedTime(start).TotalSeconds:F1} s.");
         }
         // The archives read and their textures' pixels are garbage now: collected here, not in the first screens.
-        System.Runtime.GCSettings.LargeObjectHeapCompactionMode = System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
-        GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+        Scenes.Collect();
         boot.Done();
     }
 
