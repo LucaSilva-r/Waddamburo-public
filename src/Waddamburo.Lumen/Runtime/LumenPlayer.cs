@@ -35,7 +35,7 @@ public sealed class LumenPlayer : IAvm1Host
     private readonly Dictionary<string, Avm1FunctionValue> _classes = new(StringComparer.Ordinal);
     private readonly Dictionary<string, CallbackRegistration> _callbacks = new(StringComparer.Ordinal);
     private readonly Dictionary<string, NativeFillBinding> _nativeFills = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, (LumenNativeSurfaceKey Surface, LumenNativeSurfacePlacement Box, bool Replace)> _overlays =
+    private readonly Dictionary<string, (string[] Path, (LumenNativeSurfaceKey Surface, LumenNativeSurfacePlacement Box, bool Replace) Overlay)> _overlays =
         new(StringComparer.Ordinal);
     private readonly Avm1Object _externalInterface = new();
     private readonly DisplayInstance _root;
@@ -654,7 +654,7 @@ public sealed class LumenPlayer : IAvm1Host
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(instancePath);
         if (surface is { } key)
-            _overlays[instancePath] = (key, box, replace);
+            _overlays[instancePath] = ([.. instancePath.Split('/', StringSplitOptions.RemoveEmptyEntries).Reverse()], (key, box, replace));
         else
             _overlays.Remove(instancePath);
     }
@@ -669,11 +669,11 @@ public sealed class LumenPlayer : IAvm1Host
 
     private (LumenNativeSurfaceKey Surface, LumenNativeSurfacePlacement Box, bool Replace)? findOverlay(DisplayInstance instance)
     {
-        foreach (var (path, overlay) in _overlays)
+        foreach (var (path, overlay) in _overlays.Values) // paths are split once, clip first: this runs for every named clip drawn
         {
             var node = instance;
             var matched = true;
-            foreach (var name in path.Split('/', StringSplitOptions.RemoveEmptyEntries).Reverse())
+            foreach (var name in path)
             {
                 if (node is null || node.Name != name) { matched = false; break; }
                 node = node.Parent;
@@ -856,6 +856,7 @@ public sealed class LumenPlayer : IAvm1Host
             throw new ArgumentOutOfRangeException(nameof(interpolationFraction));
         // The builder keeps its capacity between frames: one exact-size array per snapshot, no regrowth.
         _quads.Clear();
+        resetMasks();
         appendInstance(
             _root,
             LumenMatrix.Identity,
@@ -872,6 +873,7 @@ public sealed class LumenPlayer : IAvm1Host
         if (!float.IsFinite(interpolationFraction) || interpolationFraction < 0 || interpolationFraction > 1)
             throw new ArgumentOutOfRangeException(nameof(interpolationFraction));
         ArgumentNullException.ThrowIfNull(into);
+        resetMasks();
         appendInstance(_root, LumenMatrix.Identity, ColorState.Identity, LumenRenderBlend.Normal, interpolationFraction, into);
     }
 
@@ -2694,24 +2696,24 @@ public sealed class LumenPlayer : IAvm1Host
                     var slot = instance.Name.Length > 0 ? instance.Name : instance.Parent?.Name ?? "";
                     if (scopedFill(instance, slot) is { } nativeFill || _nativeFills.TryGetValue(slot, out nativeFill))
                     {
-                        var minX = geometry.Vertices.Min(static vertex => vertex.X);
-                        var maxX = geometry.Vertices.Max(static vertex => vertex.X);
-                        var minY = geometry.Vertices.Min(static vertex => vertex.Y);
-                        var maxY = geometry.Vertices.Max(static vertex => vertex.Y);
+                        float minX = float.PositiveInfinity, minY = minX, maxX = float.NegativeInfinity, maxY = maxX;
+                        foreach (var vertex in geometry.Vertices)
+                        {
+                            (minX, maxX) = (MathF.Min(minX, vertex.X), MathF.Max(maxX, vertex.X));
+                            (minY, maxY) = (MathF.Min(minY, vertex.Y), MathF.Max(maxY, vertex.Y));
+                        }
                         if (maxX <= minX || maxY <= minY)
                         {
                             reportOnce("LUM_NATIVE_FILL_EMPTY", instance.CharacterId, instance.Frame, "Fill-zero/native shape geometry has empty bounds.");
                             continue;
                         }
-                        var nativeVertices = transformNativeVertices(geometry.Vertices,
-                            nativeFill.Placement is { UniformScale: true } ? uniformScale(transform) : transform, minX, maxX, minY, maxY,
-                            nativeFill.Placement);
+                        var placed = nativeFill.Placement is { UniformScale: true } ? uniformScale(transform) : transform;
                         quads.Add(new LumenRenderQuad(
                             0,
-                            nativeVertices[0],
-                            nativeVertices[1],
-                            nativeVertices[2],
-                            nativeVertices[3],
+                            transformNativeVertex(geometry.Vertices[0], placed, minX, maxX, minY, maxY, nativeFill.Placement),
+                            transformNativeVertex(geometry.Vertices[1], placed, minX, maxX, minY, maxY, nativeFill.Placement),
+                            transformNativeVertex(geometry.Vertices[2], placed, minX, maxX, minY, maxY, nativeFill.Placement),
+                            transformNativeVertex(geometry.Vertices[3], placed, minX, maxX, minY, maxY, nativeFill.Placement),
                             color.Multiply,
                             color.Add,
                             blend,
@@ -2744,8 +2746,12 @@ public sealed class LumenPlayer : IAvm1Host
                 var position = transform.Transform(vertex.X, vertex.Y);
                 return vertex with { X = position.X, Y = position.Y };
             }
-            foreach (var quad in loadedMovie.Player.CreateRenderSnapshot(interpolationFraction).Quads)
-                quads.Add(quad with
+            var first = quads.Count;
+            loadedMovie.Player.AppendRenderQuads(interpolationFraction, quads);
+            for (var index = first; index < quads.Count; index++)
+            {
+                var quad = quads[index];
+                quads[index] = quad with
                 {
                     TextureIndex = quad.NativeSurface is null ? checked(loadedMovie.TextureOffset + quad.TextureIndex) : 0,
                     TopLeft = place(quad.TopLeft),
@@ -2756,7 +2762,8 @@ public sealed class LumenPlayer : IAvm1Host
                         quad.MultiplyColor.Green * color.Multiply.Green, quad.MultiplyColor.Blue * color.Multiply.Blue,
                         quad.MultiplyColor.Alpha * color.Multiply.Alpha),
                     MaskDepth = maskDepth,
-                });
+                };
+            }
         }
 
         if (_overlays.Count > 0 && instance.Name.Length > 0 && findOverlay(instance) is { } overlay)
@@ -2778,46 +2785,85 @@ public sealed class LumenPlayer : IAvm1Host
 
         // Masks apply only to following siblings through the inclusive authored depth.
         // Scope each child separately so crossing depth ranges and nested sprites compose safely.
-        List<(long End, ImmutableArray<LumenRenderQuad> Quads)>? masks = null;
+        var masks = _masks[_maskLevel];
+        var firstMask = masks.Entries.Count;
+        var firstMaskQuad = masks.Quads.Count;
         var children = instance.Children.Values;
         // An index loop: drawing changes no children, and it allocates no enumerator.
         for (var childIndex = 0; childIndex < children.Count; childIndex++)
         {
             var child = children[childIndex];
-            // A loop, not RemoveAll: its lambda would capture `child`, a closure per child per frame.
-            for (var index = (masks?.Count ?? 0) - 1; index >= 0; index--)
-                if (masks![index].End < child.Depth)
-                    masks.RemoveAt(index);
+            for (var index = masks.Entries.Count - 1; index >= firstMask; index--)
+                if (masks.Entries[index].End < child.Depth)
+                    masks.Entries.RemoveAt(index);
             if (child.ClipDepth is { } end && end > child.Depth)
             {
-                var geometry = ImmutableArray.CreateBuilder<LumenRenderQuad>();
-                appendInstance(child, transform, color, blend, childInterpolationFraction, geometry);
-                if (geometry.Any(quad => quad.MaskOperation != LumenRenderMaskOperation.Draw))
+                var start = masks.Quads.Count;
+                _maskLevel++; // masks inside the mask's own content go on the next level: this level's list is being written
+                if (_maskLevel == _masks.Count)
+                    _masks.Add(new MaskStack());
+                appendInstance(child, transform, color, blend, childInterpolationFraction, masks.Quads);
+                _maskLevel--;
+                for (var index = start; index < masks.Quads.Count; index++)
                 {
+                    if (masks.Quads[index].MaskOperation == LumenRenderMaskOperation.Draw)
+                        continue;
                     reportOnce("LUM_NESTED_MASK_SHAPE", child.CharacterId, child.Frame,
                         "A mask containing its own clipped content is not supported; its range is hidden.");
-                    geometry.Clear();
+                    masks.Quads.Count = start;
+                    break;
                 }
-                (masks ??= []).Add((end, geometry.ToImmutable()));
+                masks.Entries.Add((end, start, masks.Quads.Count - start));
                 continue;
             }
-            if (masks is null)
+            var active = masks.Entries.Count - firstMask;
+            if (active == 0)
             {
                 appendInstance(child, transform, color, blend, childInterpolationFraction, quads, maskDepth);
                 continue;
             }
-            if (maskDepth + masks.Count > byte.MaxValue)
+            if (maskDepth + active > byte.MaxValue)
             {
                 reportOnce("LUM_MASK_DEPTH_LIMIT", child.CharacterId, child.Frame, "Mask nesting exceeds the stencil limit.");
                 continue;
             }
-            for (var index = 0; index < masks.Count; index++)
-                foreach (var quad in masks[index].Quads)
-                    quads.Add(quad with { MaskOperation = LumenRenderMaskOperation.Push, MaskDepth = (byte)(maskDepth + index) });
-            appendInstance(child, transform, color, blend, childInterpolationFraction, quads, (byte)(maskDepth + masks.Count));
-            for (var index = masks.Count - 1; index >= 0; index--)
-                foreach (var quad in masks[index].Quads)
-                    quads.Add(quad with { MaskOperation = LumenRenderMaskOperation.Pop, MaskDepth = (byte)(maskDepth + index + 1) });
+            for (var index = 0; index < active; index++)
+            {
+                var (_, start, count) = masks.Entries[firstMask + index];
+                for (var quad = start; quad < start + count; quad++)
+                    quads.Add(masks.Quads[quad] with { MaskOperation = LumenRenderMaskOperation.Push, MaskDepth = (byte)(maskDepth + index) });
+            }
+            appendInstance(child, transform, color, blend, childInterpolationFraction, quads, (byte)(maskDepth + active));
+            for (var index = active - 1; index >= 0; index--)
+            {
+                var (_, start, count) = masks.Entries[firstMask + index];
+                for (var quad = start; quad < start + count; quad++)
+                    quads.Add(masks.Quads[quad] with { MaskOperation = LumenRenderMaskOperation.Pop, MaskDepth = (byte)(maskDepth + index + 1) });
+            }
+        }
+        masks.Entries.RemoveRange(firstMask, masks.Entries.Count - firstMask);
+        masks.Quads.Count = firstMaskQuad;
+    }
+
+    // The masks in force while the display list is walked: a stack of their geometry kept between frames (an array per mask
+    // per frame was most of Song Select's drawing garbage). One per nesting of masks inside a mask's own content.
+    private sealed class MaskStack
+    {
+        public readonly List<(long End, int Start, int Count)> Entries = [];
+        public readonly ImmutableArray<LumenRenderQuad>.Builder Quads = ImmutableArray.CreateBuilder<LumenRenderQuad>();
+    }
+
+    private readonly List<MaskStack> _masks = [new()];
+    private int _maskLevel;
+
+    // A walk that threw left its masks behind.
+    private void resetMasks()
+    {
+        _maskLevel = 0;
+        foreach (var level in _masks)
+        {
+            level.Entries.Clear();
+            level.Quads.Clear();
         }
     }
 
@@ -2967,11 +3013,6 @@ public sealed class LumenPlayer : IAvm1Host
             corner(box.Right, box.Bottom, 1, 1), corner(box.Left, box.Bottom, 0, 1), color.Multiply, color.Add, blend,
             NativeSurface: key, MaskDepth: maskDepth));
     }
-
-    // Kept out of appendInstance: a lambda there captures its transform, a closure on every call.
-    private static LumenRenderVertex[] transformNativeVertices(ImmutableArray<LmbVertex> vertices, LumenMatrix transform,
-        float minX, float maxX, float minY, float maxY, LumenNativeSurfacePlacement? placement) =>
-        vertices.Select(vertex => transformNativeVertex(vertex, transform, minX, maxX, minY, maxY, placement)).ToArray();
 
     private static LumenRenderVertex transformNativeVertex(
         LmbVertex vertex,
