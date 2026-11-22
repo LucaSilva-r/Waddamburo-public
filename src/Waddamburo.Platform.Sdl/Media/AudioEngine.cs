@@ -147,8 +147,29 @@ public sealed class AudioEngine : IDisposable
         uint sourceStreamIndex = 0)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        var clip = AudioClip.Load(path, _device.Format, maximumDuration, sourceStreamIndex);
-        return Mixer.Play(clip, bus, volume);
+        return playFile(path, bus, volume, maximumDuration, sourceStreamIndex, loop: false);
+    }
+
+    private readonly Dictionary<string, Task<AudioClip>> _preloaded = [];
+
+    /// <summary>Decodes a file in the background and keeps it for <see cref="PlayLoop"/> and <see cref="PlayOneShot"/>.</summary>
+    public void Preload(string path)
+    {
+        var format = _device.Format;
+        _preloaded.TryAdd(Path.GetFullPath(path), Task.Run(() => AudioClip.Load(path, format)));
+    }
+
+    /// <summary>Plays a file decoded off this thread (a jingle took 0.7 s to decode on a Switch): silent until it is ready.</summary>
+    private AudioPlaybackHandle playFile(string path, AudioBus bus, float volume, TimeSpan? maximumDuration, uint sourceStreamIndex, bool loop)
+    {
+        if (!File.Exists(path))
+            throw new FileNotFoundException("The audio file does not exist.", path);
+        var format = _device.Format;
+        var kept = maximumDuration is null && sourceStreamIndex == 0 ? _preloaded.GetValueOrDefault(Path.GetFullPath(path)) : null;
+        var decoding = kept ?? Task.Run(() => AudioClip.Load(path, format, maximumDuration, sourceStreamIndex));
+        _ = decoding.ContinueWith(task => Console.Error.WriteLine($"{Path.GetFileName(path)} is unavailable: {task.Exception!.InnerException!.Message}"),
+            CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
+        return Mixer.PlayStream(new DecodingClipSource(format, decoding, loop), bus, volume);
     }
 
     public AudioPlaybackHandle PlayLoop(
@@ -159,8 +180,7 @@ public sealed class AudioEngine : IDisposable
         uint sourceStreamIndex = 0)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        var clip = AudioClip.Load(path, _device.Format, maximumDuration, sourceStreamIndex);
-        return Mixer.Play(clip, bus, volume, loop: true);
+        return playFile(path, bus, volume, maximumDuration, sourceStreamIndex, loop: true);
     }
 
     /// <summary>

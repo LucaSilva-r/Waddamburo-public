@@ -175,6 +175,13 @@ internal sealed class SoundBank
         }
     }
 
+    /// <summary>Decodes these tracks in the background and keeps them: <see cref="PlayMusic"/> starts them at once.</summary>
+    public void PreloadMusic(params string[] names)
+    {
+        foreach (var path in names.Select(name => Path.Combine(_musicRoot, name + ".nub")).Where(File.Exists))
+            _audio.Preload(path);
+    }
+
     private AudioPlaybackHandle? _tutorialMusic;
 
     public Action? PrepareTutorialMusic(string name)
