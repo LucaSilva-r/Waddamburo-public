@@ -54,15 +54,27 @@ internal sealed class Bookkeeping(string? path)
 
     public void Reset() => PowerOnTicks = PlayTicks = PlayCount = CoinCount = FreePlayCount = PowerOnCount = 0;
 
+    private Task _writing = Task.CompletedTask;
+
+    /// <summary>Written off this thread, in order (an SD card takes a frame or two); <see cref="Flush"/> waits for it.</summary>
     public void Save()
     {
         if (path is null) return;
-        try
-        {
-            File.WriteAllText(path, string.Create(CultureInfo.InvariantCulture,
+        var text = string.Create(CultureInfo.InvariantCulture,
                 $"# Waddamburo cabinet bookkeeping (the service menu's BOOKKEEPING page). Times in 60 Hz ticks.\n"
                 + $"power_on_ticks = {PowerOnTicks}\nplay_ticks = {PlayTicks}\nplay_count = {PlayCount}\n"
-                + $"coin_count = {CoinCount}\nfree_play_count = {FreePlayCount}\npower_on_count = {PowerOnCount}\n"));
+                + $"coin_count = {CoinCount}\nfree_play_count = {FreePlayCount}\npower_on_count = {PowerOnCount}\n");
+        _writing = _writing.ContinueWith(_ => write(path, text), CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
+    }
+
+    /// <summary>Every save so far is in the file (the game is quitting).</summary>
+    public void Flush() => _writing.Wait();
+
+    private static void write(string path, string text)
+    {
+        try
+        {
+            File.WriteAllText(path, text);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {

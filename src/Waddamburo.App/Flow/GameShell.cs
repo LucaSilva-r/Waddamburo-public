@@ -1248,6 +1248,7 @@ internal sealed partial class GameShell : IDisposable
     public void ReturnToAttract() => _returnToAttract = true;
 
     /// <summary>Fades picture and sound out, runs <paramref name="action"/> under the black, fades the new scene in.</summary>
+            Book.Flush();
     public void FadeThen(Action action) => _home.FadeThen(action);
 
     /// <summary>Back to the attract loop now (false when a song or boot is on: nothing happens).</summary>
