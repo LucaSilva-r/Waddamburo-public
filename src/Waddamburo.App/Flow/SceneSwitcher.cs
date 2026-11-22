@@ -156,6 +156,13 @@ internal sealed class SceneSwitcher(
     // ponytail: 128 MiB grown since the last clean-up (garbage and all); tune if RSS creeps.
     private void tidyMemory()
     {
+    // What the mix queues ahead of a collection: what the last ones took (500 ms on a Switch, 75 ms on a PC), so the sound
+    // plays through. The first one is a guess.
+    private TimeSpan _collectCover = TimeSpan.FromMilliseconds(150);
+
+    private void cover(TimeSpan collected) =>
+        _collectCover = TimeSpan.FromMilliseconds(Math.Clamp(Math.Max(collected.TotalMilliseconds * 1.2, _collectCover.TotalMilliseconds * 0.8), 150, 700));
+
         System.Runtime.GCSettings.LatencyMode = OnLane
             ? System.Runtime.GCLatencyMode.SustainedLowLatency
             : System.Runtime.GCLatencyMode.Interactive;
@@ -163,13 +170,25 @@ internal sealed class SceneSwitcher(
         {
             System.Runtime.GCSettings.LargeObjectHeapCompactionMode = System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
             // The collection stops the audio mix thread too: queue past it (it took up to 75 ms traced).
-            shell.Audio?.FillAhead(TimeSpan.FromMilliseconds(150));
+            var started = Stopwatch.GetTimestamp();
+            shell.Audio?.FillAhead(_collectCover);
             GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
             _liveAfterCollect = GC.GetTotalMemory(false);
         }
         // Into a lane under the rainbow: a background collection instead (a few ms of pauses), which frees
+            cover(Stopwatch.GetElapsedTime(started));
         // Song Select's leftovers (the gameplay prefetch's decoded pixels) early in the song.
         else if (OnLane)
             GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false);
     }
+        {
+            // The load's survivors first, while the switch stalls anyway: left to the song's first gen0/gen1 collection
+            // they cost it one long pause (88 ms traced on a Switch, 14 s in). Twice: each collection promotes one
+            // generation, so after one they were in gen1 and the song's first gen1 collection walked them again.
+            var started = Stopwatch.GetTimestamp();
+            shell.Audio?.FillAhead(_collectCover);
+            GC.Collect(1, GCCollectionMode.Forced, blocking: true);
+            GC.Collect(1, GCCollectionMode.Forced, blocking: true);
+            cover(Stopwatch.GetElapsedTime(started));
 }
+        }
