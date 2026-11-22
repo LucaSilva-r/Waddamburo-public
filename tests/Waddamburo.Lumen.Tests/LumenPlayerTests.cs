@@ -2157,6 +2157,30 @@ public sealed class LumenPlayerTests
     }
 
     [Fact]
+    public void SharedSceneSnapshotReadsItsBufferUntilReusedAndDetachedKeepsACopy()
+    {
+        var scene = new LumenScenePlayer(1280, 720,
+            [new LumenSceneLayer(new LumenPlayer(createMovie(), 1280, 720), LumenMatrix.Identity, 0, 5)]);
+        var buffer = new LumenQuadBuffer();
+        var own = scene.CreateRenderSnapshot();
+        var shared = scene.CreateRenderSnapshot(buffer: buffer);
+
+        Assert.Equal(own.Count, shared.Count);
+        Assert.Equal(own.Quads[0], shared[0]);
+        Assert.Same(shared, shared.Map(quad => quad with { TextureIndex = 3 }));
+        Assert.Equal(3u, shared[0].TextureIndex);
+        Assert.Equal(3u, shared.Quads[0].TextureIndex);
+        Assert.Equal(4u, own.Map(quad => quad with { TextureIndex = 4 })[0].TextureIndex);
+        var kept = shared.Detached();
+        var unkept = scene.CreateRenderSnapshot(buffer: buffer);
+        _ = scene.CreateRenderSnapshot(buffer: buffer); // the next frame
+        Assert.Throws<InvalidOperationException>(() => unkept[0].TextureIndex);
+        Assert.Throws<InvalidOperationException>(() => unkept.Quads);
+        Assert.Equal(3u, kept[0].TextureIndex);
+        Assert.Equal(own.Quads.AsEnumerable(), scene.CreateRenderSnapshot(buffer: buffer).Quads);
+    }
+
+    [Fact]
     public void EmptySceneStillRejectsInvalidInterpolationFraction()
     {
         var scene = new LumenScenePlayer(1280, 720, []);

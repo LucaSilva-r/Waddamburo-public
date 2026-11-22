@@ -309,6 +309,9 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         }
     }
 
+    private readonly LumenQuadBuffer _sceneQuads = new();
+
+    /// <remarks>Lasts until the next one (its quads are reused).</remarks>
     public LumenRenderSnapshot CreateSnapshot(TimeSpan time, float interpolation)
     {
         _drawnAt = time;
@@ -324,7 +327,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
                 if (lane.BeatInterpolation(player) is { } beat)
                     return beat;
             return interpolation;
-        });
+        }, _sceneQuads);
         foreach (var lane in _lanes)
             snapshot = lane.Tint(snapshot);
         return snapshot;

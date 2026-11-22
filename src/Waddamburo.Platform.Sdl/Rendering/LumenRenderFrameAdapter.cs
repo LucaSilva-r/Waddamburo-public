@@ -16,7 +16,7 @@ public static class LumenRenderFrameAdapter
         ArgumentNullException.ThrowIfNull(resolveTexture);
 
         // Exact capacity: MoveToImmutable hands the array to the frame without a copy.
-        var quads = ImmutableArray.CreateBuilder<RenderQuad>(snapshot.Quads.Length);
+        var quads = ImmutableArray.CreateBuilder<RenderQuad>(snapshot.Count);
         append(snapshot, resolveTexture, resolveNativeSurface, quads.Add);
         return new RenderFrame(
             clearColor,
@@ -34,7 +34,7 @@ public static class LumenRenderFrameAdapter
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(into);
         ArgumentNullException.ThrowIfNull(resolveTexture);
-        into.EnsureCapacity(into.Count + snapshot.Quads.Length);
+        into.EnsureCapacity(into.Count + snapshot.Count);
         append(snapshot, resolveTexture, resolveNativeSurface, into.Add);
     }
 
@@ -43,8 +43,9 @@ public static class LumenRenderFrameAdapter
     {
         var inverseWidth = 1f / snapshot.StageWidth;
         var inverseHeight = 1f / snapshot.StageHeight;
-        foreach (var quad in snapshot.Quads)
+        for (var index = 0; index < snapshot.Count; index++)
         {
+            ref readonly var quad = ref snapshot[index];
             RenderTextureId? texture = quad.NativeSurface is { } surface
                 ? (resolveNativeSurface ?? throw new InvalidOperationException(
                     $"Native Lumen surface '{surface}' has no platform resolver."))(surface)

@@ -68,6 +68,9 @@ internal sealed partial class GameShell
     // network/card (-3000); then Waddamburo's own overlays and the home menu over everything.
     private readonly List<RenderQuad> _frameQuads = [];
 
+    /// <summary>The displayed scene's Lumen quads, reused each frame (a snapshot lasts until the next).</summary>
+    public LumenQuadBuffer SceneQuads { get; } = new();
+
     // The scene's Don-chans (their native surfaces) and its name board layers, on their own.
     private System.Collections.Immutable.ImmutableArray<RenderQuad> players(LumenRenderSnapshot scene, float interpolation)
     {
@@ -116,7 +119,7 @@ internal sealed partial class GameShell
             DonRenderer.Interpolation = interpolation;
         var scene = flowOf(Active.Id).CreateSnapshot(interpolation);
         if (LumenPlayer.Inspect)
-            _inspected = scene;
+            _inspected = scene.Detached(); // read at a click, frames later
         // The scene's quads go straight into the reused frame list (no frame of their own).
         var quads = _frameQuads;
         quads.Clear();

@@ -65,12 +65,13 @@ public sealed class LumenScenePlayer
     }
 
     public LumenRenderSnapshot CreateRenderSnapshot(float interpolationFraction = 1f,
-        Func<LumenPlayer, float>? playerInterpolation = null)
+        Func<LumenPlayer, float>? playerInterpolation = null, LumenQuadBuffer? buffer = null)
     {
         if (!float.IsFinite(interpolationFraction) || interpolationFraction < 0 || interpolationFraction > 1)
             throw new ArgumentOutOfRangeException(nameof(interpolationFraction));
         // Gameplay builds a scene player per frame, so the reused builder is static (snapshots are made on one thread).
-        var quads = t_quads ??= ImmutableArray.CreateBuilder<LumenRenderQuad>();
+        // A caller's own buffer is the snapshot's too: no array per frame.
+        var quads = buffer?.Reuse() ?? (t_quads ??= ImmutableArray.CreateBuilder<LumenRenderQuad>());
         quads.Clear();
         foreach (var layer in _layers)
         {
@@ -99,7 +100,8 @@ public sealed class LumenScenePlayer
                 };
             }
         }
-        return new LumenRenderSnapshot(StageWidth, StageHeight, quads.ToImmutable());
+        return buffer is null ? new LumenRenderSnapshot(StageWidth, StageHeight, quads.ToImmutable())
+            : LumenRenderSnapshot.Shared(StageWidth, StageHeight, buffer);
     }
 
     [ThreadStatic] private static ImmutableArray<LumenRenderQuad>.Builder? t_quads;
