@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using Waddamburo.App.Scenes;
 using Waddamburo.Game;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Scenes;
@@ -25,10 +24,15 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
     // textures a song until bgfx ran out of handles).
     private readonly Dictionary<(string ArchiveId, string MovieId), Kept> _kept = [];
     private readonly HashSet<RenderTextureId> _keptTextures = [];
-    private readonly record struct Kept(LumenMovieContent Content, RenderTextureId[] Textures, SceneId Scene, bool Pinned = false);
-    // ponytail: a Switch's number. Every texture is a GPU buffer there, and textures came out broken past 4,096 of them
-    // (2026-11-22; 3,495 in use at most with this). Song Select and gameplay stay whatever the count, as on every platform.
-    private const int MaximumKeptTextures = 2400;
+    private readonly record struct Kept(LumenMovieContent Content, RenderTextureId[] Textures, SceneId Scene, long Used, bool Pinned = false);
+    // Every texture alive, on screen or kept: past it the copies longest unused go. A Switch's GPU buffers are the limit
+    // there (one a texture; the system refused the 4,872nd, and that texture came out missing), bgfx's handles elsewhere
+    // (16,384). Room is left for what goes up before the released ones are gone, a frame later.
+    private static readonly int MaximumTextures = PlatformInfo.IsSwitch ? 3600 : 14000;
+    // What boot fills: the play's own screens fit on top of it without dropping any of it at once.
+    private const int MaximumPreloadedTextures = 2400;
+    private long _use;
+    private HashSet<(string ArchiveId, string MovieId)> _shown = [], _prefetching = [];
     // Copies hold the upscales as they were when decoded: the setting changing drops them all.
     private bool? _keptUpscaled;
     private RenderTextureId[] _textures = [];
@@ -49,9 +53,10 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
         releaseUploadedAhead();
         dropStale();
         // What is kept needs no decoding.
-        var missing = scene.Layers.Select(static layer => (layer.ArchiveId, layer.MovieId)).Where(key => !_kept.ContainsKey(key)).Distinct().ToArray();
+        var missing = keys(scene.Layers).Where(key => !_kept.ContainsKey(key)).Distinct().ToArray();
         movies.Prefetch(missing);
         Prefetched = scene.Id;
+        _prefetching = [.. keys(scene.Layers)];
         Console.WriteLine($"Prefetching {scene.Id} ({missing.Length} of {scene.Layers.Length} movies).");
     }
 
@@ -66,7 +71,7 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
         for (; !movies.PrefetchComplete; Thread.Sleep(5))
             draw();
         var loaded = movies.DecodedPrefetches.ToArray();
-        var fits = _keptTextures.Count + loaded.Sum(static movie => movie.Content.Textures.Length) <= MaximumKeptTextures;
+        var fits = _keptTextures.Count + loaded.Sum(static movie => movie.Content.Textures.Length) <= MaximumPreloadedTextures;
         while (fits && !PrefetchReady)
         {
             UploadAhead(still: true);
@@ -75,12 +80,13 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
         foreach (var (key, content) in fits ? loaded : [])
         {
             _uploadedAhead.Remove(content, out var textures);
-            _kept[key] = new(content, textures!, scene.Id, Pinned: true);
+            _kept[key] = new(content, textures!, scene.Id, Used: 0, Pinned: true);
             _keptTextures.UnionWith(textures!);
         }
         movies.Prefetch([]);
         releaseUploadedAhead();
         Prefetched = null;
+        _prefetching = [];
         return fits;
     }
 
@@ -114,6 +120,8 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
         {
             if (_uploadedAhead.ContainsKey(content))
                 continue;
+            if (!_partial.ContainsKey(content))
+                makeRoom(content.Textures.Length);
             var (uploaded, next) = _partial.GetValueOrDefault(content, (new RenderTextureId[content.Textures.Length], 0));
             for (; next < uploaded.Length; next++)
             {
@@ -139,6 +147,26 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
     /// <summary>The kept copy of a movie, for the content source (the loading thread; the main one waits).</summary>
     public LumenMovieContent? Reuse(string archiveId, string movieId) =>
         Switching && _kept.TryGetValue((archiveId, movieId), out var kept) ? kept.Content : null;
+
+    private static IEnumerable<(string ArchiveId, string MovieId)> keys(IEnumerable<SceneLayerDefinition> layers) =>
+        layers.Select(static layer => (layer.ArchiveId, layer.MovieId));
+
+    // Kept copies go until so many more textures fit, the longest unused first (of the preloaded ones, the last in the
+    // list): never what is shown or being prefetched.
+    private void makeRoom(int textures)
+    {
+        while (application.TextureCount + textures > MaximumTextures)
+        {
+            ((string ArchiveId, string MovieId) Key, Kept Copy)? oldest = null;
+            foreach (var (key, copy) in _kept)
+                if (!_shown.Contains(key) && !_prefetching.Contains(key) && (oldest is null || copy.Used <= oldest.Value.Copy.Used))
+                    oldest = (key, copy);
+            if (oldest is not { } drop)
+                return;
+            _kept.Remove(drop.Key);
+            unkeep(drop.Copy.Textures);
+        }
+    }
 
     // A movie half uploaded ahead: the scene switch uploads the rest.
     private RenderTextureId[]? takeAhead(LumenMovieContent content)
@@ -196,13 +224,14 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
             if (_kept.TryGetValue(key, out var old))
             {
                 if (ReferenceEquals(old.Content, layer.Content))
+                {
+                    _kept[key] = old with { Used = ++_use };
                     continue;
+                }
                 unkeep(old.Textures);
             }
             var textures = _textures[(int)layer.TextureOffset..(int)(layer.TextureOffset + layer.TextureCount)];
-            if (_keptTextures.Count + textures.Length > MaximumKeptTextures && keep!.Id != FlowScenes.SongSelect && keep.Id != FlowScenes.Gameplay)
-                continue;
-            _kept[key] = new(layer.Content, textures, keep!.Id);
+            _kept[key] = new(layer.Content, textures, keep!.Id, ++_use);
             _keptTextures.UnionWith(textures);
         }
         if (!ReferenceEquals(_heldTextures, _textures))
@@ -224,6 +253,11 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
     {
         var ahead = _uploadedAhead.Count + _partial.Count;
         var decoded = movies.DecodedPrefetches.Count();
+        _shown = [.. keys(scene.Layers.Select(static layer => layer.Definition))];
+        // What is neither kept nor up already goes up now.
+        makeRoom(scene.Layers.Select(static layer => layer.Content).Distinct()
+            .Where(content => !_uploadedAhead.ContainsKey(content) && !_kept.Values.Any(copy => ReferenceEquals(copy.Content, content)))
+            .Sum(static content => content.Textures.Length));
         _textures = SceneTextures.Upload(application, scene, takeAhead);
         Console.WriteLine($"Scene {scene.Id}: {ahead - _uploadedAhead.Count - _partial.Count} of {scene.Layers.Length} movies "
             + $"uploaded ahead ({ahead} ready, {decoded} decoded ahead); textures {application.TextureUsage}.");
@@ -231,6 +265,7 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
         {
             releaseUploadedAhead(); // this scene took its prefetch; the rest is unused
             Prefetched = null;
+            _prefetching = [];
         }
     }
 

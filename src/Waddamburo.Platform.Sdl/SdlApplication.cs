@@ -498,6 +498,8 @@ public sealed unsafe partial class SdlApplication : IDisposable
     }
 
     /// <summary>Live textures against the renderer's limit ("live/max").</summary>
+    public int TextureCount => _renderer?.TextureCount ?? 0;
+
     public string TextureUsage => _renderer is null ? "" : BgfxSupport.TextureUsage;
 
     public void ReleaseTexture(RenderTextureId texture)

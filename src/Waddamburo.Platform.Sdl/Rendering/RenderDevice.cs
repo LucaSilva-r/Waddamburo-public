@@ -188,6 +188,9 @@ internal sealed unsafe class RenderDevice : IDisposable
     private bgfx.TextureHandle drawn(uint id) =>
         ShowReplacements && _replacements.TryGetValue(id, out var replacement) ? replacement : _textures[id];
 
+    /// <summary>Textures alive here, upscaled copies included (what <see cref="ReleaseTexture"/> has not taken).</summary>
+    public int TextureCount => _textures.Count + _replacements.Count;
+
     public void ReleaseTexture(RenderTextureId id)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
