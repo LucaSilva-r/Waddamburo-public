@@ -526,7 +526,11 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         _ => $"parts/head/head_{id:000}000.nud",
     });
 
-    private bool assetExists(string relativePath) => File.Exists(Path.Combine(_assetRoot, relativePath));
+    // The install does not change while the game runs: one look at the disk per file.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> _assetExists = new(StringComparer.Ordinal);
+
+    private bool assetExists(string relativePath) =>
+        _assetExists.GetOrAdd(relativePath, static (path, root) => File.Exists(Path.Combine(root, path)), _assetRoot);
 
     private List<GpuMesh> model(string relativePath)
     {

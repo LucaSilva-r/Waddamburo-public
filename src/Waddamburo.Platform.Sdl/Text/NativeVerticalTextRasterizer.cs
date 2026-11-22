@@ -61,8 +61,7 @@ public static unsafe partial class NativeVerticalTextRasterizer
         ArgumentException.ThrowIfNullOrWhiteSpace(title);
         ArgumentOutOfRangeException.ThrowIfZero(rasterScale);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(rasterScale, 4U);
-        if (!File.Exists(fontPath))
-            throw new FileNotFoundException("The configured title font does not exist.", fontPath);
+        requireFont(fontPath);
         if (GetAbiVersion() != AbiVersion)
             throw new InvalidOperationException("The native text rasterizer ABI is incompatible.");
 
@@ -84,12 +83,23 @@ public static unsafe partial class NativeVerticalTextRasterizer
         return context.Render(title, subtitle, profile, squash ? SquashFlag : 0, outlineRgb, rasterScale, width, height);
     }
 
+    // Looked up once a font: every glyph's first drawing asked the disk (a millisecond each on a Switch's SD card).
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> Fonts = new(StringComparer.Ordinal);
+
+    private static void requireFont(string fontPath)
+    {
+        if (Fonts.ContainsKey(fontPath))
+            return;
+        if (!File.Exists(fontPath))
+            throw new FileNotFoundException("The configured title font does not exist.", fontPath);
+        Fonts[fontPath] = true;
+    }
+
     /// <summary>One character at <paramref name="fontPx"/> with its <paramref name="outlineRadius"/> border.</summary>
     public static GlyphMasks RenderGlyph(string fontPath, int scalar, float fontPx, uint outlineRadius)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(fontPath);
-        if (!File.Exists(fontPath))
-            throw new FileNotFoundException("The configured title font does not exist.", fontPath);
+        requireFont(fontPath);
         if (GetAbiVersion() != AbiVersion)
             throw new InvalidOperationException("The native text rasterizer ABI is incompatible.");
         return FontContexts.GetOrAdd(
@@ -105,8 +115,7 @@ public static unsafe partial class NativeVerticalTextRasterizer
         ArgumentException.ThrowIfNullOrWhiteSpace(text);
         ArgumentOutOfRangeException.ThrowIfZero(width);
         ArgumentOutOfRangeException.ThrowIfZero(height);
-        if (!File.Exists(fontPath))
-            throw new FileNotFoundException("The configured title font does not exist.", fontPath);
+        requireFont(fontPath);
         if (GetAbiVersion() != AbiVersion)
             throw new InvalidOperationException("The native text rasterizer ABI is incompatible.");
 
