@@ -114,12 +114,12 @@ internal sealed class GameFolder(Activity activity)
         picked([.. uris.Select(uri =>
         {
             // The name and size the provider reports (the import's report names them).
-            var (name, size) = (uri.LastPathSegment ?? uri.ToString(), (long?)null);
+            var (name, size) = (uri.LastPathSegment ?? uri.ToString() ?? "picked file", (long?)null);
             using (var cursor = activity.ContentResolver!.Query(uri, [global::Android.Provider.IOpenableColumns.DisplayName,
                        global::Android.Provider.IOpenableColumns.Size], null, null, null))
                 if (cursor?.MoveToFirst() == true)
                 {
-                    name = cursor.GetString(0) ?? name;
+                    name = cursor.GetString(0) ?? name ?? "picked file";
                     size = cursor.IsNull(1) ? null : cursor.GetLong(1);
                 }
             return new ImportSource(name, size, () =>

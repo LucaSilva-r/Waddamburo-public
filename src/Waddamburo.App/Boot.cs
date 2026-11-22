@@ -112,6 +112,16 @@ public static class Boot
         s_startingUp = !consoleTool && a.ScreenshotPath is null && a.FrameLimit is null && a.TickLimit is null;
         // The update comes first, before anything that could fail (a release that can't start must still be replaced
         // by the next): the settings are read for it if they can be, and read again below to report what's wrong.
+        // A PC without Green (or with only another release, Katsu-Don's): the same import a phone has, a downloaded dump
+        // picked and taken apart into Green beside Waddamburo. Closing it ends the game.
+        if (s_startingUp && !PlatformInfo.IsMobile && a.GameDataRoot is null && Boot.AppHome is null
+            && GameDataLayout.DefaultRoot() is var found
+            && (!Directory.Exists(Path.Combine(found, "data", "lumendata", "packed")) || !GameDataLayout.IsGreen(found)))
+        {
+            if (!Sync.DesktopSetup.Run(GameDataLayout.ImportRoot))
+                return 0;
+            GameDataLayout.Chosen = GameDataLayout.ImportRoot;
+        }
         GameDataLayout? early = null;
         Waddamburo.Game.Flow.ArcadeSettings? earlyArcade = null;
         try

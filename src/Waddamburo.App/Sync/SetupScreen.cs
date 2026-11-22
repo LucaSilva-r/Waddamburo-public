@@ -17,9 +17,10 @@ public static class SetupScreen
     /// <summary>
     /// Shows the screen until <paramref name="status"/> says nothing is missing (true), START ANYWAY is picked (true),
     /// or the window is closed (false). <paramref name="status"/> is read every frame: keep it cheap (a cached count).
-    /// <paramref name="greenFolder"/>: where a player copies the files by hand instead.
+    /// <paramref name="greenFolder"/>: where a player copies the files by hand instead. No <paramref name="setup"/> (a
+    /// PC's first start): the import alone, no pairing.
     /// </summary>
-    public static bool Run(GreenSetup setup, Func<Cli.GreenSetupProgress> status, string greenFolder,
+    public static bool Run(GreenSetup? setup, Func<Cli.GreenSetupProgress> status, string greenFolder,
         string? shot = null, DeviceImport? import = null)
     {
         var frames = 0;
@@ -47,7 +48,7 @@ public static class SetupScreen
             Centred: true, Legend: false, Body: () =>
             [
                 blank,
-                .. setup.Message is { } message
+                .. setup!.Message is { } message
                     ? [(message, setup.Failed ? OverlayMenu.Red : OverlayMenu.Cyan), blank, blank]
                     : new[] { (Strings.T("first_setup.step_open", setup.Name), OverlayMenu.White), blank,
                         (Strings.T("first_setup.code", setup.Code), OverlayMenu.Yellow) },
@@ -97,8 +98,8 @@ public static class SetupScreen
                     blank,
                     (Strings.T("first_setup.import_auto"), OverlayMenu.Yellow),
                     blank,
-                    (Strings.T("first_setup.import_step1"), OverlayMenu.White),
-                    (Strings.T("first_setup.import_step2"), OverlayMenu.White),
+                    (Strings.T(desktop("first_setup.import_step1", "first_setup.import_step1_pc")), OverlayMenu.White),
+                    (Strings.T(desktop("first_setup.import_step2", "first_setup.import_step2_pc")), OverlayMenu.White),
                     (Strings.T("first_setup.import_step3"), OverlayMenu.White),
                     blank,
                     (Strings.T("first_setup.import_after"), OverlayMenu.Cyan),
@@ -106,8 +107,8 @@ public static class SetupScreen
             // Welcome: where Green's files come from.
             menu.Open(new OverlayPage(() => Strings.T("first_setup.welcome_title"), () =>
                 [
-                    new OverlayRow(Strings.T("first_setup.choose_import"), Enter: () => menu.Push(steps)),
-                    new OverlayRow(Strings.T("first_setup.choose_pc"), Enter: () => menu.Push(fromPc)),
+                    new OverlayRow(Strings.T(desktop("first_setup.choose_import", "first_setup.choose_import_pc")), Enter: () => menu.Push(steps)),
+                    .. setup is null ? [] : new[] { new OverlayRow(Strings.T("first_setup.choose_pc"), Enter: () => menu.Push(fromPc)) },
                     .. anyway(),
                 ],
                 Centred: true, Legend: false, Body: () =>
@@ -116,6 +117,8 @@ public static class SetupScreen
                     (Strings.T("first_setup.welcome"), OverlayMenu.White),
                     blank,
                     (Strings.T("first_setup.welcome_ask"), OverlayMenu.Yellow),
+                    // A PC: an extracted Green is used where it is, Waddamburo dropped into its USRDIR.
+                    .. PlatformInfo.IsMobile ? [] : new[] { blank, (Strings.T("first_setup.welcome_extracted_pc"), OverlayMenu.Cyan) },
                 ]), home: true);
             if (Environment.GetEnvironmentVariable("WADDAMBURO_SETUP_PAGE") is { } page) // --setup-preview of the other pages
                 foreach (var next in page switch { "steps" => [steps], "importing" => [steps, importing], "pc" => new[] { fromPc }, _ => [] })
@@ -141,6 +144,9 @@ public static class SetupScreen
         });
         return startAnyway || status().Complete || import?.Ready == true;
     }
+
+    // The PC's wording of a phone's line (its own picker, several files, no "this phone").
+    private static string desktop(string phone, string pc) => PlatformInfo.IsMobile ? phone : pc;
 }
 
 /// <summary>A file the player picked: its name and size as the system reports them (for the report), and how to open it.</summary>

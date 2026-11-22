@@ -191,11 +191,67 @@ internal sealed record GameDataLayout(
     /// </summary>
     public static string DefaultRoot()
     {
-        var executable = Environment.GetEnvironmentVariable("APPIMAGE") ?? Environment.ProcessPath;
-        var directory = Path.GetDirectoryName(executable);
+        if (Chosen is { } chosen)
+            return chosen;
+        var directory = ExecutableFolder;
+        if (directory is not null && Directory.Exists(Path.Combine(directory, "data", "lumendata", "packed")) && IsGreen(directory))
+            return directory;
+        // A dump imported by the first start's setup (or one dropped next to a Katsu-Don USRDIR).
+        if (HasGreen(ImportRoot))
+            return ImportRoot;
         return directory is not null && Directory.Exists(Path.Combine(directory, "data", "lumendata", "packed"))
             ? directory
             : Directory.GetCurrentDirectory();
+    }
+
+    /// <summary>The Green the first start's setup filled (started even when not whole: START ANYWAY).</summary>
+    public static string? Chosen { get; set; }
+
+    /// <summary>The folder Waddamburo runs from (the AppImage's on Linux).</summary>
+    public static string? ExecutableFolder =>
+        Path.GetDirectoryName(Environment.GetEnvironmentVariable("APPIMAGE") ?? Environment.ProcessPath);
+
+    /// <summary>Where a PC's first start imports a downloaded dump: Green beside Waddamburo (else this user's data
+    /// folder, when Waddamburo's own can't be written: Program Files).</summary>
+    public static string ImportRoot { get; } = importRoot();
+
+    private static string importRoot()
+    {
+        if (ExecutableFolder is { } folder)
+            try
+            {
+                var green = Path.Combine(folder, "Green");
+                if (Directory.Exists(green))
+                    return green;
+                // Not made here (every start asks): only whether Waddamburo's folder takes a file.
+                var probe = Path.Combine(folder, ".waddamburo-write-test");
+                File.WriteAllText(probe, "");
+                File.Delete(probe);
+                return green;
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+            }
+        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Waddamburo", "Green");
+    }
+
+    /// <summary>Whether <paramref name="root"/> holds a Green the game can start on: Green's (not another release's,
+    /// <see cref="requireGreen"/>), with nothing but songs missing.</summary>
+    public static bool HasGreen(string root) =>
+        Directory.Exists(Path.Combine(root, "data", "lumendata", "packed")) && IsGreen(root) && GreenData.MissingRequired(root) is [];
+
+    /// <summary>Whether the release in <paramref name="root"/> is Green (its PARAM.SFO, when it has one, says S111).</summary>
+    public static bool IsGreen(string root)
+    {
+        try
+        {
+            requireGreen(Path.GetFullPath(root));
+            return true;
+        }
+        catch (InvalidDataException)
+        {
+            return false;
+        }
     }
 
     private static string? findTitleFont(string root)
