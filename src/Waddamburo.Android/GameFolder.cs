@@ -86,12 +86,12 @@ internal sealed class GameFolder(Activity activity)
         "application/zip", "application/x-zip-compressed", "application/x-7z-compressed",
         "application/rar", "application/vnd.rar", "application/x-rar-compressed",
     ];
-    private Action<IReadOnlyList<Func<System.IO.Stream>>>? _picked;
+    private Action<IReadOnlyList<ImportSource>>? _picked;
 
     /// <summary>Android's file picker for one archive (no storage permission: the player grants the file they pick).</summary>
     // ponytail: by MIME type, so a provider that calls a .7z or .rar "application/octet-stream" greys it out; add
     // octet-stream back if players report it.
-    private void Pick(Action<IReadOnlyList<Func<System.IO.Stream>>> picked)
+    private void Pick(Action<IReadOnlyList<ImportSource>> picked)
     {
         _picked = picked;
         var intent = new Intent(Intent.ActionOpenDocument).AddCategory(Intent.CategoryOpenable).SetType("*/*")
@@ -111,12 +111,24 @@ internal sealed class GameFolder(Activity activity)
         else if (result == Result.Ok && data?.Data is { } single)
             uris.Add(single);
         // A file descriptor, not the content stream: seekable, which zip and 7z need.
-        picked([.. uris.Select(uri => (Func<System.IO.Stream>)(() =>
+        picked([.. uris.Select(uri =>
         {
-            using var descriptor = activity.ContentResolver!.OpenFileDescriptor(uri, "r")
-                ?? throw new IOException($"Cannot open {uri}");
-            return new FileStream(new Microsoft.Win32.SafeHandles.SafeFileHandle(descriptor.DetachFd(), ownsHandle: true), FileAccess.Read);
-        }))]);
+            // The name and size the provider reports (the import's report names them).
+            var (name, size) = (uri.LastPathSegment ?? uri.ToString(), (long?)null);
+            using (var cursor = activity.ContentResolver!.Query(uri, [global::Android.Provider.IOpenableColumns.DisplayName,
+                       global::Android.Provider.IOpenableColumns.Size], null, null, null))
+                if (cursor?.MoveToFirst() == true)
+                {
+                    name = cursor.GetString(0) ?? name;
+                    size = cursor.IsNull(1) ? null : cursor.GetLong(1);
+                }
+            return new ImportSource(name, size, () =>
+            {
+                using var descriptor = activity.ContentResolver!.OpenFileDescriptor(uri, "r")
+                    ?? throw new IOException($"Cannot open {uri}");
+                return new FileStream(new Microsoft.Win32.SafeHandles.SafeFileHandle(descriptor.DetachFd(), ownsHandle: true), FileAccess.Read);
+            });
+        })]);
     }
 
     /// <summary>How other devices list this one.</summary>

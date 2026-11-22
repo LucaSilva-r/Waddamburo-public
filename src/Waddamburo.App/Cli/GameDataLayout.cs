@@ -23,6 +23,10 @@ internal sealed record GameDataLayout(
     /// <summary>The stable build's home (the cache's default place, shared with a nightly).</summary>
     public string CacheHome { get; init; } = Home;
 
+    /// <summary>Where config.cfg, the crash logs and screenshots go: <see cref="Boot.UserHome"/> (a phone's folder the
+    /// player can open), else <see cref="Home"/>.</summary>
+    public string Shared { get; init; } = Home;
+
     public static GameDataLayout Resolve(string root, string? fontOverride = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(root);
@@ -53,7 +57,16 @@ internal sealed record GameDataLayout(
         if (!File.Exists(font))
             throw new FileNotFoundException($"The title font does not exist: {font}", font);
         string[] fallbacks = font == bundled.Title ? [bundled.Hangul, bundled.Fallback] : [bundled.Title, bundled.Hangul, bundled.Fallback];
-        return new GameDataLayout(fullRoot, home, lumen, don, tja, sound, font, fallbacks, bundled.Service) { CacheHome = stableHome };
+        // A phone's settings move once from the private home to the player's folder (logs start there afresh).
+        var shared = Boot.UserHome ?? home;
+        if (shared != home)
+        {
+            Directory.CreateDirectory(shared);
+            var settings = Path.Combine(home, Waddamburo.Game.Flow.ArcadeSettings.FileName);
+            if (File.Exists(settings) && !File.Exists(Path.Combine(shared, Waddamburo.Game.Flow.ArcadeSettings.FileName)))
+                File.Move(settings, Path.Combine(shared, Waddamburo.Game.Flow.ArcadeSettings.FileName));
+        }
+        return new GameDataLayout(fullRoot, home, lumen, don, tja, sound, font, fallbacks, bundled.Service) { CacheHome = stableHome, Shared = shared };
     }
 
     // Not copied into a nightly's home: what it makes for itself, and the shared cache.

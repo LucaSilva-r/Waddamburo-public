@@ -45,11 +45,26 @@ public sealed class WaddamburoActivity : SDLActivity
             if (pair.Split('=', 2) is [var key, var value] && key.StartsWith("WADDAMBURO_", StringComparison.Ordinal))
                 System.Environment.SetEnvironmentVariable(key, value);
         Waddamburo.App.Boot.AppHome = Path.Combine(FilesDir!.AbsolutePath, "waddamburo");
+        Waddamburo.App.Boot.DeviceName = GameFolder.DeviceName; // the setup's pairing and import report too
+        Waddamburo.App.Boot.OpenGameFiles = () => RunOnUiThread(() =>
+        {
+            try
+            {
+                StartActivity(new Intent(Intent.ActionView).SetDataAndType(GameFilesProvider.RootUri, "vnd.android.document/root"));
+            }
+            catch (ActivityNotFoundException exception)
+            {
+                Console.Error.WriteLine($"No file screen for the game's files: {exception.Message}");
+            }
+        });
+        // Crash files from the first moment (the setup screen too) where the player can reach them; Boot keeps it.
+        Waddamburo.Platform.Sdl.ReleaseConsole.CrashFolder = Path.Combine(_gameFolder!.Root, "Waddamburo", "logs");
         // Null: the setup screen was closed without Green.
         if (_gameFolder!.Resolve() is not { } game)
             return;
         Waddamburo.App.Boot.TjaFolder = Path.Combine(_gameFolder.Root, GameFolder.CustomSongs);
-        Waddamburo.App.Boot.DeviceName = GameFolder.DeviceName;
+        // config.cfg (arcade mode and the rest), crash logs and screenshots: where a file manager or a PC reaches them.
+        Waddamburo.App.Boot.UserHome = Path.Combine(_gameFolder.Root, "Waddamburo");
         string[] args = [$"--game-data={game}"];
         // Read again on a restart: a release imported since joins.
         do

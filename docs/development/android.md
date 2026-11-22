@@ -79,7 +79,16 @@ On a phone the setup opens on a welcome asking where Green is. **I downloaded it
 `DeviceImport`/`GreenImport` take Green out of it on an import page (bar, entry being written or skipped): any folder
 layout (each entry's path is matched from its `data/` segment against the list; zip through System.IO.Compression,
 7z and rar through SharpCompress), arcade update packages inside it (`DATA.BIN`, `DATA00010.BIN` and on,
-`Formats/Packages/ArcadePackage`, streamed, applied after loose files by name). **It is on my PC** is the pairing page. Only listed
+`Formats/Packages/ArcadePackage`, streamed, applied after loose files by name). **It is on my PC** is the pairing page. Every import writes a report (`Waddamburo/logs/import-*.txt`: the picked
+file, format, entries read, how far it got, the error in full, what is missing); one that went wrong names it on
+screen.
+
+The player's own files sit in the app folder's `Waddamburo/`: `config.cfg` (moved there once from the private home;
+arcade mode and the rest), `logs/` (crash files and `latest.log` from the first moment) and `screenshots/`. Accounts,
+scores and caches stay private. Since Android 11 file managers can't open `Android/data`, so `GameFilesProvider` (a
+DocumentsProvider) shows the whole app folder as a "Waddamburo" location in the system's file screen and picker, read
+and write; MIUI hides that screen, so the pause menu outside songs has **Game Files** to open it (as does a failed
+import's page). Only listed
 files are written: the release's (`S111_00.md5`) and those its updates add (`S111_01`-`_13`, `+` lines in the list,
 optional). Each file is written as `.import` and moved in when whole; one already there at its size is skipped, so a
 retry resumes. PC test: `Waddamburo --import-green <Green folder> <sources...>`.

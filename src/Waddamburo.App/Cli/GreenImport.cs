@@ -22,6 +22,14 @@ public sealed class GreenImport(string root)
     public int Files => Volatile.Read(ref _files);
 
     private int _files;
+
+    /// <summary>What the last source turned out to be ("7Zip, solid", "zip", "arcade package"), for the import's report.</summary>
+    public string? Kind { get; private set; }
+
+    /// <summary>Entries read so far (files and folders, Green's or not).</summary>
+    public int Entries => Volatile.Read(ref _entries);
+
+    private int _entries;
     private readonly HashSet<string> _seen = new(StringComparer.Ordinal);
 
     /// <summary>The entry being read (inside the archive or package), and whether it is written (else skipped: a solid
@@ -51,14 +59,17 @@ public sealed class GreenImport(string root)
         Span<byte> head = stackalloc byte[4];
         var read = source.ReadAtLeast(head, 4, throwOnEndOfStream: false);
         source.Position = 0;
+        Kind = null;
         if (ArcadePackage.IsPackage(head[..read]))
         {
+            Kind = "arcade package";
             ArcadePackage.Extract(source, open, token);
             return;
         }
         var magic = new byte[4];
         if (head[..read] is [(byte)'P', (byte)'K', ..])
         {
+            Kind = "zip";
             // Zip through .NET's own reader: SharpCompress's (0.50.4) ends some large deflated entries a few KB early.
             // Loose files first, then update packages by name (DATA.BIN, the base, before DATA00010.BIN and on): the
             // order a cabinet applies them in, so the newest copy of a file wins.
@@ -69,6 +80,7 @@ public sealed class GreenImport(string root)
             return;
         }
         using var archive = ArchiveFactory.OpenArchive(source);
+        Kind = $"{archive.Type}{(archive.IsSolid ? ", solid" : "")}";
         if (!archive.IsSolid && archive.Type != SharpCompress.Common.ArchiveType.SevenZip)
         {
             foreach (var entry in archive.Entries)
@@ -85,6 +97,7 @@ public sealed class GreenImport(string root)
     private void take(string? key, bool folder, long size, Func<Stream> read, byte[] magic, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
+        Interlocked.Increment(ref _entries);
         if (folder || key is null)
             return;
         _current = Tuple.Create(key, Match(key) is not null);

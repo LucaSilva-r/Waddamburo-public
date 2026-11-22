@@ -18,6 +18,13 @@ public static class Boot
     /// data: the app's private storage on a phone. Null on desktop (USRDIR/waddamburo).</summary>
     public static string? AppHome { get; set; }
 
+    /// <summary>Where the files a player opens themselves go (config.cfg, crash logs, screenshots) when
+    /// <see cref="AppHome"/> is out of their reach: a phone's own folder beside Green. Null: AppHome's (or USRDIR/waddamburo).</summary>
+    public static string? UserHome { get; set; }
+
+    /// <summary>Opens the app's files in the system's file screen (a phone: its document provider); null where there is none.</summary>
+    public static Action? OpenGameFiles { get; set; }
+
     /// <summary>The custom TJA folder when the app keeps its own (the phone's Custom Songs); null: USRDIR/custom_songs.</summary>
     public static string? TjaFolder { get; set; }
 
@@ -111,7 +118,7 @@ public static class Boot
         {
             early = GameDataLayout.Resolve(a.GameDataRoot ?? GameDataLayout.DefaultRoot(), a.FontPath);
             earlyArcade = Waddamburo.Game.Flow.ArcadeSettings.LoadOrCreate(
-                Path.Combine(early.Home, Waddamburo.Game.Flow.ArcadeSettings.FileName));
+                Path.Combine(early.Shared, Waddamburo.Game.Flow.ArcadeSettings.FileName));
             Strings.Use(earlyArcade.Language);
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
@@ -123,13 +130,13 @@ public static class Boot
             return 0;
         }
         var layout = early ?? GameDataLayout.Resolve(a.GameDataRoot ?? GameDataLayout.DefaultRoot(), a.FontPath);
-        ReleaseConsole.CrashFolder = Path.Combine(layout.Home, "logs");
+        ReleaseConsole.CrashFolder = Path.Combine(layout.Shared, "logs");
         ReleaseConsole.LogToFile();
         Console.WriteLine($"Game data: {layout.Root}");
         Console.WriteLine($"Title font: {layout.FontPath}");
         Waddamburo.Platform.Sdl.Text.NativeVerticalTextRasterizer.FallbackFonts = layout.FallbackFonts;
         // Cabinet settings (free play, credits, songs per session) beside the game data.
-        var arcadePath = Path.Combine(layout.Home, Waddamburo.Game.Flow.ArcadeSettings.FileName);
+        var arcadePath = Path.Combine(layout.Shared, Waddamburo.Game.Flow.ArcadeSettings.FileName);
         var arcade = earlyArcade ?? Waddamburo.Game.Flow.ArcadeSettings.LoadOrCreate(arcadePath);
         // The cache defaults to this PC's user cache (a game on a USB stick must not decode onto it).
         layout.MoveGameCacheTo(layout.Cache(arcade.CacheFolder));
@@ -174,9 +181,9 @@ public static class Boot
         if (a.Login || a.Logout)
             return AccountCommands.Run(arcade, accounts, a.Login);
         if (a.Option("--online-test=") is { } onlineRoom)
-            return OnlineTest.Run(arcade, accounts, onlineRoom, Path.Combine(layout.Home, "logs"));
+            return OnlineTest.Run(arcade, accounts, onlineRoom, Path.Combine(layout.Shared, "logs"));
         if (a.Has("--online-test"))
-            return OnlineTest.Run(arcade, accounts, null, Path.Combine(layout.Home, "logs"));
+            return OnlineTest.Run(arcade, accounts, null, Path.Combine(layout.Shared, "logs"));
         Console.WriteLine(!arcade.Home
             ? arcade is { Server: not null, CabinetToken: not null }
                 ? $"Scores: cabinet mode, players log in with a code from {arcade.Server} (cabinet {Waddamburo.App.Online.CabinetPairing.CabinetId})."

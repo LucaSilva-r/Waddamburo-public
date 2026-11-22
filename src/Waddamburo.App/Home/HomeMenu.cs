@@ -516,6 +516,9 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             _choices = ["menu.resume", "menu.settings", "online.leave"];
         if (quit && !gameplay && !PlatformInfo.IsMobile)
             _choices = [.. _choices, "menu.quit_game"];
+        // A phone's files (config.cfg, logs, custom songs) in the system's file screen, which MIUI and others hide.
+        if (!gameplay && Boot.OpenGameFiles is not null)
+            _choices = [.. _choices, "menu.game_files"];
         // Only while there are rewards to show (Song Select).
         if (rewards && songSelect && !inRoom)
             _choices = [_choices[0], "menu.new_rewards", .. _choices[1..]];
@@ -649,6 +652,9 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
                 Selection = 1;
                 return HomeMenuAction.None;
             case "online.leave": return close(HomeMenuAction.LeaveRoom);
+            case "menu.game_files":
+                Boot.OpenGameFiles?.Invoke();
+                return HomeMenuAction.None;
             default: return close(HomeMenuAction.Resume);
         }
     }
