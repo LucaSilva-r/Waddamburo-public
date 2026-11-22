@@ -98,7 +98,7 @@ public interface IDonPresentationController
     }
 
     /// <summary>
-    /// Whether the installed data has a shop costume (kigurumi 3, body 4, head 5): TaikOnline serves the latest Green
+    /// Whether the installed data has a shop costume (kigurumi 3, body 4, head 5, puchi 7): TaikOnline serves the latest Green
     /// revision's goods, an older install may lack some.
     /// </summary>
     bool HasCostume(int type, int id) => true;

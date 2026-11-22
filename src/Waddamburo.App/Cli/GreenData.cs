@@ -32,6 +32,11 @@ public static class GreenData
         || path.StartsWith("data/sound/bgm/nsh/SONG_", StringComparison.Ordinal);
 
     /// <summary>The listed files missing from <paramref name="root"/>, songs' files aside: none, and the game is whole.</summary>
+    /// <summary>Whether <paramref name="root"/> (Green's folder, holding data) has AI battle: it came with an update,
+    /// so a release-only copy (the web archive's) has none. ponytail: one movie stands for the update's ghost files.</summary>
+    public static bool HasAiBattle(string root) =>
+        File.Exists(Path.Combine(root, "data", "lumendata", "packed", "ghost", "song_select", "packeddata.ddp"));
+
     public static IReadOnlyList<string> MissingRequired(string root) => [.. Missing(root).Where(static path => !IsSongFile(path))];
 
     /// <summary>The listed files missing from <paramref name="root"/> (Green's USRDIR).</summary>

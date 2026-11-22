@@ -250,6 +250,8 @@ internal sealed partial class GameShell : IDisposable
         (TaikoGuest.Profiles[Credit.PlayerSide] ?? (Arcade.Home ? Waddamburo.Game.Scores.ScoreProfile.LocalGuest : null)) is { } profile
             && Sync.Scores is { } scores ? scores.AiProgress(profile.Baid) : Waddamburo.Services.Scores.AiProgress.None;
 
+    private bool _aiBattleInstalled = true;
+
     /// <summary>AI battle's rank ladder (the installation's ghostinfo.xml).</summary>
     public Waddamburo.Game.Gameplay.AiBattleRanks AiRanks { get; } = Waddamburo.Game.Gameplay.AiBattleRanks.Green;
     // The game's own art and text in the movies' native fills.
@@ -721,6 +723,14 @@ internal sealed partial class GameShell : IDisposable
 
             (var diagnosticResult, _diagnosticWaiwai) = diagnosticResults(options.StartScene);
 
+            // A Green from before the update that added AI battle (the web archive's): the mode select leaves it out.
+            _aiBattleInstalled = Cli.GreenData.HasAiBattle(Path.GetDirectoryName(dataRoot)!);
+            if (!_aiBattleInstalled)
+            {
+                _boot.Begin("AI BATTLE");
+                _boot.Warn(Strings.T("boot.ai_battle_missing"));
+            }
+
             _boot.Begin("MOVIES");
             var flow = new GameFlowSession();
             Catalog = createSceneCatalog(options.StartScene);
@@ -883,6 +893,7 @@ internal sealed partial class GameShell : IDisposable
             Dan = _danCourses,
             PlayerLook = side => TaikoGuest.Profiles[side]?.Look,
             OnlineAvailable = () => Room.Available,
+            AiBattleInstalled = _aiBattleInstalled,
             InOnlineRoom = () => Room.Session is not null,
             Received = ReceivedSongs.Find,
             // Home boards show the account's public name (or Guest), drawn by the entry overlay.

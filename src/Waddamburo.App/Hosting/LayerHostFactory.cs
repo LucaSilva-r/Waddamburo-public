@@ -120,6 +120,9 @@ internal sealed class LayerHostFactory(
     /// <summary>Whether Song Select offers the Online folder.</summary>
     public Func<bool>? OnlineAvailable { get; init; }
 
+    /// <summary>Whether Green's AI battle movies are installed (the entry's mode select offers it only then).</summary>
+    public bool AiBattleInstalled { get; init; } = true;
+
     /// <summary>The player is in an online room: songs are played together, so no dan dojo.</summary>
     public Func<bool>? InOnlineRoom { get; init; }
 
@@ -177,6 +180,7 @@ internal sealed class LayerHostFactory(
                     : name ? CostumeIconTextures.NameKey(type, id) : CostumeIconTextures.Key(type, id),
                 Card = credit.EntryCard,
                 ShopAvailable = () => credit.ShopGoods is not null,
+                AiBattleAvailable = AiBattleInstalled,
                 Don = don,
                 ReturnToAttract = () => ReturnToAttract?.Invoke(),
                 PlayerLook = side => PlayerLook?.Invoke(side),
@@ -542,11 +546,11 @@ internal sealed class LayerHostFactory(
     });
 
     // Whether this install can show a good TaikOnline serves (the latest Green revision's): a stock song in the library, a
-    // costume with its model. Tones and puchi always pass.
+    // costume or puchi with its model. Tones always pass.
     private bool installed(int type, int id, string? musicId, Func<string, bool> hasSong) => type switch
     {
         1 => musicId is { } music && hasSong(music),
-        3 or 4 or 5 => don?.HasCostume(type, id) ?? true,
+        3 or 4 or 5 or 7 => don?.HasCostume(type, id) ?? true,
         _ => true,
     };
 

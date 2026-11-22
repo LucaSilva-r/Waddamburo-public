@@ -85,8 +85,8 @@ internal sealed class BootChecks : IDisposable
     }
 
     /// <summary>
-    /// The last part is NG but not fatal (the game goes on without it): <paramref name="why"/> shows after it, briefly;
-    /// <paramref name="details"/> go to the log.
+    /// The last part is NG but not fatal (the game goes on without it): <paramref name="why"/> shows after it, held a
+    /// second so it can be read; <paramref name="details"/> go to the log.
     /// </summary>
     public void Warn(string why, IEnumerable<string>? details = null)
     {
@@ -99,6 +99,10 @@ internal sealed class BootChecks : IDisposable
         foreach (var detail in details ?? [])
             Console.Error.WriteLine($"Warning BOOT:   {detail}");
         present();
+        if (!_interactive)
+            return;
+        for (var until = Environment.TickCount64 + 1000; Environment.TickCount64 < until; Thread.Sleep(15))
+            present();
     }
 
     /// <summary>
@@ -188,6 +192,7 @@ internal sealed class BootChecks : IDisposable
         "GRAPHICS" => "service.boot.graphics",
         "GAMEPLAY DATA" => "service.boot.gameplay_data",
         "MOVIES" => "service.boot.movies",
+        "AI BATTLE" => "service.boot.ai_battle",
         "SYSTEM SETUP" => "service.boot.system_setup",
         "STARTUP" => "service.boot.startup",
         "GAME" => "service.boot.game",

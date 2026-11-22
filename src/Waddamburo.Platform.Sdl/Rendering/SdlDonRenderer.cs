@@ -455,6 +455,13 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(playerIndex, _players.Length);
         var meshes = new List<GpuMesh>();
         string face;
+        // A costume this install lacks (a later update's, worn on a profile synced from a newer copy): the default.
+        if (whole is { } wanted && !assetExists($"full/cos/cos_{wanted:000}{variant:000}.nud"))
+            (whole, head, body) = (null, 0, 0);
+        if (!HasCostume(4, body))
+            body = 0;
+        if (!HasCostume(5, head))
+            head = 0;
         if (whole is { } costume)
         {
             meshes.AddRange(model($"full/cos/cos_{costume:000}{variant:000}.nud"));
@@ -482,7 +489,7 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentOutOfRangeException.ThrowIfNegative(playerIndex);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(playerIndex, _players.Length);
-        if (puchi <= 0)
+        if (puchi <= 0 || !HasCostume(7, puchi)) // none, or one this install lacks (a later update's)
         {
             _accessories[playerIndex] = null;
             return;
@@ -510,11 +517,12 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         return new Accessory(frames, skeleton, inverseBind, loop);
     }
 
-    /// <summary>Whether the data has a shop costume's model: kigurumi 3, body 4, head 5.</summary>
+    /// <summary>Whether the data has a shop costume's model: kigurumi 3, body 4, head 5, puchi 7.</summary>
     public bool HasCostume(int type, int id) => assetExists(type switch
     {
         3 => $"full/cos/cos_{id:000}000.nud",
         4 => $"parts/body/body_{id:000}000.nud",
+        7 => $"parts/acc/acc_{id:000}000.nud",
         _ => $"parts/head/head_{id:000}000.nud",
     });
 

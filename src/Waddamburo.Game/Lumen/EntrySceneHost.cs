@@ -38,6 +38,10 @@ public sealed class EntrySceneHost(IndicatorParts parts)
     /// <summary>Whether the mode select offers the reward shop (a card's shop has loaded).</summary>
     public Func<bool>? ShopAvailable { get; init; }
 
+    /// <summary>Whether the mode select offers AI battle: its movies are installed (a Green from before the update
+    /// that added it has none).</summary>
+    public bool AiBattleAvailable { get; init; } = true;
+
     /// <summary>Whether a player may join, on either drum (the right one is P2); both may.</summary>
     public Func<int, bool> CanJoin { get; init; } = static _ => true;
 
@@ -568,7 +572,7 @@ public sealed class EntrySceneHost(IndicatorParts parts)
         // The mode select's reward shop: a card's goods are in (traced 1 for a carded player). Waiwai is on:
         // the game enables it while online (traced 0 online, 1 offline); this engine has no network gate.
         lumen.RegisterMethod("IsAvailableShop", _ => LumenHostValue.FromBoolean(ShopAvailable?.Invoke() == true));
-        lumen.RegisterMethod("IsAvailableBattle", _ => LumenHostValue.FromBoolean(true));
+        lumen.RegisterMethod("IsAvailableBattle", _ => LumenHostValue.FromBoolean(AiBattleAvailable));
         lumen.RegisterMethod("IsWaiwaiDisable", _ => LumenHostValue.FromBoolean(false));
         lumen.RegisterMethod("NotifyMaccollabo", _ => LumenHostValue.FromBoolean(false));
         lumen.RegisterMethod("NotifyRecognizecollabo", _ => LumenHostValue.FromBoolean(false));

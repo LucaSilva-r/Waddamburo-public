@@ -69,8 +69,8 @@ public static class SetupScreen
             var importing = new OverlayPage(() => Strings.T("first_setup.import_title"), () =>
                 import.Busy ? [] :
                 [
+                    .. import.Ready ? [new OverlayRow(Strings.T("first_setup.import_start"), Enter: application.RequestQuit)] : anyway(),
                     new OverlayRow(Strings.T(import.Message is null ? "first_setup.import_pick" : "first_setup.import_again"), Enter: import.Pick),
-                    .. anyway(),
                     new OverlayRow(Strings.T("first_setup.import_back"), Enter: menu.Pop),
                 ],
                 Centred: true, Legend: false, Body: () =>
@@ -81,6 +81,7 @@ public static class SetupScreen
                     .. import.Message is { } imported ? [(imported.Text, imported.Failed ? OverlayMenu.Red : OverlayMenu.Yellow)]
                         : new[] { (Strings.T("first_setup.import_waiting"), OverlayMenu.White) },
                     .. import.Detail is { } detail ? [(detail, OverlayMenu.White)] : Array.Empty<(string, RenderColor)>(),
+                    .. import.Note is { } note ? [blank, (note, OverlayMenu.Cyan)] : Array.Empty<(string, RenderColor)>(),
                 ], Footer: () => import.Busy ? [(OverlayMenu.upper(Strings.T("first_setup.import_keep_open")), OverlayMenu.Cyan)] : []);
             // What the import does and what to pick, before Android's file picker opens.
             var steps = new OverlayPage(() => Strings.T("first_setup.import_title"), () =>
@@ -131,7 +132,8 @@ public static class SetupScreen
         {
             // Presses, not held keys: a held OK would pick on the next page too. The back button does nothing here.
             menu.Tick(new SdlKeyboardSnapshot(keys.Presses.Select(static press => press.Key)), keys, false);
-            if ((status().Complete || import?.Ready == true) && import?.Busy != true)
+            // Complete from a PC: on by itself. An import's result stays until START (its notes are read first).
+            if (status().Complete && import is not { Busy: true } && import?.Message is null)
                 application.RequestQuit();
         });
         return startAnyway || status().Complete || import?.Ready == true;
@@ -163,6 +165,9 @@ public sealed class DeviceImport(string root, Action<Action<IReadOnlyList<Func<S
 
     private static string tail(string text, int length) => text.Length <= length ? text : "…" + text[^(length - 1)..];
 
+    /// <summary>What the player should know about the imported Green (null: nothing).</summary>
+    public string? Note { get; private set; }
+
     /// <summary>How the import goes, or how it went (null before one).</summary>
     public (string Text, bool Failed)? Message => _current is { } current && _busy
         ? (Strings.T("first_setup.importing", Volatile.Read(ref _index) + 1, _count, current.Progress, current.Files), false)
@@ -178,7 +183,7 @@ public sealed class DeviceImport(string root, Action<Action<IReadOnlyList<Func<S
     {
         if (sources.Count == 0 || _busy)
             return;
-        (_busy, _count, _index, _done) = (true, sources.Count, 0, null);
+        (_busy, _count, _index, _done, Note) = (true, sources.Count, 0, null, null);
         _current = new Cli.GreenImport(root);
         _ = Task.Run(() =>
         {
@@ -200,6 +205,7 @@ public sealed class DeviceImport(string root, Action<Action<IReadOnlyList<Func<S
                     : required == 0 ? Strings.T("first_setup.imported_shrunk", _current.Files, missing.Count)
                     : Strings.T("first_setup.imported_missing", required), false);
                 Ready = required == 0;
+                Note = Ready && !Cli.GreenData.HasAiBattle(root) ? Strings.T("first_setup.import_no_ai_battle") : null;
             }
             catch (Exception exception)
             {
