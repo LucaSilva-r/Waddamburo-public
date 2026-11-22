@@ -193,19 +193,34 @@ public sealed class DeviceImport(string root, Action<Action<IReadOnlyList<Func<S
                 if (Directory.Exists(root))
                     foreach (var leftover in Directory.EnumerateFiles(root, "*.import", SearchOption.AllDirectories))
                         File.Delete(leftover);
+                string? broken = null;
                 foreach (var source in sources)
                 {
-                    using (var stream = source())
-                        _current.Import(stream);
+                    try
+                    {
+                        using (var stream = source())
+                            _current.Import(stream);
+                    }
+                    // A damaged download (a solid archive can't be read past the damage): what came before it is kept,
+                    // and it may well be enough (a Green whose missing files are only songs plays).
+                    // (SharpCompress's own exceptions, its LZMA "Data Error" among them, are internal: matched by namespace.)
+                    catch (Exception exception) when (exception is InvalidDataException or EndOfStreamException
+                        || exception.GetType().Namespace?.StartsWith("SharpCompress", StringComparison.Ordinal) == true)
+                    {
+                        Console.Error.WriteLine($"Import broke off at {_current.Current?.Entry}: {exception}");
+                        broken = _current.Current?.Entry is { } entry ? tail(entry.Replace('\\', '/'), 48) : exception.Message;
+                    }
                     Interlocked.Increment(ref _index);
                 }
                 var missing = Cli.GreenData.Missing(root);
                 var required = missing.Count(static path => !Cli.GreenData.IsSongFile(path));
-                (_done, _failed) = (missing.Count == 0 ? Strings.T("first_setup.imported", _current.Files)
+                (_done, _failed) = (broken is not null && required > 0 ? Strings.T("first_setup.import_damaged", broken, required)
+                    : missing.Count == 0 ? Strings.T("first_setup.imported", _current.Files)
                     : required == 0 ? Strings.T("first_setup.imported_shrunk", _current.Files, missing.Count)
-                    : Strings.T("first_setup.imported_missing", required), false);
+                    : Strings.T("first_setup.imported_missing", required), broken is not null && required > 0);
                 Ready = required == 0;
-                Note = Ready && !Cli.GreenData.HasAiBattle(root) ? Strings.T("first_setup.import_no_ai_battle") : null;
+                Note = broken is not null && Ready ? Strings.T("first_setup.import_damaged_songs", broken)
+                    : Ready && !Cli.GreenData.HasAiBattle(root) ? Strings.T("first_setup.import_no_ai_battle") : null;
             }
             catch (Exception exception)
             {

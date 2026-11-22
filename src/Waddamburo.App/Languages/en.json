@@ -512,6 +512,8 @@
   "first_setup.import_opening": "Opening the archive...",
   "first_setup.import_start": "START",
   "first_setup.import_no_ai_battle": "This Green is its first release (like the web archive's): AI battle came with a later update and is left out. Everything else works.",
+  "first_setup.import_damaged": "This download is damaged (it breaks at {0}): {1:N0} files could not be read. Download it again.",
+  "first_setup.import_damaged_songs": "The download is damaged (it breaks at {0}): the songs after that point are left out. Download it again to get them.",
   "first_setup.import_failed": "Import failed: {0}",
   "service.import.restart": "RESTART GAME",
   "service.bookkeeping": "BOOKKEEPING",

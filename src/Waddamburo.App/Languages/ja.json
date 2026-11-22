@@ -512,6 +512,8 @@
   "first_setup.import_opening": "アーカイブを開いています...",
   "first_setup.import_start": "スタート",
   "first_setup.import_no_ai_battle": "このグリーンは初期版です（Web Archive 版など）。AIバトルは後のアップデートで追加されたため、遊べません。それ以外は問題ありません。",
+  "first_setup.import_damaged": "このダウンロードは壊れています（{0} で途切れています）。{1:N0} ファイルを読めませんでした。もう一度ダウンロードしてください。",
+  "first_setup.import_damaged_songs": "ダウンロードが壊れています（{0} で途切れています）。それ以降の曲は遊べません。もう一度ダウンロードすると入ります。",
   "first_setup.import_failed": "取り込みに失敗しました：{0}",
   "service.import.restart": "ゲームを再起動",
   "service.bookkeeping": "ブックキーピング",
