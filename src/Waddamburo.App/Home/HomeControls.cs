@@ -32,6 +32,7 @@ internal sealed class HomeControls : IDisposable
     private RenderTextureId[] _resumeTextures = [];
     private readonly string _assetRoot;
     private bool _focused = true;
+    private bool _focusBlip;
     private float _lastInterpolation;
     private float _pauseInterpolation;
 
@@ -349,13 +350,10 @@ internal sealed class HomeControls : IDisposable
         _audio.Scope(AttractScenes.Contains(active) || active == FlowScenes.Gameplay && _gameplay.Demo ? MenuVolumeScope.Attract
             : active == FlowScenes.Entry || active == FlowScenes.SongSelect || active == FlowScenes.DaniSelect
                 ? MenuVolumeScope.Menus : MenuVolumeScope.Song);
-        // Lost and back within one poll (the Switch's HOME menu suspends the game): unfocused for this tick, so the
-        // song pauses; the next tick sees the focus back.
-        if (_shell.Application.TakeFocusLoss() && _focused && _shell.Application.Focused)
-        {
-            _focused = false;
-            return;
-        }
+        // Lost and back within one poll (the Switch's HOME menu suspends the game): the pause check still sees it
+        // (FollowFocus runs twice a tick, so this is a flag the check consumes, not _focused).
+        if (_shell.Application.TakeFocusLoss() && _shell.Application.Focused)
+            _focusBlip = true;
         if (_shell.Application.Focused == _focused)
             return;
         _focused = _shell.Application.Focused;
@@ -417,7 +415,9 @@ internal sealed class HomeControls : IDisposable
         // Online, the song goes on whatever this player does: leaving the window doesn't stop it.
         var online = _shell.Match.InSong && active == FlowScenes.Gameplay;
         var focusPause = !(BuildInfo.Dev && _shell.Arcade.DevNoFocusPause); // a developer option
-        if (_menu.IsOpen || !(escape || home && !online && !_focused && focusPause && active == FlowScenes.Gameplay && !_gameplay.ChartOver && !_gameplay.InCourse))
+        var unfocused = !_focused || _focusBlip;
+        _focusBlip = false;
+        if (_menu.IsOpen || !(escape || home && !online && unfocused && focusPause && active == FlowScenes.Gameplay && !_gameplay.ChartOver && !_gameplay.InCourse))
             return false;
         // The attract's demo play: like an online song, it goes on muted under the attract's menu.
         if (home && active == FlowScenes.Gameplay && _gameplay.Demo)
