@@ -988,6 +988,19 @@ public sealed unsafe partial class SdlApplication : IDisposable
     /// <summary>Whether the window has the keyboard focus (true until SDL reports otherwise).</summary>
     public bool Focused { get; private set; } = true;
 
+    private bool _focusLost;
+
+    /// <summary>
+    /// Whether focus was lost since the last call, even if it is back: a Switch suspended by its HOME menu delivers
+    /// the loss and the return in one poll, and the song never paused.
+    /// </summary>
+    public bool TakeFocusLoss()
+    {
+        var lost = _focusLost;
+        _focusLost = false;
+        return lost;
+    }
+
     public SdlRunResult Run(
         Func<double, RenderFrame> createFrame,
         Action<SdlKeyboardSnapshot> simulationTick,
@@ -1086,6 +1099,7 @@ public sealed unsafe partial class SdlApplication : IDisposable
                     _pressedKeys.Clear();
                     windowFocused = false;
                     Focused = false;
+                    _focusLost = true;
                     Recorder?.Event("window lost focus");
                     foreach (var pad in _pads) // a rumble playing stops at once
                         if (pad.Pad != IntPtr.Zero)

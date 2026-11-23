@@ -349,6 +349,13 @@ internal sealed class HomeControls : IDisposable
         _audio.Scope(AttractScenes.Contains(active) || active == FlowScenes.Gameplay && _gameplay.Demo ? MenuVolumeScope.Attract
             : active == FlowScenes.Entry || active == FlowScenes.SongSelect || active == FlowScenes.DaniSelect
                 ? MenuVolumeScope.Menus : MenuVolumeScope.Song);
+        // Lost and back within one poll (the Switch's HOME menu suspends the game): unfocused for this tick, so the
+        // song pauses; the next tick sees the focus back.
+        if (_shell.Application.TakeFocusLoss() && _focused && _shell.Application.Focused)
+        {
+            _focused = false;
+            return;
+        }
         if (_shell.Application.Focused == _focused)
             return;
         _focused = _shell.Application.Focused;
