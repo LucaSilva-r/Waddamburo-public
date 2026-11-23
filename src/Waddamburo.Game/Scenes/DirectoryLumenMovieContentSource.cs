@@ -41,6 +41,7 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
     private LumenMovieContent decoded(string archiveId, LumenMovieContent content)
     {
         Decoded?.Invoke(archiveId, content);
+        content.HashTextures();
         return content;
     }
 

@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Numerics;
 using System.Runtime.InteropServices;
 using Waddamburo.Formats;
 using Waddamburo.Formats.Ddp;
@@ -91,6 +92,7 @@ public sealed class LumenMovieContent
     {
         ArgumentNullException.ThrowIfNull(replace);
         Textures = [.. Textures.Select(replace)];
+        _hashes = null;
     }
 
     /// <summary>A patched definition and texture set (see Patching.LumenMovieEditor), before upload.</summary>
@@ -99,6 +101,7 @@ public sealed class LumenMovieContent
         ArgumentNullException.ThrowIfNull(definition);
         Definition = definition;
         Textures = textures;
+        _hashes = null;
     }
 
     /// <summary>Releases decoded pixels after a renderer has uploaded every texture.</summary>
@@ -109,6 +112,42 @@ public sealed class LumenMovieContent
     public void DecodeAll() =>
         Textures = [.. Textures.Select(static texture => texture.Blocks.IsEmpty ? texture
             : texture with { Rgba8 = ImmutableCollectionsMarshal.AsImmutableArray(texture.Pixels()), Blocks = default })];
+
+    private UInt128[]? _hashes;
+
+    /// <summary>
+    /// Hashes every texture as it will be uploaded (after patches and upscales; a later change forgets them): the
+    /// renderer shares one GPU texture between movies with the same picture (the game's packages repeat ~44% of
+    /// theirs). Kept through <see cref="ReleaseDecodedTexturePixels"/>.
+    /// </summary>
+    public void HashTextures() => _hashes ??= [.. Textures.Select(Hash)];
+
+    /// <summary>A texture's hash (<see cref="HashTextures"/>, hashed now if not yet; never zero).</summary>
+    public UInt128 TextureHash(int index)
+    {
+        HashTextures();
+        return _hashes![index];
+    }
+
+    // ponytail: own 2x64-bit multiply-rotate hash (no hashing package referenced); not for hostile input, fine for
+    // telling ~11k game textures apart.
+    private static UInt128 Hash(LumenTextureContent texture)
+    {
+        var kind = !texture.Bc7.IsEmpty ? 1UL : !texture.Blocks.IsEmpty ? 2UL + (ulong)texture.BlockFormat : 8UL;
+        var data = kind == 1 ? texture.Bc7.Span : kind == 8 ? texture.Rgba8.AsSpan() : texture.Blocks.Span;
+        const ulong p1 = 0x9E3779B97F4A7C15, p2 = 0xC2B2AE3D27D4EB4F;
+        ulong a = p1 ^ ((ulong)texture.Width << 32 | (uint)texture.Height), b = p2 ^ (kind << 56 | (ulong)data.Length);
+        var words = MemoryMarshal.Cast<byte, ulong>(data);
+        foreach (var word in words)
+        {
+            a = BitOperations.RotateLeft(a ^ word, 31) * p1;
+            b = BitOperations.RotateLeft(b + word, 27) * p2;
+        }
+        foreach (var tail in data[(words.Length * 8)..])
+            (a, b) = ((a ^ tail) * p1, (b + tail) * p2);
+        a ^= BitOperations.RotateLeft(b, 17); b ^= a >> 29; a *= p2; b *= p1; a ^= a >> 32; b ^= b >> 32;
+        return new UInt128(a, b) | 1;
+    }
 }
 
 /// <summary>The GPU block formats a game texture can stay in (NTP3's own).</summary>

@@ -22,8 +22,9 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
     // Each copy remembers the scene that kept it: keeping that scene again drops the copies it no longer
     // shows (gameplay picks a random background/dancer mix per song; never evicting them leaked ~150
     // textures a song until bgfx ran out of handles).
+    // Every list here (kept copies, prefetches, the scene's, the held frame's) holds its own references to its
+    // textures (SceneTextures shares them by picture) and gives them back when it goes.
     private readonly Dictionary<(string ArchiveId, string MovieId), Kept> _kept = [];
-    private readonly HashSet<RenderTextureId> _keptTextures = [];
     private readonly record struct Kept(LumenMovieContent Content, RenderTextureId[] Textures, SceneId Scene, long Used, bool Pinned = false);
     // Every texture alive, on screen or kept: past it the copies longest unused go. A Switch's GPU buffers are the limit
     // there (one a texture; the system refused the 4,872nd, and that texture came out missing), bgfx's handles elsewhere
@@ -71,7 +72,7 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
         for (; !movies.PrefetchComplete; Thread.Sleep(5))
             draw();
         var loaded = movies.DecodedPrefetches.ToArray();
-        var fits = _keptTextures.Count + loaded.Sum(static movie => movie.Content.Textures.Length) <= MaximumPreloadedTextures;
+        var fits = application.TextureCount + loaded.Sum(static movie => SceneTextures.Missing(movie.Content)) <= MaximumPreloadedTextures;
         while (fits && !PrefetchReady)
         {
             UploadAhead(still: true);
@@ -81,7 +82,6 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
         {
             _uploadedAhead.Remove(content, out var textures);
             _kept[key] = new(content, textures!, scene.Id, Used: 0, Pinned: true);
-            _keptTextures.UnionWith(textures!);
         }
         movies.Prefetch([]);
         releaseUploadedAhead();
@@ -121,7 +121,7 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
             if (_uploadedAhead.ContainsKey(content))
                 continue;
             if (!_partial.ContainsKey(content))
-                makeRoom(content.Textures.Length);
+                makeRoom(SceneTextures.Missing(content));
             var (uploaded, next) = _partial.GetValueOrDefault(content, (new RenderTextureId[content.Textures.Length], 0));
             for (; next < uploaded.Length; next++)
             {
@@ -130,7 +130,7 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
                     _partial[content] = (uploaded, next);
                     return;
                 }
-                uploaded[next] = SceneTextures.UploadOne(application, content.Textures[next]);
+                uploaded[next] = SceneTextures.Acquire(application, content, next);
             }
             _partial.Remove(content);
             content.ReleaseDecodedTexturePixels();
@@ -173,7 +173,10 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
     {
         foreach (var kept in _kept.Values)
             if (ReferenceEquals(kept.Content, content))
+            {
+                SceneTextures.Retain(kept.Textures);
                 return kept.Textures;
+            }
         if (_uploadedAhead.Remove(content, out var textures))
             return textures;
         if (!_partial.Remove(content, out var partial))
@@ -199,6 +202,7 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
             {
                 _heldFrame = _lastFrame.Detached(); // the frame's quads are reused by the next frame
                 _heldTextures = _textures;
+                SceneTextures.Retain(_heldTextures);
             }
         }
         _holdUntilTick = tick + 2;
@@ -231,22 +235,15 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
                 unkeep(old.Textures);
             }
             var textures = _textures[(int)layer.TextureOffset..(int)(layer.TextureOffset + layer.TextureCount)];
+            SceneTextures.Retain(textures);
             _kept[key] = new(layer.Content, textures, keep!.Id, ++_use);
-            _keptTextures.UnionWith(textures);
         }
-        if (!ReferenceEquals(_heldTextures, _textures))
-            SceneTextures.Release(application, _textures.Where(notKept));
+        SceneTextures.Release(application, _textures);
         _textures = [];
     }
 
-    private bool notKept(RenderTextureId texture) => !_keptTextures.Contains(texture);
-
-    // No longer kept: released now unless a scene still shows them (its own release frees them then).
-    private void unkeep(RenderTextureId[] textures)
-    {
-        _keptTextures.ExceptWith(textures);
-        SceneTextures.Release(application, textures.Where(texture => !_textures.Contains(texture) && !_heldTextures.Contains(texture)));
-    }
+    // No longer kept: what nothing else holds goes now.
+    private void unkeep(RenderTextureId[] textures) => SceneTextures.Release(application, textures);
 
     /// <summary>The new scene's textures: its prefetched uploads where there are any, the rest now.</summary>
     public void Activate(LumenGameSceneInstance scene)
@@ -257,7 +254,7 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
         // What is neither kept nor up already goes up now.
         makeRoom(scene.Layers.Select(static layer => layer.Content).Distinct()
             .Where(content => !_uploadedAhead.ContainsKey(content) && !_kept.Values.Any(copy => ReferenceEquals(copy.Content, content)))
-            .Sum(static content => content.Textures.Length));
+            .Sum(SceneTextures.Missing));
         _textures = SceneTextures.Upload(application, scene, takeAhead);
         Console.WriteLine($"Scene {scene.Id}: {ahead - _uploadedAhead.Count - _partial.Count} of {scene.Layers.Length} movies "
             + $"uploaded ahead ({ahead} ready, {decoded} decoded ahead); textures {application.TextureUsage}.");
@@ -282,7 +279,7 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
         if (first || tick < _holdUntilTick)
             return (held, _heldBlack);
         // Results can show the held gameplay frame's name boards: those stay with the active scene.
-        SceneTextures.Release(application, _heldTextures.Where(texture => notKept(texture) && !_textures.Contains(texture)));
+        SceneTextures.Release(application, _heldTextures);
         _heldTextures = [];
         _heldFrame = null;
         return null;
@@ -297,7 +294,7 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
 
     public void Dispose()
     {
-        SceneTextures.Release(application, _textures.Concat(_heldTextures).Concat(_keptTextures).Distinct());
+        SceneTextures.Release(application, _textures.Concat(_heldTextures).Concat(_kept.Values.SelectMany(static kept => kept.Textures)));
         releaseUploadedAhead();
     }
 
