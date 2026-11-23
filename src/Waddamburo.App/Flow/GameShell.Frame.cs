@@ -109,7 +109,7 @@ internal sealed partial class GameShell
         Titles.UploadCompleted();
         var still = _gameplay.Rainbow.State == RainbowTransitionState.Covered;
         // The screens ahead load where it cannot be seen or heard: not during a song, not while a transition moves.
-        _presenter.UploadAhead(still, warm: !Scenes.OnLane && !Scenes.FadePending && (still || !Overlay.IsShown));
+        _presenter.UploadAhead(still, warm: !Scenes.OnLane && !Scenes.FadePending && (still || !Overlay.IsShown) && !_attract.PreparingMovie);
         if (SceneTextures.Upscaler is { } upscaler)
         {
             upscaler.Paused = Scenes.OnLane || Bake?.Running == true;

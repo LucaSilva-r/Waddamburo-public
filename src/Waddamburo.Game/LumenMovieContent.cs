@@ -65,7 +65,8 @@ public sealed class LumenMovieContent
             new LmbSemanticValidationContext(textures.Count));
         return new LumenMovieContent(
             movie.Entry.Name,
-            semantic.Value,
+            // The raw records stay behind: kept movies held ~640k of them (and their bytes) for the GC to walk, unread.
+            semantic.Value with { RawFile = null, UninterpretedRecords = [] },
             textures.MoveToImmutable(),
             semantic.Diagnostics);
     }

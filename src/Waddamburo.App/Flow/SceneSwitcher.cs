@@ -94,6 +94,13 @@ internal sealed class SceneSwitcher(
     {
         if (_fadeTarget is not { } target) return false;
         if (shell.Tick - _fadeStartTick < 60) return true;
+        // Black on screen first: the switch (loading, the clean-up) draws nothing, so the screen kept the fade's last
+        // frame, not quite black.
+        if (!presenter.HoldShown)
+        {
+            presenter.Hold(shell.Tick, black: true, loadingFrame);
+            return true;
+        }
         _fadeTarget = null;
         Show(target);
         shell.Overlay.Clear();
@@ -181,7 +188,17 @@ internal sealed class SceneSwitcher(
         System.Runtime.GCSettings.LatencyMode = OnLane
             ? System.Runtime.GCLatencyMode.SustainedLowLatency
             : System.Runtime.GCLatencyMode.Interactive;
-        if ((!OnLane || covering()) && GC.GetTotalMemory(false) - _liveAfterCollect > 128L << 20)
+        // The Switch: every switch, a song's start included (under the standing rainbow), cleans up in full, whatever it
+        // costs: the screens ahead load in the background, and their garbage otherwise came due inside the next screen or
+        // song (100-500 ms collections, the heap growing 650 -> 1000 MiB over a session). Pausing in a switch is fine.
+        if (PlatformInfo.IsSwitch)
+        {
+            var started = Stopwatch.GetTimestamp();
+            shell.Audio?.FillAhead(_collectCover);
+            Collect();
+            cover(Stopwatch.GetElapsedTime(started));
+        }
+        else if ((!OnLane || covering()) && GC.GetTotalMemory(false) - _liveAfterCollect > 128L << 20)
         {
             // The collection stops the audio mix thread too: queue past it (it took up to 75 ms traced).
             var started = Stopwatch.GetTimestamp();

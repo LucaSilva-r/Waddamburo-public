@@ -90,10 +90,12 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
     {
         var budget = still ? StillBudget : UploadAheadBudget;
         var start = Stopwatch.GetTimestamp();
-        var uploads = SceneTextures.Uploads + (still ? StillUploads : MovingUploads);
-        bool full() => Stopwatch.GetElapsedTime(start) > budget || SceneTextures.Uploads >= uploads;
-        if (uploadPrefetches(full) && warm)
-            Warm(full);
+        // A switch waits for its own prefetch (the attract's caution screen held 7.6 s for the demo at the moving cap):
+        // only the screens ahead keep to the moving one.
+        var first = SceneTextures.Uploads;
+        bool full(int count) => Stopwatch.GetElapsedTime(start) > budget || SceneTextures.Uploads - first >= count;
+        if (uploadPrefetches(() => full(StillUploads)) && warm)
+            Warm(() => full(still ? StillUploads : MovingUploads));
     }
 
     // False when the frame's budget ran out first.
@@ -146,7 +148,8 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
     }
 
     /// <summary>Every movie one switch away is up (or failed, or did not fit): a switch to any of them will not load.</summary>
-    public bool WarmReady => _protected.All(key => _kept.ContainsKey(key) || _shown.Contains(key) || _skipped.Contains(key));
+    public bool WarmReady => _protected.All(key => _kept.ContainsKey(key) || _shown.Contains(key) || _skipped.Contains(key)
+        || _prefetching.Contains(key)); // the switch's own prefetch loads those (PrefetchReady)
 
     private void Warm(Func<bool> full)
     {
@@ -206,8 +209,16 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
         movies.ForgetDecodeArchive();
         if (!_warmDone)
             Console.WriteLine($"Screens ahead loaded: {_wanted.Count(wanted => _kept.ContainsKey(wanted.Key) || _shown.Contains(wanted.Key))} of "
-                + $"{_wanted.Length} movies ({_skipped.Count} skipped); textures {application.TextureUsage}.");
+                + $"{_wanted.Length} movies ({_skipped.Count} skipped); textures {application.TextureUsage}; " + heap());
         _warmDone = true;
+    }
+
+    // What the GC walks: heap, its large-object part (archives, pixels), collections and their pauses so far.
+    private static string heap()
+    {
+        var info = GC.GetGCMemoryInfo();
+        return FormattableString.Invariant($"heap {info.HeapSizeBytes / 1048576d:F0} MiB (LOH {info.GenerationInfo[3].SizeAfterBytes / 1048576d:F0}), ")
+            + $"GC {GC.CollectionCount(0)}/{GC.CollectionCount(1)}/{GC.CollectionCount(2)}, paused {GC.GetTotalPauseDuration().TotalMilliseconds:F0} ms.";
     }
 
     private void dropWarming()
@@ -365,6 +376,9 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
         _heldFrame = null;
         return null;
     }
+
+    /// <summary>A held frame is on screen (presented at least once).</summary>
+    public bool HoldShown => _heldFrame is not null && !_heldNotPresented;
 
     /// <summary>The frame just drawn (what a switch holds), and whether an intermission was in it.</summary>
     public void Presented(RenderFrame frame, bool withIntermission)

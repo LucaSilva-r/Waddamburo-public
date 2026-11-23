@@ -181,7 +181,8 @@ public sealed record LmbSpriteDefinition(
 }
 
 public sealed record LmbMovieDefinition(
-    LmbFile RawFile,
+    /// <summary>The records it was read from (null once dropped: a played movie does not need them).</summary>
+    LmbFile? RawFile,
     LmbMovieProperties? Properties,
     ImmutableArray<LmbString> Strings,
     ImmutableArray<LmbColorTransform> ColorTransforms,

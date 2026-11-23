@@ -143,7 +143,7 @@ internal sealed class PlayerSetupController : IDisposable
         shell.Credit.EntrySetup = true;
         shell.Credit.EntryTrigger = side;
         shell.ResetIndicatorScene();
-        shell.Scenes.Show(FlowScenes.Entry);
+        shell.Scenes.FadeTo(FlowScenes.Entry);
     }
 
     // Each side's choice on its stand: its Don in the chosen look (options show as text instead) and
