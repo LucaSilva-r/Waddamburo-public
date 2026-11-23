@@ -51,7 +51,8 @@ public static class SetupScreen
         (string, RenderColor) bar()
         {
             var progress = status();
-            var filled = progress.Received * 30 / Math.Max(1, progress.Total);
+            // While a copy from the other device runs: its bytes (the files are counted once it is over).
+            var filled = setup?.Fraction is { } fraction ? (int)(fraction * 30) : progress.Received * 30 / Math.Max(1, progress.Total);
             return ($"[{new string('#', filled)}{new string('-', 30 - filled)}] {Strings.T("first_setup.progress", progress.Received, progress.Total)}", OverlayMenu.Green);
         }
 
@@ -424,6 +425,9 @@ public sealed class GreenSetup : IDisposable
         : _message;
 
     public bool Failed { get; private set; }
+
+    /// <summary>How far a copy from the other device is (0-1), or null when none runs.</summary>
+    public double? Fraction => Interlocked.Read(ref _total) is > 0 and var total ? Math.Min(1, Interlocked.Read(ref _fetched) / (double)total) : null;
 
     /// <summary>Green came whole from the other device (its listing, mirrored): nothing to count.</summary>
     public bool Done { get; private set; }
