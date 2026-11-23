@@ -150,17 +150,17 @@ public sealed class TaikoLongNotePresentationTests
         var code = new List<Avm1Instruction>();
         var offset = 0;
         Avm1Instruction op(byte opcode, Avm1Operand? operand = null, Avm1CodeBlock? body = null) =>
-            new(opcode, offset++, 1, [], operand, null, body);
+            new(opcode, offset++, 1, operand, null, body);
         Avm1Instruction push(params Avm1PushValue[] values) => op(0x96, new Avm1PushOperand([.. values]));
-        Avm1PushStringValue str(int index) => new(8, (ushort)index);
+        Avm1PushValue str(int index) => Avm1PushValue.String(8, (ushort)index);
         for (var index = 7; index < names.Length; index++)
         {
             var body = new Avm1CodeBlock(0, 6, [push(str(1)), op(0x1C),
-                push(str(index), new Avm1PushIntegerValue(2), str(2)), op(0x3D), op(0x17), op(0)]);
+                push(str(index), Avm1PushValue.Integer(2), str(2)), op(0x3D), op(0x17), op(0)]);
             body = body with { Instructions = [.. body.Instructions.Select((instruction, i) => instruction with { Offset = i })] };
             code.Add(op(0x9B, new Avm1FunctionOperand((ushort)index, 0, 0, [new(null, 1)], 6), body));
             code.Add(push(str(index))); code.Add(op(0x1C));
-            code.Add(push(new Avm1PushNullValue(), str(index), new Avm1PushIntegerValue(3), str(3)));
+            code.Add(push(Avm1PushValue.Null, str(index), Avm1PushValue.Integer(3), str(3)));
             code.Add(op(0x1C)); code.Add(push(str(4))); code.Add(op(0x4E));
             code.Add(push(str(5))); code.Add(op(0x4E)); code.Add(push(str(6))); code.Add(op(0x52)); code.Add(op(0x17));
         }

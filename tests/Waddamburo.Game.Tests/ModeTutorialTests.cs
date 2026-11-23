@@ -65,15 +65,15 @@ public sealed class ModeTutorialTests
     private static LmbMovieDefinition movie(params (string Name, int[] Arguments)[] calls)
     {
         var names = HostNames.Append("SyntheticTrack").Concat(calls.Select(static call => call.Name)).Distinct().ToArray();
-        Avm1Instruction op(byte code, Avm1Operand? operand = null) => new(code, 0, 1, [], operand, null, null);
+        Avm1Instruction op(byte code, Avm1Operand? operand = null) => new(code, 0, 1, operand, null, null);
         Avm1Instruction push(params Avm1PushValue[] values) => op(0x96, new Avm1PushOperand([.. values]));
-        Avm1PushStringValue name(string value) => new(8, (ushort)Array.IndexOf(names, value));
+        Avm1PushValue name(string value) => Avm1PushValue.String(8, (ushort)Array.IndexOf(names, value));
         var actions = calls.Select((call, index) =>
         {
             var instructions = new[]
             {
-                push([.. call.Arguments.Reverse().Select(value => value == -777 ? name("SyntheticTrack") : (Avm1PushValue)new Avm1PushIntegerValue(value))]),
-                push(new Avm1PushIntegerValue(call.Arguments.Length), name("Lumen")), op(0x1C),
+                push([.. call.Arguments.Reverse().Select(value => value == -777 ? name("SyntheticTrack") : (Avm1PushValue)Avm1PushValue.Integer(value))]),
+                push(Avm1PushValue.Integer(call.Arguments.Length), name("Lumen")), op(0x1C),
                 push(name(call.Name)), op(0x52), op(0x17), op(0),
             };
             return new LmbAction(index, [], 0)

@@ -87,8 +87,8 @@ public sealed class TaikoHitFlightsTests
         var action = new LmbAction(0, [0x07, 0x00], 0)
         {
             Code = new Avm1CodeBlock(0, 2, [
-                new Avm1Instruction(0x07, 0, 1, [], null, null, null),
-                new Avm1Instruction(0x00, 1, 1, [], null, null, null),
+                new Avm1Instruction(0x07, 0, 1, null, null, null),
+                new Avm1Instruction(0x00, 1, 1, null, null, null),
             ]),
         };
         var sprite = new LmbSpriteDefinition(1, 1, 3, 1, 0, [], [

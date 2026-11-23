@@ -106,7 +106,7 @@ internal static class LmbReferenceValidator
                         validateActionStringIndex(action, instruction, parameter.NameStringIndex, stringCount, diagnostics);
                     break;
                 case Avm1PushOperand push:
-                    foreach (var value in push.Values.OfType<Avm1PushStringValue>())
+                    foreach (var value in push.Values.Where(static value => value.IsString))
                         validateActionStringIndex(action, instruction, value.StringIndex, stringCount, diagnostics);
                     break;
             }

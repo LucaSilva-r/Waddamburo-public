@@ -599,8 +599,8 @@ internal static class Avm1Interpreter
                 registers = Math.Max(registers, store.Register + 1);
             else if (instruction.Operand is Avm1PushOperand push)
                 foreach (var value in push.Values)
-                    if (value is Avm1PushRegisterValue pushed)
-                        registers = Math.Max(registers, pushed.Register + 1);
+                    if (value.Type == 4)
+                        registers = Math.Max(registers, value.Register + 1);
         }
         return new CodeFacts(
             code.Instructions.Any(instruction => instruction.Opcode == 0x00) && code.Instructions.All(isSupportedInstruction),
@@ -634,43 +634,32 @@ internal static class Avm1Interpreter
     {
         foreach (var value in push.Values)
         {
-            switch (value)
+            object? pushed;
+            switch (value.Type)
             {
-                case Avm1PushStringValue text when text.StringIndex < strings.Count:
-                    if (!tryPush(stack, strings[text.StringIndex].Value, maxStackValues))
-                        return Avm1ExecutionStatus.StackLimit;
+                case 0 or 8 or 9 when value.StringIndex < strings.Count:
+                    pushed = strings[value.StringIndex].Value;
                     break;
-                case Avm1PushFloatValue number:
-                    if (!tryPush(stack, (double)number.Value, maxStackValues))
-                        return Avm1ExecutionStatus.StackLimit;
+                case 1 or 6 or 7:
+                    pushed = value.Number;
                     break;
-                case Avm1PushNullValue:
-                    if (!tryPush(stack, null, maxStackValues))
-                        return Avm1ExecutionStatus.StackLimit;
+                case 2:
+                    pushed = null;
                     break;
-                case Avm1PushUndefinedValue:
-                    if (!tryPush(stack, Avm1Undefined.Instance, maxStackValues))
-                        return Avm1ExecutionStatus.StackLimit;
+                case 3:
+                    pushed = Avm1Undefined.Instance;
                     break;
-                case Avm1PushBooleanValue boolean:
-                    if (!tryPush(stack, boolean.Value, maxStackValues))
-                        return Avm1ExecutionStatus.StackLimit;
+                case 5:
+                    pushed = value.Boolean;
                     break;
-                case Avm1PushDoubleValue number:
-                    if (!tryPush(stack, number.Value, maxStackValues))
-                        return Avm1ExecutionStatus.StackLimit;
-                    break;
-                case Avm1PushIntegerValue number:
-                    if (!tryPush(stack, (double)number.Value, maxStackValues))
-                        return Avm1ExecutionStatus.StackLimit;
-                    break;
-                case Avm1PushRegisterValue register when register.Register < registers.Length:
-                    if (!tryPush(stack, registers[register.Register], maxStackValues))
-                        return Avm1ExecutionStatus.StackLimit;
+                case 4 when value.Register < registers.Length:
+                    pushed = registers[value.Register];
                     break;
                 default:
                     return Avm1ExecutionStatus.RegisterLimit;
             }
+            if (!tryPush(stack, pushed, maxStackValues))
+                return Avm1ExecutionStatus.StackLimit;
         }
         return Avm1ExecutionStatus.Success;
     }

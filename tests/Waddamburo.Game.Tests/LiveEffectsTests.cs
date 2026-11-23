@@ -107,15 +107,15 @@ public sealed class LiveEffectsTests
             "SetComboCount", "SetBranchAvailable", "SetGogo" };
         var code = new List<Avm1Instruction>();
         Avm1Instruction Op(byte opcode, Avm1Operand? operand = null, Avm1CodeBlock? body = null) =>
-            new(opcode, code.Count, 1, [], operand, null, body);
-        Avm1PushStringValue Str(int index) => new(8, (ushort)index);
+            new(opcode, code.Count, 1, operand, null, body);
+        Avm1PushValue Str(int index) => Avm1PushValue.String(8, (ushort)index);
         void Push(params Avm1PushValue[] values) => code.Add(Op(0x96, new Avm1PushOperand([.. values])));
         for (var i = 6; i < names.Length; i++)
         {
             code.Add(Op(0x9B, new Avm1FunctionOperand((ushort)i, 0, 0, [], 1),
-                new Avm1CodeBlock(0, 1, [new(0, 0, 1, [], null, null, null)])));
+                new Avm1CodeBlock(0, 1, [new(0, 0, 1, null, null, null)])));
             Push(Str(i)); code.Add(Op(0x1C));
-            Push(new Avm1PushNullValue(), Str(i), new Avm1PushIntegerValue(3), Str(2));
+            Push(Avm1PushValue.Null, Str(i), Avm1PushValue.Integer(3), Str(2));
             code.Add(Op(0x1C)); Push(Str(3)); code.Add(Op(0x4E));
             Push(Str(4)); code.Add(Op(0x4E)); Push(Str(5)); code.Add(Op(0x52)); code.Add(Op(0x17));
         }

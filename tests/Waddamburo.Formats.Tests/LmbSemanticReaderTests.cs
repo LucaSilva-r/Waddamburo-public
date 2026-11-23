@@ -134,7 +134,6 @@ public sealed class LmbSemanticReaderTests
         var branch = readSingleAction([0x06, 0x99, 0x02, 0x00, 0x01, 0x00, 0x07, 0x00]);
         Assert.Equal([0, 1, 6, 7], branch.Code.Instructions.Select(instruction => instruction.Offset));
         Assert.Equal(7, branch.Code.Instructions[1].BranchTarget);
-        Assert.Equal(new byte[] { 0x01, 0x00 }, branch.Code.Instructions[1].OperandBytes);
         Assert.Equal(new Avm1BranchOperand(1, 7), branch.Code.Instructions[1].Operand);
 
         var lexical = readSingleAction([
@@ -167,16 +166,16 @@ public sealed class LmbSemanticReaderTests
         ]).Code.Instructions[0].Operand);
         Assert.Collection(
             push.Values,
-            value => Assert.Equal(new Avm1PushStringValue(0, 0x1234), value),
-            value => Assert.Equal(new Avm1PushFloatValue(1.5f), value),
-            value => Assert.IsType<Avm1PushNullValue>(value),
-            value => Assert.IsType<Avm1PushUndefinedValue>(value),
-            value => Assert.Equal(new Avm1PushRegisterValue(7), value),
-            value => Assert.Equal(new Avm1PushBooleanValue(true), value),
-            value => Assert.Equal(new Avm1PushDoubleValue(2.5), value),
-            value => Assert.Equal(new Avm1PushIntegerValue(-2), value),
-            value => Assert.Equal(new Avm1PushStringValue(8, 0xAA), value),
-            value => Assert.Equal(new Avm1PushStringValue(9, 0x5678), value));
+            value => Assert.Equal(Avm1PushValue.String(0, 0x1234), value),
+            value => Assert.Equal(Avm1PushValue.Float(1.5f), value),
+            value => Assert.Equal(Avm1PushValue.Null, value),
+            value => Assert.Equal(Avm1PushValue.Undefined, value),
+            value => Assert.Equal(Avm1PushValue.FromRegister(7), value),
+            value => Assert.Equal(Avm1PushValue.FromBoolean(true), value),
+            value => Assert.Equal(Avm1PushValue.Double(2.5), value),
+            value => Assert.Equal(Avm1PushValue.Integer(-2), value),
+            value => Assert.Equal(Avm1PushValue.String(8, 0xAA), value),
+            value => Assert.Equal(Avm1PushValue.String(9, 0x5678), value));
 
         var functionInstruction = readSingleAction([
             0x8E, 0x0F, 0x00,
