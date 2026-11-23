@@ -34,7 +34,7 @@ public sealed class BufferedAudioSource : IAudioStreamSource
         ArgumentNullException.ThrowIfNull(input);
         ArgumentOutOfRangeException.ThrowIfLessThan(start, TimeSpan.Zero);
         Format = format;
-        _decoder = new NativeAudioDecoder(
+        _decoder = NativeAudioDecoder.Open(
             input,
             checked((uint)format.SampleRate),
             checked((uint)format.Channels));

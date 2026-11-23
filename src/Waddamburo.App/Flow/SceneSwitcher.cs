@@ -28,7 +28,9 @@ internal sealed class SceneSwitcher(
     public LumenGameSceneInstance Active { get; private set; } = null!;
 
     /// <summary>A gameplay lane is on screen (a song, the audio calibration, the benchmark): drums drive it, not the movies' controls.</summary>
-    public bool OnLane => Active.Id == FlowScenes.Gameplay || Active.Id == FlowScenes.Calibration || Active.Id == FlowScenes.Benchmark;
+    // Also read off the main thread (device presence), before the first scene: none yet, not on a lane.
+    public bool OnLane => Active is { } active
+        && (active.Id == FlowScenes.Gameplay || active.Id == FlowScenes.Calibration || active.Id == FlowScenes.Benchmark);
 
     /// <summary>Starts decoding a scene's movies in the background; their textures go up between frames.</summary>
     public void Prefetch(SceneDefinition scene) => presenter.Prefetch(scene);

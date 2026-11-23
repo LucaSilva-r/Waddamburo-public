@@ -29,6 +29,7 @@ internal sealed class DeviceTransfer : IDisposable
 
     // Syncing.
     private volatile List<SyncClient>? _servers; // null: still looking
+    private readonly CancellationTokenSource _presence = new();
     private volatile string _status = "";
     private long _fetched, _total;
     private volatile bool _finished, _failed, _changed;
@@ -41,6 +42,31 @@ internal sealed class DeviceTransfer : IDisposable
         _menu = new OverlayMenu(shell.Application, shell.Options.ServiceFontPath ?? shell.Options.FontPath) { Sound = sound };
         // Paired devices pull from this one while the game runs.
         _server = SyncServer.StartIfPaired(libraries, Boot.DeviceName, shell.Sync.Jobs);
+        // Which paired devices answer, kept up to date for the whole run: the devices page shows it as it opens.
+        // Every 2 s while it is open, every 15 s otherwise (a device found at its last address costs one connection);
+        // never during a song. Its own lowest-priority thread, out of the game's way.
+        var token = _presence.Token;
+        new Thread(() =>
+        {
+            while (!token.IsCancellationRequested)
+            {
+                if (!shell.Scenes.OnLane)
+                    try
+                    {
+                        _servers = SyncClient.FindAsync(TimeSpan.FromSeconds(1.5), token).GetAwaiter().GetResult();
+                    }
+                    catch (Exception exception) when (exception is System.Net.Sockets.SocketException or IOException)
+                    {
+                        _servers = [];
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        return;
+                    }
+                for (var waited = 0; waited < 15000 && !(IsOpen && waited >= 2000) && !token.IsCancellationRequested; waited += 250)
+                    Thread.Sleep(250);
+            }
+        }) { IsBackground = true, Priority = ThreadPriority.Lowest, Name = "Device presence" }.Start();
     }
 
     public bool IsOpen => _menu.IsOpen;
@@ -67,24 +93,7 @@ internal sealed class DeviceTransfer : IDisposable
             SyncServer.AllowThroughWindowsFirewall();
         _server ??= SyncServer.StartIfPaired(_libraries, Boot.DeviceName, _shell.Sync.Jobs);
         _work = new CancellationTokenSource();
-        _servers = null;
         _menu.Open(new OverlayPage(() => T("sync.devices"), deviceRows, Back: Close), home: true);
-        var token = _work.Token;
-        _ = Task.Run(async () =>
-        {
-            while (!token.IsCancellationRequested)
-            {
-                try
-                {
-                    _servers = await SyncClient.FindAsync(TimeSpan.FromSeconds(1.5), token).ConfigureAwait(false);
-                }
-                catch (Exception exception) when (exception is System.Net.Sockets.SocketException or IOException)
-                {
-                    _servers = [];
-                }
-                await Task.Delay(2000, token).ConfigureAwait(false);
-            }
-        }, token);
     }
 
     private OverlayRow[] deviceRows()
@@ -414,7 +423,12 @@ internal sealed class DeviceTransfer : IDisposable
                     }
                     _status = T("sync.progress.fetching", library.Name, plan.Fetch.Count, plan.Remove.Count);
                     (_fetched, _total) = (0, plan.FetchBytes);
-                    await server.MirrorAsync(library, folder, plan, bytes => Interlocked.Add(ref _fetched, bytes),
+                    await server.MirrorAsync(library, folder, plan, bytes =>
+                        {
+                            // Moving the files into place and tidying the folder follow the last byte.
+                            if (Interlocked.Add(ref _fetched, bytes) >= plan.FetchBytes)
+                                _status = T("sync.progress.finishing", library.Name);
+                        },
                         () => _changed = true, token).ConfigureAwait(false);
                     _changed = true;
                 }
@@ -427,6 +441,7 @@ internal sealed class DeviceTransfer : IDisposable
             catch (Exception exception) when (exception is IOException or System.Net.Sockets.SocketException or OperationCanceledException
                 or InvalidDataException or UnauthorizedAccessException)
             {
+                Console.Error.WriteLine($"Sync failed: {exception}");
                 (_status, _failed) = (T("transfer.failed", exception.Message), true);
             }
             _finished = true;
@@ -477,6 +492,7 @@ internal sealed class DeviceTransfer : IDisposable
 
     public void Dispose()
     {
+        _presence.Cancel();
         stop();
         _syncing?.Cancel();
         _server?.Dispose();

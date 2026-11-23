@@ -356,7 +356,9 @@ static MemFile g_mem[NMEM];
 static Mutex g_mem_lock;
 static MemFile *mem_of(int fd) { int i = fd - MEM_FD; return i >= 0 && i < NMEM && g_mem[i].used ? &g_mem[i] : NULL; }
 static u64 uptime_ticks100(void) { return armTicksToNs(armGetSystemTick()) / 10000000ull; } // clock ticks at 100 Hz
+size_t net_file(const char *p, char *b, size_t n); // net.c: /etc/resolv.conf, /sys/class/net
 static size_t proc_content(const char *p, char *b, size_t n) {
+    if (strncmp(p, "/proc", 5)) return net_file(p, b, n);
     u64 total = 0, used = 0;
     svcGetInfo(&total, InfoType_TotalMemorySize, CUR_PROCESS_HANDLE, 0);
     svcGetInfo(&used, InfoType_UsedMemorySize, CUR_PROCESS_HANDLE, 0);
@@ -394,7 +396,10 @@ static ssize_t mem_read(MemFile *m, void *b, size_t n) {
     if (n > m->len - m->pos) n = m->len - m->pos;
     memcpy(b, m->data + m->pos, n); m->pos += n; return n;
 }
-static int is_synthetic(const char *p) { return !strncmp(p, "/proc", 5) || !strcmp(p, "/dev/urandom") || !strcmp(p, "/dev/random"); }
+static int is_synthetic(const char *p) {
+    return !strncmp(p, "/proc", 5) || !strcmp(p, "/dev/urandom") || !strcmp(p, "/dev/random")
+        || !strcmp(p, "/etc/resolv.conf") || !strncmp(p, "/sys/class/net/", 15);
+}
 
 // In-process pipes (System.Native's signal thread waits on one). fds PIPE_FD+2i (read) / +1 (write).
 #define PIPE_FD 0x4000
@@ -483,7 +488,19 @@ int lx_ioctl(int fd, unsigned long r, ...) { errno = LX_ENOTTY; return -1; }
 int lx_tcgetattr(int fd, void *t) { errno = LX_ENOTTY; return -1; }
 int lx_tcsetattr(int fd, int a, const void *t) { errno = LX_ENOTTY; return -1; }
 int lx_dup2(int a, int b) { NOSYS("dup2"); }
-int lx_statfs64(const char *p, void *b) { NOSYS("statfs64"); }
+// glibc's struct statfs64 (aarch64) from the SD card's space (DriveInfo's free space; every path is on sdmc).
+struct lx_statfs { s64 type, bsize; u64 blocks, bfree, bavail, files, ffree; int fsid[2]; s64 namelen, frsize, flags, spare[4]; };
+int lx_statfs64(const char *p, void *b) {
+    struct lx_statfs *o = b;
+    FsFileSystem *sd = fsdevGetDeviceFileSystem("sdmc");
+    s64 total = 0, free_ = 0;
+    if (!sd || R_FAILED(fsFsGetTotalSpace(sd, "/", &total)) || R_FAILED(fsFsGetFreeSpace(sd, "/", &free_))) { errno = EIO; return -1; }
+    memset(o, 0, sizeof *o);
+    o->type = 0x4d44; o->bsize = o->frsize = 4096; o->namelen = 255; // MSDOS_SUPER_MAGIC (FAT32/exFAT)
+    o->blocks = total / 4096; o->bfree = o->bavail = free_ / 4096;
+    return 0;
+}
+int lx_fstatfs64(int fd, void *b) { return lx_statfs64("/", b); }
 
 struct lx_stat { // glibc aarch64 struct stat
     uint64_t st_dev, st_ino; uint32_t st_mode, st_nlink, st_uid, st_gid; uint64_t st_rdev, pad1;
@@ -527,14 +544,24 @@ int lx___fxstat64(int v, int fd, struct lx_stat *o) {
 
 struct lx_dirent64 { uint64_t d_ino; int64_t d_off; uint16_t d_reclen; uint8_t d_type; char d_name[256]; };
 
-typedef struct { DIR *d; struct lx_dirent64 e; int proc; FsDir fd; int nx; FsDirectoryEntry buf[64]; s64 n, i; char base[PATH_MAX]; } lx_DIR;
+// sdmc folders are read whole at opendir: deleting entries under an open FsDir moves its position, so .NET's recursive
+// delete (unlinking while it enumerates) skipped entries. ponytail: ~800 bytes per entry while open.
+typedef struct { DIR *d; struct lx_dirent64 e; int proc; int nx; FsDirectoryEntry *buf; s64 n, i; char base[PATH_MAX]; } lx_DIR;
 lx_DIR *lx_opendir(const char *p) {
     if (!strcmp(p, "/proc")) { lx_DIR *r = calloc(1, sizeof *r); r->proc = 1; return r; } // one process: us (pid 42)
     if ((p[0] == '/' || !strncmp(p, "sdmc:/", 6)) && sdmc_fs()) {
         lx_DIR *r = calloc(1, sizeof *r);
         snprintf(r->base, sizeof r->base, "%s", fs_path(p));
-        if (R_SUCCEEDED(fsFsOpenDirectory(sdmc_fs(), r->base, FsDirOpenMode_ReadDirs | FsDirOpenMode_ReadFiles, &r->fd))) { r->nx = 1; return r; }
-        free(r); errno = ENOENT; return NULL;
+        FsDir fd;
+        if (R_FAILED(fsFsOpenDirectory(sdmc_fs(), r->base, FsDirOpenMode_ReadDirs | FsDirOpenMode_ReadFiles, &fd))) { free(r); errno = ENOENT; return NULL; }
+        s64 cap = 0, got;
+        for (;;) {
+            if (r->n == cap) r->buf = realloc(r->buf, (cap = cap ? cap * 2 : 64) * sizeof *r->buf);
+            if (R_FAILED(fsDirRead(&fd, &got, cap - r->n, r->buf + r->n)) || got <= 0) break;
+            r->n += got;
+        }
+        fsDirClose(&fd);
+        r->nx = 1; return r;
     }
     DIR *d = opendir(p); if (!d) return NULL; lx_DIR *r = calloc(1, sizeof *r); r->d = d; return r;
 }
@@ -544,7 +571,7 @@ struct lx_dirent64 *lx_readdir64(lx_DIR *d) {
         memset(&d->e, 0, sizeof d->e); d->e.d_type = 4; d->e.d_reclen = sizeof d->e; strcpy(d->e.d_name, "42"); return &d->e;
     }
     if (d->nx) {
-        if (d->i >= d->n) { d->i = 0; if (R_FAILED(fsDirRead(&d->fd, &d->n, 64, d->buf)) || d->n <= 0) { d->n = 0; return NULL; } }
+        if (d->i >= d->n) return NULL;
         FsDirectoryEntry *f = &d->buf[d->i++];
         memset(&d->e, 0, sizeof d->e); d->e.d_reclen = sizeof d->e;
         d->e.d_type = f->type == FsDirEntryType_Dir ? 4 : 8;
@@ -559,7 +586,7 @@ struct lx_dirent64 *lx_readdir64(lx_DIR *d) {
     d->e.d_type = e->d_type == DT_DIR ? 4 : e->d_type == DT_REG ? 8 : 0;
     strncpy(d->e.d_name, e->d_name, 255); return &d->e;
 }
-int lx_closedir(lx_DIR *d) { int r = d->nx ? (fsDirClose(&d->fd), 0) : d->d ? closedir(d->d) : 0; free(d); return r; }
+int lx_closedir(lx_DIR *d) { int r = d->d ? closedir(d->d) : 0; free(d->buf); free(d); return r; }
 
 // ---------------------------------------------------------------- process / system
 int lx_getpid(void) { return 42; }
@@ -671,11 +698,12 @@ typedef struct lx_thread {
     Thread thr; void *(*fn)(void *); void *arg;
     void *specific[LX_KEYS];
     uintptr_t stack_lo; size_t stack_size; Handle handle; u64 tp; void *huc;
+    volatile int done; // its function returned: lx_pthread_create closes it
 } lx_thread;
 static __thread lx_thread *t_self;
 static lx_thread g_main;
-// Every thread the runtime ever started, for exit to park: the thread pool retires idle workers and starts new ones,
-// so this grows (a 64-slot ring lost live threads after enough of them, which then ran on inside hbmenu and crashed it).
+// The runtime's live threads, for exit to park. The thread pool retires idle workers and starts new ones: finished
+// threads are closed at the next create (Horizon's thread limit ran out after a sync and an in-process restart).
 static lx_thread **g_threads; static int g_nthreads, g_cthreads; static Mutex g_tl; static bool g_exiting;
 static void (*g_key_dtor[LX_KEYS])(void *);
 static int g_nkeys;
@@ -710,6 +738,7 @@ static void thread_entry(void *p) {
     t->handle = threadGetCurHandle(); t->tp = (u64)__aarch64_read_tp();
     t->fn(t->arg);
     run_dtors(t);
+    __atomic_store_n(&t->done, 1, __ATOMIC_RELEASE);
 }
 
 struct lx_attr { size_t stacksize; uintptr_t stackaddr; int detached; };
@@ -740,13 +769,21 @@ int lx_pthread_create(lx_thread **out, const struct lx_attr *a, void *(*fn)(void
     // Listed before it starts, and none start once exit parks them (it holds the lock while it does).
     mutexLock(&g_tl);
     if (g_exiting) { mutexUnlock(&g_tl); return EAGAIN; }
+    // Close the finished ones (all runtime threads are detached: nobody joins them).
+    int kept = 0;
+    for (int i = 0; i < g_nthreads; i++) {
+        lx_thread *old = g_threads[i];
+        if (__atomic_load_n(&old->done, __ATOMIC_ACQUIRE)) { threadWaitForExit(&old->thr); threadClose(&old->thr); free(old); }
+        else g_threads[kept++] = old;
+    }
+    g_nthreads = kept;
     if (g_nthreads == g_cthreads) g_threads = realloc(g_threads, (g_cthreads = g_cthreads ? g_cthreads * 2 : 64) * sizeof *g_threads);
     g_threads[g_nthreads++] = t;
     rc = threadStart(&t->thr);
     mutexUnlock(&g_tl);
     if (R_FAILED(rc)) { fprintf(stderr, "[shim] threadStart %x\n", rc); return EAGAIN; }
     *out = t;
-    return 0; // ponytail: thread objects are never closed (runtime threads are detached and live for the process)
+    return 0;
 }
 lx_thread *lx_pthread_self(void) { return self(); }
 int lx_pthread_setname_np(lx_thread *t, const char *n) { return 0; }
@@ -1178,7 +1215,21 @@ int lx_chdir(const char *p) { return chdir(p); }
 int lx_chmod(const char *p, unsigned m) { return 0; }
 int lx_fchmod(int fd, unsigned m) { return 0; }
 int lx_mkdir(const char *p, unsigned m) { sc_drop(fs_path(p)); return mkdir(p, m); }
-int lx_rmdir(const char *p) { sc_drop(fs_path(p)); return rmdir(p); }
+// libnx reports a folder that is not empty as EIO; .NET's recursive delete first tries rmdir and only empties the
+// folder on ENOTEMPTY.
+int lx_rmdir(const char *p) {
+    sc_drop(fs_path(p));
+    int r = rmdir(p);
+    if (r && errno == EIO && sdmc_fs()) {
+        char path[FS_MAX_PATH]; snprintf(path, sizeof path, "%s", fs_path(p));
+        FsDir d; s64 n = 0;
+        if (R_SUCCEEDED(fsFsOpenDirectory(sdmc_fs(), path, FsDirOpenMode_ReadDirs | FsDirOpenMode_ReadFiles, &d))) {
+            if (R_SUCCEEDED(fsDirGetEntryCount(&d, &n)) && n > 0) errno = ENOTEMPTY;
+            fsDirClose(&d);
+        }
+    }
+    return r;
+}
 int lx_rename(const char *a, const char *b) { // Linux rename replaces the target; libnx refuses
     sc_drop(fs_path(a)); sc_drop(fs_path(b));
     if (!rename(a, b)) return 0;
@@ -1207,7 +1258,6 @@ int lx_fallocate64(int fd, int mode, long off, long len) { errno = 134; return -
 int lx_posix_fadvise64(int fd, long off, long len, int adv) { return 0; }
 int lx_futimens(int fd, const struct timespec t[2]) { return 0; }
 int lx_utimensat(int dirfd, const char *p, const struct timespec t[2], int fl) { return 0; }
-int lx_fstatfs64(int fd, void *b) { NOSYS("fstatfs64"); }
 int lx___lxstat64(int v, const char *p, struct lx_stat *o) { return lx___xstat64(v, p, o); } // no symlinks
 int lx_msync(void *a, size_t l, int f) { return 0; }
 ssize_t lx_pwrite64(int fd, const void *b, size_t n, long off) {
@@ -1286,9 +1336,6 @@ int lx_inotify_rm_watch(int fd, int w) { NOSYS("inotify_rm_watch"); }
 // epoll: .NET's socket engine needs one at startup even when every socket() fails (no networking yet). It
 // accepts registrations and never reports events. ponytail: real readiness when sockets come (libnx poll()).
 int lx_getnameinfo(const void *a, unsigned l, char *h, unsigned hl, char *s, unsigned sl, int f) { return -4; }
-int lx_getifaddrs(void **r) { NOSYS("getifaddrs"); }
-void lx_freeifaddrs(void *r) {}
-unsigned lx_if_nametoindex(const char *n) { return 0; }
 
 // SQLite is built without extension loading; SQLitePCLRaw still binds these two.
 int lx_sqlite3_enable_load_extension(void *db, int on) { return 1; } // SQLITE_ERROR

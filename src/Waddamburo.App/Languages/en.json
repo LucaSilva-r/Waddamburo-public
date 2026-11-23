@@ -459,6 +459,7 @@
   "sync.too_big": "{0} doesn't fit: {1} too much.",
   "sync.progress.comparing": "Comparing {0}…",
   "sync.progress.fetching": "{0}: {1} files to fetch, {2} to remove",
+  "sync.progress.finishing": "{0}: putting the songs in place…",
   "sync.progress.done": "Done. Restart the game to see the changes.",
   "sync.progress.same": "Already identical.",
   "sync.setup.looking": "Paired. Looking for the PC (Waddamburo must be running on it)…",

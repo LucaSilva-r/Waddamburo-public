@@ -79,6 +79,44 @@ public sealed unsafe class NativeAudioDecoder : IDisposable
         }
     }
 
+    // The game banks the bundled vgmstream reads (the native library's path_uses_vgmstream): through the path API
+    // only, since a stream goes to FFmpeg.
+    private static readonly string[] VgmstreamExtensions = [".nus3bank", ".nus3audio", ".nub", ".bnsf", ".spsis14", ".spsis22", ".idsp"];
+
+    /// <summary>Whether the bundled decoders read <paramref name="path"/> (vgmstream-cli not counted: G.719 banks).</summary>
+    public static bool BundledCanOpen(string path)
+    {
+        if (NativeMediaMethods.NegotiateAbi(NativeMediaMethods.AbiVersion, out var negotiated) != MediaResult.Ok
+            || negotiated != NativeMediaMethods.AbiVersion)
+            return false;
+        var options = new MediaDecoderOptions { StructSize = (uint)sizeof(MediaDecoderOptions) };
+        var error = new MediaError { StructSize = (uint)sizeof(MediaError) };
+        var utf8Path = Marshal.StringToCoTaskMemUTF8(path);
+        try
+        {
+            if (NativeMediaMethods.CreateFile(in options, utf8Path, out var handle, ref error) != MediaResult.Ok)
+                return false;
+            NativeMediaMethods.Destroy(handle);
+            return true;
+        }
+        finally
+        {
+            Marshal.FreeCoTaskMem(utf8Path);
+        }
+    }
+
+    /// <summary>A decoder for <paramref name="input"/>: by its path when it is a game bank file, read by vgmstream.</summary>
+    public static NativeAudioDecoder Open(Stream input, uint outputSampleRate = 0, uint outputChannels = 0)
+    {
+        if (input is FileStream file && VgmstreamExtensions.Any(extension => file.Name.EndsWith(extension, StringComparison.OrdinalIgnoreCase)))
+        {
+            var path = file.Name;
+            input.Dispose();
+            return new NativeAudioDecoder(path, outputSampleRate, outputChannels);
+        }
+        return new NativeAudioDecoder(input, outputSampleRate, outputChannels);
+    }
+
     /// <summary>
     /// Creates a decoder over a provider-owned stream. The decoder takes ownership of
     /// <paramref name="input"/> unless <paramref name="leaveOpen"/> is true.

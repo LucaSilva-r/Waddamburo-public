@@ -43,7 +43,7 @@ public sealed class ScrubAudioSource : IAudioStreamSource
     {
         ArgumentNullException.ThrowIfNull(input);
         using (input)
-        using (var decoder = new NativeAudioDecoder(input, checked((uint)format.SampleRate), checked((uint)format.Channels)))
+        using (var decoder = NativeAudioDecoder.Open(input, checked((uint)format.SampleRate), checked((uint)format.Channels)))
         {
             var samples = new List<float>(format.SampleRate * format.Channels * 60 * 4);
             var block = new float[4096 * format.Channels];

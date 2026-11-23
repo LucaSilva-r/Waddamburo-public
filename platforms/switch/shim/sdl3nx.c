@@ -128,6 +128,9 @@ static void hid_thread(void *arg) {
 
 static void hid_start(void) {
     if (g_hid_run) return;
+    // From scratch after an SDL_Quit (the in-process restart): pads connected then are announced again.
+    memset(g_connected, 0, sizeof g_connected); memset(g_buttons, 0, sizeof g_buttons); memset(g_axes, 0, sizeof g_axes);
+    mutexLock(&g_ev_lock); g_ev_len = 0; mutexUnlock(&g_ev_lock);
     padConfigureInput(NPADS, HidNpadStyleSet_NpadStandard);
     padInitialize(&g_pads[0], HidNpadIdType_No1, HidNpadIdType_Handheld); // handheld Joy-Con count as player 1
     for (int i = 1; i < NPADS; i++) padInitialize(&g_pads[i], (HidNpadIdType)(HidNpadIdType_No1 + i));

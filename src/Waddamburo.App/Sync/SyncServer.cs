@@ -75,8 +75,10 @@ public sealed class SyncServer : IDisposable
     private readonly OutgoingSyncProgress? _progress;
     private readonly JobBoard? _jobs;
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, object> _prepareLocks = new();
-    // Each library's file list, kept a minute (a sync asks for it, then for its files).
-    private readonly Dictionary<string, (DateTime At, Dictionary<string, (long Size, long Time, string Full)> Files)> _lists = [];
+    // Each library's files and its size and count, listed once: the game serves the library it booted with (a change
+    // takes effect on a restart, as in the game). Walking every library per request took tens of seconds.
+    private readonly Dictionary<string, Dictionary<string, (long Size, long Time, string Full)>> _lists = [];
+    private readonly Dictionary<string, (long Bytes, int Count)> _summaries = [];
 
     public SyncServer(IReadOnlyList<SyncLibrary> libraries, string name, JobBoard? jobs = null)
     {
@@ -87,6 +89,31 @@ public sealed class SyncServer : IDisposable
         _progress = jobs is null ? null : new OutgoingSyncProgress(jobs);
         _ = Task.Run(() => SyncWire.AnswerAsync(_discovery, SyncWire.SyncProbe, name));
         _ = Task.Run(accept);
+        _ = Task.Run(() => // listed ahead: the first request is answered at once
+        {
+            foreach (var library in libraries)
+                summary(library);
+        });
+    }
+
+    private (long Bytes, int Count) summary(SyncLibrary library)
+    {
+        lock (_summaries)
+            if (_summaries.TryGetValue(library.Id, out var kept))
+                return kept;
+        long[] sizes;
+        try
+        {
+            sizes = library.Nijiiro is null && library.Kind != "wii"
+                ? [.. list(library).Values.Select(static file => file.Size)]
+                : [.. library.Files().Select(static file => file.Size)]; // estimate without converting
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return (0, 0); // tried again on the next request
+        }
+        lock (_summaries)
+            return _summaries[library.Id] = (sizes.Sum(), sizes.Length);
     }
 
     /// <summary>A server when a paired device pulls from this one; null when none does or the port is taken.</summary>
@@ -189,16 +216,14 @@ public sealed class SyncServer : IDisposable
                         // id, kind, name, bytes, files
                         await answer(stream, string.Join('\n', _libraries.Where(library => library.Nijiiro is null || request is [_, _, "nijiiro-v1"]).Select(library =>
                         {
-                            var files = library.Nijiiro is null
-                                ? list(library).Values.Select(static file => file.Size).ToArray()
-                                : library.Files().Select(static file => file.Size).ToArray(); // estimate without converting
-                            return $"{library.Id}\t{library.Kind}\t{SyncWire.clean(library.Name)}\t{files.Sum()}\t{files.Length}";
+                            var (bytes, count) = summary(library);
+                            return $"{library.Id}\t{library.Kind}\t{SyncWire.clean(library.Name)}\t{bytes}\t{count}";
                         }))).ConfigureAwait(false);
                         break;
                     case ("list", 3) when find(request[2]) is { } library:
                         try
                         {
-                            var files = list(library, fresh: true, client.Client);
+                            var files = list(library, client.Client);
                             await answer(stream, string.Join('\n', files.Select(static pair => $"{pair.Key}\t{pair.Value.Size}\t{pair.Value.Time}"))).ConfigureAwait(false);
                         }
                         catch (IOException) when (library.Nijiiro is not null)
@@ -254,16 +279,20 @@ public sealed class SyncServer : IDisposable
 
     private SyncLibrary? find(string id) => _libraries.FirstOrDefault(library => library.Id == id);
 
-    private Dictionary<string, (long Size, long Time, string Full)> list(SyncLibrary library, bool fresh = false, Socket? requestingSocket = null)
+    private Dictionary<string, (long Size, long Time, string Full)> list(SyncLibrary library, Socket? requestingSocket = null)
     {
         lock (_lists)
-            if (!fresh && _lists.TryGetValue(library.Id, out var kept)
-                && (library.Nijiiro is not null || DateTime.UtcNow - kept.At < TimeSpan.FromMinutes(1)))
-                return kept.Files;
+            if (_lists.TryGetValue(library.Id, out var kept))
+                return kept;
         if (library.Nijiiro is not null)
         {
             lock (_prepareLocks.GetOrAdd(library.Id, static _ => new object()))
-                return storeList(library, prepareNijiiro(library, requestingSocket));
+                return storeList(library, prepareAudio(library, library.Files().ToList(), NijiiroSync.IsBank, NijiiroSync.PrepareAudio, requestingSocket));
+        }
+        if (library.Kind == "wii")
+        {
+            lock (_prepareLocks.GetOrAdd(library.Id, static _ => new object()))
+                return storeList(library, prepareAudio(library, library.Files().ToList(), WiiAudio.IsBank, WiiAudio.Prepare, requestingSocket));
         }
         return storeList(library, library.Files());
     }
@@ -273,16 +302,19 @@ public sealed class SyncServer : IDisposable
     {
         var files = inventory.ToDictionary(static file => file.Path, static file => (file.Size, file.Time, file.Full), StringComparer.Ordinal);
         lock (_lists)
-            _lists[library.Id] = (DateTime.UtcNow, files);
+            _lists[library.Id] = files;
         return files;
     }
 
-    private List<(string Path, long Size, long Time, string Full)> prepareNijiiro(SyncLibrary library, Socket? requestingSocket)
+    // Song banks the receiver may not decode, converted here first (each by prepare; cached, so once per bank).
+    private List<(string Path, long Size, long Time, string Full)> prepareAudio(SyncLibrary library,
+        List<(string Path, long Size, long Time, string Full)> input, Func<string, bool> isBank,
+        Func<(string Path, long Size, long Time, string Full), IEnumerable<(string Path, long Size, long Time, string Full)>> prepare,
+        Socket? requestingSocket)
     {
-        var input = library.Files().ToList();
-        var banks = input.Where(file => NijiiroSync.IsBank(file.Path)).ToArray();
+        var banks = input.Where(file => isBank(file.Path)).ToArray();
         var job = _jobs?.Start(Strings.T("job.sync_nijiiro", library.Name), banks.Length);
-        var files = input.Where(file => !NijiiroSync.IsBank(file.Path)).ToList();
+        var files = input.Where(file => !isBank(file.Path)).ToList();
         var converted = new (string Path, long Size, long Time, string Full)[banks.Length][];
         var completed = 0;
         try
@@ -299,7 +331,7 @@ public sealed class SyncServer : IDisposable
                 {
                     if (requestingSocket is not null && requestingSocket.Poll(0, SelectMode.SelectRead) && requestingSocket.Available == 0)
                         throw new OperationCanceledException("Audio preparation stopped when the receiver disconnected.");
-                    converted[i] = [.. NijiiroSync.PrepareAudio(banks[i])];
+                    converted[i] = [.. prepare(banks[i])];
                     if (job is not null)
                         lock (files)
                             job.Report(++completed);

@@ -53,14 +53,21 @@ public static class SyncWire
         }
     }
 
+    // Read once (menus ask every frame); only savePaired changes the file.
+    private static PairedDevice[]? paired;
+
     public static List<PairedDevice> Paired()
     {
         lock (Gate)
         {
-            var path = Path.Combine(Folder, "paired.txt");
-            return !File.Exists(path) ? [] : [.. File.ReadAllLines(path).Select(static line => line.Split('\t'))
-                .Where(static parts => parts.Length == 4)
-                .Select(static parts => new PairedDevice(parts[0], parts[1], parts[2], parts[3] == "serves"))];
+            if (paired is null)
+            {
+                var path = Path.Combine(Folder, "paired.txt");
+                paired = !File.Exists(path) ? [] : [.. File.ReadAllLines(path).Select(static line => line.Split('\t'))
+                    .Where(static parts => parts.Length == 4)
+                    .Select(static parts => new PairedDevice(parts[0], parts[1], parts[2], parts[3] == "serves"))];
+            }
+            return [.. paired];
         }
     }
 
@@ -72,6 +79,7 @@ public static class SyncWire
     {
         savePaired([.. Paired().Where(old => old.Id != id)]);
         try { File.Delete(Path.Combine(Folder, id + ".libraries")); } catch (IOException) { }
+        try { File.Delete(Path.Combine(Folder, id + ".address")); } catch (IOException) { }
     }
 
     private static void savePaired(IEnumerable<PairedDevice> devices)
@@ -79,8 +87,26 @@ public static class SyncWire
         lock (Gate)
         {
             Directory.CreateDirectory(Folder);
+            paired = null;
             File.WriteAllLines(Path.Combine(Folder, "paired.txt"),
                 devices.Select(static device => $"{clean(device.Id)}\t{clean(device.Name)}\t{clean(device.Token)}\t{(device.Serves ? "serves" : "pulls")}"));
+        }
+    }
+
+    /// <summary>Where a paired device answered last (tried before discovery), or null.</summary>
+    public static IPAddress? LastAddress(string deviceId)
+    {
+        var path = Path.Combine(Folder, deviceId + ".address");
+        lock (Gate)
+            return File.Exists(path) && IPAddress.TryParse(File.ReadAllText(path).Trim(), out var address) ? address : null;
+    }
+
+    public static void RememberAddress(string deviceId, IPAddress address)
+    {
+        lock (Gate)
+        {
+            Directory.CreateDirectory(Folder);
+            File.WriteAllText(Path.Combine(Folder, deviceId + ".address"), address.ToString());
         }
     }
 
@@ -119,13 +145,25 @@ public static class SyncWire
         var bytes = Encoding.UTF8.GetBytes(probe);
         // The limited broadcast leaves by one interface only: each network's own broadcast address too (and this
         // machine, for a second instance run here to test).
-        // Some phones' Wi-Fi drops broadcasts (MIUI): every address of small networks is asked too.
-        foreach (var address in broadcastAddresses().Append(IPAddress.Broadcast).Append(IPAddress.Loopback).Concat(neighbours()))
+        foreach (var address in broadcastAddresses().Append(IPAddress.Broadcast).Append(IPAddress.Loopback))
             try { await socket.SendAsync(bytes, new IPEndPoint(address, port), cancellationToken).ConfigureAwait(false); }
             catch (SocketException) { }
         var found = new List<SyncDevice>();
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(wait);
+        // Some phones' Wi-Fi drops broadcasts (MIUI): every address of small networks is asked too, meanwhile (a send to
+        // an absent neighbour can wait on ARP: answers to the broadcast are read in the meantime).
+        var token = timeout.Token;
+        var sweep = Task.Run(async () =>
+        {
+            foreach (var address in neighbours())
+                try { await socket.SendAsync(bytes, new IPEndPoint(address, port), token).ConfigureAwait(false); }
+                catch (Exception exception) when (exception is SocketException or OperationCanceledException or ObjectDisposedException)
+                {
+                    if (token.IsCancellationRequested)
+                        return;
+                }
+        }, CancellationToken.None);
         var answer = probe.TrimEnd('?') + " ";
         try
         {
@@ -141,6 +179,11 @@ public static class SyncWire
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
+        }
+        finally
+        {
+            await timeout.CancelAsync().ConfigureAwait(false);
+            await sweep.ConfigureAwait(false); // before the socket goes
         }
         // USB tethering first: ~10x a phone's Wi-Fi (25 against 3 MB/s on a Redmi 8). A device on both answers twice.
         var usb = usbNetworks();

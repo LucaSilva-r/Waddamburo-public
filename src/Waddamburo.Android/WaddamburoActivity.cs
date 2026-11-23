@@ -69,6 +69,6 @@ public sealed class WaddamburoActivity : SDLActivity
         // Read again on a restart: a release imported since joins.
         do
             Waddamburo.App.Boot.StockFolders = _gameFolder.ReleaseFolders();
-        while (Waddamburo.App.Boot.Run(args) == Waddamburo.App.Boot.RestartExitCode);
+        while (Waddamburo.App.Boot.Run(args) == Waddamburo.App.Boot.RestartExitCode && (args = Waddamburo.App.Boot.RestartArguments) is not null);
     }
 }

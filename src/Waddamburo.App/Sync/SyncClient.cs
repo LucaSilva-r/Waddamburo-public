@@ -36,9 +36,37 @@ public sealed class SyncClient(SyncDevice device, PairedDevice pair)
         var paired = SyncWire.Paired().Where(static device => device.Serves).ToList();
         if (paired.Count == 0)
             return [];
+        // Where each answered last: one that still does needs no discovery.
+        var clients = (await Task.WhenAll(paired.Select(pair => atLastAddress(pair, cancellationToken))).ConfigureAwait(false))
+            .OfType<SyncClient>().ToList();
+        if (clients.Count == paired.Count)
+            return clients;
         var found = await SyncWire.DiscoverAsync(SyncWire.SyncProbe, SyncWire.SyncPort, wait, cancellationToken).ConfigureAwait(false);
-        return [.. found.Select(device => (device, pair: paired.FirstOrDefault(pair => pair.Id == device.Id)))
-            .Where(static found => found.pair is not null).Select(static found => new SyncClient(found.device, found.pair!))];
+        foreach (var device in found)
+            if (paired.FirstOrDefault(pair => pair.Id == device.Id) is { } pair && clients.All(client => client.Device.Id != device.Id))
+            {
+                SyncWire.RememberAddress(device.Id, device.Address);
+                clients.Add(new SyncClient(device, pair));
+            }
+        return clients;
+    }
+
+    private static async Task<SyncClient?> atLastAddress(PairedDevice pair, CancellationToken cancellationToken)
+    {
+        if (SyncWire.LastAddress(pair.Id) is not { } address)
+            return null;
+        var client = new SyncClient(new SyncDevice(pair.Id, pair.Name, address), pair);
+        using var quick = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        quick.CancelAfter(TimeSpan.FromSeconds(1));
+        try
+        {
+            var hello = await client.askWithTimeoutAsync(TimeSpan.FromSeconds(1), ["hello"], quick.Token).ConfigureAwait(false);
+            return hello.Split('\t') is [var id, var name] && id == pair.Id ? new SyncClient(new SyncDevice(id, name, address), pair) : null;
+        }
+        catch (Exception exception) when (exception is IOException or SocketException or OperationCanceledException or InvalidDataException)
+        {
+            return null; // elsewhere now, or off: discovery
+        }
     }
 
     public async Task<List<RemoteLibrary>> LibrariesAsync(CancellationToken cancellationToken = default) =>
@@ -100,8 +128,46 @@ public sealed class SyncClient(SyncDevice device, PairedDevice pair)
             remove, local.Count) { Manifest = manifest };
     }
 
-    /// <summary>The files in a received library's folder: path ('/'), size, time. Leftover partial files are left out.</summary>
-    public static Dictionary<string, (long Size, long Time)> Local(string folder) =>
+    /// <summary>
+    /// The files in a received library's folder: path ('/'), size, time. Leftover partial files are left out. A file
+    /// unchanged since it was received has the sender's time (<see cref="recordTimes"/>): the Switch cannot set file times.
+    /// </summary>
+    public static Dictionary<string, (long Size, long Time)> Local(string folder)
+    {
+        var files = onDisk(folder);
+        foreach (var (path, (size, here, sent)) in readTimes(folder))
+            if (files.TryGetValue(path, out var file) && file.Size == size && Math.Abs(file.Time - here) <= 2)
+                files[path] = (size, sent);
+        return files;
+    }
+
+    private static Dictionary<string, (long Size, long Here, long Sent)> readTimes(string folder)
+    {
+        var times = new Dictionary<string, (long, long, long)>(StringComparer.Ordinal);
+        var path = Path.Combine(folder, SongSyncStaging.TimesName);
+        if (File.Exists(path))
+            foreach (var parts in File.ReadLines(path).Select(static line => line.Split('\t')))
+                if (parts.Length == 4 && long.TryParse(parts[1], CultureInfo.InvariantCulture, out var size)
+                    && long.TryParse(parts[2], CultureInfo.InvariantCulture, out var here) && long.TryParse(parts[3], CultureInfo.InvariantCulture, out var sent))
+                    times[parts[0]] = (size, here, sent);
+        return times;
+    }
+
+    /// <summary>Records the sender's times of <paramref name="received"/> beside the files' own (see <see cref="Local"/>).</summary>
+    private static void recordTimes(string folder, IEnumerable<(string Path, long Size, long Time)> received)
+    {
+        var files = onDisk(folder);
+        var times = readTimes(folder);
+        foreach (var file in received)
+            if (files.TryGetValue(file.Path, out var here) && here.Size == file.Size)
+                times[file.Path] = (file.Size, here.Time, file.Time);
+        var path = Path.Combine(folder, SongSyncStaging.TimesName);
+        File.WriteAllLines(path + ".part", times.Where(entry => files.ContainsKey(entry.Key))
+            .Select(static entry => string.Create(CultureInfo.InvariantCulture, $"{entry.Key}\t{entry.Value.Size}\t{entry.Value.Here}\t{entry.Value.Sent}")));
+        File.Move(path + ".part", path, overwrite: true);
+    }
+
+    private static Dictionary<string, (long Size, long Time)> onDisk(string folder) =>
         !Directory.Exists(folder) ? new(StringComparer.Ordinal) : new DirectoryInfo(folder)
             .EnumerateFiles("*", new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = 0 })
             .Where(static file => !file.Name.EndsWith(".part", StringComparison.Ordinal))
@@ -182,6 +248,16 @@ public sealed class SyncClient(SyncDevice device, PairedDevice pair)
                         {
                             break; // gone from the other device since the list: the next sync removes it here
                         }
+                        catch (ChangedFileException)
+                        {
+                            // Changed on the other device since it listed its library (it serves the one it booted
+                            // with): skipped; it comes with a sync after that device restarts. The connection still
+                            // holds the file's bytes.
+                            Console.Error.WriteLine($"Song sync: {file.Path} changed on {device.Name}, skipped.");
+                            connection?.Dispose();
+                            connection = null;
+                            break;
+                        }
                         catch (Exception exception) when (!cancellationToken.IsCancellationRequested && attempt < 20
                             && exception is IOException or SocketException or OperationCanceledException && exception is not SyncRefusedException { Code: SyncWire.Refused })
                         {
@@ -219,6 +295,7 @@ public sealed class SyncClient(SyncDevice device, PairedDevice pair)
             foreach (var partial in Directory.EnumerateFiles(folder, "*.part", SearchOption.AllDirectories))
                 File.Delete(partial);
             deleteEmptyFolders(folder);
+            recordTimes(folder, plan.Fetch);
             success = true;
         }
         finally
@@ -286,7 +363,7 @@ public sealed class SyncClient(SyncDevice device, PairedDevice pair)
         if (length < 0)
             throw new SyncRefusedException(length);
         if (length != size)
-            throw new InvalidDataException("The other device changed a library file during sync. Retry to get an updated file list.");
+            throw new ChangedFileException();
         Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
         var partial = destination + ".part";
         var buffer = new byte[1 << 20];
@@ -434,3 +511,6 @@ public static class ReceivedLibraries
             Directory.Delete(folder, recursive: true);
     }
 }
+
+/// <summary>A library file whose size differs from the sender's listing.</summary>
+internal sealed class ChangedFileException : IOException;

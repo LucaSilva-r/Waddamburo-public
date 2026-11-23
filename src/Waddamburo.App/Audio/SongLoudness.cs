@@ -77,7 +77,7 @@ internal static class SongLoudness
     {
         var watch = Stopwatch.StartNew();
         using var input = assets.OpenReadAsync(asset, cancellationToken).AsTask().GetAwaiter().GetResult();
-        using var decoder = new NativeAudioDecoder(input, checked((uint)format.SampleRate), checked((uint)format.Channels));
+        using var decoder = NativeAudioDecoder.Open(input, checked((uint)format.SampleRate), checked((uint)format.Channels));
         var meter = new LoudnessMeter(format.SampleRate, format.Channels);
         var block = new float[16384 * format.Channels];
         int read;

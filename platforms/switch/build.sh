@@ -68,11 +68,12 @@ app() {
     # ILC's object for linux-arm64; switch.targets binds the natives statically and marks the build as the Switch's.
     # The cross link that follows needs a linux-arm64 toolchain and fails: expected, only the object is used.
     local log=$out/app-publish.log
+    local object=$root/src/Waddamburo.App/obj/Release/net10.0/linux-arm64/native/Waddamburo.App.o
+    rm -f "$object" # a failed compile must not leave the previous object in place
     dotnet publish "$root/src/Waddamburo.App" -r linux-arm64 -c Release -p:PublishAot=true -p:SelfContained=true \
         -p:InvariantGlobalization=true -p:Version="$version" -p:NuGetLockFilePath=obj/switch.lock.json -p:RestoreLockedMode=false \
         -p:CustomAfterMicrosoftCommonTargets="$here/switch.targets" > "$log" 2>&1 || true
-    local object=$root/src/Waddamburo.App/obj/Release/net10.0/linux-arm64/native/Waddamburo.App.o
-    [[ -f $object && $object -nt $here/switch.targets ]] || { grep -E "error" "$log" | sort -u | head; echo "error: no ILC object" >&2; exit 1; }
+    [[ -f $object ]] || { grep -E "error" "$log" | sort -u | head; echo "error: no ILC object" >&2; exit 1; }
     # The runtime's static libraries, from the NativeAOT runtime pack the publish used.
     local packs=${NUGET_PACKAGES:-$HOME/.nuget/packages}/microsoft.netcore.app.runtime.nativeaot.linux-arm64
     local runtime; runtime=$(ls -d "$packs"/*/runtimes/linux-arm64/native | sort -V | tail -1)

@@ -10,9 +10,13 @@ namespace Waddamburo.App;
 /// <summary>The game's start, shared by the desktop executable (Program.cs) and the mobile apps' activities.</summary>
 public static class Boot
 {
-    /// <summary>Returned by <see cref="Run"/> when the game asked to restart and cannot start a new process (mobile):
-    /// the caller runs it again.</summary>
+    /// <summary>Returned by <see cref="Run"/> when the game asked to restart: the caller runs it again, in the same
+    /// process, with <see cref="RestartArguments"/> (a new process cannot start on a phone or the Switch, and need not
+    /// elsewhere).</summary>
     public const int RestartExitCode = 75;
+
+    /// <summary>The arguments for the run after a <see cref="RestartExitCode"/>.</summary>
+    public static string[] RestartArguments { get; private set; } = [];
 
     /// <summary>Where Waddamburo keeps its own files (settings, scores, caches) when they cannot live beside the game
     /// data: the app's private storage on a phone. Null on desktop (USRDIR/waddamburo).</summary>
@@ -230,11 +234,11 @@ public static class Boot
             a.Benchmark,
             a.FlowSmoke,
             a.FlowSmokeSong));
-        // Relaunched only now: the old instance has let go of its files (the texture cache, the scores).
-        if (GameShell.RestartRequested && PlatformInfo.IsMobile)
-            return RestartExitCode; // no second process on a phone: the activity boots again
         if (GameShell.RestartRequested)
-            SelfUpdate.Relaunch([.. a.Raw.Where(static argument => !argument.StartsWith("--benchmark", StringComparison.Ordinal)), .. GameShell.RestartArguments]);
+        {
+            RestartArguments = [.. a.Raw.Where(static argument => !argument.StartsWith("--benchmark", StringComparison.Ordinal)), .. GameShell.RestartArguments];
+            return RestartExitCode;
+        }
         return exitCode; // 1 after the boot's error screen
     }
 

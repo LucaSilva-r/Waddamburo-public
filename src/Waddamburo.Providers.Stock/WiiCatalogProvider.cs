@@ -175,7 +175,13 @@ public sealed partial class WiiCatalogProvider : ISongCatalogProvider, ICatalogA
 
     private string duetPath(string id, char course, string player) => Path.Combine(_root, "sheet", "newsht", "duet", $"{id}_{course}_{player}.bin");
 
-    private string audioPath(string id) => Path.Combine(_root, "sound", $"SONG_{id.ToUpperInvariant()}.nub");
+    // A G.719 bank arrives from another device as Opus (Waddamburo.App's WiiAudio): SONG_<ID>.ogg beside the rest.
+    private string audioPath(string id)
+    {
+        var bank = Path.Combine(_root, "sound", $"SONG_{id.ToUpperInvariant()}.nub");
+        var converted = Path.ChangeExtension(bank, ".ogg");
+        return !File.Exists(bank) && File.Exists(converted) ? converted : bank;
+    }
 
     private static string musicInfoPath(string root) => Path.Combine(root, "sheet", "musicinfo", "bin", "musicinfo.bin");
 

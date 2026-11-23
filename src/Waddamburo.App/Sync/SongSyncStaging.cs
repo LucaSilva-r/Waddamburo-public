@@ -6,6 +6,7 @@ internal sealed class SongSyncStaging
 {
     private const string FolderName = ".waddamburo-staging";
     private const string JournalName = ".waddamburo-commit";
+    internal const string TimesName = ".waddamburo-times"; // SyncClient: the sender's times of received files
     private readonly string _folder;
     private readonly List<string> _remove;
     private static readonly object PublishLock = new();
@@ -37,6 +38,8 @@ internal sealed class SongSyncStaging
     public static bool IsInternal(string path) => path.Equals(ReceivedLibraries.Marker, StringComparison.OrdinalIgnoreCase)
         || path.Equals(JournalName, StringComparison.OrdinalIgnoreCase)
         || path.Equals(JournalName + ".part", StringComparison.OrdinalIgnoreCase)
+        || path.Equals(TimesName, StringComparison.OrdinalIgnoreCase)
+        || path.Equals(TimesName + ".part", StringComparison.OrdinalIgnoreCase)
         || path.Equals(FolderName, StringComparison.OrdinalIgnoreCase)
         || path.StartsWith(FolderName + "/", StringComparison.OrdinalIgnoreCase);
 
@@ -103,11 +106,7 @@ internal sealed class SongSyncStaging
             }
             var source = pathIn(StagedFolder(folder), path);
             if (!File.Exists(source))
-            {
-                if (!File.Exists(destination))
-                    throw new IOException("A file is missing from an unfinished song publication.");
-                continue;
-            }
+                continue; // published already, or skipped (gone or changed on the sender)
             Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
             File.Move(source, destination, overwrite: true);
         }

@@ -459,6 +459,7 @@
   "sync.too_big": "{0}は容量が足りません（{1}超過）。",
   "sync.progress.comparing": "{0}を比較中…",
   "sync.progress.fetching": "{0}：受信 {1}ファイル、削除 {2}ファイル",
+  "sync.progress.finishing": "{0}: 曲を配置しています…",
   "sync.progress.done": "完了。ゲームを再起動すると反映されます。",
   "sync.progress.same": "すでに同じ内容です。",
   "sync.setup.looking": "ペアリング済み。PCを探しています（PCでWaddamburoを起動してください）…",

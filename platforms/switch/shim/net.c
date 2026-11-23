@@ -13,6 +13,7 @@
 #include <switch.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 #include <netinet/tcp.h>
 #include <netdb.h>
 #include <poll.h>
@@ -400,4 +401,82 @@ int lx_getaddrinfo(const char *node, const char *service, const void *hints, voi
 }
 void lx_freeaddrinfo(void *r) {
     for (g_addrinfo *a = r, *next; a; a = next) { next = a->next; free(a->canonname); free(a); }
+}
+
+// ---- network interfaces (.NET's NetworkInterface: the peer link's and LAN sync's local addresses)
+// Loopback and the console's network ("wlan0", wired or wireless alike) from nifm's current IP configuration, and the
+// few Linux files .NET reads about them (shim.c serves them: net_file).
+typedef struct g_ifaddrs { struct g_ifaddrs *next; char *name; unsigned flags; void *addr, *netmask, *broadaddr, *data; } g_ifaddrs;
+#define G_IFF_UP 0x1
+#define G_IFF_BROADCAST 0x2
+#define G_IFF_LOOPBACK 0x8
+#define G_IFF_RUNNING 0x40
+#define G_IFF_MULTICAST 0x1000
+
+// The current IPv4 configuration (network byte order); 0 = none (offline).
+static int ip_config(u32 *addr, u32 *mask, u32 *dns1, u32 *dns2) {
+    static int nifm; // 1 ready, -1 failed
+    if (!nifm) nifm = R_SUCCEEDED(nifmInitialize(NifmServiceType_User)) ? 1 : -1;
+    u32 gateway = 0;
+    *addr = *mask = *dns1 = *dns2 = 0;
+    return nifm > 0 && R_SUCCEEDED(nifmGetCurrentIpConfigInfo(addr, mask, &gateway, dns1, dns2)) && *addr;
+}
+
+static g_ifaddrs *ifaddr(const char *name, unsigned flags, u32 addr, u32 mask, u32 broadcast) {
+    struct { g_ifaddrs ifa; g_sockaddr_in a, m, b; char name[8]; } *n = calloc(1, sizeof *n);
+    strcpy(n->name, name);
+    n->ifa.name = n->name; n->ifa.flags = flags;
+    n->a = (g_sockaddr_in){ G_AF_INET, 0, addr, {0} }; n->ifa.addr = &n->a;
+    n->m = (g_sockaddr_in){ G_AF_INET, 0, mask, {0} }; n->ifa.netmask = &n->m;
+    if (flags & G_IFF_BROADCAST) { n->b = (g_sockaddr_in){ G_AF_INET, 0, broadcast, {0} }; n->ifa.broadaddr = &n->b; }
+    return &n->ifa;
+}
+
+// Like Linux, each interface starts with its link-layer (AF_PACKET) entry: .NET's GetNetworkInterfaces sizes one
+// buffer for interfaces and addresses from the entry count, and without them the two overlap.
+static g_ifaddrs *packet(const char *name, unsigned flags, int index, u16 hatype) {
+    struct { g_ifaddrs ifa; struct { u16 family, protocol; int ifindex; u16 hatype; u8 pkttype, halen, addr[8]; } ll; char name[8]; } *n = calloc(1, sizeof *n);
+    strcpy(n->name, name);
+    n->ifa.name = n->name; n->ifa.flags = flags;
+    n->ll.family = 17; n->ll.ifindex = index; n->ll.hatype = hatype; n->ll.halen = 6; // AF_PACKET; ponytail: MAC all zero
+    n->ifa.addr = &n->ll;
+    return &n->ifa;
+}
+
+int lx_getifaddrs(void **out) {
+    u32 addr, mask, dns1, dns2;
+    unsigned loFlags = G_IFF_UP | G_IFF_LOOPBACK | G_IFF_RUNNING, wlanFlags = G_IFF_UP | G_IFF_BROADCAST | G_IFF_RUNNING | G_IFF_MULTICAST;
+    g_ifaddrs *head = packet("lo", loFlags, 1, 772), **tail = &head->next; // ARPHRD_LOOPBACK
+    int online = ip_config(&addr, &mask, &dns1, &dns2);
+    if (online) { *tail = packet("wlan0", wlanFlags, 2, 1); tail = &(*tail)->next; } // ARPHRD_ETHER
+    *tail = ifaddr("lo", loFlags, htonl(0x7f000001), htonl(0xff000000), 0); tail = &(*tail)->next;
+    if (online) *tail = ifaddr("wlan0", wlanFlags, addr, mask, addr | ~mask);
+    *out = head;
+    return 0;
+}
+void lx_freeifaddrs(void *p) { for (g_ifaddrs *a = p, *next; a; a = next) { next = a->next; free(a); } }
+unsigned lx_if_nametoindex(const char *n) { return !strcmp(n, "lo") ? 1 : !strcmp(n, "wlan0") ? 2 : 0; }
+
+// /etc/resolv.conf and /sys/class/net/<name>/... as Linux has them; (size_t)-1 = no such file.
+size_t net_file(const char *p, char *b, size_t n) {
+    u32 addr, mask, dns1, dns2;
+    int online = ip_config(&addr, &mask, &dns1, &dns2);
+    if (!strcmp(p, "/etc/resolv.conf")) {
+        size_t k = 0;
+        for (int i = 0; i < 2; i++) {
+            u32 d = ntohl(i ? dns2 : dns1);
+            if (d) k += snprintf(b + k, n - k, "nameserver %u.%u.%u.%u\n", d >> 24, d >> 16 & 255, d >> 8 & 255, d & 255);
+        }
+        return k;
+    }
+    const char *q = p + strlen("/sys/class/net/");
+    if (strncmp(p, "/sys/class/net/", 15)) return (size_t)-1;
+    int lo = !strncmp(q, "lo/", 3), wlan = !strncmp(q, "wlan0/", 6);
+    if (!lo && !wlan) return (size_t)-1;
+    const char *file = q + (lo ? 3 : 6);
+    if (!strcmp(file, "operstate")) return snprintf(b, n, "%s\n", lo ? "unknown" : online ? "up" : "down");
+    if (!strcmp(file, "type")) return snprintf(b, n, "%d\n", lo ? 772 : 1); // ARPHRD_LOOPBACK, ARPHRD_ETHER
+    if (!strcmp(file, "mtu")) return snprintf(b, n, "%d\n", lo ? 65536 : 1500);
+    if (!strcmp(file, "carrier")) return snprintf(b, n, "%d\n", lo || online);
+    return (size_t)-1;
 }
