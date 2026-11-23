@@ -94,6 +94,7 @@ public sealed class LumenMovieContent
         ArgumentNullException.ThrowIfNull(replace);
         Textures = [.. Textures.Select(replace)];
         _hashes = null;
+        _tiled = null;
     }
 
     /// <summary>A patched definition and texture set (see Patching.LumenMovieEditor), before upload.</summary>
@@ -103,6 +104,7 @@ public sealed class LumenMovieContent
         Definition = definition;
         Textures = textures;
         _hashes = null;
+        _tiled = null;
     }
 
     /// <summary>Releases decoded pixels after a renderer has uploaded every texture.</summary>
@@ -115,6 +117,26 @@ public sealed class LumenMovieContent
             : texture with { Rgba8 = ImmutableCollectionsMarshal.AsImmutableArray(texture.Pixels()), Blocks = default })];
 
     private UInt128[]? _hashes;
+    private bool[]? _tiled;
+
+    /// <summary>
+    /// Whether a shape draws this texture tiled (UVs past 0..1): it must keep a texture of its own (an atlas page would
+    /// tile its neighbours in). From the definition as it is now (after patches).
+    /// </summary>
+    public bool TextureTiles(int index)
+    {
+        if (_tiled is null)
+        {
+            var tiled = new bool[Textures.Length];
+            foreach (var shape in Definition.Shapes)
+                foreach (var geometry in shape.Geometry)
+                    if (geometry.TextureIndex < tiled.Length && geometry.Vertices.Any(static vertex =>
+                            vertex.U is < -0.001f or > 1.001f || vertex.V is < -0.001f or > 1.001f))
+                        tiled[geometry.TextureIndex] = true;
+            _tiled = tiled;
+        }
+        return (uint)index < (uint)_tiled.Length && _tiled[index];
+    }
 
     /// <summary>
     /// Hashes every texture as it will be uploaded (after patches and upscales; a later change forgets them): the

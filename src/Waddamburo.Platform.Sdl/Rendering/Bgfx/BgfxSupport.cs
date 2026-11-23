@@ -87,7 +87,7 @@ namespace Waddamburo.Platform.Sdl.Rendering
                 ? bgfx.CapsFormatFlags.Texture2d | bgfx.CapsFormatFlags.Texture2dEmulated
                 : bgfx.CapsFormatFlags.Texture2d)) != 0;
 
-        private static bgfx.TextureFormat bgfxFormat(TextureBlockFormat format) => format switch
+        internal static bgfx.TextureFormat bgfxFormat(TextureBlockFormat format) => format switch
         {
             TextureBlockFormat.Bc1 => bgfx.TextureFormat.BC1,
             TextureBlockFormat.Bc3 => bgfx.TextureFormat.BC3,

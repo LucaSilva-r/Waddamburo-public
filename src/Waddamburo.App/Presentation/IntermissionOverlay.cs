@@ -124,7 +124,7 @@ internal static class SceneTextures
             _held[shared] = (hash, _held[shared].References + 1);
             return shared;
         }
-        var id = UploadOne(application, content.Textures[index]);
+        var id = UploadOne(application, content.Textures[index], atlas: !content.TextureTiles(index));
         Uploads++;
         _byHash[hash] = id;
         _held[id] = (hash, 1);
@@ -147,7 +147,8 @@ internal static class SceneTextures
     /// One texture: BC7 (an upscale) and the game's own BC1/BC3 blocks as they are, RGBA otherwise; the
     /// originals are queued for upscaling.
     /// </summary>
-    public static RenderTextureId UploadOne(SdlApplication application, LumenTextureContent texture)
+    /// <param name="atlas">May share an atlas page (a movie texture never drawn tiled).</param>
+    public static RenderTextureId UploadOne(SdlApplication application, LumenTextureContent texture, bool atlas = false)
     {
         var (width, height) = (checked((uint)texture.Width), checked((uint)texture.Height));
         if (!texture.Bc7.IsEmpty)
@@ -155,7 +156,7 @@ internal static class SceneTextures
         var format = texture.BlockFormat == LumenBlockFormat.Bc1 ? TextureBlockFormat.Bc1 : TextureBlockFormat.Bc3;
         if (!texture.Blocks.IsEmpty && application.Supports(format))
         {
-            var compressed = application.UploadBlocks(format, width, height, texture.Blocks.Span);
+            var compressed = application.UploadBlocks(format, width, height, texture.Blocks.Span, atlas);
             // A queued texture keeps its own copy of the blocks (a slice would keep its whole archive alive),
             // decoded only if the upscaler gets to it.
             if (Upscaler is { } queue && queue.Wants(width, height))
@@ -166,7 +167,7 @@ internal static class SceneTextures
             return compressed;
         }
         var rgba = texture.Pixels();
-        var id = application.UploadRgba8(width, height, rgba);
+        var id = application.UploadRgba8(width, height, rgba, atlas);
         // The upscaler keeps the pixel arrays the content is about to drop.
         if (Upscaler is { } upscaler && !upscaler.IsUpscaled(rgba))
             upscaler.Enqueue(id, width, height, () => rgba, texture.UpscaleKey);

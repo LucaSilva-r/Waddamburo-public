@@ -421,11 +421,12 @@ public sealed unsafe partial class SdlApplication : IDisposable
         }
     }
 
-    public RenderTextureId UploadRgba8(uint width, uint height, ReadOnlySpan<byte> pixels)
+    /// <param name="atlas">May share an atlas page: never drawn tiled (UVs past 0..1), never updated in place.</param>
+    public RenderTextureId UploadRgba8(uint width, uint height, ReadOnlySpan<byte> pixels, bool atlas = false)
     {
         ensureOwnerThread();
         ObjectDisposedException.ThrowIf(_disposed, this);
-        return _renderer!.UploadRgba8(width, height, pixels);
+        return _renderer!.UploadRgba8(width, height, pixels, atlas);
     }
 
     /// <summary>Whether BC7 textures can be drawn (natively, or decoded by bgfx).</summary>
@@ -444,11 +445,11 @@ public sealed unsafe partial class SdlApplication : IDisposable
     /// <summary>Whether the GPU draws this block format natively (false before the renderer starts).</summary>
     public bool Supports(TextureBlockFormat format) => _renderer?.Supports(format) ?? false;
 
-    public RenderTextureId UploadBlocks(TextureBlockFormat format, uint width, uint height, ReadOnlySpan<byte> blocks)
+    public RenderTextureId UploadBlocks(TextureBlockFormat format, uint width, uint height, ReadOnlySpan<byte> blocks, bool atlas = false)
     {
         ensureOwnerThread();
         ObjectDisposedException.ThrowIf(_disposed, this);
-        return _renderer!.UploadBlocks(format, width, height, blocks);
+        return _renderer!.UploadBlocks(format, width, height, blocks, atlas);
     }
 
     public bool TryReplaceBc7(RenderTextureId texture, uint width, uint height, ReadOnlySpan<byte> blocks)

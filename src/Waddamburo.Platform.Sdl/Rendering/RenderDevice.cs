@@ -9,7 +9,7 @@ namespace Waddamburo.Platform.Sdl.Rendering;
 public readonly record struct RgbaTextureUpload(uint Width, uint Height, ReadOnlyMemory<byte> Pixels);
 
 /// <summary>Owns bgfx resources and frame submission for one window.</summary>
-internal sealed unsafe class RenderDevice : IDisposable
+internal sealed unsafe partial class RenderDevice : IDisposable
 {
     // Prepasses (the Don targets) own views 0..ClearView-1 and run first; bgfx executes views in id order.
     internal const ushort ClearView = 16;
@@ -72,13 +72,16 @@ internal sealed unsafe class RenderDevice : IDisposable
         bgfx.set_view_mode(MainView, bgfx.ViewMode.Sequential);
     }
 
-    public RenderTextureId UploadRgba8(uint width, uint height, ReadOnlySpan<byte> pixels)
+    /// <param name="atlas">May share an atlas page (never drawn tiled, never updated in place).</param>
+    public RenderTextureId UploadRgba8(uint width, uint height, ReadOnlySpan<byte> pixels, bool atlas = false)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentOutOfRangeException.ThrowIfZero(width);
         ArgumentOutOfRangeException.ThrowIfZero(height);
         if ((ulong)pixels.Length != checked((ulong)width * height * 4))
             throw new ArgumentException("RGBA8 data must contain exactly width * height * 4 bytes.", nameof(pixels));
+        if (atlas && tryAtlasRgba8(width, height, pixels) is { } atlased)
+            return atlased;
         var id = new RenderTextureId(_nextTextureId++);
         _textures.Add(id.Value, BgfxSupport.CreateRgba8(width, height, pixels));
         return id;
@@ -97,8 +100,8 @@ internal sealed unsafe class RenderDevice : IDisposable
     public void UpdateRgba8(RenderTextureId id, uint width, uint height, ReadOnlySpan<byte> pixels)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (_borrowedTextures.Contains(id.Value) || !_textures.TryGetValue(id.Value, out var texture))
-            throw new ArgumentException($"Texture {id.Value} is not owned by this render device.", nameof(id));
+        if (_borrowedTextures.Contains(id.Value) || _atlased.ContainsKey(id.Value) || !_textures.TryGetValue(id.Value, out var texture))
+            throw new ArgumentException($"Texture {id.Value} is not an owned standalone texture.", nameof(id));
         if ((ulong)pixels.Length != checked((ulong)width * height * 4))
             throw new ArgumentException("RGBA8 data must contain exactly width * height * 4 bytes.", nameof(pixels));
         bgfx.update_texture_2d(texture, 0, 0, 0, 0, (ushort)width, (ushort)height, BgfxSupport.Copy(pixels), ushort.MaxValue);
@@ -165,12 +168,14 @@ internal sealed unsafe class RenderDevice : IDisposable
     }
 
     /// <summary>A BC1 (8 bytes per 4x4 block) or BC3/BC7 (16) texture, sizes multiples of 4.</summary>
-    public RenderTextureId UploadBlocks(TextureBlockFormat format, uint width, uint height, ReadOnlySpan<byte> blocks)
+    public RenderTextureId UploadBlocks(TextureBlockFormat format, uint width, uint height, ReadOnlySpan<byte> blocks, bool atlas = false)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (width == 0 || height == 0 || width % 4 != 0 || height % 4 != 0
             || (ulong)blocks.Length != (ulong)width / 4 * (height / 4) * (format == TextureBlockFormat.Bc1 ? 8u : 16u))
             throw new ArgumentException($"{format} textures need sizes that are multiples of 4 and whole blocks.", nameof(blocks));
+        if (atlas && tryAtlasBlocks(format, width, height, blocks) is { } atlased)
+            return atlased;
         var id = new RenderTextureId(_nextTextureId++);
         _textures.Add(id.Value, BgfxSupport.CreateBlocks(format, width, height, blocks));
         return id;
@@ -189,7 +194,7 @@ internal sealed unsafe class RenderDevice : IDisposable
         ShowReplacements && _replacements.TryGetValue(id, out var replacement) ? replacement : _textures[id];
 
     /// <summary>Textures alive here, upscaled copies included (what <see cref="ReleaseTexture"/> has not taken).</summary>
-    public int TextureCount => _textures.Count + _replacements.Count;
+    public int TextureCount => gpuTextureCount;
 
     public void ReleaseTexture(RenderTextureId id)
     {
@@ -198,7 +203,10 @@ internal sealed unsafe class RenderDevice : IDisposable
             throw new ArgumentException($"Texture {id.Value} is owned by a render prepass.", nameof(id));
         if (!_textures.Remove(id.Value, out var texture))
             throw new ArgumentException($"Texture {id.Value} is not owned by this render device.", nameof(id));
-        bgfx.destroy_texture(texture);
+        if (_atlased.Remove(id.Value, out var entry))
+            releaseAtlased(entry);
+        else
+            bgfx.destroy_texture(texture);
         if (_replacements.Remove(id.Value, out var replacement))
             bgfx.destroy_texture(replacement);
     }
@@ -265,8 +273,12 @@ internal sealed unsafe class RenderDevice : IDisposable
     // The stage's place inside the main view (offset, then scale, in view units): identity but for a StageBox.
     private (float X, float Y, float Width, float Height) _map = (0, 0, 1, 1);
 
+    // Draws submitted and frames presented: a line at exit (the atlas's measure).
+    private long _drawsSubmitted, _framesPresented;
+
     public RenderCapture? Present(RenderFrame frame, bool capture = false)
     {
+        _framesPresented++;
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(frame);
         validateFrame(frame);
@@ -663,6 +675,12 @@ internal sealed unsafe class RenderDevice : IDisposable
         for (var index = 0; index < quadCount; index++)
         {
             var quad = quads[index];
+            if (atlasRect(quad.Texture.Value) is { } rect)
+                quad = quad with
+                {
+                    TopLeft = inAtlas(quad.TopLeft, rect), TopRight = inAtlas(quad.TopRight, rect),
+                    BottomRight = inAtlas(quad.BottomRight, rect), BottomLeft = inAtlas(quad.BottomLeft, rect),
+                };
             var multiply = quad.MultiplyColor;
             var add = quad.AddColor;
             var corners = vertices.Slice(index * 6, 6);
@@ -678,7 +696,8 @@ internal sealed unsafe class RenderDevice : IDisposable
         var start = 0;
         for (var index = 1; index <= quadCount; index++)
         {
-            if (index < quadCount && sameBatch(quads[start], quads[index]))
+            if (index < quadCount && sameBatch(quads[start], quads[index])
+                && drawn(quads[start].Texture.Value).idx == drawn(quads[index].Texture.Value).idx)
                 continue;
             var first = quads[start];
             bgfx.set_state(stateFor(first), 0);
@@ -694,12 +713,17 @@ internal sealed unsafe class RenderDevice : IDisposable
             bgfx.set_texture(0, _textureSampler, drawn(first.Texture.Value), samplerFor(first));
             bgfx.set_transient_vertex_buffer(0, &buffer, (uint)start * 6, (uint)(index - start) * 6);
             bgfx.submit(view, first.MaskOperation == RenderMaskOperation.Draw ? _quadProgram : _maskProgram, 0, (byte)bgfx.DiscardFlags.All);
+            _drawsSubmitted++;
             start = index;
         }
     }
 
+    private static RenderVertex inAtlas(RenderVertex corner, AtlasEntry rect) =>
+        corner with { U = rect.U + corner.U * rect.Width, V = rect.V + corner.V * rect.Height };
+
+    // The texture itself is compared by the caller (its page: atlased textures batch together).
     private static bool sameBatch(in RenderQuad a, in RenderQuad b) =>
-        a.Texture == b.Texture && a.Blend == b.Blend && a.MaskOperation == b.MaskOperation
+        a.Blend == b.Blend && a.MaskOperation == b.MaskOperation
         && a.MaskDepth == b.MaskDepth && a.Sampling == b.Sampling && tiles(a) == tiles(b);
 
     private static ulong stateFor(in RenderQuad quad)
@@ -784,10 +808,14 @@ internal sealed unsafe class RenderDevice : IDisposable
     {
         if (_disposed)
             return;
+        if (_framesPresented > 0)
+            Console.WriteLine(FormattableString.Invariant(
+                $"Draws: {(double)_drawsSubmitted / _framesPresented:F1} quad draws a frame over {_framesPresented} frames; {_pages.Count} atlas pages, {_atlased.Count} atlased textures."));
         foreach (var (id, texture) in _textures)
-            if (!_borrowedTextures.Contains(id))
+            if (!_borrowedTextures.Contains(id) && !_atlased.ContainsKey(id))
                 bgfx.destroy_texture(texture);
         _textures.Clear();
+        disposeAtlas();
         foreach (var replacement in _replacements.Values)
             bgfx.destroy_texture(replacement);
         _replacements.Clear();
