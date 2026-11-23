@@ -19,15 +19,27 @@ public enum LumenRenderBlend
     Multiply,
 }
 
+/// <summary>
+/// A native surface's name. Its hash is computed once and equality checks the reference first: every native quad goes
+/// through several resolvers' dictionaries every frame (Song Select's titles cost ~6% of a frame hashing the string).
+/// </summary>
 public readonly record struct LumenNativeSurfaceKey
 {
+    private readonly int _hash;
+
     public LumenNativeSurfaceKey(string value)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(value);
         Value = value;
+        _hash = StringComparer.Ordinal.GetHashCode(value);
     }
 
     public string Value { get; }
+
+    public bool Equals(LumenNativeSurfaceKey other) =>
+        _hash == other._hash && (ReferenceEquals(Value, other.Value) || string.Equals(Value, other.Value, StringComparison.Ordinal));
+
+    public override int GetHashCode() => _hash;
 
     public override string ToString() => Value;
 }

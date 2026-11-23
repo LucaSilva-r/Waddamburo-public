@@ -1163,7 +1163,7 @@ internal sealed partial class GameShell : IDisposable
 
             ApplyRecording();
             var result = Application.Run(
-                interpolation => onTop(createFrame(interpolation)),
+                interpolation => countFrame(interpolation),
                 tick,
                 Options.FrameLimit,
                 Options.TickLimit,
@@ -1284,8 +1284,29 @@ internal sealed partial class GameShell : IDisposable
     /// <summary>A card was paired during the attract loop: it starts the credit (SCENE_TRIGGER_CARD).</summary>
     public ScoreProfile? TakeCard() => Sync.Pairing?.TakeCard();
 
+    // Frames built and the time spent building them (scene snapshots, quads; not the GPU): one line at exit, the
+    // number to compare when optimizing.
+    private long _framesBuilt, _frameBuildTicks, _firstFrameAt;
+
+    private RenderFrame countFrame(double interpolation)
+    {
+        var start = System.Diagnostics.Stopwatch.GetTimestamp();
+        if (_firstFrameAt == 0)
+            _firstFrameAt = start;
+        var frame = onTop(createFrame(interpolation));
+        _frameBuildTicks += System.Diagnostics.Stopwatch.GetTimestamp() - start;
+        _framesBuilt++;
+        return frame;
+    }
+
     public void Dispose()
     {
+        if (_framesBuilt > 0)
+        {
+            var seconds = System.Diagnostics.Stopwatch.GetElapsedTime(_firstFrameAt).TotalSeconds;
+            Console.WriteLine(System.FormattableString.Invariant(
+                $"Frames: {_framesBuilt} in {seconds:F1} s ({_framesBuilt / seconds:F0} fps), building {System.Diagnostics.Stopwatch.GetElapsedTime(0, _frameBuildTicks).TotalMilliseconds / _framesBuilt:F3} ms a frame."));
+        }
         Editor?.Close();
         _playerSetup?.Dispose();
         _art?.Dispose();

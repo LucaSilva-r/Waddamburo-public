@@ -341,15 +341,20 @@ public sealed unsafe partial class SdlApplication : IDisposable
         return (int)(Math.Min(height, width * 9 / 16) * display.LetterboxSize);
     }
 
+    // Once a frame: title textures asked for it per quad.
+    private (int Width, int Height)? _pixelSize;
+
     public (int Width, int Height) GetPixelSize()
     {
         ensureOwnerThread();
         ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_pixelSize is { } size)
+            return size;
         int width;
         int height;
         if (!SDL_GetWindowSizeInPixels(_window, &width, &height))
             throw sdlFailure("query the window pixel size");
-        return (width, height);
+        return (_pixelSize = (width, height)).Value;
     }
 
     private static readonly System.Collections.Concurrent.ConcurrentQueue<string> PickedFolders = new();
@@ -1069,6 +1074,7 @@ public sealed unsafe partial class SdlApplication : IDisposable
                 pendingPresses.Add(new SdlKeyPress(injected, TimeSpan.FromTicks(checked((long)(SDL_GetTicksNS() / 100)))));
             var performanceActive = performanceVisible?.Invoke() == true;
             var inputStart = performanceActive ? Stopwatch.GetTimestamp() : 0;
+            _pixelSize = null; // asked again this frame (a resize, a display change)
             SDL_Event currentEvent;
             while (SDL_PollEvent(&currentEvent))
             {

@@ -202,12 +202,15 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
                 _pending.Add(rasterKey, rasterizeAsync(request, profile, rasterScale, rasterKey.Squash));
         }
 
-        var fallback = _leastRecentlyUsed.FirstOrDefault(node => node.Surface == key);
-        if (fallback == default)
-            return null;
-        var fallbackTexture = _resident[fallback];
-        touch(fallback, fallbackTexture.Node);
-        return fallbackTexture.Texture;
+        // Another raster of the same title (another scale) meanwhile; a plain loop, it runs every frame until ready.
+        for (var node = _leastRecentlyUsed.First; node is not null; node = node.Next)
+            if (node.Value.Surface == key)
+            {
+                var fallbackTexture = _resident[node.Value];
+                touch(node.Value, fallbackTexture.Node);
+                return fallbackTexture.Texture;
+            }
+        return null;
     }
 
     public void Dispose()
@@ -318,10 +321,13 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
         return new RgbaTextSurface(width, height, pixels);
     }
 
+    // The same node to the front: no allocation (it ran for every title quad, every frame).
     private void touch(RasterKey key, LinkedListNode<RasterKey> node)
     {
+        if (_leastRecentlyUsed.First == node)
+            return;
         _leastRecentlyUsed.Remove(node);
-        _resident[key] = _resident[key] with { Node = _leastRecentlyUsed.AddFirst(key) };
+        _leastRecentlyUsed.AddFirst(node);
     }
 
     private void evictIfNeeded()
