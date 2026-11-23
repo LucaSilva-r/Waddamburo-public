@@ -368,7 +368,9 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             }
         }
         // Held on the song title (shown) until the song's scene is decoded and uploaded (then its switch is quick).
-        if (_cover.CoveredAt is { } coveredAt && ((titleReady && _cover.Prefetch is not null && _cover.Composing is null && Shell.Scenes.PrefetchReady)
+        // The play's later screens (results, the way out) too: nothing loads during the song.
+        if (_cover.CoveredAt is { } coveredAt && ((titleReady && _cover.Prefetch is not null && _cover.Composing is null && Shell.Scenes.PrefetchReady
+                    && Shell.Scenes.WarmReady)
                 || Shell.Tick - coveredAt >= CoverHoldLimitTicks))
         {
             if (Shell.Tick - coveredAt >= CoverHoldLimitTicks)

@@ -107,7 +107,9 @@ internal sealed partial class GameShell
                 : held.Frame);
         }
         Titles.UploadCompleted();
-        _presenter.UploadAhead(still: _gameplay.Rainbow.State == RainbowTransitionState.Covered);
+        var still = _gameplay.Rainbow.State == RainbowTransitionState.Covered;
+        // The screens ahead load where it cannot be seen or heard: not during a song, not while a transition moves.
+        _presenter.UploadAhead(still, warm: !Scenes.OnLane && !Scenes.FadePending && (still || !Overlay.IsShown));
         if (SceneTextures.Upscaler is { } upscaler)
         {
             upscaler.Paused = Scenes.OnLane || Bake?.Running == true;

@@ -91,17 +91,6 @@ internal static class FlowScenes
             LumenMatrix.Identity, RainbowTransitionComposition.StaticHostId),
     ]);
 
-    /// <summary>What loads at boot to stay (the Switch): first what the play goes through most. Boot and gameplay do not.</summary>
-    public static IEnumerable<SceneDefinition> Preloaded()
-    {
-        var initial = Initial([]);
-        SceneDefinition scene(SceneId id) => initial.First(definition => definition.Id == id);
-        return [scene(Entry), SongSelectScene([0]), Results, scene(Logo), scene(Title), scene(Caution), scene(Movie), scene(Retry),
-            NormalGameOver, RewardGameOver, RewardShopVisit, DaniSelectScene(0), DaniResults, DaniGameOver,
-            SongSelectScene([0], waiwai: true), WaiwaiResults, SongSelectScene([0], aiBattle: true), AiResults, scene(AiRemind),
-            scene(Tutorial), scene(WaiwaiTutorial), scene(AiTutorial)];
-    }
-
     /// <summary>Every scene as first loaded (song select, gameplay and results are replaced per play).</summary>
     public static IReadOnlyList<SceneDefinition> Initial(IReadOnlyList<SceneDefinition> gameplayAndResults) =>
     [

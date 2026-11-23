@@ -25,13 +25,14 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
     // Every list here (kept copies, prefetches, the scene's, the held frame's) holds its own references to its
     // textures (SceneTextures shares them by picture) and gives them back when it goes.
     private readonly Dictionary<(string ArchiveId, string MovieId), Kept> _kept = [];
-    private readonly record struct Kept(LumenMovieContent Content, RenderTextureId[] Textures, SceneId Scene, long Used, bool Pinned = false);
+    private readonly record struct Kept(LumenMovieContent Content, RenderTextureId[] Textures, SceneId Scene, long Used);
     // Every texture alive, on screen or kept: past it the copies longest unused go. A Switch's GPU buffers are the limit
     // there (one a texture; the system refused the 4,872nd, and that texture came out missing), bgfx's handles elsewhere
     // (16,384). Room is left for what goes up before the released ones are gone, a frame later.
     private static readonly int MaximumTextures = PlatformInfo.IsSwitch ? 3600 : 14000;
-    // What boot fills: the play's own screens fit on top of it without dropping any of it at once.
-    private const int MaximumPreloadedTextures = 2400;
+    // Textures really uploaded per frame: the cost is on bgfx's render thread, which the time budget does not see.
+    // ponytail: guessed counts; tune on hardware (a Switch's frames hitch past a few a frame).
+    private static readonly int MovingUploads = PlatformInfo.IsSwitch ? 2 : 16, StillUploads = PlatformInfo.IsSwitch ? 8 : 64;
     private long _use;
     private HashSet<(string ArchiveId, string MovieId)> _shown = [], _prefetching = [];
     // Copies hold the upscales as they were when decoded: the setting changing drops them all.
@@ -61,35 +62,6 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
         Console.WriteLine($"Prefetching {scene.Id} ({missing.Length} of {scene.Layers.Length} movies).");
     }
 
-    /// <summary>
-    /// Loads a scene's movies and keeps them for good, whatever scene shows what (at boot: <paramref name="draw"/> draws a
-    /// frame meanwhile). False when they are too many to keep: the scene loads at its first visit, as without this. A movie
-    /// that fails to load is left for its scene to report.
-    /// </summary>
-    public bool Preload(SceneDefinition scene, Action draw)
-    {
-        Prefetch(scene);
-        for (; !movies.PrefetchComplete; Thread.Sleep(5))
-            draw();
-        var loaded = movies.DecodedPrefetches.ToArray();
-        var fits = application.TextureCount + loaded.Sum(static movie => SceneTextures.Missing(movie.Content)) <= MaximumPreloadedTextures;
-        while (fits && !PrefetchReady)
-        {
-            UploadAhead(still: true);
-            draw();
-        }
-        foreach (var (key, content) in fits ? loaded : [])
-        {
-            _uploadedAhead.Remove(content, out var textures);
-            _kept[key] = new(content, textures!, scene.Id, Used: 0, Pinned: true);
-        }
-        movies.Prefetch([]);
-        releaseUploadedAhead();
-        Prefetched = null;
-        _prefetching = [];
-        return fits;
-    }
-
     private void dropStale()
     {
         var now = upscaling?.Invoke() == true;
@@ -99,6 +71,7 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
         foreach (var kept in _kept.Values.ToArray())
             unkeep(kept.Textures);
         _kept.Clear();
+        dropWarming();
     }
 
     /// <summary>The scene being prefetched (null once a scene took it).</summary>
@@ -112,10 +85,20 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
     /// whole movie at once stalled the frame (and the audio) as Song Select's course select opened.
     /// </summary>
     /// <param name="still">Nothing moves on screen (the rainbow holding its title): frames may take longer.</param>
-    public void UploadAhead(bool still = false)
+    /// <param name="warm">The reachable screens may load too (nothing moving, no song playing): see <see cref="Want"/>.</param>
+    public void UploadAhead(bool still = false, bool warm = false)
     {
         var budget = still ? StillBudget : UploadAheadBudget;
         var start = Stopwatch.GetTimestamp();
+        var uploads = SceneTextures.Uploads + (still ? StillUploads : MovingUploads);
+        bool full() => Stopwatch.GetElapsedTime(start) > budget || SceneTextures.Uploads >= uploads;
+        if (uploadPrefetches(full) && warm)
+            Warm(full);
+    }
+
+    // False when the frame's budget ran out first.
+    private bool uploadPrefetches(Func<bool> full)
+    {
         foreach (var (_, content) in movies.DecodedPrefetches)
         {
             if (_uploadedAhead.ContainsKey(content))
@@ -125,10 +108,10 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
             var (uploaded, next) = _partial.GetValueOrDefault(content, (new RenderTextureId[content.Textures.Length], 0));
             for (; next < uploaded.Length; next++)
             {
-                if (Stopwatch.GetElapsedTime(start) > budget)
+                if (full())
                 {
                     _partial[content] = (uploaded, next);
-                    return;
+                    return false;
                 }
                 uploaded[next] = SceneTextures.Acquire(application, content, next);
             }
@@ -136,6 +119,103 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
             content.ReleaseDecodedTexturePixels();
             _uploadedAhead[content] = uploaded;
         }
+        return true;
+    }
+
+    // The screens the active one leads to (ScreenGraph), in order, loaded one movie at a time into the kept copies while
+    // the game allows it. Depth 1 is protected from eviction and may evict for room; deeper ones (devices that preload)
+    // only take free room, and the first that does not fit ends the deeper loading until the next screen.
+    private readonly record struct Wanted((string ArchiveId, string MovieId) Key, SceneId Scene, int Depth);
+    private Wanted[] _wanted = [];
+    private HashSet<(string ArchiveId, string MovieId)> _protected = [], _skipped = [];
+    private int _depthLimit = int.MaxValue;
+    private bool _warmDone;
+    private (Wanted Movie, Task<LumenMovieContent> Content)? _warming;
+    private (Wanted Movie, LumenMovieContent Content, RenderTextureId[] Uploaded, int Next)? _warmUpload;
+
+    /// <summary>The active screen's reachable screens with their depth (1: one switch away), the likeliest first.</summary>
+    public void Want(IEnumerable<(SceneDefinition Scene, int Depth)> screens)
+    {
+        var seen = new HashSet<(string ArchiveId, string MovieId)>();
+        _wanted = [.. screens.SelectMany(screen => keys(screen.Scene.Layers).Select(key => new Wanted(key, screen.Scene.Id, screen.Depth)))
+            .Where(wanted => seen.Add(wanted.Key))];
+        _protected = [.. _wanted.Where(static wanted => wanted.Depth == 1).Select(static wanted => wanted.Key)];
+        _skipped = [];
+        _depthLimit = int.MaxValue;
+        _warmDone = false;
+    }
+
+    /// <summary>Every movie one switch away is up (or failed, or did not fit): a switch to any of them will not load.</summary>
+    public bool WarmReady => _protected.All(key => _kept.ContainsKey(key) || _shown.Contains(key) || _skipped.Contains(key));
+
+    private void Warm(Func<bool> full)
+    {
+        if (_warmUpload is { } upload)
+        {
+            for (; upload.Next < upload.Uploaded.Length; upload.Next++)
+            {
+                if (full())
+                {
+                    _warmUpload = upload;
+                    return;
+                }
+                upload.Uploaded[upload.Next] = SceneTextures.Acquire(application, upload.Content, upload.Next);
+            }
+            upload.Content.ReleaseDecodedTexturePixels();
+            if (_kept.Remove(upload.Movie.Key, out var old))
+                unkeep(old.Textures);
+            _kept[upload.Movie.Key] = new(upload.Content, upload.Uploaded, upload.Movie.Scene, ++_use);
+            _warmUpload = null;
+        }
+        if (_warming is { } warming)
+        {
+            if (!warming.Content.IsCompleted)
+                return;
+            _warming = null;
+            var movie = warming.Movie;
+            if (!warming.Content.IsCompletedSuccessfully)
+            {
+                _skipped.Add(movie.Key); // its scene reports the error when it loads
+                return;
+            }
+            var content = warming.Content.Result;
+            var missing = SceneTextures.Missing(content);
+            if (movie.Depth == 1)
+                makeRoom(missing);
+            if (application.TextureCount + missing > MaximumTextures)
+            {
+                _skipped.Add(movie.Key);
+                if (movie.Depth > 1)
+                    _depthLimit = movie.Depth;
+                Console.WriteLine($"Screens ahead: {movie.Key.MovieId} ({missing} textures) does not fit; textures {application.TextureUsage}.");
+                return;
+            }
+            _warmUpload = (movie, content, new RenderTextureId[content.Textures.Length], 0);
+            return;
+        }
+        // A switch's own prefetch goes first.
+        if (Prefetched is not null && !PrefetchReady)
+            return;
+        foreach (var wanted in _wanted)
+            if (wanted.Depth < _depthLimit && !_kept.ContainsKey(wanted.Key) && !_shown.Contains(wanted.Key)
+                && !_skipped.Contains(wanted.Key) && !_prefetching.Contains(wanted.Key))
+            {
+                _warming = (wanted, movies.Decode(wanted.Key.ArchiveId, wanted.Key.MovieId));
+                return;
+            }
+        movies.ForgetDecodeArchive();
+        if (!_warmDone)
+            Console.WriteLine($"Screens ahead loaded: {_wanted.Count(wanted => _kept.ContainsKey(wanted.Key) || _shown.Contains(wanted.Key))} of "
+                + $"{_wanted.Length} movies ({_skipped.Count} skipped); textures {application.TextureUsage}.");
+        _warmDone = true;
+    }
+
+    private void dropWarming()
+    {
+        if (_warmUpload is { } upload)
+            SceneTextures.Release(application, upload.Uploaded.Take(upload.Next));
+        _warmUpload = null;
+        _warming = null;
     }
 
     /// <summary>
@@ -151,15 +231,16 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
     private static IEnumerable<(string ArchiveId, string MovieId)> keys(IEnumerable<SceneLayerDefinition> layers) =>
         layers.Select(static layer => (layer.ArchiveId, layer.MovieId));
 
-    // Kept copies go until so many more textures fit, the longest unused first (of the preloaded ones, the last in the
-    // list): never what is shown or being prefetched.
+    // Kept copies go until so many more textures fit, the longest unused first: never what is shown, being prefetched or
+    // one switch away.
     private void makeRoom(int textures)
     {
         while (application.TextureCount + textures > MaximumTextures)
         {
             ((string ArchiveId, string MovieId) Key, Kept Copy)? oldest = null;
             foreach (var (key, copy) in _kept)
-                if (!_shown.Contains(key) && !_prefetching.Contains(key) && (oldest is null || copy.Used <= oldest.Value.Copy.Used))
+                if (!_shown.Contains(key) && !_prefetching.Contains(key) && !_protected.Contains(key)
+                    && (oldest is null || copy.Used <= oldest.Value.Copy.Used))
                     oldest = (key, copy);
             if (oldest is not { } drop)
                 return;
@@ -216,7 +297,7 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
         if (keep is not null)
         {
             var shown = keep.Layers.Select(static layer => (layer.Definition.ArchiveId, layer.Definition.MovieId)).ToHashSet();
-            foreach (var (key, old) in _kept.Where(pair => pair.Value.Scene == keep.Id && !shown.Contains(pair.Key) && !pair.Value.Pinned).ToArray())
+            foreach (var (key, old) in _kept.Where(pair => pair.Value.Scene == keep.Id && !shown.Contains(pair.Key) && !_protected.Contains(pair.Key)).ToArray())
             {
                 _kept.Remove(key);
                 unkeep(old.Textures);
@@ -296,6 +377,7 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
     {
         SceneTextures.Release(application, _textures.Concat(_heldTextures).Concat(_kept.Values.SelectMany(static kept => kept.Textures)));
         releaseUploadedAhead();
+        dropWarming();
     }
 
     private void releaseUploadedAhead()

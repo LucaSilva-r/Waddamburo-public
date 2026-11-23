@@ -37,6 +37,9 @@ internal sealed class SceneSwitcher(
     /// <summary>The scene being prefetched, until one takes it.</summary>
     public SceneId? Prefetched => presenter.Prefetched;
 
+    /// <summary>Every screen one switch away is loaded (see <see cref="ScreenGraph"/>).</summary>
+    public bool WarmReady => presenter.WarmReady;
+
     /// <summary>The prefetched scene is decoded and uploaded (its switch will not stall).</summary>
     public bool PrefetchReady => presenter.PrefetchReady;
 
@@ -66,6 +69,9 @@ internal sealed class SceneSwitcher(
         PerformanceRecorder.Scene = Active.Id.ToString();
         presenter.Activate(Active);
         flowOf(Active.Id).Enter(Active.Id);
+        // ponytail: preloading (every screen there is room for) on the Switch only, the next screens elsewhere; a
+        // setting (off/on/auto by device memory) for Android and slow PCs to come.
+        presenter.Want(ScreenGraph.Reachable(Active.Id, shell, PlatformInfo.IsSwitch ? int.MaxValue : 1));
     }
 
     /// <summary>Fades to black (the intermission fade's "in", 1 s), then shows <paramref name="scene"/>.</summary>

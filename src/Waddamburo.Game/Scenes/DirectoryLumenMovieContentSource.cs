@@ -63,6 +63,24 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
         _prefetched = fresh;
     }
 
+    private (string ArchiveId, Task<DdpArchive> Archive)? _warmArchive;
+
+    /// <summary>
+    /// Decodes one movie on a worker thread, outside the prefetch (screens loaded ahead one movie at a time; the caller
+    /// keeps the result). The last archive read is kept for the next call (one package's movies come in a row).
+    /// </summary>
+    public Task<LumenMovieContent> Decode(string archiveId, string movieId)
+    {
+        if (_warmArchive is not { } last || last.ArchiveId != archiveId)
+            _warmArchive = last = (archiveId, Task.Run(() => DdpArchive.Open(File.ReadAllBytes(resolveArchivePath(archiveId)), _limits)));
+        return last.Archive.ContinueWith(task => decoded(archiveId,
+                LumenMovieContent.Load(task.GetAwaiter().GetResult().OpenMovie(movieId), _limits, KeepCompressed)),
+            CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
+    }
+
+    /// <summary>Lets go of the archive <see cref="Decode"/> kept (its movies are all decoded).</summary>
+    public void ForgetDecodeArchive() => _warmArchive = null;
+
     /// <summary>Every prefetched movie not yet taken is decoded (or failed, which its load reports).</summary>
     public bool PrefetchComplete => _prefetched.Values.All(static task => task.IsCompleted);
 

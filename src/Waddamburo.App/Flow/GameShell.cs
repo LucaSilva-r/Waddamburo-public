@@ -140,7 +140,8 @@ internal sealed partial class GameShell : IDisposable
     /// <summary>The active scene and its mode, for the log: "gameplay (AI battle, dev autoplay)".</summary>
     public string DescribeScene()
     {
-        if (Active is not { } active)
+        // The audio thread asks during boot too, before there is a switcher.
+        if (Scenes?.Active is not { } active)
             return "starting";
         var gameplay = active.Id == FlowScenes.Gameplay && _scenes.TryGetValue(active.Id, out var flow) ? flow as GameplayFlow : null;
         string[] modes =
@@ -422,27 +423,6 @@ internal sealed partial class GameShell : IDisposable
     // until the player turns it on. Escape asks again next start.
     // The screens' movies decoded and up, their jingles decoded, before the game starts: no file is read where a screen
     // changes (a Switch's SD card took 0.3-1.2 s there).
-    private void preloadScreens(BootChecks boot)
-    {
-        boot.Begin("SCREENS");
-        Sounds?.PreloadMusic();
-        var scenes = FlowScenes.Preloaded().ToArray();
-        for (var index = 0; index < scenes.Length; index++)
-        {
-            boot.Progress(index * 100 / scenes.Length);
-            // The first that does not fit ends it: the list is in order of use.
-            if (!_presenter.Preload(scenes[index], boot.Draw))
-            {
-                Console.WriteLine($"Preloaded {index} of {scenes.Length} screens: {scenes[index].Id} does not fit.");
-                break;
-            }
-        }
-        // The archives read and their textures' pixels are garbage now: collected here, not in the first screens.
-        Scenes.Collect();
-        boot.Done();
-        boot.Draw();
-    }
-
     private void askOsuLibraries(BootChecks boot)
     {
         var lazer = string.IsNullOrEmpty(Arcade.OsuFolder) ? Waddamburo.Providers.OsuLazer.OsuLazerCatalogProvider.FindDataFolder(null) : null;
@@ -783,7 +763,7 @@ internal sealed partial class GameShell : IDisposable
             foreach (var intermission in new[] { FlowScenes.Rainbow, FlowScenes.Shutter, FlowScenes.Fade, FlowScenes.DanCover, FlowScenes.DanExitCover, FlowScenes.DanShutter })
                 Overlay.Preload(intermission);
             if (PlatformInfo.IsSwitch)
-                preloadScreens(_boot);
+                Sounds?.PreloadMusic();
 
             _gameplay = new GameplayFlow(this);
             _rumble = new Rumble(this, _gameplay);
