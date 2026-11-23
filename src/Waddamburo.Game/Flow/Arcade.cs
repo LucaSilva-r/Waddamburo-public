@@ -420,13 +420,17 @@ public sealed partial record ArcadeSettings
     [
         "d, pad1:dpad_left, pad1:left_shoulder, pad1:left_trigger, midi:31",
         "f, pad1:dpad_down, pad1:dpad_right, pad1:left_stick, midi:35",
-        "j, pad1:south, pad1:west, pad1:right_stick, midi:36",
-        "k, pad1:east, pad1:right_shoulder, pad1:right_trigger, midi:37",
+        Switch ? "j, pad1:east, pad1:north, pad1:right_stick, midi:36" : "j, pad1:south, pad1:west, pad1:right_stick, midi:36",
+        Switch ? "k, pad1:south, pad1:right_shoulder, pad1:right_trigger, midi:37" : "k, pad1:east, pad1:right_shoulder, pad1:right_trigger, midi:37",
         "z, pad2:dpad_left, pad2:left_shoulder, pad2:left_trigger",
         "x, pad2:dpad_down, pad2:dpad_right, pad2:left_stick",
-        "c, pad2:south, pad2:west, pad2:right_stick",
-        "v, pad2:east, pad2:right_shoulder, pad2:right_trigger",
+        Switch ? "c, pad2:east, pad2:north, pad2:right_stick" : "c, pad2:south, pad2:west, pad2:right_stick",
+        Switch ? "v, pad2:south, pad2:right_shoulder, pad2:right_trigger" : "v, pad2:east, pad2:right_shoulder, pad2:right_trigger",
     ]);
+
+    // A Switch's face buttons arrive by label (its A as south, B east, X west, Y north: menus confirm with A), so its
+    // drum and button defaults name them for the same places as an Xbox pad's: don on the bottom and left, ka on the right.
+    private static readonly bool Switch = AppContext.TryGetSwitch("Waddamburo.Switch", out var value) && value;
 
     /// <summary>The buttons beside the drum, in the order of <see cref="Buttons"/> (SdlInputBindings.Buttons).</summary>
     public static readonly string[] ButtonKeys =
@@ -438,8 +442,8 @@ public sealed partial record ArcadeSettings
     [
         "backspace",
         "tab, pad1:back",
-        "l, pad1:north",
-        "p, pad1:west",
+        Switch ? "l, pad1:west" : "l, pad1:north",
+        Switch ? "p, pad1:north" : "p, pad1:west",
         "e, pad1:right_shoulder",
         "q, pad1:left_shoulder",
         "return, pad1:south",
