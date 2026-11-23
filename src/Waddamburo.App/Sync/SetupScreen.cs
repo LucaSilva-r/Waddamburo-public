@@ -20,8 +20,10 @@ public static class SetupScreen
     /// <paramref name="greenFolder"/>: where a player copies the files by hand instead. No <paramref name="setup"/> (a
     /// PC's first start): the import alone, no pairing.
     /// </summary>
+    // preparing: true while the setup is not ready yet (its first look at the folder): a page with nothing to pick until
+    // then (the Switch is slow to answer meanwhile). shown: once that page is on screen, so the look can start.
     public static bool Run(GreenSetup? setup, Func<Cli.GreenSetupProgress> status, string greenFolder,
-        string? shot = null, DeviceImport? import = null)
+        string? shot = null, DeviceImport? import = null, Func<bool>? preparing = null, Action? shown = null)
     {
         var frames = 0;
         var fonts = Cli.BundledFonts.Extract(Path.Combine(Boot.AppHome ?? Path.GetTempPath(), "fonts"));
@@ -140,8 +142,14 @@ public static class SetupScreen
                 foreach (var next in page switch { "steps" => [steps], "importing" => [steps, importing], "pc" => new[] { fromPc }, _ => [] })
                     menu.Push(next);
         }
+        var waiting = new OverlayPage(() => Strings.T("first_setup.preparing"), static () => [], Centred: true, Legend: false);
+        if (preparing?.Invoke() == true)
+            menu.Push(waiting);
+        var drawn = 0;
         application.Run(_ =>
         {
+            if (++drawn == 3) // presented by now
+                shown?.Invoke();
             // --setup-preview=FILE: one frame saved once its text is drawn, then the screen closes.
             if (shot is not null && ++frames == 120)
                 application.CaptureNextFrame = capture => { Tools.ScreenshotWriter.Write(shot, capture); application.RequestQuit(); };
@@ -153,6 +161,12 @@ public static class SetupScreen
         }, keys =>
         {
             // Presses, not held keys: a held OK would pick on the next page too. The back button does nothing here.
+            if (menu.Page == waiting)
+            {
+                if (preparing?.Invoke() != true)
+                    menu.Pop();
+                return;
+            }
             var presses = new SdlKeyboardSnapshot(keys.Presses.Select(static press => press.Key));
             menu.Tick(presses, keys, menu.Page?.Tag == Browser && presses.IsDown(SdlKeyboardKey.Escape));
             // Complete from a PC: on by itself. An import's result stays until START (its notes are read first).
@@ -404,13 +418,15 @@ public sealed class GreenSetup : IDisposable
     public string Code => _pairing?.Code ?? "----";
 
     /// <summary>What is happening once paired (null: waiting for a PC to pair).</summary>
-    public string? Message => _message is { } message && Interlocked.Read(ref _total) > 0
-        ? $"{message} {Interlocked.Read(ref _fetched) / 1048576:N0} / {Interlocked.Read(ref _total) / 1048576:N0} MB" : _message;
+    public string? Message => _message is { } message && Interlocked.Read(ref _total) is > 0 and var total
+        ? Interlocked.Read(ref _fetched) >= total ? Strings.T("sync.progress.finishing", "Green") // moving files into place
+            : $"{message} {Interlocked.Read(ref _fetched) / 1048576:N0} / {total / 1048576:N0} MB"
+        : _message;
 
     public bool Failed { get; private set; }
 
-    /// <summary>Files are on their way from the other device.</summary>
-    public bool Receiving => Interlocked.Read(ref _total) > 0 && Interlocked.Read(ref _fetched) < Interlocked.Read(ref _total);
+    /// <summary>Green came whole from the other device (its listing, mirrored): nothing to count.</summary>
+    public bool Done { get; private set; }
 
     public void Dispose()
     {
@@ -446,6 +462,8 @@ public sealed class GreenSetup : IDisposable
                         (_fetched, _total) = (0, plan.FetchBytes);
                         await server.MirrorAsync(green, folder, plan, bytes => Interlocked.Add(ref _fetched, bytes), cancellationToken: token).ConfigureAwait(false);
                         _total = 0;
+                        Done = true;
+                        return; // planning again would compare the whole folder every few seconds
                     }
                 }
             }

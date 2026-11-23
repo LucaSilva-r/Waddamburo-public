@@ -11,6 +11,9 @@ internal sealed class SongSyncStaging
     private readonly List<string> _remove;
     private static readonly object PublishLock = new();
     private readonly Dictionary<string, Group> _groups = new(StringComparer.Ordinal);
+    // Files new to this device, written in place: nothing older to keep out of sight, and nothing to move after (on a
+    // Switch a first sync spent minutes renaming every file out of the staging folder).
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> _direct = new(StringComparer.Ordinal);
 
     private sealed class Group(string[] paths)
     {
@@ -45,20 +48,34 @@ internal sealed class SongSyncStaging
 
     internal static string StagedFolder(string folder) => Path.Combine(folder, FolderName);
 
-    public string Destination(string path) => pathIn(StagedFolder(_folder), path);
+    public string Destination(string path)
+    {
+        var final = pathIn(_folder, path);
+        if (File.Exists(final))
+            return pathIn(StagedFolder(_folder), path);
+        _direct[path] = true;
+        return final;
+    }
+
+    private string[] staged(IEnumerable<string> paths) => [.. paths.Where(path => !_direct.ContainsKey(path))];
 
     public static bool IsStaged(string folder, (string Path, long Size, long Time) file)
     {
         var path = SyncClient.SafePath(StagedFolder(folder), file.Path);
-        return path is not null && File.Exists(path) && new FileInfo(path) is var info && info.Length == file.Size
-            && Math.Abs(new DateTimeOffset(info.LastWriteTimeUtc).ToUnixTimeSeconds() - file.Time) <= 2;
+        // Only a whole file is renamed in here (from its .part): its size tells. Not its time: a Switch cannot set it.
+        return path is not null && File.Exists(path) && new FileInfo(path).Length == file.Size;
     }
 
     public void Ready(string path, Action? published)
     {
         var group = _groups[path];
         if (Interlocked.Decrement(ref group.Pending) == 0 && _remove.Count == 0)
-            publish(group.Paths, [], published);
+        {
+            if (staged(group.Paths) is { Length: > 0 } copies)
+                publish(copies, [], published);
+            else
+                published?.Invoke();
+        }
     }
 
     public void Finish(Action? published)
@@ -66,7 +83,7 @@ internal sealed class SongSyncStaging
         // Without an inventory of earlier song versions, a removed chart or audio file may belong to any changed song.
         // Keep the old versions until all replacements are ready and include the removals in that publication.
         if (_remove.Count > 0)
-            publish(_groups.Keys, _remove, published);
+            publish(staged(_groups.Keys), _remove, published);
     }
 
     private void publish(IEnumerable<string> copies, IEnumerable<string> removals, Action? published)

@@ -154,15 +154,21 @@ public sealed class SyncClient(SyncDevice device, PairedDevice pair)
     }
 
     /// <summary>Records the sender's times of <paramref name="received"/> beside the files' own (see <see cref="Local"/>).</summary>
-    private static void recordTimes(string folder, IEnumerable<(string Path, long Size, long Time)> received)
+    private static void recordTimes(string folder, IEnumerable<(string Path, long Size, long Time)> received, IEnumerable<string> removed)
     {
-        var files = onDisk(folder);
         var times = readTimes(folder);
+        foreach (var gone in removed)
+            times.Remove(gone);
         foreach (var file in received)
-            if (files.TryGetValue(file.Path, out var here) && here.Size == file.Size)
-                times[file.Path] = (file.Size, here.Time, file.Time);
+        {
+            var info = new FileInfo(Path.Combine(folder, file.Path));
+            if (info.Exists && info.Length == file.Size)
+                times[file.Path] = (file.Size, new DateTimeOffset(info.LastWriteTimeUtc).ToUnixTimeSeconds(), file.Time);
+            else
+                times.Remove(file.Path); // skipped (gone or changed on the sender)
+        }
         var path = Path.Combine(folder, SongSyncStaging.TimesName);
-        File.WriteAllLines(path + ".part", times.Where(entry => files.ContainsKey(entry.Key))
+        File.WriteAllLines(path + ".part", times
             .Select(static entry => string.Create(CultureInfo.InvariantCulture, $"{entry.Key}\t{entry.Value.Size}\t{entry.Value.Here}\t{entry.Value.Sent}")));
         File.Move(path + ".part", path, overwrite: true);
     }
@@ -291,11 +297,11 @@ public sealed class SyncClient(SyncDevice device, PairedDevice pair)
             }
             cancellationToken.ThrowIfCancellationRequested();
             staging.Finish(published);
-            SongSyncStaging.Clean(folder);
-            foreach (var partial in Directory.EnumerateFiles(folder, "*.part", SearchOption.AllDirectories))
-                File.Delete(partial);
-            deleteEmptyFolders(folder);
-            recordTimes(folder, plan.Fetch);
+            SongSyncStaging.Clean(folder); // partial files too: they are written in the staging folder
+            // No walks of the whole library here (each one stalls a Switch): only what this sync touched.
+            if (plan.Remove.Count > 0)
+                deleteEmptyFolders(folder);
+            recordTimes(folder, plan.Fetch, plan.Remove);
             success = true;
         }
         finally
@@ -372,6 +378,8 @@ public sealed class SyncClient(SyncDevice device, PairedDevice pair)
         {
             await using (var output = new FileStream(partial, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 16, useAsync: true))
             {
+                // Its whole size first: a Switch extends a growing file on the card with every write (slow).
+                output.SetLength(length);
                 var left = length;
                 while (left > 0)
                 {

@@ -501,6 +501,7 @@
   "first_setup.choose_import": "I DOWNLOADED IT ON THIS PHONE",
   "first_setup.choose_pc": "IT IS ON MY PC",
   "first_setup.import_pick": "PICK THE FILE",
+  "first_setup.preparing": "PREPARING FOR SETUP…",
   "first_setup.browse_all": "IMPORT ALL {0} FILES HERE",
   "first_setup.browse_empty": "Nothing to import here",
   "first_setup.import_again": "PICK ANOTHER FILE",

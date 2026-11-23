@@ -26,25 +26,24 @@ internal static class DesktopSetup
             "zip;7z;rar;bin;pkg", many: true, files => picked([.. files
                 .OrderBy(static file => Path.GetFileName(file), StringComparer.OrdinalIgnoreCase)
                 .Select(static file => new ImportSource(Path.GetFileName(file), new FileInfo(file).Length, () => File.OpenRead(file)))])));
-        // Counted off the screen's thread: once, then every 3 s while files arrive (an import, or a copy from the other
-        // device) and once more after. Nothing else changes them while the setup is open, and a walk of the whole folder
-        // every few seconds stalled the Switch.
+        // Counted once, off the screen's thread (what is there already). A copy from the other device or an import knows
+        // what it wrote: no count after (a walk of the whole folder stalls the Switch, HOME menu included).
+        var counted = false;
+        var shown = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var poll = Task.Run(async () =>
         {
-            var wasBusy = true; // the first count
-            while (!stop.IsCancellationRequested)
-            {
-                var busy = import.Busy || setup?.Receiving == true;
-                if (busy || wasBusy)
-                    Volatile.Write(ref status, Cli.GreenData.SetupProgress(green));
-                wasBusy = busy;
-                try { await Task.Delay(busy ? 3000 : 500, stop.Token).ConfigureAwait(false); }
+            await Task.WhenAny(shown.Task, Task.Delay(Timeout.Infinite, stop.Token)).ConfigureAwait(false); // the page first
+            Volatile.Write(ref status, Cli.GreenData.SetupProgress(green));
+            Volatile.Write(ref counted, true);
+            while (!stop.IsCancellationRequested && setup?.Done != true)
+                try { await Task.Delay(500, stop.Token).ConfigureAwait(false); }
                 catch (OperationCanceledException) { }
-            }
+            if (setup?.Done == true)
+                Volatile.Write(ref status, status with { Received = status.Total, Installed = status.Total, Essentials = true });
         });
         try
         {
-            return SetupScreen.Run(setup, () => Volatile.Read(ref status), green, import: import);
+            return SetupScreen.Run(setup, () => Volatile.Read(ref status), green, import: import, preparing: () => !counted, shown: () => shown.TrySetResult());
         }
         finally
         {

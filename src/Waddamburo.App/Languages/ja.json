@@ -500,6 +500,7 @@
   "first_setup.welcome_ask": "グリーンはどこにありますか？",
   "first_setup.choose_import": "このスマホにダウンロードした",
   "first_setup.choose_pc": "PCにある",
+  "first_setup.preparing": "セットアップを準備しています…",
   "first_setup.browse_all": "ここの{0}個のファイルをすべて取り込む",
   "first_setup.browse_empty": "取り込めるファイルがありません",
   "first_setup.import_pick": "ファイルを選ぶ",
