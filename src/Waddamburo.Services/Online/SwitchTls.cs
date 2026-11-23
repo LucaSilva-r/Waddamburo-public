@@ -14,7 +14,11 @@ public static class SwitchTls
     /// <summary>The console's TLS around a connected socket (host, insecure = no certificate checks); null: .NET's own.</summary>
     public static Func<Socket, string, bool, Stream>? Wrap { get; set; }
 
-    public static bool Enabled => Wrap is not null;
+    /// <summary>
+    /// The Switch build (switch.targets' switch): its handlers rewrite https whenever they were made (some are made before
+    /// the app sets <see cref="Wrap"/>, which only the first connection needs).
+    /// </summary>
+    public static bool Enabled { get; } = AppContext.TryGetSwitch("Waddamburo.Switch", out var on) && on;
 
     private static readonly HttpRequestOptionsKey<bool> TlsWanted = new("waddamburo.tls");
 
@@ -23,7 +27,7 @@ public static class SwitchTls
         context.InitialRequestMessage.Options.TryGetValue(TlsWanted, out var wanted) && wanted;
 
     /// <summary>
-    /// https becomes http on the same port, marked for <see cref="Wrap"/> (ClientWebSocket sends wss as https).
+    /// https becomes http (wss: ws) on the same port, marked for <see cref="Wrap"/>.
     /// Redirects are followed here, outside the inner handler: one to https inside it would reach for OpenSSL.
     /// </summary>
     internal sealed class Handler(SocketsHttpHandler inner) : DelegatingHandler(disable(inner))
@@ -51,9 +55,10 @@ public static class SwitchTls
 
         private static void mark(HttpRequestMessage request)
         {
-            if (request.RequestUri is not { Scheme: "https" } uri)
+            // A websocket's request comes as wss (SocketsHttpHandler takes ws and wss itself).
+            if (request.RequestUri is not { Scheme: "https" or "wss" } uri)
                 return;
-            request.RequestUri = new UriBuilder(uri) { Scheme = Uri.UriSchemeHttp, Port = uri.Port }.Uri;
+            request.RequestUri = new UriBuilder(uri) { Scheme = uri.Scheme == "wss" ? "ws" : Uri.UriSchemeHttp, Port = uri.Port }.Uri;
             // As https would send it: no ":443" after the host.
             request.Headers.Host = uri.IsDefaultPort ? uri.Host : uri.Authority;
             request.Options.Set(TlsWanted, true);

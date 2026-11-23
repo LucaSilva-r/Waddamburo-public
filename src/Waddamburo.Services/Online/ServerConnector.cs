@@ -57,7 +57,8 @@ public static class ServerConnector
             {
                 await socket.ConnectAsync(new IPEndPoint(address, port), attempt.Token).ConfigureAwait(false);
                 if (SwitchTls.Enabled && SwitchTls.Wanted(context))
-                    return await Task.Run(() => SwitchTls.Wrap!(socket, host, insecure), cancellationToken).ConfigureAwait(false);
+                    return await Task.Run(() => (SwitchTls.Wrap ?? throw new InvalidOperationException("No TLS on this Switch build."))(socket, host, insecure),
+                        cancellationToken).ConfigureAwait(false);
                 return new NetworkStream(socket, ownsSocket: true);
             }
             catch (Exception exception) when (exception is SocketException or OperationCanceledException

@@ -110,3 +110,11 @@ int32_t CryptoNative_HmacOneShot(const EVP_MD *type, const uint8_t *key, int32_t
     if (mdSize) *mdSize = mbedtls_md_get_size(type);
     return 1;
 }
+
+// RandomNumberGenerator (a websocket masks every frame it sends with it): the console's CSPRNG (libnx randomGet) for
+// OpenSSL's RAND_bytes, which this build does not have.
+void randomGet(void *buffer, size_t length); // libnx
+int32_t CryptoNative_GetRandomBytes(uint8_t *buffer, int32_t length) {
+    if (length > 0) randomGet(buffer, (size_t)length);
+    return 1;
+}

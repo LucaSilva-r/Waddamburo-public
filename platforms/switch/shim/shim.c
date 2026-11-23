@@ -888,6 +888,18 @@ fatal:
     extern void log_flush(void);
     fprintf(stderr, "[shim] fatal exception desc %x esr %lx far %lx pc %lx (offset %lx) lr %lx\n",
             desc, r->esr, r->far, r->pc, r->pc - (u64)__start__, r->x[30]);
+    { // the callers (frame pointers; image offsets for addr2line on sent.elf), within this thread's stack
+        char buf[1200]; int k = snprintf(buf, sizeof buf, "[shim] callers: %lx", r->x[30] - (u64)g_base);
+        u64 fp = r->x[29];
+        MemoryInfo mi; u32 pi; svcQueryMemory(&mi, &pi, r->sp);
+        for (int i = 0; i < 48 && fp >= mi.addr && fp + 16 <= mi.addr + mi.size && !(fp & 7) && k < 1170; i++) {
+            u64 *frame = (u64 *)fp;
+            k += snprintf(buf + k, sizeof buf - k, " %lx", frame[1] - (u64)g_base);
+            if (frame[0] <= fp) break;
+            fp = frame[0];
+        }
+        fprintf(stderr, "%s\n", buf);
+    }
     log_flush();
     g_exc_fatal = 1; // resume unchanged: the re-fault goes to the kernel and Atmosphere reports the real PC
     return 1;
