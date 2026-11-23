@@ -104,7 +104,7 @@ public sealed class SyncServer : IDisposable
         long[] sizes;
         try
         {
-            sizes = library.Nijiiro is null && library.Kind != "wii"
+            sizes = library.Nijiiro is null
                 ? [.. list(library).Values.Select(static file => file.Size)]
                 : [.. library.Files().Select(static file => file.Size)]; // estimate without converting
         }
@@ -288,11 +288,6 @@ public sealed class SyncServer : IDisposable
         {
             lock (_prepareLocks.GetOrAdd(library.Id, static _ => new object()))
                 return storeList(library, prepareAudio(library, library.Files().ToList(), NijiiroSync.IsBank, NijiiroSync.PrepareAudio, requestingSocket));
-        }
-        if (library.Kind == "wii")
-        {
-            lock (_prepareLocks.GetOrAdd(library.Id, static _ => new object()))
-                return storeList(library, prepareAudio(library, library.Files().ToList(), WiiAudio.IsBank, WiiAudio.Prepare, requestingSocket));
         }
         return storeList(library, library.Files());
     }
