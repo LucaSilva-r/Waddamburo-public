@@ -8,6 +8,9 @@ public sealed class DecodingClipSource(SdlAudioFormat format, Task<AudioClip> de
 {
     private int _position; // in frames
 
+    /// <summary>Read ahead of the output (device voices): nothing until decoded, or the silence would queue ahead of it.</summary>
+    internal bool ReadAhead { get; set; }
+
     public SdlAudioFormat Format { get; } = format;
 
     public bool IsCompleted => decoding.IsCompleted && (Failure is not null || !loop && _position >= decoding.Result.FrameCount);
@@ -18,6 +21,8 @@ public sealed class DecodingClipSource(SdlAudioFormat format, Task<AudioClip> de
     {
         if (!decoding.IsCompletedSuccessfully)
         {
+            if (ReadAhead)
+                return 0;
             interleavedDestination.Clear();
             return interleavedDestination.Length;
         }

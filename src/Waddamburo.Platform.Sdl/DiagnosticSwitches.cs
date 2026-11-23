@@ -11,6 +11,9 @@ internal static class DiagnosticSwitches
     public static bool GameplayFrameProfile => Environment.GetEnvironmentVariable("WADDAMBURO_GAMEPLAY_FRAME_PROFILE") == "1";
 
     /// <summary>WADDAMBURO_HITCH_TRACE: 1: why a slow frame was slow (input, update, render, GC, the chart clock's steps).</summary>
+    /// <summary>WADDAMBURO_SOFTWARE_MIX=1: the old managed mix thread on SDL outputs instead of device voices (comparisons).</summary>
+    public static bool SoftwareMix => Environment.GetEnvironmentVariable("WADDAMBURO_SOFTWARE_MIX") == "1";
+
     public static bool HitchTrace => Environment.GetEnvironmentVariable("WADDAMBURO_HITCH_TRACE") == "1";
 
     /// <summary>WADDAMBURO_PRESENT_MODE: immediate or mailbox: the swap chain's present mode.</summary>

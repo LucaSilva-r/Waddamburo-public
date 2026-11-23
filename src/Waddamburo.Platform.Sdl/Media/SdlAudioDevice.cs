@@ -22,6 +22,7 @@ public sealed unsafe class SdlAudioDevice : IAudioOutput
     private bool _disposed;
     private ulong _submittedFrames;
     private readonly List<DirectVoice> _directVoices = [];
+    private readonly HashSet<VoiceStream> _voiceStreams = [];
 
     public SdlAudioDevice(
         int sampleRate = DefaultSampleRate,
@@ -230,6 +231,37 @@ public sealed unsafe class SdlAudioDevice : IAudioOutput
         }
     }
 
+    /// <summary>
+    /// One sound's own stream, bound to the device (see <see cref="AudioMixer"/>'s device voices): SDL mixes every
+    /// bound stream on its native audio thread, so what is queued plays on through a managed GC pause.
+    /// </summary>
+    public VoiceStream CreateVoiceStream()
+    {
+        lock (_gate)
+        {
+            ensureUsable();
+            var specification = new SDL_AudioSpec
+            {
+                format = SDL_AudioFormat.SDL_AUDIO_F32LE,
+                channels = Format.Channels,
+                freq = Format.SampleRate,
+            };
+            var stream = SDL_CreateAudioStream(&specification, &specification);
+            if (stream is null)
+                throw sdlFailure("create an SDL voice stream");
+            var voice = new VoiceStream(this, stream, _device, Format.Channels);
+            voice.Bind();
+            _voiceStreams.Add(voice);
+            return voice;
+        }
+    }
+
+    internal void Forget(VoiceStream voice)
+    {
+        lock (_gate)
+            _voiceStreams.Remove(voice);
+    }
+
     /// <summary>Marks all currently queued source data as complete for SDL conversion.</summary>
     public void Flush()
     {
@@ -273,6 +305,9 @@ public sealed unsafe class SdlAudioDevice : IAudioOutput
         foreach (var voice in _directVoices)
             voice.Destroy();
         _directVoices.Clear();
+        foreach (var voice in _voiceStreams.ToArray())
+            voice.Destroy();
+        _voiceStreams.Clear();
         if (_stream is not null)
         {
             SDL_DestroyAudioStream(_stream);
@@ -358,5 +393,98 @@ public sealed unsafe class DirectVoice
             return;
         SDL_DestroyAudioStream(_stream);
         _stream = null;
+    }
+}
+
+/// <summary>An SDL stream bound to the device, playing one sound (see <see cref="SdlAudioDevice.CreateVoiceStream"/>).</summary>
+public sealed unsafe class VoiceStream
+{
+    private readonly SdlAudioDevice _owner;
+    private SDL_AudioStream* _stream;
+    private readonly SDL_AudioDeviceID _device;
+    private readonly int _channels;
+    private float _gain = 1f;
+    private bool _bound;
+
+    internal VoiceStream(SdlAudioDevice owner, SDL_AudioStream* stream, SDL_AudioDeviceID device, int channels)
+    {
+        _owner = owner;
+        _stream = stream;
+        _device = device;
+        _channels = channels;
+    }
+
+    /// <summary>Frames put in so far.</summary>
+    public ulong SubmittedFrames { get; private set; }
+
+    /// <summary>Frames put in that SDL has not mixed yet.</summary>
+    public ulong QueuedFrames
+    {
+        get
+        {
+            if (_stream is null)
+                return 0;
+            var bytes = SDL_GetAudioStreamQueued(_stream);
+            return bytes <= 0 ? 0 : (ulong)bytes / (ulong)(_channels * sizeof(float));
+        }
+    }
+
+    public void Put(ReadOnlySpan<float> interleavedSamples)
+    {
+        if (_stream is null || interleavedSamples.IsEmpty)
+            return;
+        fixed (float* source = interleavedSamples)
+            SDL_PutAudioStreamData(_stream, (nint)source, interleavedSamples.Length * sizeof(float));
+        SubmittedFrames += (ulong)(interleavedSamples.Length / _channels);
+    }
+
+    /// <summary>Applied by SDL as it mixes: a change reaches what is already queued.</summary>
+    public float Gain
+    {
+        get => _gain;
+        set
+        {
+            if (_stream is null || value == _gain)
+                return;
+            _gain = value;
+            SDL_SetAudioStreamGain(_stream, value);
+        }
+    }
+
+    /// <summary>A paused stream is unbound: it keeps what is queued and resumes from there.</summary>
+    public bool Paused
+    {
+        get => !_bound;
+        set
+        {
+            if (value)
+                unbind();
+            else
+                Bind();
+        }
+    }
+
+    internal void Bind()
+    {
+        if (_stream is null || _bound)
+            return;
+        _bound = SDL_BindAudioStream(_device, _stream);
+    }
+
+    private void unbind()
+    {
+        if (_stream is null || !_bound)
+            return;
+        SDL_UnbindAudioStream(_stream);
+        _bound = false;
+    }
+
+    public void Destroy()
+    {
+        if (_stream is null)
+            return;
+        SDL_DestroyAudioStream(_stream);
+        _stream = null;
+        _owner.Forget(this);
     }
 }

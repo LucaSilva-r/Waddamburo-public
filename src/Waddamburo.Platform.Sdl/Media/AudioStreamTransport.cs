@@ -22,6 +22,8 @@ public sealed class AudioStreamTransport : IAudioStreamSource
     }
 
     public AudioPlaybackHandle Handle { get; internal set; }
+
+    internal bool Gapless { set => _source.Gapless = value; }
     public SdlAudioFormat Format => _source.Format;
     public bool IsCompleted => _source.IsCompleted;
     public Exception? Failure => _source.Failure;
