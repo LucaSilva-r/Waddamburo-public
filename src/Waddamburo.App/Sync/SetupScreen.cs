@@ -26,12 +26,26 @@ public static class SetupScreen
         var frames = 0;
         var fonts = Cli.BundledFonts.Extract(Path.Combine(Boot.AppHome ?? Path.GetTempPath(), "fonts"));
         using var application = new SdlApplication(Hosting.SelfUpdate.WindowTitle, 1280, 720) { OverlayOpen = true };
+        // A controller's buttons as the game's defaults bind them (no settings yet): A, the drum's centre, confirms.
+        var defaults = new Waddamburo.Game.Flow.ArcadeSettings();
+        application.Bindings = SdlInputBindings.Parse(defaults.Controls, defaults.Buttons, null);
+        application.PadsAsGamepad = !defaults.PadMenusAsDrum; // as GameShell.ApplyControls: the D-pad moves, not drums
+        application.MenuInput = true; // all menus here
         using var menu = new OverlayMenu(application, fonts.Service);
         using var painter = new OverlayPainter(application, fonts.Service);
         var startAnyway = false;
         OverlayRow[] anyway() => status().Essentials && import?.Busy != true
             ? [new OverlayRow(Strings.T("first_setup.start_anyway"), Enter: () => { startAnyway = true; application.RequestQuit(); })] : [];
         (string, RenderColor) blank = ("", OverlayMenu.White);
+        // Asked every frame: the network's state at most every two seconds (a system call each time).
+        long? onlineAt = null;
+        var isOnline = false;
+        bool online()
+        {
+            if (onlineAt is not { } at || Environment.TickCount64 - at > 2000)
+                (onlineAt, isOnline) = (Environment.TickCount64, SyncWire.Addresses().Count > 0);
+            return isOnline;
+        }
         (string, RenderColor) bar()
         {
             var progress = status();
@@ -57,7 +71,7 @@ public static class SetupScreen
                 bar(),
             ], Footer: () =>
             [
-                SyncWire.Addresses().Count > 0 ? (OverlayMenu.upper(Strings.T("first_setup.step_connect")), OverlayMenu.Cyan)
+                online() ? (OverlayMenu.upper(Strings.T("first_setup.step_connect")), OverlayMenu.Cyan)
                     : (OverlayMenu.upper(Strings.T("first_setup.offline")), OverlayMenu.Red),
                 (OverlayMenu.upper(Strings.T(status().Essentials ? "first_setup.essentials" : "first_setup.auto")), OverlayMenu.Green),
                 (OverlayMenu.upper(Strings.T("first_setup.copy", greenFolder)), OverlayMenu.White),
@@ -66,6 +80,8 @@ public static class SetupScreen
             menu.Open(fromPc, home: true);
         else
         {
+            if (PlatformInfo.IsSwitch) // no system file picker: the SD card's folders on the menu
+                import.Picker = picked => browse(menu, "/", 0, picked);
             // The import's own page: the bar and what is being read; picking again or going back once it is over.
             var importing = new OverlayPage(() => Strings.T("first_setup.import_title"), () =>
                 import.Busy ? [] :
@@ -137,7 +153,8 @@ public static class SetupScreen
         }, keys =>
         {
             // Presses, not held keys: a held OK would pick on the next page too. The back button does nothing here.
-            menu.Tick(new SdlKeyboardSnapshot(keys.Presses.Select(static press => press.Key)), keys, false);
+            var presses = new SdlKeyboardSnapshot(keys.Presses.Select(static press => press.Key));
+            menu.Tick(presses, keys, menu.Page?.Tag == Browser && presses.IsDown(SdlKeyboardKey.Escape));
             // Complete from a PC: on by itself. An import's result stays until START (its notes are read first).
             if (status().Complete && import is not { Busy: true } && import?.Message is null)
                 application.RequestQuit();
@@ -147,6 +164,43 @@ public static class SetupScreen
 
     // The PC's wording of a phone's line (its own picker, several files, no "this phone").
     private static string desktop(string phone, string pc) => PlatformInfo.IsMobile ? phone : pc;
+    private static readonly string[] Dumps = [".zip", ".7z", ".rar", ".bin", ".pkg"];
+    private static readonly object Browser = new(); // the browser's pages: B goes up a folder there
+
+    // One folder of the SD card: its folders, then the game files in it (A picks one; a folder of several, a DATA*.BIN
+    // set, can be taken whole). depth: the browser's pages below this one, all closed on a pick.
+    private static void browse(OverlayMenu menu, string folder, int depth, Action<IReadOnlyList<ImportSource>> picked)
+    {
+        string[] folders, files;
+        try
+        {
+            folders = [.. Directory.EnumerateDirectories(folder).Where(static path => !Path.GetFileName(path).StartsWith('.'))
+                .Order(StringComparer.OrdinalIgnoreCase)];
+            files = [.. Directory.EnumerateFiles(folder).Where(static path => Dumps.Contains(Path.GetExtension(path).ToLowerInvariant()))
+                .Order(StringComparer.OrdinalIgnoreCase)];
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            (folders, files) = ([], []);
+        }
+        void pick(IEnumerable<string> paths)
+        {
+            for (var i = 0; i <= depth; i++)
+                menu.Pop();
+            picked([.. paths.Select(static path => new ImportSource(Path.GetFileName(path), new FileInfo(path).Length, () => File.OpenRead(path)))]);
+        }
+        // Built once: the rows are asked for every frame, and the SD card answers slowly while the setup counts files.
+        OverlayRow[] rows =
+        [
+            new OverlayRow("..", Cyan: true, Enter: menu.Pop), // up a folder (at the card's root: out of the browser)
+            .. files.Length > 1 ? [new OverlayRow(Strings.T("first_setup.browse_all", files.Length), Enter: () => pick(files))] : Array.Empty<OverlayRow>(),
+            .. files.Select(path => (path, size: $"{new FileInfo(path).Length / 1048576.0:F0} MB"))
+                .Select(file => new OverlayRow(Path.GetFileName(file.path), Value: () => file.size, Enter: () => pick([file.path]))),
+            .. folders.Select(path => new OverlayRow(Path.GetFileName(path) + "/", Cyan: true, Enter: () => browse(menu, path, depth + 1, picked))),
+            .. folders.Length + files.Length == 0 ? [new OverlayRow(Strings.T("first_setup.browse_empty"))] : Array.Empty<OverlayRow>(),
+        ];
+        menu.Push(new OverlayPage(() => folder, () => rows, Tag: Browser));
+    }
 }
 
 /// <summary>A file the player picked: its name and size as the system reports them (for the report), and how to open it.</summary>
@@ -160,6 +214,9 @@ public sealed record ImportSource(string Name, long? Size, Func<Stream> Open);
 /// </summary>
 public sealed class DeviceImport(string root, Action<Action<IReadOnlyList<ImportSource>>> pick)
 {
+    /// <summary>How files are picked (the Switch's: the setup screen's own SD card browser).</summary>
+    public Action<Action<IReadOnlyList<ImportSource>>> Picker { get; set; } = pick;
+
     private volatile Cli.GreenImport? _current;
     private volatile string? _done;
     private volatile bool _failed, _busy;
@@ -192,7 +249,7 @@ public sealed class DeviceImport(string root, Action<Action<IReadOnlyList<Import
     public void Pick()
     {
         if (!_busy)
-            pick(start);
+            Picker(start);
     }
 
     private void start(IReadOnlyList<ImportSource> sources)
@@ -351,6 +408,9 @@ public sealed class GreenSetup : IDisposable
         ? $"{message} {Interlocked.Read(ref _fetched) / 1048576:N0} / {Interlocked.Read(ref _total) / 1048576:N0} MB" : _message;
 
     public bool Failed { get; private set; }
+
+    /// <summary>Files are on their way from the other device.</summary>
+    public bool Receiving => Interlocked.Read(ref _total) > 0 && Interlocked.Read(ref _fetched) < Interlocked.Read(ref _total);
 
     public void Dispose()
     {
