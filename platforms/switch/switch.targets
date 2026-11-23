@@ -12,5 +12,7 @@
     <DirectPInvoke Include="waddamburo_text" />
     <DirectPInvoke Include="waddamburo_texture" />
     <DirectPInvoke Include="e_sqlite3" />
+    <!-- The Switch's own functions in the shim (TLS: shim/tls.c, the keyboard: shim/sdl3nx.c). -->
+    <DirectPInvoke Include="waddamburo_switch" />
   </ItemGroup>
 </Project>

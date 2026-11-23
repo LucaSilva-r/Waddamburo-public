@@ -85,7 +85,7 @@ internal static class SelfUpdate
     {
         if (installedFile() is not { } installed || currentVersion() is not { } current)
             return false;
-        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+        using var http = new HttpClient(Waddamburo.Services.Online.ServerConnector.Handler(insecure: false)) { Timeout = TimeSpan.FromSeconds(10) };
         http.DefaultRequestHeaders.UserAgent.ParseAdd($"Waddamburo/{current}");
         Release? release;
         try
@@ -164,7 +164,7 @@ internal static class SelfUpdate
     {
         if (currentVersion() is not { } current)
             return null;
-        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(4) };
+        using var http = new HttpClient(Waddamburo.Services.Online.ServerConnector.Handler(insecure: false)) { Timeout = TimeSpan.FromSeconds(4) };
         http.DefaultRequestHeaders.UserAgent.ParseAdd($"Waddamburo/{current}");
         try
         {

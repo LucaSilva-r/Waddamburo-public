@@ -440,8 +440,9 @@ int lx_open64(const char *p, int fl, ...) {
     if (fl & LX_O_APPEND) nf |= O_APPEND;
     return open(p, nf, mode);
 }
+int net_close(int fd); void net_io(int fd, int writing, ssize_t r); // net.c
 int lx_close(int fd) {
-    if (fd == 0x7000) return 0; // the epoll stub
+    if (net_close(fd) == 0) return 0; // an epoll set (a socket is forgotten there, then closed below)
     MemFile *mf = mem_of(fd);
     if (mf) { mutexLock(&g_mem_lock); free(mf->data); mf->used = 0; mutexUnlock(&g_mem_lock); return 0; }
     Pipe *p = pipe_of(fd);
@@ -450,11 +451,12 @@ int lx_close(int fd) {
 }
 ssize_t lx_read(int fd, void *b, size_t n) {
     MemFile *mf = mem_of(fd); if (mf) return mem_read(mf, b, n);
-    Pipe *p = pipe_of(fd); return p ? pipe_read(p, b, n) : read(fd, b, n);
+    Pipe *p = pipe_of(fd); if (p) return pipe_read(p, b, n);
+    ssize_t r = read(fd, b, n); net_io(fd, 0, r); return r;
 }
 ssize_t lx_write(int fd, const void *b, size_t n) {
     Pipe *p = pipe_of(fd); if (p) return pipe_write(p, b, n);
-    if (fd > 2) return write(fd, b, n);
+    if (fd > 2) { ssize_t r = write(fd, b, n); net_io(fd, 1, r); return r; }
     fwrite(b, 1, n, stderr);
     if (g_nxlink) write(1, b, n); else if (!g_no_console) { write(1, b, n); consoleUpdate(NULL); }
     return n;
@@ -475,14 +477,12 @@ char *lx_getcwd(char *b, size_t n) { // libnx says "sdmc:/x"; .NET wants a roote
     if (strlen(p) + 1 > n) { errno = ERANGE; return NULL; }
     return strcpy(b, p);
 }
-int lx_fcntl(int fd, int cmd, ...) { return cmd == 3 /*F_GETFL*/ ? 2 : 0; }
 int lx_flock(int fd, int op) { return 0; }
 int lx_isatty(int fd) { return 0; }
 int lx_ioctl(int fd, unsigned long r, ...) { errno = LX_ENOTTY; return -1; }
 int lx_tcgetattr(int fd, void *t) { errno = LX_ENOTTY; return -1; }
 int lx_tcsetattr(int fd, int a, const void *t) { errno = LX_ENOTTY; return -1; }
 int lx_dup2(int a, int b) { NOSYS("dup2"); }
-int lx_poll(void *f, unsigned long n, int t) { NOSYS("poll"); }
 int lx_statfs64(const char *p, void *b) { NOSYS("statfs64"); }
 
 struct lx_stat { // glibc aarch64 struct stat
@@ -1135,6 +1135,28 @@ static int lx_errno(int e) {
     case 92: return 40;   // ELOOP
     case 116: return 110; // ETIMEDOUT
     case 134: return 95;  // ENOTSUP
+    // Sockets (newlib 104-128 -> glibc 88-115; 104, 105, 111 agree).
+    case 106: return 97;  // EAFNOSUPPORT
+    case 107: return 91;  // EPROTOTYPE
+    case 108: return 88;  // ENOTSOCK
+    case 109: return 92;  // ENOPROTOOPT
+    case 110: return 108; // ESHUTDOWN
+    case 112: return 98;  // EADDRINUSE
+    case 113: return 103; // ECONNABORTED
+    case 114: return 101; // ENETUNREACH
+    case 115: return 100; // ENETDOWN
+    case 117: return 112; // EHOSTDOWN
+    case 118: return 113; // EHOSTUNREACH
+    case 119: return 115; // EINPROGRESS
+    case 120: return 114; // EALREADY
+    case 121: return 89;  // EDESTADDRREQ
+    case 122: return 90;  // EMSGSIZE
+    case 123: return 93;  // EPROTONOSUPPORT
+    case 124: return 94;  // ESOCKTNOSUPPORT
+    case 125: return 99;  // EADDRNOTAVAIL
+    case 126: return 102; // ENETRESET
+    case 127: return 106; // EISCONN
+    case 128: return 107; // ENOTCONN
     default: return e;
     }
 }
@@ -1251,25 +1273,6 @@ int lx_inotify_add_watch(int fd, const char *p, unsigned m) { NOSYS("inotify_add
 int lx_inotify_rm_watch(int fd, int w) { NOSYS("inotify_rm_watch"); }
 // epoll: .NET's socket engine needs one at startup even when every socket() fails (no networking yet). It
 // accepts registrations and never reports events. ponytail: real readiness when sockets come (libnx poll()).
-int lx_epoll_create1(int f) { return 0x7000; }
-int lx_epoll_ctl(int e, int op, int fd, void *ev) { return 0; }
-int lx_epoll_wait(int e, void *ev, int n, int t) { svcSleepThread(t < 0 ? 1000000000ll : (s64)t * 1000000ll); return 0; }
-int lx_socket(int d, int t, int p) { errno = 97; return -1; } // EAFNOSUPPORT (glibc)
-int lx_bind(int s, const void *a, unsigned l) { NOSYS("bind"); }
-int lx_connect(int s, const void *a, unsigned l) { NOSYS("connect"); }
-int lx_listen(int s, int b) { NOSYS("listen"); }
-int lx_accept4(int s, void *a, unsigned *l, int f) { NOSYS("accept4"); }
-ssize_t lx_send(int s, const void *b, size_t n, int f) { NOSYS("send"); }
-ssize_t lx_recv(int s, void *b, size_t n, int f) { NOSYS("recv"); }
-ssize_t lx_sendmsg(int s, const void *m, int f) { NOSYS("sendmsg"); }
-ssize_t lx_recvmsg(int s, void *m, int f) { NOSYS("recvmsg"); }
-int lx_shutdown(int s, int h) { NOSYS("shutdown"); }
-int lx_getsockopt(int s, int l, int o, void *v, unsigned *n) { NOSYS("getsockopt"); }
-int lx_setsockopt(int s, int l, int o, const void *v, unsigned n) { NOSYS("setsockopt"); }
-int lx_getsockname(int s, void *a, unsigned *l) { NOSYS("getsockname"); }
-int lx_getpeername(int s, void *a, unsigned *l) { NOSYS("getpeername"); }
-int lx_getaddrinfo(const char *n, const char *s, const void *h, void **r) { return -4; } // EAI_FAIL
-void lx_freeaddrinfo(void *r) {}
 int lx_getnameinfo(const void *a, unsigned l, char *h, unsigned hl, char *s, unsigned sl, int f) { return -4; }
 int lx_getifaddrs(void **r) { NOSYS("getifaddrs"); }
 void lx_freeifaddrs(void *r) {}

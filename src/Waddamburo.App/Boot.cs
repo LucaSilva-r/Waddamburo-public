@@ -43,6 +43,9 @@ public static class Boot
     public static int Run(string[] args)
     {
         s_startingUp = false;
+        // The Switch: HTTPS through the console's own TLS (.NET's needs OpenSSL).
+        if (Waddamburo.Platform.Sdl.PlatformInfo.IsSwitch)
+            Waddamburo.Services.Online.SwitchTls.Wrap = Waddamburo.Platform.Sdl.Net.SwitchSystemTls.Wrap;
         try
         {
             // TaikOnline's scorer: stdin to stdout, before anything that touches the console, updates or game data.

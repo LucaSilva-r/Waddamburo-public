@@ -15,7 +15,7 @@ syms --defined-only rt-link/* > def.txt
 { syms --defined-only natives/prefix/lib/*.a bgfx/prefix/lib/*.a
   (cd "$DEVKITPRO/portlibs/switch/lib" && "$NM" --defined-only libz.a libfreetype.a libharfbuzz.a libpng16.a libbz2.a libopus.a 2>/dev/null | awk 'NF==3{print $3}')
 } | sort -u > ours.txt
-comm -23 undef.txt def.txt | comm -23 - ours.txt | grep -v -e '^__start_' -e '^__stop_' -e '^SDL_' -e '^sdlnx_' -e '^_Z' \
+comm -23 undef.txt def.txt | comm -23 - ours.txt | grep -v -e '^__start_' -e '^__stop_' -e '^SDL_' -e '^sdlnx_' -e '^nxtls_' -e '^_Z' \
   | awk '{print $1" lx_"$1}' > rename.map
 echo "main lx_dotnet_main" >> rename.map
 for f in rt-link/*; do aarch64-none-elf-objcopy --redefine-syms=rename.map "$f"; done
@@ -37,6 +37,8 @@ S=$HERE/shim
 mkdir -p obj
 aarch64-none-elf-gcc $CF -I"$OUT/ext/sqlite-amalgamation-3530300" -c "$S/shim.c" -o obj/shim.o
 aarch64-none-elf-gcc $CF -c "$S/main.c" -o obj/main.o
+aarch64-none-elf-gcc $CF -c "$S/net.c" -o obj/net.o
+aarch64-none-elf-gcc $CF -c "$S/tls.c" -o obj/tls.o
 aarch64-none-elf-gcc $CF -c "$S/exc.S" -o obj/exc.o
 aarch64-none-elf-gcc $CF -I"$OUT/ext/sdl3/include" -c "$S/sdl3nx.c" -o obj/sdl3nx.o
 aarch64-none-elf-gcc $CF -I"$OUT/bgfx/include" -include "$S/gcc-compat.h" -D__NX__ -c "$S/gfx.c" -o obj/gfx.o
@@ -49,7 +51,7 @@ R=${R:-rt-link} N=${N:-natives/prefix/lib} B=${B:-bgfx/prefix/lib} F=${FFMPEG_LI
 NRO=${NRO:-$ROOT/out/package/Waddamburo.nro}
 aarch64-none-elf-g++ -specs="$DEVKITPRO/libnx/switch.specs" -g $ARCH -Wl,--eh-frame-hdr -Wl,--wrap=__syscall_thread_create \
   -Wl,--wrap=__syscall_thread_join -Wl,--wrap=nvMapCreate -Wl,--wrap=nvAddressSpaceMap -Wl,-Map,app.map -o app.elf \
-  obj/main.o obj/shim.o obj/exc.o obj/gfx.o obj/sdl3nx.o $R/app.o $R/libbootstrapper.o obj/cryptonx.o \
+  obj/main.o obj/shim.o obj/net.o obj/tls.o obj/exc.o obj/gfx.o obj/sdl3nx.o $R/app.o $R/libbootstrapper.o obj/cryptonx.o \
   -Wl,--start-group $R/libRuntime.WorkstationGC.a $R/libSystem.Native.a $R/libSystem.Globalization.Native.a \
   $R/libSystem.IO.Compression.Native.a $R/libSystem.Net.Security.Native.a $R/libSystem.Security.Cryptography.Native.OpenSsl.a \
   $R/libbrotlienc.a $R/libbrotlidec.a $R/libbrotlicommon.a $R/libeventpipe-disabled.a $R/libstandalonegc-disabled.a \

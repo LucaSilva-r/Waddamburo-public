@@ -18,21 +18,29 @@ public static class ServerConnector
     /// A handler connecting this way. <paramref name="insecure"/> skips certificate checks (a local server's
     /// self-signed certificate); anyone on the network can then read the traffic.
     /// </summary>
-    public static SocketsHttpHandler Handler(bool insecure)
+    public static HttpMessageHandler Handler(bool insecure)
     {
-        var handler = new SocketsHttpHandler { ConnectCallback = ConnectAsync, PooledConnectionLifetime = TimeSpan.FromMinutes(5) };
+        var handler = new SocketsHttpHandler
+        {
+            ConnectCallback = (context, cancellationToken) => ConnectAsync(context, insecure, cancellationToken),
+            PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+        };
 #pragma warning disable CA5359
         if (insecure)
             handler.SslOptions.RemoteCertificateValidationCallback = static (_, _, _, _) => true;
 #pragma warning restore CA5359
-        return handler;
+        // The Switch: TLS through the console's own service (SwitchTls), not .NET's (OpenSSL).
+        return SwitchTls.Enabled ? new SwitchTls.Handler(handler) : handler;
     }
 
     /// <summary>For a websocket's <c>ConnectAsync(uri, invoker, token)</c>: the same connection, certificates as above.</summary>
     public static HttpMessageInvoker Invoker(bool insecure) => new(Handler(insecure), disposeHandler: true);
 
     /// <summary>Opens a connection to the context's host and port, trying its addresses as described above.</summary>
-    public static async ValueTask<Stream> ConnectAsync(SocketsHttpConnectionContext context, CancellationToken cancellationToken)
+    public static ValueTask<Stream> ConnectAsync(SocketsHttpConnectionContext context, CancellationToken cancellationToken) =>
+        ConnectAsync(context, insecure: false, cancellationToken);
+
+    private static async ValueTask<Stream> ConnectAsync(SocketsHttpConnectionContext context, bool insecure, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(context);
         var (host, port) = (context.DnsEndPoint.Host, context.DnsEndPoint.Port);
@@ -48,6 +56,8 @@ public static class ServerConnector
             try
             {
                 await socket.ConnectAsync(new IPEndPoint(address, port), attempt.Token).ConfigureAwait(false);
+                if (SwitchTls.Enabled && SwitchTls.Wanted(context))
+                    return await Task.Run(() => SwitchTls.Wrap!(socket, host, insecure), cancellationToken).ConfigureAwait(false);
                 return new NetworkStream(socket, ownsSocket: true);
             }
             catch (Exception exception) when (exception is SocketException or OperationCanceledException
