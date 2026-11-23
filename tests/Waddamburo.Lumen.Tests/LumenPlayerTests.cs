@@ -1100,9 +1100,9 @@ public sealed class LumenPlayerTests
             ]);
         var root = movie.Sprites.Single(sprite => sprite.CharacterId == 7);
         movie = movie with { Sprites = [root with { Timeline = [
-            new LmbShowFrameCommand(0, 1, [], null!), new LmbDoActionCommand(0, 0, [], null!),
-            new LmbShowFrameCommand(1, 0, [], null!),
-            new LmbShowFrameCommand(2, 1, [], null!), new LmbDoActionCommand(1, 0, [], null!),
+            new LmbShowFrameCommand(0, 1, default), new LmbDoActionCommand(0, 0, default),
+            new LmbShowFrameCommand(1, 0, default),
+            new LmbShowFrameCommand(2, 1, default), new LmbDoActionCommand(1, 0, default),
         ] }, .. movie.Sprites.Where(sprite => sprite.CharacterId != 7)] };
 
         var player = new LumenPlayer(movie, 1280, 720, limits: new(maxPendingActions: budget));
@@ -1156,13 +1156,13 @@ public sealed class LumenPlayerTests
             targetActionBytecode: [.. readState]);
         var original = movie.Sprites.Single(sprite => sprite.CharacterId == 7);
         var place = original.Timeline.OfType<LmbPlaceObjectCommand>().First();
-        var root = original with { Timeline = [new LmbShowFrameCommand(0, 1, [], null!),
+        var root = original with { Timeline = [new LmbShowFrameCommand(0, 1, default),
             place with { CharacterId = 100, NameStringIndex = name("placed") },
-            new LmbShowFrameCommand(1, 2, [], null!),
-            new LmbDoActionCommand(0, 0x01000000, [], null!), new LmbDoActionCommand(1, 0, [], null!)] };
+            new LmbShowFrameCommand(1, 2, default),
+            new LmbDoActionCommand(0, 0x01000000, default), new LmbDoActionCommand(1, 0, default)] };
         var parent = new LmbSpriteDefinition(100, 0, 1, 0, 0, [0, name("RootExport")],
-            [new LmbShowFrameCommand(0, 1, [], null!), place with { CharacterId = 101, NameStringIndex = childName }], null!);
-        var child = new LmbSpriteDefinition(101, 0, 1, 0, 0, [0, childExport], [new LmbShowFrameCommand(0, 0, [], null!)], null!);
+            [new LmbShowFrameCommand(0, 1, default), place with { CharacterId = 101, NameStringIndex = childName }], default);
+        var child = new LmbSpriteDefinition(101, 0, 1, 0, 0, [0, childExport], [new LmbShowFrameCommand(0, 0, default)], default);
         movie = movie with { Strings = movie.Strings.AddRange(new LmbString[] { new(childExport, "ChildExport", 0), new(childName, "child", 0), new(parentMember, "_parent", 0) }),
             Sprites = [root, parent, child, .. movie.Sprites.Where(sprite => sprite.CharacterId != 7)] };
         var observed = false;
@@ -2198,9 +2198,9 @@ public sealed class LumenPlayerTests
         var target = placement with { Depth = 1 };
         var outside = placement with { Depth = 2 };
         movie = movie with { Sprites = [sprite with { Timeline = [
-            new LmbShowFrameCommand(0, 3, [], null!), mask, target, outside,
-            new LmbShowFrameCommand(1, 1, [], null!), mask with { Mode = 2, ClipDepth = 0, PositionKind = 0 },
-            new LmbShowFrameCommand(2, 1, [], null!), new LmbRemoveObjectCommand(42, 0, [], null!),
+            new LmbShowFrameCommand(0, 3, default), mask, target, outside,
+            new LmbShowFrameCommand(1, 1, default), mask with { Mode = 2, ClipDepth = 0, PositionKind = 0 },
+            new LmbShowFrameCommand(2, 1, default), new LmbRemoveObjectCommand(42, 0, default),
         ] }] };
         var player = new LumenPlayer(movie, 1280, 720);
         assertMasked(player.CreateRenderSnapshot());
@@ -2229,10 +2229,10 @@ public sealed class LumenPlayerTests
         var sprite = movie.Sprites.Single();
         var placement = sprite.Timeline.OfType<LmbPlaceObjectCommand>().First();
         var child = sprite with { CharacterId = 8, DeclaredFrameCount = 1, Timeline = [
-            new LmbShowFrameCommand(0, 2, [], null!),
+            new LmbShowFrameCommand(0, 2, default),
             placement with { Depth = 0, ClipDepth = 1 }, placement with { Depth = 1 },
         ] };
-        var root = sprite with { Timeline = [new LmbShowFrameCommand(0, 5, [], null!),
+        var root = sprite with { Timeline = [new LmbShowFrameCommand(0, 5, default),
             placement with { Depth = 0, ClipDepth = 2 },
             placement with { Depth = 1, ClipDepth = 3 },
             placement with { Depth = 2, CharacterId = 8 },

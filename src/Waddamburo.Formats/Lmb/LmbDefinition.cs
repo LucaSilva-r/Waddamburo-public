@@ -41,32 +41,32 @@ public sealed record LmbAction(int Index, ImmutableArray<byte> Bytecode, long Of
         this with { Bytecode = bytecode, Code = Avm1BytecodeReader.Read(bytecode, Offset, limits ?? ParserLimits.Default) };
 }
 
-public sealed record LmbColorTransform(short Red, short Green, short Blue, short Alpha)
+public readonly record struct LmbColorTransform(short Red, short Green, short Blue, short Alpha)
 {
     public EvidenceStatus Evidence { get; init; } = EvidenceStatus.Candidate;
 }
 
-public sealed record LmbMatrix(float M11, float M12, float M21, float M22, float X, float Y)
+public readonly record struct LmbMatrix(float M11, float M12, float M21, float M22, float X, float Y)
 {
     public EvidenceStatus Evidence { get; init; } = EvidenceStatus.Candidate;
 }
 
-public sealed record LmbTranslation(float X, float Y)
+public readonly record struct LmbTranslation(float X, float Y)
 {
     public EvidenceStatus Evidence { get; init; } = EvidenceStatus.Candidate;
 }
 
-public sealed record LmbBounds(float Left, float Top, float Right, float Bottom)
+public readonly record struct LmbBounds(float Left, float Top, float Right, float Bottom)
 {
     public EvidenceStatus Evidence { get; init; } = EvidenceStatus.Candidate;
 }
 
-public sealed record LmbTextureBounds(float Left, float Top, float Right, float Bottom)
+public readonly record struct LmbTextureBounds(float Left, float Top, float Right, float Bottom)
 {
     public EvidenceStatus Evidence { get; init; } = EvidenceStatus.CorpusValidatedInference;
 }
 
-public sealed record LmbMovieProperties(ImmutableArray<uint> Words, LmbRecord RawRecord)
+public sealed record LmbMovieProperties(ImmutableArray<uint> Words, LmbRecordInfo RawRecord)
 {
     public EvidenceStatus Evidence { get; init; } = EvidenceStatus.Candidate;
 
@@ -75,14 +75,13 @@ public sealed record LmbMovieProperties(ImmutableArray<uint> Words, LmbRecord Ra
     public float? FrameRate => Words.Length > 7 ? BitConverter.UInt32BitsToSingle(Words[7]) : null;
 }
 
-public sealed record LmbVertex(float X, float Y, float U, float V);
+public readonly record struct LmbVertex(float X, float Y, float U, float V);
 
 public sealed record LmbShapeGeometry(
     ImmutableArray<LmbVertex> Vertices,
     uint TextureIndex,
     uint Flags,
-    ImmutableArray<uint> UninterpretedWords,
-    LmbRecord RawRecord)
+    LmbRecordInfo RawRecord)
 {
     public EvidenceStatus Evidence { get; init; } = EvidenceStatus.Candidate;
 }
@@ -92,33 +91,30 @@ public sealed record LmbShapeDefinition(
     uint DeclaredGeometryCount,
     ImmutableArray<uint> UninterpretedHeaderWords,
     ImmutableArray<LmbShapeGeometry> Geometry,
-    LmbRecord RawRecord)
+    LmbRecordInfo RawRecord)
 {
     public EvidenceStatus HeaderEvidence { get; init; } = EvidenceStatus.Candidate;
 }
 
-public abstract record LmbTimelineCommand(LmbRecord RawRecord, EvidenceStatus Evidence);
+public abstract record LmbTimelineCommand(LmbRecordInfo RawRecord, EvidenceStatus Evidence);
 
 public sealed record LmbShowFrameCommand(
     uint Frame,
     uint DeclaredCommandCount,
-    ImmutableArray<uint> UninterpretedWords,
-    LmbRecord Record)
+    LmbRecordInfo Record)
     : LmbTimelineCommand(Record, EvidenceStatus.Candidate);
 
 public sealed record LmbFrameKeyCommand(
     uint Frame,
     uint EntryCount,
-    ImmutableArray<uint> UninterpretedWords,
-    LmbRecord Record)
+    LmbRecordInfo Record)
     : LmbTimelineCommand(Record, EvidenceStatus.Candidate);
 
 public sealed record LmbFrameLabelCommand(
     uint StringIndex,
     uint Frame,
     uint Unknown,
-    ImmutableArray<uint> UninterpretedWords,
-    LmbRecord Record)
+    LmbRecordInfo Record)
     : LmbTimelineCommand(Record, EvidenceStatus.Candidate);
 
 public sealed record LmbPlaceObjectCommand(
@@ -133,8 +129,7 @@ public sealed record LmbPlaceObjectCommand(
     ushort PositionIndex,
     uint ColorMultiplyIndex,
     uint ColorAddIndex,
-    ImmutableArray<uint> UninterpretedWords,
-    LmbRecord Record)
+    LmbRecordInfo Record)
     : LmbTimelineCommand(Record, EvidenceStatus.CorpusValidatedInference)
 {
     /// <summary>Inclusive last sibling depth clipped by this placement; zero means no mask.</summary>
@@ -144,8 +139,7 @@ public sealed record LmbPlaceObjectCommand(
 public sealed record LmbRemoveObjectCommand(
     uint CharacterId,
     uint PackedDepth,
-    ImmutableArray<uint> UninterpretedWords,
-    LmbRecord Record)
+    LmbRecordInfo Record)
     : LmbTimelineCommand(Record, EvidenceStatus.CorpusValidatedInference)
 {
     public ushort Depth => (ushort)(PackedDepth >> 16);
@@ -154,8 +148,7 @@ public sealed record LmbRemoveObjectCommand(
 public sealed record LmbDoActionCommand(
     uint ActionIndex,
     uint Unknown,
-    ImmutableArray<uint> UninterpretedWords,
-    LmbRecord Record)
+    LmbRecordInfo Record)
     : LmbTimelineCommand(Record, EvidenceStatus.Candidate);
 
 public sealed record LmbSpriteDefinition(
@@ -166,7 +159,7 @@ public sealed record LmbSpriteDefinition(
     uint Flags,
     ImmutableArray<uint> UninterpretedHeaderWords,
     ImmutableArray<LmbTimelineCommand> Timeline,
-    LmbRecord RawRecord)
+    LmbRecordInfo RawRecord)
 {
     public EvidenceStatus HeaderEvidence { get; init; } = EvidenceStatus.Candidate;
 
@@ -205,7 +198,7 @@ public sealed record LmbMovieDefinition(
 /// bounds pool index of its box; word 11 is the font size as a float. The other words are unknown.
 /// </summary>
 public sealed record LmbTextDefinition(uint CharacterId, uint HtmlStringIndex, uint BoundsIndex, float FontSize,
-    ImmutableArray<uint> Words, LmbRecord RawRecord)
+    ImmutableArray<uint> Words, LmbRecordInfo RawRecord)
 {
     public EvidenceStatus Evidence { get; init; } = EvidenceStatus.Candidate;
 }

@@ -147,4 +147,12 @@ public sealed record LmbRecord(
     public long PayloadLength => checked((long)WordCount * 4);
 
     public long EndOffset => checked(PayloadOffset + PayloadLength);
+
+    public LmbRecordInfo Info => new(Index, Tag, HeaderOffset, PayloadOffset);
 }
+
+/// <summary>
+/// Where a record was (diagnostics): what a definition keeps of it, as a value, not the record with its bytes
+/// (kept movies held ~640k records and header arrays for the GC to walk).
+/// </summary>
+public readonly record struct LmbRecordInfo(int Index, uint Tag, long HeaderOffset, long PayloadOffset);

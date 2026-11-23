@@ -81,14 +81,14 @@ public sealed class ModeTutorialTests
                 Code = new Avm1CodeBlock(0, instructions.Length, [.. instructions.Select((instruction, offset) => instruction with { Offset = offset })]),
             };
         }).ToImmutableArray();
-        var frames = new List<LmbTimelineCommand> { new LmbShowFrameCommand(0, 0, [], null!) };
+        var frames = new List<LmbTimelineCommand> { new LmbShowFrameCommand(0, 0, default) };
         for (var index = 0; index < calls.Length; index++)
         {
-            frames.Add(new LmbShowFrameCommand((uint)index + 1, 1, [], null!));
-            frames.Add(new LmbDoActionCommand((uint)index, 0, [], null!));
+            frames.Add(new LmbShowFrameCommand((uint)index + 1, 1, default));
+            frames.Add(new LmbDoActionCommand((uint)index, 0, default));
         }
         return new LmbMovieDefinition(null!, null, [.. names.Select((value, index) => new LmbString(index, value, 0))],
-            [], [], [], [], [], actions, [], [new LmbSpriteDefinition(1, 0, (uint)calls.Length + 1, 0, 0, [], [.. frames], null!)], []);
+            [], [], [], [], [], actions, [], [new LmbSpriteDefinition(1, 0, (uint)calls.Length + 1, 0, 0, [], [.. frames], default)], []);
     }
 
 }

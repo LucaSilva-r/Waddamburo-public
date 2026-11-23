@@ -310,7 +310,7 @@ internal static class LmbReferenceValidator
     private static void validateFrame(
         uint frame,
         LmbSpriteDefinition sprite,
-        LmbRecord record,
+        LmbRecordInfo record,
         EvidenceStatus evidence,
         ImmutableArray<ParseDiagnostic>.Builder diagnostics)
     {
@@ -329,7 +329,7 @@ internal static class LmbReferenceValidator
         uint index,
         int count,
         string target,
-        LmbRecord record,
+        LmbRecordInfo record,
         EvidenceStatus evidence,
         ImmutableArray<ParseDiagnostic>.Builder diagnostics)
     {
@@ -343,7 +343,7 @@ internal static class LmbReferenceValidator
         int count,
         string code,
         string target,
-        LmbRecord record,
+        LmbRecordInfo record,
         EvidenceStatus evidence,
         ImmutableArray<ParseDiagnostic>.Builder diagnostics)
     {
@@ -361,7 +361,7 @@ internal static class LmbReferenceValidator
     private static void addCharacterId(
         HashSet<uint> ids,
         uint id,
-        LmbRecord record,
+        LmbRecordInfo record,
         ImmutableArray<ParseDiagnostic>.Builder diagnostics)
     {
         if (ids.Add(id))
@@ -379,7 +379,7 @@ internal static class LmbReferenceValidator
         ImmutableArray<ParseDiagnostic>.Builder diagnostics,
         DiagnosticSeverity severity,
         string code,
-        LmbRecord record,
+        LmbRecordInfo record,
         EvidenceStatus evidence,
         string message) =>
         diagnostics.Add(new ParseDiagnostic(

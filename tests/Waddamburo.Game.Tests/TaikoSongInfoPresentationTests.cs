@@ -67,11 +67,11 @@ public sealed class TaikoSongInfoPresentationTests
     private static LumenPlayer songInfo()
     {
         LmbPlaceObjectCommand place(uint id, uint depth, uint name) =>
-            new(id, depth, name, 1, 0, (ushort)depth, 0, 0, 0, uint.MaxValue, uint.MaxValue, [], null!);
+            new(id, depth, name, 1, 0, (ushort)depth, 0, 0, 0, uint.MaxValue, uint.MaxValue, default);
         LmbSpriteDefinition sprite(uint id, params LmbTimelineCommand[] children) => new(id, 0, 1, 0, 0, [],
-            [new LmbShowFrameCommand(0, (uint)children.Length, [], null!), .. children], null!);
+            [new LmbShowFrameCommand(0, (uint)children.Length, default), .. children], default);
         var shape = new LmbShapeDefinition(2, 1, [], [new LmbShapeGeometry(
-            [new(0, 0, 0, 0), new(10, 0, 1, 0), new(10, 10, 1, 1), new(0, 10, 0, 1)], 0, 0, [], null!)], null!);
+            [new(0, 0, 0, 0), new(10, 0, 1, 0), new(10, 10, 1, 1), new(0, 10, 0, 1)], 0, 0, default)], default);
         var movie = new LmbMovieDefinition(null!, null,
             [new(0, "", 0), new(1, "main", 0), new(2, "stage", 0), new(3, "genre", 0), new(4, "song_name", 0)],
             [], [new(1, 0, 0, 1, 0, 0)], [], [], [], [], [shape],

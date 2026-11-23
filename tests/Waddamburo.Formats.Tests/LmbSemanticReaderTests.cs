@@ -84,7 +84,6 @@ public sealed class LmbSemanticReaderTests
                 Assert.Equal(0x8000, place.PositionKind);
                 Assert.Equal(0, place.PositionIndex);
                 Assert.Equal(EvidenceStatus.CorpusValidatedInference, place.Evidence);
-                Assert.Equal(PlaceUnknownWords, place.UninterpretedWords);
             },
             command => Assert.Equal((ushort)2, Assert.IsType<LmbRemoveObjectCommand>(command).Depth),
             command => Assert.IsType<LmbDoActionCommand>(command),
@@ -321,7 +320,7 @@ public sealed class LmbSemanticReaderTests
             result.Diagnostics.Where(diagnostic => diagnostic.Code.EndsWith("OUT_OF_RANGE", StringComparison.Ordinal)),
             diagnostic => Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity));
         Assert.Equal(5, result.Value.Sprites[0].Timeline.Length);
-        Assert.Same(file.Records[8], result.Value.Sprites[0].Timeline[0].RawRecord);
+        Assert.Equal(file.Records[8].Info, result.Value.Sprites[0].Timeline[0].RawRecord);
     }
 
     [Fact]
