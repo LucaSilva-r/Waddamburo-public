@@ -1,4 +1,4 @@
-# Pushing a vX.Y.Z tag builds the three releases (Windows, Linux, Android) and drafts a GitHub release with them; publishing
+# Pushing a vX.Y.Z tag builds the four releases (Windows, Linux, Android, Switch homebrew) and drafts a GitHub release with them; publishing
 # the draft is what makes installed copies update. Run it by hand (Actions > Release > Run
 # workflow) to only build and download the files from the run's artifacts, or with "nightly" ticked
 # to publish a nightly: version X.Y.Z-nightly (X.Y.Z the latest stable release), tagged with the short
@@ -11,7 +11,7 @@ on:
     # A tag's run only reads caches saved on master (or the tag itself): master keeps the native libraries' cache
     # (below) up to date whenever they change.
     branches: [master]
-    paths: ['native/**', '.github/workflows/release.yml']
+    paths: ['native/**', 'platforms/switch/**', '.github/workflows/release.yml']
   workflow_dispatch:
     inputs:
       nightly:
@@ -60,6 +60,10 @@ jobs:
           # Android stays on the runner (its SDK is there); ninja comes from PyPI.
           - target: android
             runner: ubuntu-24.04
+          # The Switch homebrew also stays on the runner: platforms/switch/build.sh runs its devkitA64 steps in the
+          # pinned devkitpro/devkita64 image through the runner's Docker.
+          - target: switch
+            runner: ubuntu-24.04
     runs-on: ${{ matrix.runner }}
     # No image (android): no container, the job runs on the runner.
     container:
@@ -86,6 +90,18 @@ jobs:
             out/source
             out/build/native
           key: native-${{ matrix.target }}-${{ matrix.runner }}-${{ hashFiles('native/**', 'eng/ci/Dockerfile') }}
+
+      # The Switch's native libraries and bgfx (built for libnx from the pinned sources), until platforms/switch or
+      # native/ change.
+      - uses: actions/cache@v4
+        if: matrix.target == 'switch'
+        with:
+          path: |
+            out/downloads
+            out/switch/ext
+            out/switch/natives
+            out/switch/bgfx
+          key: switch-native-${{ hashFiles('native/**', 'platforms/switch/scripts/**', 'platforms/switch/patches/**', 'platforms/switch/build.sh') }}
 
       # Android: JDK 21 (the runner's default Java is newer than the Android build tools take), the pinned NDK
       # (kept between runs) and .NET's Android workload.
@@ -138,7 +154,9 @@ jobs:
             out/package/Waddamburo.exe
             out/package/Waddamburo-x86_64.AppImage
             out/package/Waddamburo.apk
+            out/package/Waddamburo.nro
             out/package/licenses.zip
+            out/package/licenses-switch.zip
             out/package/licenses-win-x64.zip
             out/package/native-*.zip
             out/package/ffmpeg-source.zip
@@ -157,9 +175,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          assets=(Waddamburo.exe Waddamburo-x86_64.AppImage Waddamburo.apk licenses.zip licenses-win-x64.zip
-            native-*.zip ffmpeg-source.zip ffmpeg-relink-linux-x64.zip ffmpeg-relink-win-x64.zip
-            ffmpeg-relink-android-arm64.zip ffmpeg-relink-android-x64.zip)
+          assets=(Waddamburo.exe Waddamburo-x86_64.AppImage Waddamburo.apk Waddamburo.nro licenses.zip licenses-win-x64.zip
+            licenses-switch.zip native-*.zip ffmpeg-source.zip ffmpeg-relink-linux-x64.zip ffmpeg-relink-win-x64.zip
+            ffmpeg-relink-android-arm64.zip ffmpeg-relink-android-x64.zip ffmpeg-relink-switch.zip)
           if draft=$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft); then
             if [ "$draft" != true ]; then
               echo "Release $GITHUB_REF_NAME has already been published."
@@ -190,8 +208,9 @@ jobs:
           mv Waddamburo.exe Waddamburo-nightly.exe
           mv Waddamburo-x86_64.AppImage Waddamburo-nightly-x86_64.AppImage
           mv Waddamburo.apk Waddamburo-nightly.apk
+          mv Waddamburo.nro Waddamburo-nightly.nro
           gh release create "${GITHUB_SHA::7}" --repo "$GITHUB_REPOSITORY" --prerelease --target "$GITHUB_SHA" --generate-notes \
-            --title "Waddamburo nightly ${GITHUB_SHA::7}" Waddamburo-nightly.exe Waddamburo-nightly-x86_64.AppImage Waddamburo-nightly.apk \
+            --title "Waddamburo nightly ${GITHUB_SHA::7}" Waddamburo-nightly.exe Waddamburo-nightly-x86_64.AppImage Waddamburo-nightly.apk Waddamburo-nightly.nro \
             --notes "Waddamburo uses FFmpeg under the LGPL 2.1 or later. Download ffmpeg-source.zip and the ffmpeg-relink archive for your platform. [Relinking instructions](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_SHA/docs/development/ffmpeg.md#relinking-a-release)." \
             licenses.zip licenses-win-x64.zip native-*.zip ffmpeg-source.zip ffmpeg-relink-linux-x64.zip ffmpeg-relink-win-x64.zip \
-            ffmpeg-relink-android-arm64.zip ffmpeg-relink-android-x64.zip
+            ffmpeg-relink-android-arm64.zip ffmpeg-relink-android-x64.zip licenses-switch.zip ffmpeg-relink-switch.zip

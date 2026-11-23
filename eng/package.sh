@@ -6,6 +6,8 @@
 #   out/package/licenses.zip                release licenses and notices
 #   out/package/licenses-win-x64.zip        notices from the Windows .NET runtime pack
 #   out/package/Waddamburo.apk              the Android app (target android: needs the Android SDK, NDK and JDK)
+#   out/package/Waddamburo.nro              the Switch homebrew (target switch: platforms/switch/README.md), with
+#                                            licenses-switch.zip and ffmpeg-relink-switch.zip (FFmpeg is linked statically)
 #   out/package/ffmpeg-source.zip           pinned FFmpeg and Opus source archives (from the Linux job)
 #   out/package/ffmpeg-relink-*.zip         platform-specific configure options and vgmstream link inputs
 #   out/package/native-{win,linux}-x64.zip  the native libraries alone, for building from source
@@ -14,7 +16,7 @@
 # Needs: .NET 10 SDK, CMake, Ninja, make, gcc, mingw-w64 gcc (x86_64-w64-mingw32-gcc).
 # On Windows it runs in an MSYS2 MINGW64 shell and builds the Windows release only (BUILDING.md).
 #
-# usage: eng/package.sh [linux|windows|android]   (default: linux and windows; windows on Windows)
+# usage: eng/package.sh [linux|windows|android|switch]   (default: linux and windows; windows on Windows)
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -63,18 +65,8 @@ ffmpeg_source() { # build-dir: publish the same sources that the pinned build ve
     echo "$out/ffmpeg-source.zip"
 }
 
-licenses() { # native-build-dir out-dir [project]: collect Waddamburo's and third-party notices
-    local dir=$2
-    rm -rf "$dir" && mkdir -p "$dir"
-    cp LICENSE NOTICE.md THIRD_PARTY_NOTICES.md eng/packaging/licenses/* "$dir/"
-    cp src/Waddamburo.App/Upscale/Real-ESRGAN.LICENSE.txt "$dir/"
-    cp src/Waddamburo.Game/Gameplay/Data/soul-gauge-rates.LICENSE.txt "$dir/"
-    cp native/texture/third_party/bc7enc/LICENSE "$dir/bc7enc.LICENSE.txt"
-    cp -r "$1"/ffmpeg/prefix/licenses/* "$1"/vgmstream/licenses/* "$1"/freetype/prefix/licenses/* "$1"/bgfx/prefix/licenses/* "$dir/"
-    local dotnet_root
-    dotnet_root=$(dirname "$(readlink -f "$(command -v dotnet)")")
-    mkdir -p "$dir/dotnet" && cp "$dotnet_root/LICENSE.txt" "$dotnet_root/ThirdPartyNotices.txt" "$dir/dotnet/"
-    python3 - "src/${3:-Waddamburo.App}/packages.lock.json" "${NUGET_PACKAGES:-$HOME/.nuget/packages}" > "$dir/nuget-packages.txt" <<'PY'
+nuget_inventory() { # packages.lock.json: the NuGet packages in it with their licenses
+    python3 - "$1" "${NUGET_PACKAGES:-$HOME/.nuget/packages}" <<'PY'
 import json, re, sys
 from pathlib import Path
 lock, cache = json.load(open(sys.argv[1])), Path(sys.argv[2])
@@ -87,6 +79,20 @@ for name, version in sorted(packages, key=lambda p: p[0].lower()):
     license = re.search(r"<license[^>]*>([^<]+)</license>", text) or re.search(r"<licenseUrl>([^<]+)</licenseUrl>", text)
     print(f"{name} {version}: {license.group(1) if license else 'see https://www.nuget.org/packages/' + name}")
 PY
+}
+
+licenses() { # native-build-dir out-dir [project]: collect Waddamburo's and third-party notices
+    local dir=$2
+    rm -rf "$dir" && mkdir -p "$dir"
+    cp LICENSE NOTICE.md THIRD_PARTY_NOTICES.md eng/packaging/licenses/* "$dir/"
+    cp src/Waddamburo.App/Upscale/Real-ESRGAN.LICENSE.txt "$dir/"
+    cp src/Waddamburo.Game/Gameplay/Data/soul-gauge-rates.LICENSE.txt "$dir/"
+    cp native/texture/third_party/bc7enc/LICENSE "$dir/bc7enc.LICENSE.txt"
+    cp -r "$1"/ffmpeg/prefix/licenses/* "$1"/vgmstream/licenses/* "$1"/freetype/prefix/licenses/* "$1"/bgfx/prefix/licenses/* "$dir/"
+    local dotnet_root
+    dotnet_root=$(dirname "$(readlink -f "$(command -v dotnet)")")
+    mkdir -p "$dir/dotnet" && cp "$dotnet_root/LICENSE.txt" "$dotnet_root/ThirdPartyNotices.txt" "$dir/dotnet/"
+    nuget_inventory "src/${3:-Waddamburo.App}/packages.lock.json" > "$dir/nuget-packages.txt"
 }
 
 runtime_licenses() { # project rid license-dir [MSBuild arguments]
@@ -223,6 +229,47 @@ EOF
         apk=$(ls "$out/android"/*-Signed.apk | head -1)
         cp "$apk" "$out/Waddamburo.apk"
         echo "$out/Waddamburo.apk"
+        ;;
+    switch)
+        # Needs Docker or the devkitA64 image (platforms/switch/build.sh).
+        WADDAMBURO_VERSION=$version platforms/switch/build.sh all
+        switch=$root/out/switch
+        source "$switch/ext/versions.env"
+        notices=$out/switch-notices
+        rm -rf "$notices" && mkdir -p "$notices/FFmpeg" "$notices/vgmstream" "$notices/dotnet"
+        cp LICENSE NOTICE.md THIRD_PARTY_NOTICES.md eng/packaging/licenses/* "$notices/"
+        cp platforms/switch/THIRD_PARTY_NOTICES.md "$notices/THIRD_PARTY_NOTICES-switch.md"
+        cp native/texture/third_party/bc7enc/LICENSE "$notices/bc7enc.LICENSE.txt"
+        cp "$switch/ext/ffmpeg-$FFMPEG"/COPYING.LGPLv2.1 "$switch/ext/ffmpeg-$FFMPEG"/LICENSE.md "$notices/FFmpeg/"
+        grep -o -- '--[a-z-]*\(=[^ ]*\)\?' platforms/switch/scripts/natives.sh | sort -u > "$notices/FFmpeg/configure-options-switch.txt"
+        cp "$switch/ext/vgmstream-$VGMSTREAM/COPYING" "$notices/vgmstream/"
+        cp "$switch"/bgfx/licenses/* "$notices/"
+        runtime_pack=$(ls -d "${NUGET_PACKAGES:-$HOME/.nuget/packages}"/microsoft.netcore.app.runtime.nativeaot.linux-arm64/* | sort -V | tail -1)
+        cp "$runtime_pack/LICENSE.TXT" "$runtime_pack/THIRD-PARTY-NOTICES.TXT" "$notices/dotnet/"
+        nuget_inventory src/Waddamburo.App/packages.lock.json > "$notices/nuget-packages.txt"
+        rm -f "$out/licenses-switch.zip" && (cd "$notices" && cmake -E tar cf "$out/licenses-switch.zip" --format=zip .)
+        echo "$out/licenses-switch.zip"
+        # LGPL relink inputs: everything but FFmpeg, as linked, and the script that links it (scripts/link.sh's last step).
+        relink=$switch/relink && rm -rf "$relink" && mkdir -p "$relink"
+        cp -r "$switch/obj" "$switch/rt-link" "$relink/"
+        cp "$switch/libfreetype_nx.a" "$switch/libdrm_nouveau_nx.a" "$relink/"
+        mkdir -p "$relink/natives" "$relink/bgfx"
+        cp "$switch"/natives/prefix/lib/lib{waddamburo_media,waddamburo_text,waddamburo_texture,vgmstream,e_sqlite3}.a "$relink/natives/"
+        cp "$switch"/bgfx/prefix/lib/*.a "$relink/bgfx/"
+        cp "$notices/FFmpeg/configure-options-switch.txt" "$relink/"
+        { cat <<HEADER
+#!/bin/bash
+# Links Waddamburo.nro again against another FFmpeg build (same options: configure-options-switch.txt). Inside the
+# devkitpro/devkita64 image: FFMPEG_LIB=/path/to/its/lib ./link.sh
+set -e; cd "\$(dirname "\$0")"; export PATH=\$DEVKITPRO/devkitA64/bin:\$DEVKITPRO/tools/bin:\$PATH
+ARCH="-march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE" VERSION=$version
+R=rt-link N=natives B=bgfx F=\${FFMPEG_LIB:?set FFMPEG_LIB} NRO=\$PWD/Waddamburo.nro
+HEADER
+          sed -n '/^aarch64-none-elf-g++ -specs/,/^ls -la/p' platforms/switch/scripts/link.sh; } > "$relink/link.sh"
+        chmod +x "$relink/link.sh"
+        rm -f "$out/ffmpeg-relink-switch.zip" && (cd "$relink" && cmake -E tar cf "$out/ffmpeg-relink-switch.zip" --format=zip .)
+        echo "$out/ffmpeg-relink-switch.zip"
+        echo "$out/Waddamburo.nro"
         ;;
     *)
         echo "error: unknown target: $target" >&2

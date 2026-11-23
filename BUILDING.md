@@ -152,6 +152,12 @@ Run the `cmake --build` line again after changing native code.
 The Android app has its own toolchain (Android SDK and NDK, JDK 21, .NET's Android workload) and build steps: see
 [docs/development/android.md](docs/development/android.md).
 
+### Nintendo Switch (homebrew)
+
+`platforms/switch/build.sh` builds `out/package/Waddamburo.nro` with the .NET SDK and Docker (devkitPro's devkitA64
+image); `eng/package.sh switch` adds its notices and FFmpeg relink archive. How it works and how to test on a console:
+[platforms/switch/README.md](platforms/switch/README.md).
+
 ## Release files (`eng/package.sh`)
 
 `eng/package.sh` builds what is published on the

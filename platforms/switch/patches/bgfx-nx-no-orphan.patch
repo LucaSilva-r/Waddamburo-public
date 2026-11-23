@@ -1,0 +1,24 @@
+--- a/bgfx/src/renderer_gl.h	2026-09-22 04:09:49.000000000 +0200
++++ b/bgfx/src/renderer_gl.h	2026-11-22 20:57:13.397475683 +0100
+@@ -1396,7 +1396,9 @@
+ 		{
+ 			BX_ASSERT(0 != m_id, "Updating invalid index buffer.");
+ 
+-			if (_discard)
++			// Waddamburo Switch port: Mesa nouveau answers an orphan with a new, zeroed buffer object mapped over IPC
++			// (megabytes and several IPCs per frame); its subdata path stages in-flight updates by itself.
++			if (_discard && !BX_ENABLED(BX_PLATFORM_NX) )
+ 			{
+ 				// orphan buffer...
+ 				destroy();
+@@ -1444,7 +1446,9 @@
+ 		{
+ 			BX_ASSERT(0 != m_id, "Updating invalid vertex buffer.");
+ 
+-			if (_discard)
++			// Waddamburo Switch port: Mesa nouveau answers an orphan with a new, zeroed buffer object mapped over IPC
++			// (megabytes and several IPCs per frame); its subdata path stages in-flight updates by itself.
++			if (_discard && !BX_ENABLED(BX_PLATFORM_NX) )
+ 			{
+ 				// orphan buffer...
+ 				destroy();

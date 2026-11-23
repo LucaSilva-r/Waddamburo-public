@@ -1,0 +1,38 @@
+--- a/bgfx/src/glcontext_egl.cpp	2026-11-18 17:59:14.968050491 +0100
++++ b/bgfx/src/glcontext_egl.cpp	2026-11-22 18:42:13.180372869 +0100
+@@ -27,6 +27,10 @@
+ #	define EGL_CHECK(_call) _call
+ #endif // BGFX_CONFIG_DEBUG
+ 
++#if BX_PLATFORM_NX
++extern "C" void nx_present_stats(void);
++#endif
++
+ namespace bgfx { namespace gl
+ {
+ #ifndef EGL_CONTEXT_FLAG_NO_ERROR_BIT_KHR
+@@ -923,6 +927,24 @@
+ 			if (NULL != m_display
+ 			&&  EGL_NO_SURFACE != m_surface)
+ 			{
++#if BX_PLATFORM_NX
++				// Waddamburo Switch port: the Switch compositor blends the window with its alpha, and Lumen's blend
++				// modes leave alpha < 1 (black flashes). Force the back buffer opaque before presenting.
++				GLint fbo = 0; GLboolean mask[4]; GLfloat clear[4]; GLboolean scissor = glIsEnabled(GL_SCISSOR_TEST);
++				glGetIntegerv(GL_FRAMEBUFFER_BINDING, &fbo);
++				glGetBooleanv(GL_COLOR_WRITEMASK, mask);
++				glGetFloatv(GL_COLOR_CLEAR_VALUE, clear);
++				glBindFramebuffer(GL_FRAMEBUFFER, 0);
++				glDisable(GL_SCISSOR_TEST);
++				glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_TRUE);
++				glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
++				glClear(GL_COLOR_BUFFER_BIT);
++				glColorMask(mask[0], mask[1], mask[2], mask[3]);
++				glClearColor(clear[0], clear[1], clear[2], clear[3]);
++				if (scissor) glEnable(GL_SCISSOR_TEST);
++				glBindFramebuffer(GL_FRAMEBUFFER, (GLuint)fbo);
++				nx_present_stats(); // diagnostics: presents per second, presenting threads, gaps (shim/gfx.c)
++#endif // BX_PLATFORM_NX
+ 				EGL_CHECK(eglSwapBuffers(m_display, m_surface) );
+ 			}
+ 		}

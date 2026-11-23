@@ -1,0 +1,12 @@
+--- a/bgfx/src/renderer_gl.cpp	2026-09-22 04:09:49.000000000 +0200
++++ b/bgfx/src/renderer_gl.cpp	2026-11-22 20:51:10.938114098 +0100
+@@ -2963,6 +2963,9 @@
+ 					;
+ 
+ 				m_timerQuerySupport &= true
++					// Waddamburo Switch port: pending timer queries make flip() call glFinish every frame (CPU and GPU
++					// serialised; Mesa nouveau spins on the fence). GPU times are only for diagnostics: off on NX.
++					&& !BX_ENABLED(BX_PLATFORM_NX)
+ 					&& NULL != glQueryCounter
+ 					&& NULL != glGetQueryObjectiv
+ 					&& NULL != glGetQueryObjectui64v
