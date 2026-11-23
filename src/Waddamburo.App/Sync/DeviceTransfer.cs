@@ -533,6 +533,7 @@ internal sealed class DeviceTransfer : IDisposable
         _typing = (field, changed, done);
         _shell.Application.TakeTypedText();
         _shell.Application.StartTextInput();
+        field.OfferSystemKeyboard(_shell.Application, "");
     }
 
     private void endTyping()

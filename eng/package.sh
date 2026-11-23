@@ -256,14 +256,14 @@ EOF
         mkdir -p "$relink/natives" "$relink/bgfx"
         cp "$switch"/natives/prefix/lib/lib{waddamburo_media,waddamburo_text,waddamburo_texture,vgmstream,e_sqlite3}.a "$relink/natives/"
         cp "$switch"/bgfx/prefix/lib/*.a "$relink/bgfx/"
-        cp "$notices/FFmpeg/configure-options-switch.txt" "$relink/"
+        cp "$notices/FFmpeg/configure-options-switch.txt" platforms/switch/icon.jpg "$relink/"
         { cat <<HEADER
 #!/bin/bash
 # Links Waddamburo.nro again against another FFmpeg build (same options: configure-options-switch.txt). Inside the
 # devkitpro/devkita64 image: FFMPEG_LIB=/path/to/its/lib ./link.sh
 set -e; cd "\$(dirname "\$0")"; export PATH=\$DEVKITPRO/devkitA64/bin:\$DEVKITPRO/tools/bin:\$PATH
 ARCH="-march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE" VERSION=$version
-R=rt-link N=natives B=bgfx F=\${FFMPEG_LIB:?set FFMPEG_LIB} NRO=\$PWD/Waddamburo.nro
+R=rt-link N=natives B=bgfx F=\${FFMPEG_LIB:?set FFMPEG_LIB} NRO=\$PWD/Waddamburo.nro HERE=\$PWD
 HEADER
           sed -n '/^aarch64-none-elf-g++ -specs/,/^ls -la/p' platforms/switch/scripts/link.sh; } > "$relink/link.sh"
         chmod +x "$relink/link.sh"

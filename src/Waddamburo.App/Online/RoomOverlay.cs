@@ -484,6 +484,7 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
             : new OverlayTextField(TextLength);
         shell.Application.TakeTypedText();
         shell.Application.StartTextInput();
+        _field.OfferSystemKeyboard(shell.Application, "");
     }
 
     private void closePrompt()

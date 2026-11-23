@@ -360,3 +360,18 @@ bool SDL_PutAudioStreamData(SDL_AudioStream *s, const void *data, int bytes) {
     rmutexUnlock(&s->lock);
     return true;
 }
+
+// The console's keyboard (swkbd) for Waddamburo's text fields (SdlApplication.EditWithSystemKeyboard): edits the whole
+// text at once, blocking while the applet shows (the game's audio plays on). 1 = confirmed (out holds UTF-8), 0 = cancelled,
+// -1 = the applet is unavailable.
+int sdlnx_keyboard(const char *initial, const char *guide, int max_length, char *out, int out_size) {
+    SwkbdConfig kbd;
+    if (R_FAILED(swkbdCreate(&kbd, 0))) return -1;
+    swkbdConfigMakePresetDefault(&kbd);
+    if (initial && *initial) swkbdConfigSetInitialText(&kbd, initial);
+    if (guide && *guide) swkbdConfigSetGuideText(&kbd, guide);
+    if (max_length > 0) swkbdConfigSetStringLenMax(&kbd, max_length);
+    Result rc = swkbdShow(&kbd, out, out_size);
+    swkbdClose(&kbd);
+    return R_SUCCEEDED(rc) ? 1 : 0;
+}

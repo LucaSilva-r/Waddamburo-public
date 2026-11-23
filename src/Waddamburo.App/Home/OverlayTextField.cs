@@ -17,6 +17,25 @@ internal sealed class OverlayTextField(int maxLength = int.MaxValue, Func<char, 
 
     public int Caret { get; private set; }
 
+    private string? _replacement;
+
+    /// <summary>
+    /// On a console with a keyboard of its own (the Switch): it edits the whole text now; the next <see cref="Edit"/>
+    /// takes the result as typing (the owner sees the change), then <paramref name="confirm"/> (when given) or Escape
+    /// (cancelled) is pressed for the owner. Elsewhere nothing: typing goes on as usual.
+    /// </summary>
+    public void OfferSystemKeyboard(Waddamburo.Platform.Sdl.SdlApplication application, string hint,
+        SdlKeyboardKey? confirm = SdlKeyboardKey.Enter)
+    {
+        if (!Waddamburo.Platform.Sdl.SdlApplication.HasSystemKeyboard)
+            return;
+        _replacement = application.EditWithSystemKeyboard(Text, hint, maxLength == int.MaxValue ? 0 : maxLength);
+        if (_replacement is null)
+            application.InjectPress(SdlKeyboardKey.Escape);
+        else if (confirm is { } key)
+            application.InjectPress(key);
+    }
+
     /// <summary>Replaces the text (filtered as typing is), the cursor at its end.</summary>
     public void Set(string text)
     {
@@ -30,6 +49,11 @@ internal sealed class OverlayTextField(int maxLength = int.MaxValue, Func<char, 
     {
         _blink++;
         var before = Text;
+        if (_replacement is { } replacement)
+        {
+            _replacement = null;
+            Set(replacement);
+        }
         insert(typed);
         var starts = StringInfo.ParseCombiningCharacters(Text);
         int previous() => starts.LastOrDefault(start => start < Caret);

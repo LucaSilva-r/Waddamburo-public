@@ -63,5 +63,5 @@ aarch64-none-elf-g++ -specs="$DEVKITPRO/libnx/switch.specs" -g $ARCH -Wl,--eh-fr
   grep -v "in function" link.log | head -20
   exit 1; }
 nacptool --create "Waddamburo" "Waddamburo" "$VERSION" app.nacp
-elf2nro app.elf "$NRO" --icon="$DEVKITPRO/libnx/default_icon.jpg" --nacp=app.nacp
+elf2nro app.elf "$NRO" --icon="$HERE/icon.jpg" --nacp=app.nacp
 ls -la "$NRO"

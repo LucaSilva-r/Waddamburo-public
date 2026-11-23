@@ -620,6 +620,26 @@ public sealed unsafe partial class SdlApplication : IDisposable
             SDL_StartTextInput(_window);
     }
 
+    /// <summary>A console keyboard that edits a whole text at once (the Switch's): fields open it instead of taking typing.</summary>
+    public static bool HasSystemKeyboard => PlatformInfo.IsSwitch;
+
+    /// <summary>
+    /// Shows the console's keyboard over the game (blocking) with <paramref name="text"/> to edit; the edited text, or
+    /// null when cancelled (or no keyboard came up).
+    /// </summary>
+    public string? EditWithSystemKeyboard(string text, string hint, int maxLength)
+    {
+        ensureOwnerThread();
+        var buffer = new byte[maxLength > 0 ? maxLength * 4 + 4 : 4096];
+        return sdlnx_keyboard(text, hint, maxLength, buffer, buffer.Length) == 1
+            ? System.Text.Encoding.UTF8.GetString(buffer, 0, Math.Max(0, Array.IndexOf(buffer, (byte)0))) : null;
+    }
+
+    // The Switch's SDL (platforms/switch/shim/sdl3nx.c) only: never called elsewhere.
+    [System.Runtime.InteropServices.LibraryImport("SDL3", EntryPoint = "sdlnx_keyboard",
+        StringMarshalling = System.Runtime.InteropServices.StringMarshalling.Utf8)]
+    private static partial int sdlnx_keyboard(string initial, string guide, int maxLength, byte[] output, int outputSize);
+
     public void StartTextInput()
     {
         ensureOwnerThread();
