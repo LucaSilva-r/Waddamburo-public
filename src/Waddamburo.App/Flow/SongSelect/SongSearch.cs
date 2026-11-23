@@ -63,6 +63,10 @@ internal sealed class SongSearch(GameShell shell, SongCatalogSnapshot catalog) :
             _menu.Selection = 0; // typing is in the field
             search(_field.Text);
         }
+        // On the field, Enter opens the console's keyboard (the Switch); confirming it searches, as Enter does.
+        else if (_menu.Selection == 0 && _field.OpenSystemKeyboard(shell.Application, Strings.T("search.title"), keys))
+        {
+        }
         else if (keys.IsDown(SdlKeyboardKey.Up) || keys.IsDown(SdlKeyboardKey.Down))
             recall(keys.IsDown(SdlKeyboardKey.Up) ? -1 : 1);
         else if (keys.IsDown(SdlKeyboardKey.Enter) && onClear)
@@ -93,7 +97,6 @@ internal sealed class SongSearch(GameShell shell, SongCatalogSnapshot catalog) :
         _menu.Open(_page, home: true);
         shell.Application.TakeTypedText(); // the Tab that opened it isn't text
         shell.Application.StartTextInput();
-        _field.OfferSystemKeyboard(shell.Application, Strings.T("search.title"), confirm: null); // the results stay to browse
     }
 
     // The field, the count, then the last searches; the field is row 0 of the selectable ones, the searches 1 on, then

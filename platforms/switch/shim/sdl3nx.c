@@ -70,8 +70,10 @@ static Thread g_hid_thread;
 static volatile bool g_hid_run;
 
 static const struct { u64 nx; int sdl; } k_buttons[] = {
-    { HidNpadButton_A, SDL_GAMEPAD_BUTTON_EAST }, { HidNpadButton_B, SDL_GAMEPAD_BUTTON_SOUTH },
-    { HidNpadButton_X, SDL_GAMEPAD_BUTTON_NORTH }, { HidNpadButton_Y, SDL_GAMEPAD_BUTTON_WEST },
+    // By label, not position: the game confirms with SOUTH and backs out with EAST (Xbox's A and B), so the Switch's A
+    // (on the right) confirms and its B goes back, as every Switch game does.
+    { HidNpadButton_A, SDL_GAMEPAD_BUTTON_SOUTH }, { HidNpadButton_B, SDL_GAMEPAD_BUTTON_EAST },
+    { HidNpadButton_X, SDL_GAMEPAD_BUTTON_WEST }, { HidNpadButton_Y, SDL_GAMEPAD_BUTTON_NORTH },
     { HidNpadButton_StickL, SDL_GAMEPAD_BUTTON_LEFT_STICK }, { HidNpadButton_StickR, SDL_GAMEPAD_BUTTON_RIGHT_STICK },
     { HidNpadButton_L, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER }, { HidNpadButton_R, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER },
     { HidNpadButton_Plus, SDL_GAMEPAD_BUTTON_START }, { HidNpadButton_Minus, SDL_GAMEPAD_BUTTON_BACK },

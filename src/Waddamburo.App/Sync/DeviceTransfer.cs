@@ -499,6 +499,8 @@ internal sealed class DeviceTransfer : IDisposable
             _menu.Tick(SdlKeyboardSnapshot.Empty, SdlKeyboardSnapshot.Empty, false); // the blink only
             if (typing.Field.Edit(_shell.Application.TakeTypedText(), keys))
                 typing.Changed();
+            if (typing.Field.OpenSystemKeyboard(_shell.Application, "", keys))
+                return;
             if (keys.IsDown(SdlKeyboardKey.Enter) && _typing is not null)
             {
                 endTyping();
@@ -533,7 +535,6 @@ internal sealed class DeviceTransfer : IDisposable
         _typing = (field, changed, done);
         _shell.Application.TakeTypedText();
         _shell.Application.StartTextInput();
-        field.OfferSystemKeyboard(_shell.Application, "");
     }
 
     private void endTyping()

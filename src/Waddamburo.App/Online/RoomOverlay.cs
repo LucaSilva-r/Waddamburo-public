@@ -469,6 +469,8 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
     private void typeInto(SdlKeyboardSnapshot keys, bool escape)
     {
         _field.Edit(shell.Application.TakeTypedText(), keys);
+        if (!escape && _field.OpenSystemKeyboard(shell.Application, "", keys))
+            return;
         if (escape)
             closePrompt();
         else if (keys.IsDown(SdlKeyboardKey.Enter) && (_prompt != Prompt.Code || _typed.Length == CodeLength))
@@ -484,7 +486,6 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
             : new OverlayTextField(TextLength);
         shell.Application.TakeTypedText();
         shell.Application.StartTextInput();
-        _field.OfferSystemKeyboard(shell.Application, "");
     }
 
     private void closePrompt()

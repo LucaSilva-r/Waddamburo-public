@@ -19,21 +19,31 @@ internal sealed class OverlayTextField(int maxLength = int.MaxValue, Func<char, 
 
     private string? _replacement;
 
+    private bool _passEnter;
+
     /// <summary>
-    /// On a console with a keyboard of its own (the Switch): it edits the whole text now; the next <see cref="Edit"/>
-    /// takes the result as typing (the owner sees the change), then <paramref name="confirm"/> (when given) or Escape
-    /// (cancelled) is pressed for the owner. Elsewhere nothing: typing goes on as usual.
+    /// On a console with a keyboard of its own (the Switch), Enter on the field opens it (the screen's hints stay readable
+    /// until then): it edits the whole text, the next <see cref="Edit"/> takes the result as typing, then
+    /// <paramref name="confirm"/> is pressed for the owner (when given; that Enter passes through). True when it took
+    /// this Enter. Cancelling changes nothing. Elsewhere false: typing goes on as usual.
     /// </summary>
-    public void OfferSystemKeyboard(Waddamburo.Platform.Sdl.SdlApplication application, string hint,
+    public bool OpenSystemKeyboard(Waddamburo.Platform.Sdl.SdlApplication application, string hint, SdlKeyboardSnapshot keys,
         SdlKeyboardKey? confirm = SdlKeyboardKey.Enter)
     {
-        if (!Waddamburo.Platform.Sdl.SdlApplication.HasSystemKeyboard)
-            return;
+        if (!Waddamburo.Platform.Sdl.SdlApplication.HasSystemKeyboard || !keys.IsDown(SdlKeyboardKey.Enter))
+            return false;
+        if (_passEnter)
+        {
+            _passEnter = false;
+            return false;
+        }
         _replacement = application.EditWithSystemKeyboard(Text, hint, maxLength == int.MaxValue ? 0 : maxLength);
-        if (_replacement is null)
-            application.InjectPress(SdlKeyboardKey.Escape);
-        else if (confirm is { } key)
+        if (_replacement is not null && confirm is { } key)
+        {
+            _passEnter = key == SdlKeyboardKey.Enter;
             application.InjectPress(key);
+        }
+        return true;
     }
 
     /// <summary>Replaces the text (filtered as typing is), the cursor at its end.</summary>
