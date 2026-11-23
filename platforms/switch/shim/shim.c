@@ -279,6 +279,12 @@ size_t lx_fwrite(const void *p, size_t a, size_t b, FILE *fp) { return fwrite(p,
 int lx_fflush(FILE *fp) { return fflush(fp); }
 int lx_fclose(FILE *fp) { return fclose(fp); }
 FILE *lx_fopen64(const char *p, const char *m) { return fopen(p, m); }
+// Runtime 10.0.15 (minipal's CPU count reads /sys/devices/system/cpu/possible, absent here: it falls back to affinity).
+int lx_fgetc(FILE *fp) { return fgetc(fp); }
+int lx___isoc99_fscanf(FILE *fp, const char *f, ...) { va_list ap; va_start(ap, f); int r = vfscanf(fp, f, ap); va_end(ap); return r; }
+// Static destructors: none run at exit (shim exit parks the threads and leaves).
+int lx___cxa_atexit(void (*fn)(void *), void *arg, void *dso) { return 0; }
+void *lx___dso_handle = &lx___dso_handle;
 ssize_t lx___getdelim(char **l, size_t *n, int d, FILE *fp) { return __getdelim(l, n, d, fp); }
 
 // Built-in environment: the GC must not try to reserve 256 GiB.
@@ -829,6 +835,8 @@ int lx_pthread_rwlock_unlock(lx_rwlock *l) {
 }
 
 int lx_sched_getaffinity(int pid, size_t n, uint64_t *set) { memset(set, 0, n); set[0] = 7; return 0; }
+void *lx___sched_cpualloc(size_t count) { return calloc((count + 63) / 64, 8); } // glibc's CPU_ALLOC
+void lx___sched_cpufree(void *set) { free(set); }
 int lx___sched_cpucount(size_t n, const uint64_t *set) { int c = 0; for (size_t i = 0; i < n / 8; i++) c += __builtin_popcountll(set[i]); return c; }
 int lx_sched_getcpu(void) { return svcGetCurrentProcessorNumber(); }
 int lx_sched_yield(void) { svcSleepThread(0); return 0; }
