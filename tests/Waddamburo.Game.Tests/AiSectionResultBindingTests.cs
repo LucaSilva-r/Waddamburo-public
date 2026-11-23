@@ -103,11 +103,11 @@ public sealed class AiSectionResultBindingTests
             code.Add(op(0));
             return new(index, [], 0) { Code = block(code) };
         }
-        LmbPlaceObjectCommand place(uint id, uint name) => new(id, 1, name, 1, 0, 1, 0, 0, 0, uint.MaxValue, uint.MaxValue, default);
+        LmbTimelineCommand place(uint id, uint name) => LmbTimelineCommand.PlaceObject(id, 1, name, 1, 0, 1, 0, 0, 0, uint.MaxValue, uint.MaxValue, default);
         LmbSpriteDefinition container(uint id, uint child, uint name) => new(id, 0, 1, 0, 0, [],
-            [new LmbShowFrameCommand(0, 1, default), place(child, name)], default);
-        var root = new LmbSpriteDefinition(1, 0, 2, 0, 0, [], [new LmbShowFrameCommand(0, 2, default),
-            place(2, 14), new LmbDoActionCommand(0, 0, default), new LmbShowFrameCommand(1, 1, default), new LmbDoActionCommand(1, 0, default)], default);
+            [LmbTimelineCommand.ShowFrame(0, 1, default), place(child, name)], default);
+        var root = new LmbSpriteDefinition(1, 0, 2, 0, 0, [], [LmbTimelineCommand.ShowFrame(0, 2, default),
+            place(2, 14), LmbTimelineCommand.DoAction(0, 0, default), LmbTimelineCommand.ShowFrame(1, 1, default), LmbTimelineCommand.DoAction(1, 0, default)], default);
         var shape = new LmbShapeDefinition(5, 1, [], [new LmbShapeGeometry(
             [new(0, 0, 0, 0), new(10, 0, 1, 0), new(10, 10, 1, 1), new(0, 10, 0, 1)], 1, 0x00010000, default)], default);
         return new(null!, null, [.. names.Select((name, index) => new LmbString(index, name, 0))], [], [new(1, 0, 0, 1, 0, 0)], [], [], [],

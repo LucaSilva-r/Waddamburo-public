@@ -96,60 +96,100 @@ public sealed record LmbShapeDefinition(
     public EvidenceStatus HeaderEvidence { get; init; } = EvidenceStatus.Candidate;
 }
 
-public abstract record LmbTimelineCommand(LmbRecordInfo RawRecord, EvidenceStatus Evidence);
+public enum LmbCommandKind : byte { ShowFrame, FrameKey, FrameLabel, PlaceObject, RemoveObject, DoAction }
 
-public sealed record LmbShowFrameCommand(
-    uint Frame,
-    uint DeclaredCommandCount,
-    LmbRecordInfo Record)
-    : LmbTimelineCommand(Record, EvidenceStatus.Candidate);
-
-public sealed record LmbFrameKeyCommand(
-    uint Frame,
-    uint EntryCount,
-    LmbRecordInfo Record)
-    : LmbTimelineCommand(Record, EvidenceStatus.Candidate);
-
-public sealed record LmbFrameLabelCommand(
-    uint StringIndex,
-    uint Frame,
-    uint Unknown,
-    LmbRecordInfo Record)
-    : LmbTimelineCommand(Record, EvidenceStatus.Candidate);
-
-public sealed record LmbPlaceObjectCommand(
-    uint CharacterId,
-    uint PlacementId,
-    uint NameStringIndex,
-    ushort Mode,
-    ushort BlendMode,
-    ushort Depth,
-    ushort FirstFrame,
-    ushort PositionKind,
-    ushort PositionIndex,
-    uint ColorMultiplyIndex,
-    uint ColorAddIndex,
-    LmbRecordInfo Record)
-    : LmbTimelineCommand(Record, EvidenceStatus.CorpusValidatedInference)
+/// <summary>
+/// One timeline command, by <see cref="Kind"/>; only that kind's fields are set. A value in its sprite's timeline array
+/// (kept movies held ~260k command objects, mostly placements and frame ends).
+/// </summary>
+public readonly record struct LmbTimelineCommand(LmbCommandKind Kind, LmbRecordInfo RawRecord)
 {
+    public LmbRecordInfo Record => RawRecord;
+
+    public EvidenceStatus Evidence => Kind is LmbCommandKind.PlaceObject or LmbCommandKind.RemoveObject
+        ? EvidenceStatus.CorpusValidatedInference : EvidenceStatus.Candidate;
+
+    /// <summary>ShowFrame, FrameKey, FrameLabel: the frame.</summary>
+    public uint Frame { get; init; }
+
+    /// <summary>ShowFrame: commands declared for the frame; FrameKey: its entries.</summary>
+    public uint DeclaredCommandCount { get; init; }
+
+    public uint EntryCount => DeclaredCommandCount;
+
+    /// <summary>FrameLabel: the label's string.</summary>
+    public uint StringIndex { get; init; }
+
+    /// <summary>FrameLabel, DoAction: an unknown word.</summary>
+    public uint Unknown { get; init; }
+
+    /// <summary>PlaceObject, RemoveObject.</summary>
+    public uint CharacterId { get; init; }
+
+    public uint PlacementId { get; init; }
+    public uint NameStringIndex { get; init; }
+    public ushort Mode { get; init; }
+    public ushort BlendMode { get; init; }
+
+    /// <summary>PlaceObject: the depth; RemoveObject: the high half of <see cref="PackedDepth"/>.</summary>
+    public ushort Depth { get; init; }
+
+    public ushort FirstFrame { get; init; }
+    public ushort PositionKind { get; init; }
+    public ushort PositionIndex { get; init; }
+    public uint ColorMultiplyIndex { get; init; }
+    public uint ColorAddIndex { get; init; }
+
     /// <summary>Inclusive last sibling depth clipped by this placement; zero means no mask.</summary>
     public ushort ClipDepth { get; init; }
+
+    /// <summary>RemoveObject.</summary>
+    public uint PackedDepth { get; init; }
+
+    /// <summary>DoAction.</summary>
+    public uint ActionIndex { get; init; }
+
+    public static LmbTimelineCommand ShowFrame(uint frame, uint declaredCommandCount, LmbRecordInfo record) =>
+        new(LmbCommandKind.ShowFrame, record) { Frame = frame, DeclaredCommandCount = declaredCommandCount };
+
+    public static LmbTimelineCommand FrameKey(uint frame, uint entryCount, LmbRecordInfo record) =>
+        new(LmbCommandKind.FrameKey, record) { Frame = frame, DeclaredCommandCount = entryCount };
+
+    public static LmbTimelineCommand FrameLabel(uint stringIndex, uint frame, uint unknown, LmbRecordInfo record) =>
+        new(LmbCommandKind.FrameLabel, record) { StringIndex = stringIndex, Frame = frame, Unknown = unknown };
+
+    public static LmbTimelineCommand PlaceObject(uint characterId, uint placementId, uint nameStringIndex, ushort mode,
+        ushort blendMode, ushort depth, ushort firstFrame, ushort positionKind, ushort positionIndex, uint colorMultiplyIndex,
+        uint colorAddIndex, LmbRecordInfo record) =>
+        new(LmbCommandKind.PlaceObject, record)
+        {
+            CharacterId = characterId, PlacementId = placementId, NameStringIndex = nameStringIndex, Mode = mode,
+            BlendMode = blendMode, Depth = depth, FirstFrame = firstFrame, PositionKind = positionKind,
+            PositionIndex = positionIndex, ColorMultiplyIndex = colorMultiplyIndex, ColorAddIndex = colorAddIndex,
+        };
+
+    public static LmbTimelineCommand RemoveObject(uint characterId, uint packedDepth, LmbRecordInfo record) =>
+        new(LmbCommandKind.RemoveObject, record) { CharacterId = characterId, PackedDepth = packedDepth, Depth = (ushort)(packedDepth >> 16) };
+
+    public static LmbTimelineCommand DoAction(uint actionIndex, uint unknown, LmbRecordInfo record) =>
+        new(LmbCommandKind.DoAction, record) { ActionIndex = actionIndex, Unknown = unknown };
 }
 
-public sealed record LmbRemoveObjectCommand(
-    uint CharacterId,
-    uint PackedDepth,
-    LmbRecordInfo Record)
-    : LmbTimelineCommand(Record, EvidenceStatus.CorpusValidatedInference)
+public static class LmbTimelineCommands
 {
-    public ushort Depth => (ushort)(PackedDepth >> 16);
-}
+    /// <summary>The commands of one kind (what <c>OfType</c> did when each kind was a class).</summary>
+    public static IEnumerable<LmbTimelineCommand> OfKind(this IEnumerable<LmbTimelineCommand> commands, LmbCommandKind kind) =>
+        commands.Where(command => command.Kind == kind);
 
-public sealed record LmbDoActionCommand(
-    uint ActionIndex,
-    uint Unknown,
-    LmbRecordInfo Record)
-    : LmbTimelineCommand(Record, EvidenceStatus.Candidate);
+    /// <summary>The first command of a kind, or null (not a default command: a struct's FirstOrDefault always "finds" one).</summary>
+    public static LmbTimelineCommand? FirstOfKind(this IEnumerable<LmbTimelineCommand> commands, LmbCommandKind kind)
+    {
+        foreach (var command in commands)
+            if (command.Kind == kind)
+                return command;
+        return null;
+    }
+}
 
 public sealed record LmbSpriteDefinition(
     uint CharacterId,

@@ -58,20 +58,20 @@ internal static class LmbReferenceValidator
             {
                 switch (command)
                 {
-                    case LmbFrameLabelCommand label:
+                    case { Kind: LmbCommandKind.FrameLabel } label:
                         validateIndex(label.StringIndex, movie.Strings.Length, "LMB_STRING_INDEX_OUT_OF_RANGE", "string", label.Record, label.Evidence, diagnostics);
                         validateFrame(label.Frame, sprite, label.Record, label.Evidence, diagnostics);
                         break;
-                    case LmbShowFrameCommand showFrame:
+                    case { Kind: LmbCommandKind.ShowFrame } showFrame:
                         validateFrame(showFrame.Frame, sprite, showFrame.Record, showFrame.Evidence, diagnostics);
                         break;
-                    case LmbFrameKeyCommand frameKey:
+                    case { Kind: LmbCommandKind.FrameKey } frameKey:
                         validateFrame(frameKey.Frame, sprite, frameKey.Record, frameKey.Evidence, diagnostics);
                         break;
-                    case LmbPlaceObjectCommand place:
+                    case { Kind: LmbCommandKind.PlaceObject } place:
                         validatePlacement(place, sprite, movie, characterIds, diagnostics);
                         break;
-                    case LmbDoActionCommand action:
+                    case { Kind: LmbCommandKind.DoAction } action:
                         validateIndex(action.ActionIndex, movie.Actions.Length, "LMB_ACTION_INDEX_OUT_OF_RANGE", "action", action.Record, action.Evidence, diagnostics);
                         break;
                 }
@@ -168,7 +168,7 @@ internal static class LmbReferenceValidator
         LmbSpriteDefinition sprite,
         ImmutableArray<ParseDiagnostic>.Builder diagnostics)
     {
-        var labelCount = sprite.Timeline.Count(command => command is LmbFrameLabelCommand);
+        var labelCount = sprite.Timeline.Count(command => command is { Kind: LmbCommandKind.FrameLabel });
         if (sprite.DeclaredLabelCount != labelCount || sprite.RepeatedLabelCount != labelCount)
         {
             add(
@@ -180,7 +180,7 @@ internal static class LmbReferenceValidator
                 $"Sprite {sprite.CharacterId} declares label counts {sprite.DeclaredLabelCount}/{sprite.RepeatedLabelCount} but owns {labelCount} labels.");
         }
 
-        var frameCount = sprite.Timeline.Count(command => command is LmbShowFrameCommand);
+        var frameCount = sprite.Timeline.Count(command => command is { Kind: LmbCommandKind.ShowFrame });
         if (sprite.DeclaredFrameCount != frameCount)
         {
             add(
@@ -202,21 +202,21 @@ internal static class LmbReferenceValidator
         uint actualCount = 0;
         foreach (var command in sprite.Timeline)
         {
-            if (command is LmbShowFrameCommand showFrame)
+            if (command is { Kind: LmbCommandKind.ShowFrame } showFrame)
             {
                 validateGroupCount(boundary, expectedCount, actualCount, diagnostics);
                 boundary = showFrame;
                 expectedCount = showFrame.DeclaredCommandCount;
                 actualCount = 0;
             }
-            else if (command is LmbFrameKeyCommand frameKey)
+            else if (command is { Kind: LmbCommandKind.FrameKey } frameKey)
             {
                 validateGroupCount(boundary, expectedCount, actualCount, diagnostics);
                 boundary = frameKey;
                 expectedCount = frameKey.EntryCount;
                 actualCount = 0;
             }
-            else if (command is not LmbFrameLabelCommand)
+            else if (command is not { Kind: LmbCommandKind.FrameLabel })
             {
                 if (boundary is null)
                 {
@@ -243,26 +243,26 @@ internal static class LmbReferenceValidator
         uint actualCount,
         ImmutableArray<ParseDiagnostic>.Builder diagnostics)
     {
-        if (boundary is null || expectedCount == actualCount)
+        if (boundary is not { } command || expectedCount == actualCount)
             return;
 
-        var (code, label) = boundary switch
+        var (code, label) = command switch
         {
-            LmbShowFrameCommand => ("LMB_FRAME_COMMAND_COUNT_MISMATCH", "Frame"),
-            LmbFrameKeyCommand => ("LMB_KEY_ENTRY_COUNT_MISMATCH", "Key frame"),
+            { Kind: LmbCommandKind.ShowFrame } => ("LMB_FRAME_COMMAND_COUNT_MISMATCH", "Frame"),
+            { Kind: LmbCommandKind.FrameKey } => ("LMB_KEY_ENTRY_COUNT_MISMATCH", "Key frame"),
             _ => throw new InvalidOperationException("Unsupported timeline boundary."),
         };
         add(
             diagnostics,
             DiagnosticSeverity.Warning,
             code,
-            boundary.RawRecord,
-            boundary.Evidence,
+            command.RawRecord,
+            command.Evidence,
             $"{label} declares {expectedCount} entries but owns {actualCount} commands.");
     }
 
     private static void validatePlacement(
-        LmbPlaceObjectCommand place,
+        LmbTimelineCommand place,
         LmbSpriteDefinition sprite,
         LmbMovieDefinition movie,
         HashSet<uint> characterIds,

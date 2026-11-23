@@ -92,11 +92,11 @@ public sealed class TaikoHitFlightsTests
             ]),
         };
         var sprite = new LmbSpriteDefinition(1, 1, 3, 1, 0, [], [
-            new LmbFrameLabelCommand(0, 0, 0, default),
-            new LmbShowFrameCommand(0, 0, default),
-            new LmbShowFrameCommand(1, 0, default),
-            new LmbShowFrameCommand(2, 1, default),
-            new LmbDoActionCommand(0, 0, default),
+            LmbTimelineCommand.FrameLabel(0, 0, 0, default),
+            LmbTimelineCommand.ShowFrame(0, 0, default),
+            LmbTimelineCommand.ShowFrame(1, 0, default),
+            LmbTimelineCommand.ShowFrame(2, 1, default),
+            LmbTimelineCommand.DoAction(0, 0, default),
         ], default);
         var movie = new LmbMovieDefinition(null!, null, [new LmbString(0, label, 0)],
             [], [], [], [], [], [action], [], [sprite], []);

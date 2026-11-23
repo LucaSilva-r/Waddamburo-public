@@ -145,7 +145,7 @@ public static class LmbSemanticReader
                         var words = readWords(record, 2);
                         addTimelineCommand(
                             currentSprite,
-                            new LmbShowFrameCommand(words[0], words[1], record.Info),
+                            LmbTimelineCommand.ShowFrame(words[0], words[1], record.Info),
                             record,
                             diagnostics,
                             uninterpreted);
@@ -156,7 +156,7 @@ public static class LmbSemanticReader
                         var words = readWords(record, 2);
                         addTimelineCommand(
                             currentSprite,
-                            new LmbFrameKeyCommand(words[0], words[1], record.Info),
+                            LmbTimelineCommand.FrameKey(words[0], words[1], record.Info),
                             record,
                             diagnostics,
                             uninterpreted);
@@ -167,7 +167,7 @@ public static class LmbSemanticReader
                         var words = readWords(record, 3);
                         addTimelineCommand(
                             currentSprite,
-                            new LmbFrameLabelCommand(words[0], words[1], words[2], record.Info),
+                            LmbTimelineCommand.FrameLabel(words[0], words[1], words[2], record.Info),
                             record,
                             diagnostics,
                             uninterpreted);
@@ -178,7 +178,7 @@ public static class LmbSemanticReader
                         var words = readWords(record, 12);
                         addTimelineCommand(
                             currentSprite,
-                            new LmbPlaceObjectCommand(
+                            LmbTimelineCommand.PlaceObject(
                                 words[0],
                                 words[1],
                                 words[3],
@@ -190,7 +190,7 @@ public static class LmbSemanticReader
                                 low(words[7]),
                                 words[8],
                                 words[9],
-                                record.Info) { ClipDepth = low(words[5]) },
+                                record.Info) with { ClipDepth = low(words[5]) },
                             record,
                             diagnostics,
                             uninterpreted);
@@ -201,7 +201,7 @@ public static class LmbSemanticReader
                         var words = readWords(record, 2);
                         addTimelineCommand(
                             currentSprite,
-                            new LmbRemoveObjectCommand(words[0], words[1], record.Info),
+                            LmbTimelineCommand.RemoveObject(words[0], words[1], record.Info),
                             record,
                             diagnostics,
                             uninterpreted);
@@ -212,7 +212,7 @@ public static class LmbSemanticReader
                         var words = readWords(record, 2);
                         addTimelineCommand(
                             currentSprite,
-                            new LmbDoActionCommand(words[0], words[1], record.Info),
+                            LmbTimelineCommand.DoAction(words[0], words[1], record.Info),
                             record,
                             diagnostics,
                             uninterpreted);

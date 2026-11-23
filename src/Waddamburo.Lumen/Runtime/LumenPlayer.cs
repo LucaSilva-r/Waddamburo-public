@@ -788,7 +788,7 @@ public sealed class LumenPlayer : IAvm1Host
                 Frame = 0,
                 Playing = false,
             };
-            foreach (var action in timeline.Frames[0].OfType<LmbDoActionCommand>())
+            foreach (var action in timeline.Frames[0].OfKind(LmbCommandKind.DoAction))
             {
                 if (action.ActionIndex < (uint)_movie.Actions.Length)
                 {
@@ -895,17 +895,17 @@ public sealed class LumenPlayer : IAvm1Host
         {
             switch (command)
             {
-                case LmbShowFrameCommand show when show.Frame < (uint)frameCount:
+                case { Kind: LmbCommandKind.ShowFrame } show when show.Frame < (uint)frameCount:
                     ordinaryFrame = (int)show.Frame;
                     keyFrame = null;
                     break;
-                case LmbFrameKeyCommand key when key.Frame < (uint)frameCount:
+                case { Kind: LmbCommandKind.FrameKey } key when key.Frame < (uint)frameCount:
                     ordinaryFrame = null;
                     keyFrame = (int)key.Frame;
                     if (!keyBuilders.ContainsKey(keyFrame.Value))
                         keyBuilders.Add(keyFrame.Value, ImmutableArray.CreateBuilder<LmbTimelineCommand>());
                     break;
-                case LmbFrameLabelCommand label
+                case { Kind: LmbCommandKind.FrameLabel } label
                     when label.StringIndex < (uint)strings.Length
                         && label.Frame < (uint)frameCount:
                     // A name used twice (dance_b_20: "dance" at 80 and 399, its loop jumping from 399) means the first, as in Flash.
@@ -1067,10 +1067,10 @@ public sealed class LumenPlayer : IAvm1Host
         {
             switch (command)
             {
-                case LmbPlaceObjectCommand place:
+                case { Kind: LmbCommandKind.PlaceObject } place:
                     applyPlacement(instance, place, queueActions);
                     break;
-                case LmbRemoveObjectCommand remove:
+                case { Kind: LmbCommandKind.RemoveObject } remove:
                     var depth = TimelineDepthBase + remove.Depth;
                     if (instance.Children.TryGetValue(depth, out var removed))
                     {
@@ -1078,7 +1078,7 @@ public sealed class LumenPlayer : IAvm1Host
                         removed.Removed = true;
                     }
                     break;
-                case LmbDoActionCommand action when queueActions:
+                case { Kind: LmbCommandKind.DoAction } action when queueActions:
                     enqueueAction(instance, action);
                     break;
             }
@@ -1090,7 +1090,7 @@ public sealed class LumenPlayer : IAvm1Host
         if (instance.Removed || instance.Frame < 0)
             return;
         var timeline = _sprites[instance.CharacterId];
-        foreach (var action in timeline.Frames[instance.Frame].OfType<LmbDoActionCommand>())
+        foreach (var action in timeline.Frames[instance.Frame].OfKind(LmbCommandKind.DoAction))
         {
             enqueueAction(instance, action);
         }
@@ -1232,7 +1232,7 @@ public sealed class LumenPlayer : IAvm1Host
         }
     }
 
-    private void enqueueAction(DisplayInstance instance, LmbDoActionCommand action)
+    private void enqueueAction(DisplayInstance instance, LmbTimelineCommand action)
     {
         if (_pendingActions.Count >= _limits.MaxPendingActions)
         {
@@ -2101,7 +2101,7 @@ public sealed class LumenPlayer : IAvm1Host
                     || _pendingConstructions.Exists(pending => pending.Instance == child)
                     || !_sprites.TryGetValue(child.CharacterId, out var childTimeline))
                     continue;
-                foreach (var action in childTimeline.Frames[child.Frame].OfType<LmbDoActionCommand>())
+                foreach (var action in childTimeline.Frames[child.Frame].OfKind(LmbCommandKind.DoAction))
                     enqueueAction(child, action);
             }
             resetInterpolation(instance);
@@ -2489,7 +2489,7 @@ public sealed class LumenPlayer : IAvm1Host
 
     private void applyPlacement(
         DisplayInstance parent,
-        LmbPlaceObjectCommand placement,
+        LmbTimelineCommand placement,
         bool queueActions)
     {
         var depth = TimelineDepthBase + placement.Depth;
@@ -2578,7 +2578,7 @@ public sealed class LumenPlayer : IAvm1Host
             instance.Transform = instance.Transform with { X = instance.Transform.X + offset.X, Y = instance.Transform.Y + offset.Y };
     }
 
-    private void applyPlacementFields(DisplayInstance instance, LmbPlaceObjectCommand placement, bool isNew)
+    private void applyPlacementFields(DisplayInstance instance, LmbTimelineCommand placement, bool isNew)
     {
         if (placement.NameStringIndex != 0 && placement.NameStringIndex < _movie.Strings.Length)
             instance.Name = _movie.Strings[checked((int)placement.NameStringIndex)].Value;

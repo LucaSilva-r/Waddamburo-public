@@ -99,8 +99,8 @@ public sealed class TaikoDonPresentationTests
             [new(-4, -4, 0, 0), new(4, -4, 1, 0), new(4, 4, 1, 1), new(-4, 4, 0, 1)],
             0, 0, default)], default);
         var sprite = new LmbSpriteDefinition(1, 1, 1, 1, 0, [],
-            [new LmbFrameLabelCommand(1, 0, 0, default), new LmbShowFrameCommand(0, 1, default),
-             new LmbPlaceObjectCommand(2, 1, 1, 1, 0, 1, 0, 0, 0, uint.MaxValue, uint.MaxValue, default)], default);
+            [LmbTimelineCommand.FrameLabel(1, 0, 0, default), LmbTimelineCommand.ShowFrame(0, 1, default),
+             LmbTimelineCommand.PlaceObject(2, 1, 1, 1, 0, 1, 0, 0, 0, uint.MaxValue, uint.MaxValue, default)], default);
         var movie = new LmbMovieDefinition(null!, null, [new(0, "", 0), new(1, "don1p", 0)],
             [], [new(1, 0, 0, 1, 0, 0)], [], [], [], [], [shape], [sprite], []);
         return new(new LumenPlayer(movie, 1280, 720, rootCharacterId: 1),

@@ -66,10 +66,10 @@ public sealed class TaikoSongInfoPresentationTests
     // Synthetic metadata slots shared by the normal and AI movies; no supplied asset content.
     private static LumenPlayer songInfo()
     {
-        LmbPlaceObjectCommand place(uint id, uint depth, uint name) =>
-            new(id, depth, name, 1, 0, (ushort)depth, 0, 0, 0, uint.MaxValue, uint.MaxValue, default);
+        LmbTimelineCommand place(uint id, uint depth, uint name) =>
+            LmbTimelineCommand.PlaceObject(id, depth, name, 1, 0, (ushort)depth, 0, 0, 0, uint.MaxValue, uint.MaxValue, default);
         LmbSpriteDefinition sprite(uint id, params LmbTimelineCommand[] children) => new(id, 0, 1, 0, 0, [],
-            [new LmbShowFrameCommand(0, (uint)children.Length, default), .. children], default);
+            [LmbTimelineCommand.ShowFrame(0, (uint)children.Length, default), .. children], default);
         var shape = new LmbShapeDefinition(2, 1, [], [new LmbShapeGeometry(
             [new(0, 0, 0, 0), new(10, 0, 1, 0), new(10, 10, 1, 1), new(0, 10, 0, 1)], 0, 0, default)], default);
         var movie = new LmbMovieDefinition(null!, null,

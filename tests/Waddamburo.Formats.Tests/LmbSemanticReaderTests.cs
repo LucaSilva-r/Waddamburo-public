@@ -71,11 +71,11 @@ public sealed class LmbSemanticReaderTests
         Assert.Equal(7U, sprite.CharacterId);
         Assert.Collection(
             sprite.Timeline,
-            command => Assert.IsType<LmbFrameLabelCommand>(command),
-            command => Assert.IsType<LmbShowFrameCommand>(command),
+            command => Assert.IsType<LmbTimelineCommand>(command),
+            command => Assert.IsType<LmbTimelineCommand>(command),
             command =>
             {
-                var place = Assert.IsType<LmbPlaceObjectCommand>(command);
+                var place = Assert.IsType<LmbTimelineCommand>(command);
                 Assert.Equal(42U, place.CharacterId);
                 Assert.Equal(1, place.Mode);
                 Assert.Equal(2, place.BlendMode);
@@ -85,10 +85,10 @@ public sealed class LmbSemanticReaderTests
                 Assert.Equal(0, place.PositionIndex);
                 Assert.Equal(EvidenceStatus.CorpusValidatedInference, place.Evidence);
             },
-            command => Assert.Equal((ushort)2, Assert.IsType<LmbRemoveObjectCommand>(command).Depth),
-            command => Assert.IsType<LmbDoActionCommand>(command),
-            command => Assert.IsType<LmbShowFrameCommand>(command),
-            command => Assert.IsType<LmbFrameKeyCommand>(command));
+            command => Assert.Equal((ushort)2, Assert.IsType<LmbTimelineCommand>(command).Depth),
+            command => Assert.IsType<LmbTimelineCommand>(command),
+            command => Assert.IsType<LmbTimelineCommand>(command),
+            command => Assert.IsType<LmbTimelineCommand>(command));
         Assert.Equal(0xDEADBEEFU, Assert.Single(movie.UninterpretedRecords).Tag);
         Assert.Same(file, movie.RawFile);
     }

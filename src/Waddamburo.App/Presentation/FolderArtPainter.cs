@@ -51,15 +51,17 @@ internal static class FolderArtPainter
         var movie = content.Definition;
         foreach (var sprite in movie.Sprites)
         {
-            var labels = sprite.Timeline.OfType<LmbFrameLabelCommand>().ToArray();
-            if (labels.FirstOrDefault(label => movie.Strings[(int)label.StringIndex].Value == "通常とワイワイ移動") is not { } mode)
+            var labels = sprite.Timeline.OfKind(LmbCommandKind.FrameLabel).ToArray();
+            var found = Array.FindIndex(labels, label => movie.Strings[(int)label.StringIndex].Value == "通常とワイワイ移動");
+            if (found < 0)
                 continue;
+            var mode = labels[found];
             var end = labels.Where(label => label.Frame > mode.Frame).Select(label => label.Frame).DefaultIfEmpty(uint.MaxValue).Min();
             uint frame = 0;
             foreach (var command in sprite.Timeline)
             {
-                frame = command switch { LmbShowFrameCommand show => show.Frame, LmbFrameKeyCommand key => key.Frame, _ => frame };
-                if (frame < mode.Frame || frame >= end || command is not LmbPlaceObjectCommand place)
+                frame = command switch { { Kind: LmbCommandKind.ShowFrame } show => show.Frame, { Kind: LmbCommandKind.FrameKey } key => key.Frame, _ => frame };
+                if (frame < mode.Frame || frame >= end || command is not { Kind: LmbCommandKind.PlaceObject } place)
                     continue;
                 var textures = movie.Shapes.Where(shape => shape.CharacterId == place.CharacterId)
                     .SelectMany(shape => shape.Geometry).Select(geometry => (int)geometry.TextureIndex);

@@ -84,7 +84,7 @@ public static class SongSelectGenrePatch
         bool track(IEnumerable<LmbTimelineCommand> commands)
         {
             var moved = false;
-            foreach (var place in commands.OfType<LmbPlaceObjectCommand>().Where(static place => place.PositionKind == 0x8000))
+            foreach (var place in commands.OfKind(LmbCommandKind.PlaceObject).Where(static place => place.PositionKind == 0x8000))
             {
                 var x = editor.Translation(place.PositionIndex).X;
                 if (place.Depth == LeftHalf) { left = x - MaskLeft; moved = true; }
@@ -94,13 +94,13 @@ public static class SongSelectGenrePatch
         }
         ushort mask() => editor.AddMatrix(new LmbMatrix((right - left) / MaskShapeWidth, 0, 0, (MaskBottom - MaskTop) / MaskShapeHeight,
             (left + right) / 2, (MaskTop + MaskBottom) / 2));
-        LmbPlaceObjectCommand common(LmbPlaceObjectCommand template) => template with
+        LmbTimelineCommand common(LmbTimelineCommand template) => template with
         {
             NameStringIndex = 0, BlendMode = 0, PositionKind = 0,
             ColorMultiplyIndex = uint.MaxValue, ColorAddIndex = uint.MaxValue, ClipDepth = 0,
         };
         // Both placed afresh (a keyframe's display list, or the first frame).
-        LmbTimelineCommand[] placeBoth(LmbPlaceObjectCommand template) =>
+        LmbTimelineCommand[] placeBoth(LmbTimelineCommand template) =>
         [
             common(template) with { CharacterId = profile.MaskShape, Mode = 1, Depth = MaskDepth, PlacementId = MaskDepth, PositionIndex = mask(), ClipDepth = PatternDepth },
             common(template) with
@@ -114,9 +114,9 @@ public static class SongSelectGenrePatch
             result.AddRange(before);
             // A frame's own commands, then (on keyframes) FrameKey display lists used when seeking: each
             // list gets the mask (sized from its own halves) and the pattern.
-            var head = commands.TakeWhile(static command => command is not LmbFrameKeyCommand).ToList();
+            var head = commands.TakeWhile(static command => command is not { Kind: LmbCommandKind.FrameKey }).ToList();
             var extra = new List<LmbTimelineCommand>();
-            if (track(head) && head.OfType<LmbPlaceObjectCommand>().FirstOrDefault() is { } template)
+            if (track(head) && head.FirstOfKind(LmbCommandKind.PlaceObject) is { } template)
             {
                 extra.AddRange(placed
                     ? [common(template) with { CharacterId = 0, Mode = 2, Depth = MaskDepth, PlacementId = MaskDepth, PositionIndex = mask() }]
@@ -129,11 +129,11 @@ public static class SongSelectGenrePatch
             var (frameLeft, frameRight) = (left, right);
             for (var index = head.Count; index < commands.Count;)
             {
-                var key = (LmbFrameKeyCommand)commands[index];
-                var entries = commands.Skip(index + 1).TakeWhile(static command => command is not LmbFrameKeyCommand).ToList();
+                var key = (LmbTimelineCommand)commands[index];
+                var entries = commands.Skip(index + 1).TakeWhile(static command => command is not { Kind: LmbCommandKind.FrameKey }).ToList();
                 track(entries);
-                var added = entries.OfType<LmbPlaceObjectCommand>().FirstOrDefault() is { } first ? placeBoth(first) : [];
-                result.Add(key with { EntryCount = key.EntryCount + (uint)added.Length });
+                var added = entries.FirstOfKind(LmbCommandKind.PlaceObject) is { } first ? placeBoth(first) : [];
+                result.Add(key with { DeclaredCommandCount = key.EntryCount + (uint)added.Length });
                 result.AddRange(entries);
                 result.AddRange(added);
                 index += entries.Count + 1;
@@ -145,20 +145,20 @@ public static class SongSelectGenrePatch
     }
 
     // A timeline as frames: each ShowFrame with the commands after it (and labels/keys before the first).
-    private static List<(LmbShowFrameCommand Show, List<LmbTimelineCommand> Commands, List<LmbTimelineCommand> Before)> frames(
+    private static List<(LmbTimelineCommand Show, List<LmbTimelineCommand> Commands, List<LmbTimelineCommand> Before)> frames(
         ImmutableArray<LmbTimelineCommand> timeline)
     {
-        var result = new List<(LmbShowFrameCommand, List<LmbTimelineCommand>, List<LmbTimelineCommand>)>();
+        var result = new List<(LmbTimelineCommand, List<LmbTimelineCommand>, List<LmbTimelineCommand>)>();
         var before = new List<LmbTimelineCommand>();
         foreach (var command in timeline)
         {
-            if (command is LmbShowFrameCommand show)
+            if (command is { Kind: LmbCommandKind.ShowFrame } show)
                 result.Add((show, [], before.Count > 0 ? [.. before] : []));
             else if (result.Count == 0)
                 before.Add(command);
             else
                 result[^1].Item2.Add(command);
-            if (command is LmbShowFrameCommand)
+            if (command is { Kind: LmbCommandKind.ShowFrame })
                 before.Clear();
         }
         return result;
@@ -216,7 +216,7 @@ public static class SongSelectGenrePatch
             var background = Roles.Index().Where(static entry => entry.Item is (640, 720, _, _)).Select(entry => roles[entry.Index].Texture!.Value).Single();
             // The folder that opens in two halves (depths 6 and 7), J-POP's own (another one is shared with other genres).
             var spines = jpop.Where(character => !others.Contains(character) && editor.IsSprite(character)
-                && editor.Sprite(character).Timeline.OfType<LmbPlaceObjectCommand>().Select(static place => place.Depth).ToHashSet() is var depths
+                && editor.Sprite(character).Timeline.OfKind(LmbCommandKind.PlaceObject).Select(static place => place.Depth).ToHashSet() is var depths
                 && depths.Contains(LeftHalf) && depths.Contains(RightHalf)).ToArray();
             var masks = jpop.Where(character => editor.IsShape(character) && editor.ShapeTextures(character).Contains(background)).ToArray();
             var patterns = reached(EventLabel).Where(character => editor.IsShape(character)

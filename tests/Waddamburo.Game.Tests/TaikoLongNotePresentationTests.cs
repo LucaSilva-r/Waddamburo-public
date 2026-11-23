@@ -166,8 +166,8 @@ public sealed class TaikoLongNotePresentationTests
         }
         code.Add(op(0x07)); code.Add(op(0));
         var action = new LmbAction(0, [], 0) { Code = new(0, code.Count, [.. code.Select((instruction, i) => instruction with { Offset = i })]) };
-        var sprite = new LmbSpriteDefinition(1, 1, 1, 1, 0, [], [new LmbFrameLabelCommand(0, 0, 0, default),
-            new LmbShowFrameCommand(0, 1, default), new LmbDoActionCommand(0, 0, default)], default);
+        var sprite = new LmbSpriteDefinition(1, 1, 1, 1, 0, [], [LmbTimelineCommand.FrameLabel(0, 0, 0, default),
+            LmbTimelineCommand.ShowFrame(0, 1, default), LmbTimelineCommand.DoAction(0, 0, default)], default);
         var movie = new LmbMovieDefinition(null!, null, [.. names.Select((name, index) => new LmbString(index, name, 0))],
             [], [], [], [], [], [action], [], [sprite], []);
         return new(new LumenPlayer(movie, 1280, 720, rootCharacterId: 1, hostBinding: new Recorder(calls)), LumenMatrix.Identity, 0, 0);
