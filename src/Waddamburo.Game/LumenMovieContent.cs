@@ -159,7 +159,7 @@ public sealed class LumenMovieContent
         var kind = !texture.Bc7.IsEmpty ? 1UL : !texture.Blocks.IsEmpty ? 2UL + (ulong)texture.BlockFormat : 8UL;
         var data = kind == 1 ? texture.Bc7.Span : kind == 8 ? texture.Rgba8.AsSpan() : texture.Blocks.Span;
         const ulong p1 = 0x9E3779B97F4A7C15, p2 = 0xC2B2AE3D27D4EB4F;
-        ulong a = p1 ^ ((ulong)texture.Width << 32 | (uint)texture.Height), b = p2 ^ (kind << 56 | (ulong)data.Length);
+        ulong a = p1 ^ ((ulong)(uint)texture.Width << 32 | (uint)texture.Height), b = p2 ^ (kind << 56 | (ulong)(uint)data.Length);
         var words = MemoryMarshal.Cast<byte, ulong>(data);
         foreach (var word in words)
         {

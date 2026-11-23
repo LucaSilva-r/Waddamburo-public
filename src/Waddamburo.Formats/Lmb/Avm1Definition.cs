@@ -64,14 +64,14 @@ public readonly record struct Avm1PushValue(byte Type, ushort Index, double Numb
     public byte Register => (byte)Index;
     public bool Boolean => Number != 0;
 
-    public static Avm1PushValue String(byte type, ushort index) => new(type, index, 0);
-    public static Avm1PushValue Float(float value) => new(1, 0, value);
+    public static Avm1PushValue FromString(byte type, ushort index) => new(type, index, 0);
+    public static Avm1PushValue FromFloat(float value) => new(1, 0, value);
     public static readonly Avm1PushValue Null = new(2, 0, 0);
     public static readonly Avm1PushValue Undefined = new(3, 0, 0);
     public static Avm1PushValue FromRegister(byte register) => new(4, register, 0);
     public static Avm1PushValue FromBoolean(bool value) => new(5, 0, value ? 1 : 0);
-    public static Avm1PushValue Double(double value) => new(6, 0, value);
-    public static Avm1PushValue Integer(int value) => new(7, 0, value);
+    public static Avm1PushValue FromDouble(double value) => new(6, 0, value);
+    public static Avm1PushValue FromInteger(int value) => new(7, 0, value);
 }
 
 internal static class Avm1BytecodeReader
@@ -295,16 +295,16 @@ internal static class Avm1BytecodeReader
             var type = payload[cursor++];
             Avm1PushValue value = type switch
             {
-                0 => Avm1PushValue.String(type, readUInt16(payload, ref cursor, absoluteOffset, "Lumen AVM push string index")),
-                1 => Avm1PushValue.Float(BitConverter.Int32BitsToSingle(readInt32(payload, ref cursor, absoluteOffset, "AVM push float"))),
+                0 => Avm1PushValue.FromString(type, readUInt16(payload, ref cursor, absoluteOffset, "Lumen AVM push string index")),
+                1 => Avm1PushValue.FromFloat(BitConverter.Int32BitsToSingle(readInt32(payload, ref cursor, absoluteOffset, "AVM push float"))),
                 2 => Avm1PushValue.Null,
                 3 => Avm1PushValue.Undefined,
                 4 => Avm1PushValue.FromRegister(readByte(payload, ref cursor, absoluteOffset, "AVM push register")),
                 5 => Avm1PushValue.FromBoolean(readByte(payload, ref cursor, absoluteOffset, "AVM push boolean") != 0),
-                6 => Avm1PushValue.Double(BitConverter.Int64BitsToDouble(readInt64(payload, ref cursor, absoluteOffset, "AVM push double"))),
-                7 => Avm1PushValue.Integer(readInt32(payload, ref cursor, absoluteOffset, "AVM push integer")),
-                8 => Avm1PushValue.String(type, readByte(payload, ref cursor, absoluteOffset, "AVM push string index")),
-                9 => Avm1PushValue.String(type, readUInt16(payload, ref cursor, absoluteOffset, "AVM push string index")),
+                6 => Avm1PushValue.FromDouble(BitConverter.Int64BitsToDouble(readInt64(payload, ref cursor, absoluteOffset, "AVM push double"))),
+                7 => Avm1PushValue.FromInteger(readInt32(payload, ref cursor, absoluteOffset, "AVM push integer")),
+                8 => Avm1PushValue.FromString(type, readByte(payload, ref cursor, absoluteOffset, "AVM push string index")),
+                9 => Avm1PushValue.FromString(type, readUInt16(payload, ref cursor, absoluteOffset, "AVM push string index")),
                 _ => throw new FormatReadException("Unknown AVM push value type", absoluteOffset + cursor - 1, 1, 1),
             };
             values.Add(value);

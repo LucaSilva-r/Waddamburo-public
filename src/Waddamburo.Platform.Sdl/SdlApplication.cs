@@ -421,7 +421,7 @@ public sealed unsafe partial class SdlApplication : IDisposable
         }
     }
 
-    /// <param name="atlas">May share an atlas page: never drawn tiled (UVs past 0..1), never updated in place.</param>
+    // atlas: may share an atlas page: never drawn tiled (UVs past 0..1), never updated in place.
     public RenderTextureId UploadRgba8(uint width, uint height, ReadOnlySpan<byte> pixels, bool atlas = false)
     {
         ensureOwnerThread();

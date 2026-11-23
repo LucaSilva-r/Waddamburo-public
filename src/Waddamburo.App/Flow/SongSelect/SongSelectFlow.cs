@@ -8,7 +8,6 @@ using Waddamburo.Game.Lumen;
 using Waddamburo.Game.Scenes;
 using Waddamburo.Game.SongSelect;
 using Waddamburo.Lumen.Runtime;
-using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Media;
 
 namespace Waddamburo.App.Flow.SongSelect;
@@ -263,7 +262,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         if (_cover.Composing is not { IsCompleted: true } composed)
             return;
         // Slow storage: the files are read once the rainbow stands still, where loading cannot be seen (its cover stuttered).
-        if (PlatformInfo.IsSwitch && _cover.CoveredAt is null)
+        if (_cover.CoveredAt is null)
             return;
         _cover.Composing = null;
         if (composed.IsCompletedSuccessfully)

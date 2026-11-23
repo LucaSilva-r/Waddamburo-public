@@ -81,7 +81,7 @@ public sealed class AiSectionResultBindingTests
             "SetRankNumber", "SetNextRankNumber", "SetNextRewardNumber", "Start", "SetWinNumber", "main", "panel", "rank_reward_board"];
         Avm1Instruction op(byte code, Avm1Operand? operand = null, Avm1CodeBlock? body = null) => new(code, 0, 1, operand, null, body);
         Avm1Instruction push(params Avm1PushValue[] values) => op(0x96, new Avm1PushOperand([.. values]));
-        Avm1PushValue str(int index) => Avm1PushValue.String(8, (ushort)index);
+        Avm1PushValue str(int index) => Avm1PushValue.FromString(8, (ushort)index);
         Avm1CodeBlock block(List<Avm1Instruction> code) => new(0, code.Count, [.. code.Select((instruction, index) => instruction with { Offset = index })]);
         LmbAction callbacks(int index, IEnumerable<int> methods)
         {
@@ -91,12 +91,12 @@ public sealed class AiSectionResultBindingTests
                 var count = Methods[method].Parameters;
                 var body = new List<Avm1Instruction>();
                 for (var parameter = count; parameter > 0; parameter--) { body.Add(push(str(parameter))); body.Add(op(0x1C)); }
-                body.Add(push(Avm1PushValue.Integer(count), str(4))); body.Add(op(0x1C)); body.Add(push(str(9 + method)));
+                body.Add(push(Avm1PushValue.FromInteger(count), str(4))); body.Add(op(0x1C)); body.Add(push(str(9 + method)));
                 body.Add(op(0x52)); body.Add(op(0x17)); body.Add(op(0));
                 code.Add(op(0x9B, new Avm1FunctionOperand((ushort)(9 + method), 0, 0,
                     [.. Enumerable.Range(1, count).Select(parameter => new Avm1FunctionParameter(null, (ushort)parameter))], (ushort)body.Count), block(body)));
                 code.Add(push(str(9 + method))); code.Add(op(0x1C));
-                code.Add(push(Avm1PushValue.Null, str(9 + method), Avm1PushValue.Integer(3), str(5))); code.Add(op(0x1C));
+                code.Add(push(Avm1PushValue.Null, str(9 + method), Avm1PushValue.FromInteger(3), str(5))); code.Add(op(0x1C));
                 code.Add(push(str(6))); code.Add(op(0x4E)); code.Add(push(str(7))); code.Add(op(0x4E));
                 code.Add(push(str(8))); code.Add(op(0x52)); code.Add(op(0x17));
             }

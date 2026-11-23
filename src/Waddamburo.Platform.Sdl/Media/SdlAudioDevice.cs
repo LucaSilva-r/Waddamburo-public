@@ -22,7 +22,7 @@ public sealed unsafe class SdlAudioDevice : IAudioOutput
     private bool _disposed;
     private ulong _submittedFrames;
     private readonly List<DirectVoice> _directVoices = [];
-    private readonly HashSet<VoiceStream> _voiceStreams = [];
+    private readonly HashSet<VoiceChannel> _voiceStreams = [];
 
     public SdlAudioDevice(
         int sampleRate = DefaultSampleRate,
@@ -235,7 +235,7 @@ public sealed unsafe class SdlAudioDevice : IAudioOutput
     /// One sound's own stream, bound to the device (see <see cref="AudioMixer"/>'s device voices): SDL mixes every
     /// bound stream on its native audio thread, so what is queued plays on through a managed GC pause.
     /// </summary>
-    public VoiceStream CreateVoiceStream()
+    public VoiceChannel CreateVoiceStream()
     {
         lock (_gate)
         {
@@ -249,14 +249,14 @@ public sealed unsafe class SdlAudioDevice : IAudioOutput
             var stream = SDL_CreateAudioStream(&specification, &specification);
             if (stream is null)
                 throw sdlFailure("create an SDL voice stream");
-            var voice = new VoiceStream(this, stream, _device, Format.Channels);
+            var voice = new VoiceChannel(this, stream, _device, Format.Channels);
             voice.Bind();
             _voiceStreams.Add(voice);
             return voice;
         }
     }
 
-    internal void Forget(VoiceStream voice)
+    internal void Forget(VoiceChannel voice)
     {
         lock (_gate)
             _voiceStreams.Remove(voice);
@@ -397,7 +397,7 @@ public sealed unsafe class DirectVoice
 }
 
 /// <summary>An SDL stream bound to the device, playing one sound (see <see cref="SdlAudioDevice.CreateVoiceStream"/>).</summary>
-public sealed unsafe class VoiceStream
+public sealed unsafe class VoiceChannel
 {
     private readonly SdlAudioDevice _owner;
     private SDL_AudioStream* _stream;
@@ -406,7 +406,7 @@ public sealed unsafe class VoiceStream
     private float _gain = 1f;
     private bool _bound;
 
-    internal VoiceStream(SdlAudioDevice owner, SDL_AudioStream* stream, SDL_AudioDeviceID device, int channels)
+    internal VoiceChannel(SdlAudioDevice owner, SDL_AudioStream* stream, SDL_AudioDeviceID device, int channels)
     {
         _owner = owner;
         _stream = stream;

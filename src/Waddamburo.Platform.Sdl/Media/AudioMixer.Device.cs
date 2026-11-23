@@ -15,13 +15,13 @@ public sealed partial class AudioMixer
     private const int LiveAheadFrames = 2048;
     private const int ReadFrames = 4096;
 
-    private Func<VoiceStream>? _createStream;
+    private Func<VoiceChannel>? _createStream;
     private readonly List<DeviceVoice> _deviceVoices = [];
     private float[] _scratch = [];
     private long _lastPump;
 
     /// <summary>Plays every sound on a device stream of its own (null: back to <see cref="Render"/>, the output changes).</summary>
-    public void UseDeviceVoices(Func<VoiceStream>? create)
+    public void UseDeviceVoices(Func<VoiceChannel>? create)
     {
         lock (_gate)
         {
@@ -168,13 +168,13 @@ public sealed partial class AudioMixer
         voice.Source?.Dispose();
     }
 
-    private sealed class DeviceVoice(AudioPlaybackHandle handle, AudioBus bus, float volume, VoiceStream stream, AudioClip? clip,
+    private sealed class DeviceVoice(AudioPlaybackHandle handle, AudioBus bus, float volume, VoiceChannel stream, AudioClip? clip,
         bool loop, IAudioStreamSource? source, bool live)
     {
         public AudioPlaybackHandle Handle { get; } = handle;
         public AudioBus Bus { get; } = bus;
         public float Volume { get; } = volume;
-        public VoiceStream Stream { get; } = stream;
+        public VoiceChannel Stream { get; } = stream;
         public AudioClip? Clip { get; } = clip;
         public bool Loop { get; } = loop;
         public IAudioStreamSource? Source { get; } = source;

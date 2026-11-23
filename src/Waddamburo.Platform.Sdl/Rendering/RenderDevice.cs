@@ -72,7 +72,7 @@ internal sealed unsafe partial class RenderDevice : IDisposable
         bgfx.set_view_mode(MainView, bgfx.ViewMode.Sequential);
     }
 
-    /// <param name="atlas">May share an atlas page (never drawn tiled, never updated in place).</param>
+    // atlas: may share an atlas page (never drawn tiled, never updated in place).
     public RenderTextureId UploadRgba8(uint width, uint height, ReadOnlySpan<byte> pixels, bool atlas = false)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);

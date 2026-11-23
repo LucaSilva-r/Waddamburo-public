@@ -131,7 +131,7 @@ internal sealed unsafe partial class RenderDevice
     }
 
     // An atlased texture's space back to its page (the page stays, for the next scene's).
-    private void releaseAtlased(AtlasEntry entry) => entry.Page.Live--;
+    private static void releaseAtlased(AtlasEntry entry) => entry.Page.Live--;
 
     // The rectangle to remap a quad's UVs into, or null (a standalone texture, or one drawn as its replacement).
     private AtlasEntry? atlasRect(uint id) =>
@@ -153,6 +153,7 @@ internal sealed unsafe partial class RenderDevice
 public static class BlockEdges
 {
     /// <param name="block">8 bytes (BC1) or 16 (BC3: 8 alpha, then 8 colour).</param>
+    /// <param name="bc3">A BC3 block (alpha indices rewritten too).</param>
     /// <param name="column">0..3 to repeat that column across the block, or -1.</param>
     /// <param name="row">0..3 to repeat that row down the block, or -1.</param>
     public static void Replicate(Span<byte> block, bool bc3, int column, int row)

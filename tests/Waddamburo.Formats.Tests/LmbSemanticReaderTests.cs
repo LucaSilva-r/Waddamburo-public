@@ -166,16 +166,16 @@ public sealed class LmbSemanticReaderTests
         ]).Code.Instructions[0].Operand);
         Assert.Collection(
             push.Values,
-            value => Assert.Equal(Avm1PushValue.String(0, 0x1234), value),
-            value => Assert.Equal(Avm1PushValue.Float(1.5f), value),
+            value => Assert.Equal(Avm1PushValue.FromString(0, 0x1234), value),
+            value => Assert.Equal(Avm1PushValue.FromFloat(1.5f), value),
             value => Assert.Equal(Avm1PushValue.Null, value),
             value => Assert.Equal(Avm1PushValue.Undefined, value),
             value => Assert.Equal(Avm1PushValue.FromRegister(7), value),
             value => Assert.Equal(Avm1PushValue.FromBoolean(true), value),
-            value => Assert.Equal(Avm1PushValue.Double(2.5), value),
-            value => Assert.Equal(Avm1PushValue.Integer(-2), value),
-            value => Assert.Equal(Avm1PushValue.String(8, 0xAA), value),
-            value => Assert.Equal(Avm1PushValue.String(9, 0x5678), value));
+            value => Assert.Equal(Avm1PushValue.FromDouble(2.5), value),
+            value => Assert.Equal(Avm1PushValue.FromInteger(-2), value),
+            value => Assert.Equal(Avm1PushValue.FromString(8, 0xAA), value),
+            value => Assert.Equal(Avm1PushValue.FromString(9, 0x5678), value));
 
         var functionInstruction = readSingleAction([
             0x8E, 0x0F, 0x00,

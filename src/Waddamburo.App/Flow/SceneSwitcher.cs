@@ -18,7 +18,6 @@ internal sealed class SceneSwitcher(
     GameShell shell,
     ScenePresenter presenter,
     Func<SceneId, FlowScene> flowOf,
-    Func<bool> covering,
     Func<RenderFrame> loadingFrame)
 {
     private SceneId? _fadeTarget;
@@ -69,9 +68,10 @@ internal sealed class SceneSwitcher(
         PerformanceRecorder.Scene = Active.Id.ToString();
         presenter.Activate(Active);
         flowOf(Active.Id).Enter(Active.Id);
-        // ponytail: preloading (every screen there is room for) on the Switch only, the next screens elsewhere; a
-        // setting (off/on/auto by device memory) for Android and slow PCs to come.
-        presenter.Want(ScreenGraph.Reachable(Active.Id, shell, PlatformInfo.IsSwitch ? int.MaxValue : 1));
+        // Every screen there is room for (the texture budget decides); with upscaled textures only the next screens
+        // (an upscale is 9x the bytes: the whole graph would fill a GPU's memory).
+        // ponytail: no setting; add one (off/on/auto by device memory) if a device runs short.
+        presenter.Want(ScreenGraph.Reachable(Active.Id, shell, shell.Arcade.UpscaleTextures && shell.Application.ShowUpscaled ? 1 : int.MaxValue));
     }
 
     /// <summary>Fades to black (the intermission fade's "in", 1 s), then shows <paramref name="scene"/>.</summary>
@@ -124,8 +124,7 @@ internal sealed class SceneSwitcher(
         int gen0 = GC.CollectionCount(0), gen1 = GC.CollectionCount(1), gen2 = GC.CollectionCount(2);
         presenter.Hold(shell.Tick, black: shell.Overlay.IsShown || Active.Id == FlowScenes.Movie, loadingFrame);
         flowOf(Active.Id).Exit(Active.Id);
-        presenter.ReleaseScene(Active.Id == FlowScenes.SongSelect || Active.Id == FlowScenes.Gameplay
-            || PlatformInfo.IsSwitch && Active.Id != FlowScenes.Boot ? Active : null);
+        presenter.ReleaseScene(Active.Id != FlowScenes.Boot ? Active : null);
         var released = Stopwatch.GetTimestamp();
         presenter.Switching = true;
         try
@@ -188,37 +187,13 @@ internal sealed class SceneSwitcher(
         System.Runtime.GCSettings.LatencyMode = OnLane
             ? System.Runtime.GCLatencyMode.SustainedLowLatency
             : System.Runtime.GCLatencyMode.Interactive;
-        // The Switch: every switch, a song's start included (under the standing rainbow), cleans up in full, whatever it
-        // costs: the screens ahead load in the background, and their garbage otherwise came due inside the next screen or
-        // song (100-500 ms collections, the heap growing 650 -> 1000 MiB over a session). Pausing in a switch is fine.
-        if (PlatformInfo.IsSwitch)
-        {
-            var started = Stopwatch.GetTimestamp();
-            shell.Audio?.FillAhead(_collectCover);
-            Collect();
-            cover(Stopwatch.GetElapsedTime(started));
-        }
-        else if ((!OnLane || covering()) && GC.GetTotalMemory(false) - _liveAfterCollect > 128L << 20)
-        {
-            // The collection stops the audio mix thread too: queue past it (it took up to 75 ms traced).
-            var started = Stopwatch.GetTimestamp();
-            shell.Audio?.FillAhead(_collectCover);
-            Collect();
-            cover(Stopwatch.GetElapsedTime(started));
-        }
-        // Into a lane under the rainbow: a background collection instead (a few ms of pauses), which frees
-        // Song Select's leftovers (the gameplay prefetch's decoded pixels) early in the song.
-        else if (OnLane)
-        {
-            // The load's survivors first, while the switch stalls anyway: left to the song's first gen0/gen1 collection
-            // they cost it one long pause (88 ms traced on a Switch, 14 s in). Twice: each collection promotes one
-            // generation, so after one they were in gen1 and the song's first gen1 collection walked them again.
-            var started = Stopwatch.GetTimestamp();
-            shell.Audio?.FillAhead(_collectCover);
-            GC.Collect(1, GCCollectionMode.Forced, blocking: true);
-            GC.Collect(1, GCCollectionMode.Forced, blocking: true);
-            cover(Stopwatch.GetElapsedTime(started));
-            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false);
-        }
+        // Every switch, a song's start included (under the standing rainbow), cleans up in full, whatever it costs: the
+        // screens ahead load in the background, and their garbage otherwise came due inside the next screen or song (a
+        // Switch: 100-500 ms collections, the heap growing 650 -> 1000 MiB a session). Pausing in a switch is fine; the
+        // mixer plays on (it is native), and the mix queues past it where it is not.
+        var started = Stopwatch.GetTimestamp();
+        shell.Audio?.FillAhead(_collectCover);
+        Collect();
+        cover(Stopwatch.GetElapsedTime(started));
     }
 }

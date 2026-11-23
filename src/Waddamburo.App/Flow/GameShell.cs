@@ -753,7 +753,7 @@ internal sealed partial class GameShell : IDisposable
                 ? ArcadeSettings.CacheRoot(Path.GetDirectoryName(Path.GetFullPath(settings))!, Arcade.CacheFolder) : null;
             (MovieContent, Upscale) = GameMovieContent.Create(Application, Path.GetFullPath(assetRoot), cacheRoot, () => Arcade);
             _presenter = new ScenePresenter(Application, MovieContent, () => Arcade.UpscaleTextures && Application.ShowUpscaled);
-            Scenes = new SceneSwitcher(this, _presenter, flowOf, () => _home?.Covering == true, blackLoadingFrame);
+            Scenes = new SceneSwitcher(this, _presenter, flowOf, blackLoadingFrame);
             MovieContent.Reuse = _presenter.Reuse;
             ApplyDisplay();
             _loader = new LumenGameSceneLoader(MovieContent, Hosts);
@@ -762,8 +762,7 @@ internal sealed partial class GameShell : IDisposable
             // The intermissions are loaded once, up front: the rainbow must never stall a song's start.
             foreach (var intermission in new[] { FlowScenes.Rainbow, FlowScenes.Shutter, FlowScenes.Fade, FlowScenes.DanCover, FlowScenes.DanExitCover, FlowScenes.DanShutter })
                 Overlay.Preload(intermission);
-            if (PlatformInfo.IsSwitch)
-                Sounds?.PreloadMusic();
+            Sounds?.PreloadMusic();
 
             _gameplay = new GameplayFlow(this);
             _rumble = new Rumble(this, _gameplay);

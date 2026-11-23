@@ -145,9 +145,8 @@ internal static class SceneTextures
 
     /// <summary>
     /// One texture: BC7 (an upscale) and the game's own BC1/BC3 blocks as they are, RGBA otherwise; the
-    /// originals are queued for upscaling.
+    /// originals are queued for upscaling. <c>atlas</c>: may share an atlas page (a movie texture never drawn tiled).
     /// </summary>
-    /// <param name="atlas">May share an atlas page (a movie texture never drawn tiled).</param>
     public static RenderTextureId UploadOne(SdlApplication application, LumenTextureContent texture, bool atlas = false)
     {
         var (width, height) = (checked((uint)texture.Width), checked((uint)texture.Height));
