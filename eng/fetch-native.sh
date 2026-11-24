@@ -8,12 +8,18 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 releases=https://github.com/LucaSilva-r/Waddamburo-public/releases
-if [[ ${1:-latest} == latest ]]; then url=$releases/latest/download/native-linux-x64.zip
-else url=$releases/download/$1/native-linux-x64.zip; fi
+if [[ ${1:-latest} == latest ]]; then base=$releases/latest/download; else base=$releases/download/$1; fi
 dir=out/build/native/linux-x64/linux-package/stage/Release/lib
 zip=out/downloads/native-linux-x64.zip
+bundle=out/downloads/Waddamburo.sources-and-licenses.zip
 
 mkdir -p "$dir" out/downloads
-curl -fSL -o "$zip" "$url"
+# The release keeps native-linux-x64.zip inside Waddamburo.sources-and-licenses.zip; up to v0.32.x it was on its own.
+if curl -fSL -o "$bundle" "$base/Waddamburo.sources-and-licenses.zip"; then
+    python3 -c 'import sys, zipfile; open(sys.argv[2], "wb").write(zipfile.ZipFile(sys.argv[1]).read("native-linux-x64.zip"))' \
+        "$bundle" "$zip"
+else
+    curl -fSL -o "$zip" "$base/native-linux-x64.zip"
+fi
 python3 -m zipfile -e "$zip" "$dir"
 echo "Native libraries in $dir; now: dotnet run --project src/Waddamburo.App -- /path/to/USRDIR"
