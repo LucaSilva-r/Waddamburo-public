@@ -24,7 +24,7 @@ hbmenu's netloader (press **Y**), then:
 export SWITCH_IP=192.168.x.y
 platforms/switch/tools/send.sh                        # nxlink the .nro; keeps out/switch/sent.elf
 platforms/switch/tools/log.sh                         # the game's log (sys-ftpd; SWITCH_FTP_USER/PASSWORD/PORT)
-platforms/switch/tools/log.sh wdb-spike.log > err.log # the shim's stderr: [hitch] profiles of frames over 25 ms (*)
+platforms/switch/tools/log.sh switch/taiko/shim.log > err.log # the shim's stderr: [hitch] profiles of frames over 25 ms (*)
 platforms/switch/tools/hitch.sh err.log               # symbolized per 10 s window, main and render thread
 ```
 

@@ -5,8 +5,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-int __attribute__((weak)) managed_main(void);
-int __attribute__((weak)) lx_dotnet_main(int argc, char **argv); // the real app: NativeAOT exe bootstrapper
+int lx_dotnet_main(int argc, char **argv); // the app: the NativeAOT exe bootstrapper (its main, renamed by scripts/link.sh)
+int g_profile; // sdmc:/switch/taiko/profile exists: the sampling profiler and the present-pacing lines run
 void shim_init(void);
 // Handheld: 460.8 MHz GPU (a configuration games use; the default is 307.2), the AI battle stage missed the refresh in 7% of
 // its frames waiting for the GPU (2026-11-22). Docked (the second): the system's own.
@@ -15,6 +15,7 @@ u32 __nx_applet_PerformanceConfiguration[2] = { 0x92220007, 0 };
 // would stall the game's own threads). log_flush() also runs on crash/exit paths.
 // The SD write happens outside g_log_lock: holding it made every printing thread wait for the card (50-160 ms frame
 // spikes every 0.5 s, 2026-11-22).
+#define LOG_PATH "sdmc:/switch/taiko/shim.log"
 static char g_logs[2][1 << 20], *g_log = g_logs[0]; static size_t g_log_len; static u32 g_log_lost; static Mutex g_log_lock, g_flush_lock;
 void log_flush(void) {
     mutexLock(&g_flush_lock); // one writer at a time: the other buffer is free again when it is released
@@ -22,7 +23,7 @@ void log_flush(void) {
     char *full = g_log; size_t n = g_log_len; u32 lost = g_log_lost;
     g_log = full == g_logs[0] ? g_logs[1] : g_logs[0]; g_log_len = 0; g_log_lost = 0;
     mutexUnlock(&g_log_lock);
-    if (n) { FILE *f = fopen("sdmc:/wdb-spike.log", "a"); if (f) { fwrite(full, 1, n, f); if (lost) fprintf(f, "[log] %u writes lost (buffer full)\n", lost); fclose(f); } }
+    if (n) { FILE *f = fopen(LOG_PATH, "a"); if (f) { fwrite(full, 1, n, f); if (lost) fprintf(f, "[log] %u writes lost (buffer full)\n", lost); fclose(f); } }
     mutexUnlock(&g_flush_lock);
 }
 static ssize_t log_write(void *c, const char *b, size_t n) {
@@ -44,7 +45,7 @@ int main(int argc, char **argv) {
     // Each write opens, appends and closes: Horizon blocks other opens of a file held for writing, and FTP
     // (sys-ftpd) must be able to read the log while the app runs. ponytail: a few ms per line.
     if (!envIsNso()) {
-        FILE *f = fopen("sdmc:/wdb-spike.log", "w"); if (f) fclose(f);
+        FILE *f = fopen(LOG_PATH, "w"); if (f) fclose(f);
         FILE *log = fopencookie(NULL, "w", (cookie_io_functions_t){ .write = log_write });
         if (log) { setvbuf(log, NULL, _IOLBF, 1024); stderr = log; } // threads created later inherit it
         static Thread lt; threadCreate(&lt, log_thread, NULL, NULL, 0x4000, 0x3B, -2); threadStart(&lt);
@@ -55,17 +56,14 @@ int main(int argc, char **argv) {
     shim_init();
     fprintf(stderr, "main: shim ok\n");
     // The sampling profiler pauses every thread each millisecond: only on request (an empty file named profile beside USRDIR).
-    if (access("sdmc:/switch/taiko/profile", F_OK) == 0) { void shim_start_watchdog(void); shim_start_watchdog(); }
+    g_profile = access("sdmc:/switch/taiko/profile", F_OK) == 0;
+    if (g_profile) { void shim_start_watchdog(void); shim_start_watchdog(); }
     fprintf(stderr, "starting runtime\n");
     consoleUpdate(NULL);
-    int r;
-    if (lx_dotnet_main) {
-        // ponytail: fixed game data folder; an args file on the SD card when other options are needed
-        char *args[] = { "waddamburo", "--game-data=/switch/taiko/USRDIR", NULL };
-        r = lx_dotnet_main(2, args);
-    } else
-        r = managed_main();
-    fprintf(stderr, "managed_main returned %d\n", r);
+    // ponytail: fixed game data folder; an args file on the SD card when other options are needed
+    char *args[] = { "waddamburo", "--game-data=/switch/taiko/USRDIR", NULL };
+    int r = lx_dotnet_main(2, args);
+    fprintf(stderr, "runtime returned %d\n", r);
     log_flush();
     extern int g_no_console;
     if (g_no_console) return r; // graphics took the screen: no text console left to wait on

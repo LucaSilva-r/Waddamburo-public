@@ -1,39 +1,8 @@
-// bgfx on the Switch window (GLES 3.0 over Mesa nouveau EGL) + pad input, for the C# spike apps.
+// Present pacing: the patched bgfx (glcontext_egl.cpp) calls nx_present_stats before every eglSwapBuffers.
 #include <switch.h>
 #include <stdio.h>
-#include <bgfx/c99/bgfx.h>
-#include <malloc.h>
 
-static PadState g_pad;
-
-int spike_gfx_init(int width, int height) {
-    extern int g_no_console; g_no_console = 1;
-    consoleExit(NULL); // the text console owns the default NWindow until now
-    bgfx_init_t init;
-    bgfx_init_ctor(&init);
-    init.type = BGFX_RENDERER_TYPE_OPENGLES;
-    init.swapChain.nwh = nwindowGetDefault();
-    init.swapChain.width = width;
-    init.swapChain.height = height;
-    init.swapChain.formatDepthStencil = BGFX_TEXTURE_FORMAT_D24S8;
-    if (!bgfx_init(&init)) { fprintf(stderr, "[gfx] bgfx_init failed\n"); return 0; }
-    fprintf(stderr, "[gfx] bgfx %s %dx%d\n", bgfx_get_renderer_name(bgfx_get_renderer_type()), width, height);
-    padConfigureInput(1, HidNpadStyleSet_NpadStandard);
-    padInitializeDefault(&g_pad);
-    return 1;
-}
-
-// Buttons held (HidNpadButton bits); bit 63 set when the applet asks us to quit.
-unsigned long long spike_pad(void) {
-    if (!appletMainLoop()) return 1ull << 63;
-    padUpdate(&g_pad);
-    return padGetButtons(&g_pad);
-}
-
-// bgfx_dbg_text_printf is variadic; C# passes a ready string.
-void spike_dbg_text(unsigned short x, unsigned short y, unsigned char attr, const char *s) { bgfx_dbg_text_printf(x, y, attr, "%s", s); }
-
-// Called by the patched bgfx (glcontext_egl.cpp) before every eglSwapBuffers: logs pacing every 2 s.
+// Raises the render thread once; feeds the hitch profiler; with the profiler on, logs pacing every 2 s.
 void nx_present_stats(void) {
     static u64 last, window_start, n, min_gap = ~0ull, max_gap, tids[4]; static int ntids;
     // Never bgfx_get_stats() here: it takes the resource lock, which the main thread holds in bgfx::frame() while it
@@ -50,7 +19,8 @@ void nx_present_stats(void) {
     if (last) { u64 g = now - last; extern void hitch_present(u64); hitch_present(g); if (g < min_gap) min_gap = g; if (g > max_gap) max_gap = g; }
     last = now; n++;
     if (!window_start) window_start = now;
-    if (now - window_start >= 2000000000ull) {
+    extern int g_profile;
+    if (g_profile && now - window_start >= 2000000000ull) {
         extern size_t nx_malloc_extent(void), nx_gpu_in_use(void); extern int nx_gpu_free_spans(void), nx_gpu_buffers(void);
         fprintf(stderr, "[present] %.1f/s, gaps %.2f-%.2f ms, %d thread(s), malloc heap %lu MiB, GPU buffers %zu MiB in %d (%d free spans)\n",
                 n * 1e9 / (now - window_start), min_gap / 1e6, max_gap / 1e6, ntids,

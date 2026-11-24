@@ -31,7 +31,7 @@
 +				glClearColor(clear[0], clear[1], clear[2], clear[3]);
 +				if (scissor) glEnable(GL_SCISSOR_TEST);
 +				glBindFramebuffer(GL_FRAMEBUFFER, (GLuint)fbo);
-+				nx_present_stats(); // diagnostics: presents per second, presenting threads, gaps (shim/gfx.c)
++				nx_present_stats(); // diagnostics: presents per second, presenting threads, gaps (shim/present.c)
 +#endif // BX_PLATFORM_NX
  				EGL_CHECK(eglSwapBuffers(m_display, m_surface) );
  			}

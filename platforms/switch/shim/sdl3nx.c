@@ -1,5 +1,5 @@
 // The subset of SDL3 (3.5.0 ABI, headers in ext/sdl3) that Waddamburo.Platform.Sdl calls, on libnx.
-// ponytail: no keyboard/mouse/touch/text input, dialogs or PNG loading yet; stubs fail softly.
+// Text input opens the system keyboard (swkbd). ponytail: no keyboard/mouse/touch, dialogs or PNG loading; stubs fail softly.
 //
 // - Window: the default NWindow at 1280x720. bgfx's Linux branch reads SDL_PROP_WINDOW_X11_WINDOW_NUMBER,
 //   which returns nwindowGetDefault(), so Waddamburo needs no Switch branch for the swap chain.

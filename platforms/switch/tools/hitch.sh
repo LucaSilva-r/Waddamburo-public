@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Symbolizes the shim's [hitch] profile (frames over 25 ms: both threads sampled every 1 ms, one block per 10 s) from
-# a saved stderr log (tools/log.sh wdb-spike.log > file), against out/switch/sent.elf (what tools/send.sh sent).
+# a saved stderr log (tools/log.sh switch/taiko/shim.log > file), against out/switch/sent.elf (what tools/send.sh sent).
 # usage: platforms/switch/tools/hitch.sh log [first-line] [last-line]
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd); root=$(cd "$here/../../.." && pwd)

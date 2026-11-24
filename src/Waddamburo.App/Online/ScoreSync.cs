@@ -39,7 +39,7 @@ internal sealed class ScoreSync : IDisposable
         Health = UpdateGate.Server(arcade) is { } healthServer
             ? new ServerHealth(ScoreClient.CreateHttp(healthServer, arcade.ServerInsecure, arcade.Home ? null : arcade.CabinetToken), cabinet: !arcade.Home)
             : null;
-        // ponytail: printed until the notice sidebar draws them.
+        // In the log as well as the notice sidebar.
         Notices.Added += static notice => Console.WriteLine($"Notice [{notice.Severity}] {notice.Message}");
         // A sanction changes the name board (RESTRICTED while banned): show it now, not at the next credit.
         Notices.Added += notice =>

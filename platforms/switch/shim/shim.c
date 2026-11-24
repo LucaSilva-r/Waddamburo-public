@@ -1,7 +1,7 @@
 // glibc/Linux ABI on libnx for the prebuilt linux-arm64 NativeAOT runtime.
-// Every libc symbol the runtime imports was renamed to lx_<name> (build.sh), so this file can use
+// Every libc symbol the runtime imports was renamed to lx_<name> (scripts/link.sh), so this file can use
 // newlib/libnx freely and convert layouts and constants (glibc aarch64 values) at the boundary.
-// ponytail: feasibility spike; unimplemented calls fail with ENOSYS and log once.
+// Calls with no Horizon equivalent fail with ENOSYS and log once.
 #define _GNU_SOURCE
 #include <switch.h>
 #include <errno.h>
@@ -867,7 +867,7 @@ static int sqlite_fstat(int fd, struct stat *st) {
 }
 
 void shim_init(void) {
-    sqlite3_config(SQLITE_CONFIG_LOG, sqlite_log, NULL); // ponytail: debug aid while porting
+    sqlite3_config(SQLITE_CONFIG_LOG, sqlite_log, NULL); // SQLite's own errors in the log (stderr)
     { sqlite3_vfs *v = sqlite3_vfs_find(NULL);
       int a = v ? v->xSetSystemCall(v, "fstat", (sqlite3_syscall_ptr)sqlite_fstat) : -1;
       int b = v ? v->xSetSystemCall(v, "stat", (sqlite3_syscall_ptr)sqlite_stat) : -1;
@@ -1336,12 +1336,10 @@ void *lx_dlsym(void *h, const char *s) { return NULL; }
 int lx_dlclose(void *h) { return 0; }
 char *lx_dlerror(void) { return "dynamic loading is not available on Switch"; }
 
-// inotify / epoll / sockets: not yet (networking off). ponytail: libnx has BSD sockets; needs sockaddr/constant translation.
+// inotify: no file watching on the SD card (sockets and epoll are in net.c).
 int lx_inotify_init1(int f) { NOSYS("inotify_init1"); }
 int lx_inotify_add_watch(int fd, const char *p, unsigned m) { NOSYS("inotify_add_watch"); }
 int lx_inotify_rm_watch(int fd, int w) { NOSYS("inotify_rm_watch"); }
-// epoll: .NET's socket engine needs one at startup even when every socket() fails (no networking yet). It
-// accepts registrations and never reports events. ponytail: real readiness when sockets come (libnx poll()).
 int lx_getnameinfo(const void *a, unsigned l, char *h, unsigned hl, char *s, unsigned sl, int f) { return -4; }
 
 // SQLite is built without extension loading; SQLitePCLRaw still binds these two.
