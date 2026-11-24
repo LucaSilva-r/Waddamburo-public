@@ -19,7 +19,7 @@ if (-not (Test-Path $shaderc)) {
 New-Item -ItemType Directory -Force $outputRoot | Out-Null
 
 $shaders = @{
-    "vs_quad" = "quad"; "fs_quad" = "quad"; "fs_mask" = "quad"
+    "vs_quad" = "quad"; "fs_quad" = "quad"; "fs_mask" = "quad"; "fs_luma" = "quad"
     "vs_don" = "don"; "fs_don" = "don"
     "vs_don_post" = "post"; "fs_don_post" = "post"; "fs_blur" = "quad"
 }

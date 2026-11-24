@@ -29,6 +29,8 @@ internal sealed unsafe partial class RenderDevice : IDisposable
     private readonly List<IGpuRenderPrepass> _prepasses = [];
     private readonly bgfx.ProgramHandle _quadProgram;
     private readonly bgfx.ProgramHandle _maskProgram;
+    private readonly bgfx.ProgramHandle _lumaProgram;
+    private readonly bgfx.UniformHandle _lumaUniform;
     // The frosted backdrop: its own program (absent where its shader isn't packaged) and quarter-size targets.
     private readonly bgfx.ProgramHandle? _blurProgram;
     private readonly bgfx.UniformHandle _blurUniform;
@@ -50,6 +52,8 @@ internal sealed unsafe partial class RenderDevice : IDisposable
         _height = height;
         _quadProgram = BgfxSupport.LoadProgram("vs_quad", "fs_quad");
         _maskProgram = BgfxSupport.LoadProgram("vs_quad", "fs_mask");
+        _lumaProgram = BgfxSupport.LoadProgram("vs_quad", "fs_luma");
+        _lumaUniform = bgfx.create_uniform("u_luma", bgfx.UniformType.Vec4, 1);
         _textureSampler = bgfx.create_uniform("s_texture", bgfx.UniformType.Sampler, 1);
         _blurUniform = bgfx.create_uniform("u_blur", bgfx.UniformType.Vec4, 1);
         try
@@ -712,7 +716,13 @@ internal sealed unsafe partial class RenderDevice : IDisposable
             bgfx.set_stencil(stencil, (uint)bgfx.StencilFlags.None);
             bgfx.set_texture(0, _textureSampler, drawn(first.Texture.Value), samplerFor(first));
             bgfx.set_transient_vertex_buffer(0, &buffer, (uint)start * 6, (uint)(index - start) * 6);
-            bgfx.submit(view, first.MaskOperation == RenderMaskOperation.Draw ? _quadProgram : _maskProgram, 0, (byte)bgfx.DiscardFlags.All);
+            var program = first.MaskOperation != RenderMaskOperation.Draw ? _maskProgram : first.LumaKey > 0 ? _lumaProgram : _quadProgram;
+            if (first.LumaKey > 0)
+            {
+                var luma = new System.Numerics.Vector4(first.LumaKey, 0, 0, 0);
+                bgfx.set_uniform(_lumaUniform, &luma, 1);
+            }
+            bgfx.submit(view, program, 0, (byte)bgfx.DiscardFlags.All);
             _drawsSubmitted++;
             start = index;
         }
@@ -723,7 +733,7 @@ internal sealed unsafe partial class RenderDevice : IDisposable
 
     // The texture itself is compared by the caller (its page: atlased textures batch together).
     private static bool sameBatch(in RenderQuad a, in RenderQuad b) =>
-        a.Blend == b.Blend && a.MaskOperation == b.MaskOperation
+        a.Blend == b.Blend && a.MaskOperation == b.MaskOperation && a.LumaKey == b.LumaKey
         && a.MaskDepth == b.MaskDepth && a.Sampling == b.Sampling && tiles(a) == tiles(b);
 
     private static ulong stateFor(in RenderQuad quad)
@@ -823,6 +833,8 @@ internal sealed unsafe partial class RenderDevice : IDisposable
         _prepasses.Clear();
         bgfx.destroy_program(_quadProgram);
         bgfx.destroy_program(_maskProgram);
+        bgfx.destroy_program(_lumaProgram);
+        bgfx.destroy_uniform(_lumaUniform);
         if (_blurProgram is { } blurProgram)
             bgfx.destroy_program(blurProgram);
         bgfx.destroy_uniform(_blurUniform);

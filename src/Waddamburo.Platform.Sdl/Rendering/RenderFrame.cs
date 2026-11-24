@@ -84,7 +84,9 @@ public readonly record struct RenderQuad(
     RenderBlend Blend = RenderBlend.Normal,
     RenderSampling Sampling = RenderSampling.Linear,
     RenderMaskOperation MaskOperation = RenderMaskOperation.Draw,
-    byte MaskDepth = 0)
+    byte MaskDepth = 0,
+    // Above 0: drawn through a luma key with this curve (fs_luma: brightness is opacity; background videos).
+    float LumaKey = 0)
 {
     public static RenderQuad FromRectangles(
         RenderTextureId texture,

@@ -4,15 +4,8 @@ namespace Waddamburo.App.Presentation;
 /// A background video's see-through parts, cut on its decoding thread: black bars (rows and columns black in every
 /// frame so far: osu!taiko videos leave the top black for osu!'s playfield) and a keyed colour (a green screen).
 /// </summary>
-internal sealed class VideoMask(int width, int height, int? keyColor = null, int keyTolerance = 60, float? lumaCurve = null)
+internal sealed class VideoMask(int width, int height, int? keyColor = null, int keyTolerance = 60)
 {
-    // The luma key's opacity for each brightness (the brightest channel), and the factor that divides the colour back.
-    private readonly (byte Alpha, float Scale)[]? _luma = lumaCurve is { } curve ? [.. Enumerable.Range(0, 256).Select(level =>
-    {
-        var alpha = 1 - MathF.Pow(1 - level / 255f, curve);
-        return ((byte)MathF.Round(alpha * 255), alpha <= 0 ? 0f : 1 / alpha);
-    })] : null;
-
     // Brighter than this (r + g + b) is picture: compressed black stays well under it.
     private const int BlackSum = 48;
 
@@ -29,24 +22,6 @@ internal sealed class VideoMask(int width, int height, int? keyColor = null, int
             cutBars(rgba, scan: _frames++ % 8 == 0);
         if (keyColor is { } key)
             cutKey(rgba, key);
-        if (_luma is { } luma)
-            lumaKey(rgba, luma);
-    }
-
-    // Brightness is opacity; the colour is divided by it, so over black the frame looks as it was.
-    private static void lumaKey(Span<byte> rgba, (byte Alpha, float Scale)[] luma)
-    {
-        for (var at = 0; at < rgba.Length; at += 4)
-        {
-            int r = rgba[at], g = rgba[at + 1], b = rgba[at + 2];
-            var (alpha, scale) = luma[Math.Max(r, Math.Max(g, b))];
-            if (alpha == 255)
-                continue;
-            rgba[at] = (byte)Math.Min(255, r * scale);
-            rgba[at + 1] = (byte)Math.Min(255, g * scale);
-            rgba[at + 2] = (byte)Math.Min(255, b * scale);
-            rgba[at + 3] = (byte)(rgba[at + 3] * alpha / 255);
-        }
     }
 
     // Looking for picture in the bars every 8th frame (a full pass); cutting them every frame.

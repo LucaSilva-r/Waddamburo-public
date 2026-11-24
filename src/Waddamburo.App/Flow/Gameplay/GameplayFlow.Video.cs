@@ -28,7 +28,7 @@ internal sealed partial class GameplayFlow
             _video.Show(shown.Time);
         Shell.Gameplay.Video = _video is { Visible: true } video
             ? new(video.Width / video.Height, mode == BackgroundVideoMode.UnderLane && _play.Charts.Length == 1,
-                Shell.Arcade.BackgroundVideoDim / 100f, video.Additive, video.Area, video.HidesDancers)
+                Shell.Arcade.BackgroundVideoDim / 100f, video.Additive, video.Area, video.HidesDancers, video.LumaCurve)
             : null;
     }
 }

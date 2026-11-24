@@ -69,7 +69,7 @@ public static class LumenRenderFrameAdapter
                     LumenRenderMaskOperation.Push => RenderMaskOperation.Push,
                     LumenRenderMaskOperation.Pop => RenderMaskOperation.Pop,
                     _ => throw new ArgumentOutOfRangeException(nameof(snapshot)),
-                }, quad.MaskDepth));
+                }, quad.MaskDepth, quad.LumaKey));
         }
     }
 

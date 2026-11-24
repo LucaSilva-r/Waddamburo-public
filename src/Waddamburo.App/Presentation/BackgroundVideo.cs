@@ -43,7 +43,8 @@ internal sealed class BackgroundVideo : IDisposable
         Additive = video.Additive;
         HidesDancers = video.Additive || video.KeyColor is not null || video.LumaCurve is not null;
         Area = video.Area;
-        _mask = new VideoMask((int)decoder.Width, (int)decoder.Height, video.KeyColor, video.KeyTolerance, video.LumaCurve);
+        _mask = new VideoMask((int)decoder.Width, (int)decoder.Height, video.KeyColor, video.KeyTolerance);
+        LumaCurve = video.LumaCurve ?? 0;
         Texture = application.UploadRgba8(decoder.Width, decoder.Height, new byte[decoder.Width * decoder.Height * 4]);
         _worker = new Thread(decode) { IsBackground = true, Name = "Background video decoder" };
         _worker.Start();
@@ -76,6 +77,9 @@ internal sealed class BackgroundVideo : IDisposable
 
     /// <summary>The video is seen through (added or keyed): it takes the dancers' place, who would show through it.</summary>
     public bool HidesDancers { get; }
+
+    /// <summary>The luma key's curve, applied by the renderer (fs_luma); 0: none.</summary>
+    public float LumaCurve { get; }
 
     /// <summary>The chart's own box for it (ChartVideo.Area), or null.</summary>
     public (float X, float Y, float Width, float Height)? Area { get; }

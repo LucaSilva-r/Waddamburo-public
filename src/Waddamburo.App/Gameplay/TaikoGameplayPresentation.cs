@@ -367,7 +367,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             new LumenRenderVertex(right, bottom, 1 - u, 1 - v), new LumenRenderVertex(left, bottom, u, 1 - v),
             new LumenRenderColor(shade, shade, shade, 1), LumenRenderColor.Transparent,
             video.Additive ? LumenRenderBlend.Add : LumenRenderBlend.Normal,
-            NativeSurface: Waddamburo.App.Presentation.BackgroundVideo.Surface);
+            NativeSurface: Waddamburo.App.Presentation.BackgroundVideo.Surface, LumaKey: video.LumaKey);
     }
 
     /// <summary>One player's lane: judgement, score, gauge, Don and the lane's movies.</summary>
@@ -1058,5 +1058,5 @@ internal sealed record TimingMark(bool Early, bool Great, float X, float Y, floa
 
 /// <summary>A frame's background video: its width over height, where it goes, and how much it is darkened (0-1).</summary>
 internal readonly record struct GameplayVideoLayer(float Aspect, bool UnderLane, float Dim, bool Additive = false,
-    (float X, float Y, float Width, float Height)? Area = null, bool HidesDancers = false);
+    (float X, float Y, float Width, float Height)? Area = null, bool HidesDancers = false, float LumaKey = 0);
 

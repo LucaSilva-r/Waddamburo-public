@@ -77,7 +77,8 @@ public readonly record struct LumenRenderQuad(
     LumenNativeSurfaceKey? NativeSurface = null,
     LumenRenderMaskOperation MaskOperation = LumenRenderMaskOperation.Draw,
     byte MaskDepth = 0,
-    string? Source = null);
+    string? Source = null,
+    float LumaKey = 0);
 
 /// <summary>The quads of one snapshot per frame, reused by the next (<see cref="LumenRenderSnapshot.Detached"/> keeps one).</summary>
 public sealed class LumenQuadBuffer

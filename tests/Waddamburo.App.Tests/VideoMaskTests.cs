@@ -52,17 +52,4 @@ public sealed class VideoMaskTests
         Assert.Equal(255, alpha(14, 41));
         Assert.Equal(0, alpha(48, 80));
     }
-
-    // The luma key: black is gone, bright is solid, dark grey partly see-through, and over black every pixel looks as it was.
-    [Fact]
-    public void LumaKeyMakesBrightnessOpacity()
-    {
-        var mask = new VideoMask(3, 1, lumaCurve: 8);
-        var rgba = frame(3, 1, (x, _) => x switch { 0 => ((byte)0, (byte)0, (byte)0), 1 => ((byte)25, (byte)20, (byte)10), _ => ((byte)40, (byte)200, (byte)220) });
-        mask.Apply(rgba);
-        Assert.Equal(0, rgba[3]);
-        Assert.InRange(rgba[7], 120, 160);
-        Assert.Equal(255, rgba[11]);
-        Assert.InRange(rgba[4] * rgba[7] / 255, 23, 27); // over black: 25 again
-    }
 }
