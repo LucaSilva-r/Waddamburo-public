@@ -55,6 +55,8 @@ internal sealed class BackgroundVideo : IDisposable
     }
 
     /// <summary>Opens the video (null: it cannot be decoded; the song plays without it).</summary>
+    /// <param name="application">Uploads its frames.</param>
+    /// <param name="video">The chart's video and how it is drawn.</param>
     /// <param name="drawnHeight">How high it is drawn on the 720-line stage: frames come out no bigger than that needs.</param>
     /// <param name="maximumFps">The most frames a second shown (30 or 60): at 30 the decoder skips B-frames throughout.</param>
     public static BackgroundVideo? Open(SdlApplication application, Waddamburo.Catalog.ChartVideo video, float drawnHeight = 720,

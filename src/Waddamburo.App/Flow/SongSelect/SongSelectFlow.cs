@@ -258,7 +258,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             var lines = hashed.Descriptor.Charts.Where(static chart => chart.Course is not null)
                 .Select(chart => (chart, hash: Shell.ChartHashes.HashAsync(chart).AsTask().GetAwaiter().GetResult()))
                 .Where(static entry => entry.hash is not null)
-                .Select(entry => $"{{ \"hash\": \"{entry.hash}\", \"title\": {System.Text.Json.JsonSerializer.Serialize($"{hashed.Descriptor.Title.Primary} ({entry.chart.Course})")} }},");
+                .Select(entry => $"{{ \"hash\": \"{entry.hash}\", \"title\": \"{System.Text.Json.JsonEncodedText.Encode($"{hashed.Descriptor.Title.Primary} ({entry.chart.Course})")}\" }},");
             if (Waddamburo.Platform.Sdl.SdlApplication.SetClipboard(string.Join('\n', lines)))
                 Shell.Sync.Notices.AddLocal(Strings.T("song_select.hashes_copied", hashed.Descriptor.Title.Primary), lifetime: TimeSpan.FromSeconds(6));
         }

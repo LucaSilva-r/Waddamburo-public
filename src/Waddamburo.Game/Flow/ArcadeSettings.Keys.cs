@@ -155,7 +155,7 @@ public sealed partial record ArcadeSettings
             [("true", TouchDrumMode.On), ("false", TouchDrumMode.Off)]),
         number("touch_drum_size", static s => s.TouchDrumSize, static (s, v) => s with { TouchDrumSize = v }, 50, 150),
         choice("touch_drum_layout", static s => s.TouchDrumLayout, static (s, v) => s with { TouchDrumLayout = v },
-            [("single", TouchDrumLayout.Single), ("split", TouchDrumLayout.Split)]),
+            [("single", TouchDrumLayout.Whole), ("split", TouchDrumLayout.Split)]),
         circle("touch_don_left", static s => s.TouchDonLeft, static (s, v) => s with { TouchDonLeft = v }),
         circle("touch_don_right", static s => s.TouchDonRight, static (s, v) => s with { TouchDonRight = v }),
         flag("custom_upload_notice_seen", static s => s.CustomUploadNoticeSeen, static (s, v) => s with { CustomUploadNoticeSeen = v }),

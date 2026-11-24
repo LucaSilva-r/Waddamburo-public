@@ -17,7 +17,7 @@ public sealed class OsuLazerCatalogProvider : ISongCatalogProvider, ICatalogAsse
     private readonly bool _stable;
     // osu!stable: where each file id lives (lazer's store is laid out by id instead).
     private IReadOnlyDictionary<string, string> _stableFiles = new Dictionary<string, string>();
-    private IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> _setFiles = new Dictionary<string, IReadOnlyDictionary<string, string>>();
+    private Dictionary<string, IReadOnlyDictionary<string, string>> _setFiles = new Dictionary<string, IReadOnlyDictionary<string, string>>();
 
     /// <summary>Reads lazer's data folder (with client.realm and files/), see <see cref="FindDataFolder"/>.</summary>
     public OsuLazerCatalogProvider(string dataFolder, CatalogProviderId? id = null)

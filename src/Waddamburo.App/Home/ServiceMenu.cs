@@ -562,7 +562,7 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
                         ? "settings.touch_drum_layout.split" : "settings.touch_drum_layout.single")}}}", 640,
                     Step: step => set(s => s with { TouchDrumLayout = (TouchDrumLayout)wrap((int)s.TouchDrumLayout, step, 0, 1) }),
                     IsDefault: () => _settings.TouchDrumLayout == Defaults.TouchDrumLayout, Hint: S("settings.touch_drum_layout.hint")),
-                .. _settings.TouchDrumLayout == TouchDrumLayout.Single ? (Row[])
+                .. _settings.TouchDrumLayout == TouchDrumLayout.Whole ? (Row[])
                 [
                     new(S("settings.touch_drum_size"), 400, () => $"{_settings.TouchDrumSize}%", 640,
                         Step: step => set(s => s with { TouchDrumSize = Math.Clamp(s.TouchDrumSize + 10 * step, 50, 150) }),

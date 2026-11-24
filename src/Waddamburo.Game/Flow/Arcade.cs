@@ -21,7 +21,7 @@ public enum BackgroundVideoMode { On, UnderLane, Off }
 
 /// <summary>The touch drum's shape (config.cfg touch_drum_layout): one half drum at the bottom, or two don circles the
 /// player places (anywhere else is ka, by the screen's side).</summary>
-public enum TouchDrumLayout { Single, Split }
+public enum TouchDrumLayout { Whole, Split }
 
 /// <summary>
 /// Cabinet settings (the original's service-menu options plus Waddamburo's own), read from
@@ -520,7 +520,7 @@ public sealed partial record ArcadeSettings
     /// <summary>The on-screen drum face's size, percent of the default (config.cfg touch_drum_size).</summary>
     public int TouchDrumSize { get; init; } = 100;
 
-    public TouchDrumLayout TouchDrumLayout { get; init; } = TouchDrumLayout.Single;
+    public TouchDrumLayout TouchDrumLayout { get; init; } = TouchDrumLayout.Whole;
 
     /// <summary>The split layout's left and right don circles: centre on the stage (0-1), radius in stage heights.</summary>
     public (float X, float Y, float R) TouchDonLeft { get; init; } = (.3f, .72f, .2f);

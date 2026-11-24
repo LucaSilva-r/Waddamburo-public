@@ -1410,7 +1410,7 @@ public sealed class LumenPlayer : IAvm1Host
     }
 
     // Array.pop, shift, join and reverse.
-    private Avm1Lookup listMethod(Avm1ExecutionContext context, Avm1ArrayObject listArray, string name, IReadOnlyList<object?> arguments)
+    private static Avm1Lookup listMethod(Avm1ExecutionContext context, Avm1ArrayObject listArray, string name, IReadOnlyList<object?> arguments)
     {
         var lengthLookup = context.GetMember(listArray, "length");
         var length = lengthLookup.Found ? toNumber(lengthLookup.Value) : 0;
