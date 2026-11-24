@@ -236,6 +236,10 @@ internal sealed partial class GameShell
         // always: touch_drum (auto: until a controller or keys play; off) governs the drum alone, so a player without a
         // controller still reaches every menu.
         Application.TouchDrumEnabled = Arcade.TouchDrum != TouchDrumMode.Off;
+        TouchDrum.FaceRadius = .42f * Arcade.TouchDrumSize / 100;
+        TouchDrum.Split = Arcade.TouchDrumLayout == TouchDrumLayout.Split || TouchDrum.Editing;
+        if (!TouchDrum.Editing)
+            TouchDrum.Dons = [Arcade.TouchDonLeft, Arcade.TouchDonRight];
         // Player setup is played with the drum itself (rims choose, the face picks): not an overlay here.
         Application.OverlayOpen = HomeMenuOpen || _service is { IsOpen: true } || _inputOverlays.Any(static overlay => overlay.IsOpen)
             || _playerSetup is { SignInOpen: true };
@@ -243,12 +247,14 @@ internal sealed partial class GameShell
         // As the notices key: not over a lane (the attract's demo excepted), nor while search takes the letters.
         Application.TouchNotices = !Application.OverlayOpen && _notices is not null && (!Scenes.OnLane || _gameplay.Demo) && !_search.IsOpen;
         Application.TouchKeyboard = PlatformInfo.IsMobile && _search.IsOpen;
+        if (TouchDrum.Editing)
+            top.AddRange(TouchDrumOverlay.EditorQuads(Painter, Application.TouchHits, SdlApplication.TicksNs, Strings.T("settings.touch_drum_edit.help")));
         if (PlatformInfo.IsMobile || Application.TouchActive)
         {
             var (hits, now) = (Application.TouchHits, SdlApplication.TicksNs);
             var attractOrBoot = _gameplay.Demo && Scenes.OnLane || Active.Id == FlowScenes.Boot || Active.Id == FlowScenes.Logo
                 || Active.Id == FlowScenes.Title || Active.Id == FlowScenes.Caution || Active.Id == FlowScenes.Movie;
-            if (Application.OverlayOpen)
+            if (Application.OverlayOpen && !TouchDrum.Editing)
                 top.AddRange(TouchDrumOverlay.MenuQuads(Painter, hits, now));
             if (Application.TouchKeyboard)
                 top.Add(TouchDrumOverlay.KeyboardQuad(Painter, hits, now));

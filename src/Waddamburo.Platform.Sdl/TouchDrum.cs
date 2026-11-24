@@ -7,8 +7,70 @@ namespace Waddamburo.Platform.Sdl;
 /// </summary>
 public static class TouchDrum
 {
-    /// <summary>Drum face: centre at the stage's bottom edge, radius in stage heights.</summary>
-    public const float CenterX = .5f, CenterY = 1f, FaceRadius = .42f;
+    /// <summary>Drum face: centre at the stage's bottom edge.</summary>
+    public const float CenterX = .5f, CenterY = 1f;
+
+    /// <summary>The face's radius in stage heights (config.cfg touch_drum_size scales the default .42).</summary>
+    public static float FaceRadius { get; set; } = .42f;
+
+    /// <summary>
+    /// Split layout (config.cfg touch_drum_layout = split): two circles anywhere, the left one the left don and the
+    /// right one the right don; anywhere else is ka, on the side of the screen the touch is on.
+    /// </summary>
+    public static bool Split { get; set; }
+
+    /// <summary>The split layout's circles (left don, right don): centre in stage coordinates (0-1), radius in stage heights.</summary>
+    public static (float X, float Y, float R)[] Dons { get; set; } = [(.3f, .72f, .2f), (.7f, .72f, .2f)];
+
+    /// <summary>The split circles are being moved (Settings › Controls › Edit Touch Drums): touches drag them, the back
+    /// button ends it.</summary>
+    public static bool Editing { get; set; }
+
+    // Fingers (or the mouse) holding a circle: which, and the offset from its centre (or resizing it by its knob).
+    private static readonly Dictionary<ulong, (int Circle, bool Resize, float Dx, float Dy)> _held = [];
+
+    /// <summary>The resize knob on a circle's right edge (stage coordinates).</summary>
+    public static (float X, float Y) Knob(int circle, float stageAspect = 16f / 9) =>
+        (Dons[circle].X + Dons[circle].R / stageAspect, Dons[circle].Y);
+
+    /// <summary>Editing: a finger went down; it takes the knob or the circle under it, if any.</summary>
+    public static void Grab(ulong finger, float x, float y, float stageAspect = 16f / 9)
+    {
+        for (var circle = Dons.Length - 1; circle >= 0; circle--)
+        {
+            var (kx, ky) = Knob(circle, stageAspect);
+            if (distance(x - kx, y - ky, stageAspect) < KnobRadius * 1.5f)
+            {
+                _held[finger] = (circle, true, 0, 0);
+                return;
+            }
+        }
+        for (var circle = Dons.Length - 1; circle >= 0; circle--)
+            if (distance(x - Dons[circle].X, y - Dons[circle].Y, stageAspect) <= Dons[circle].R)
+            {
+                _held[finger] = (circle, false, x - Dons[circle].X, y - Dons[circle].Y);
+                return;
+            }
+    }
+
+    /// <summary>Editing: a held finger moved.</summary>
+    public static void Drag(ulong finger, float x, float y, float stageAspect = 16f / 9)
+    {
+        if (!_held.TryGetValue(finger, out var held))
+            return;
+        var (cx, cy, r) = Dons[held.Circle];
+        Dons[held.Circle] = held.Resize
+            ? (cx, cy, Math.Clamp(distance(x - cx, y - cy, stageAspect), .06f, .5f))
+            : (Math.Clamp(x - held.Dx, 0, 1), Math.Clamp(y - held.Dy, 0, 1), r);
+    }
+
+    public static void Release(ulong finger) => _held.Remove(finger);
+
+    /// <summary>The knob's radius in stage heights.</summary>
+    public const float KnobRadius = .035f;
+
+    // In stage heights, so circles are round on a 16:9 stage.
+    private static float distance(float dx, float dy, float stageAspect) => MathF.Sqrt(dx * stageAspect * dx * stageAspect + dy * dy);
 
     /// <summary>The back button: a square in the top-left corner, in stage heights.</summary>
     public const float BackSize = .11f;
@@ -29,6 +91,13 @@ public static class TouchDrum
         if (search && (1 - x) * stageAspect < SearchSize && y < SearchSize)
             return Search;
         var left = x < CenterX;
+        if (Split)
+        {
+            for (var circle = 0; circle < Dons.Length; circle++)
+                if (distance(x - Dons[circle].X, y - Dons[circle].Y, stageAspect) <= Dons[circle].R)
+                    return circle == 0 ? 1 : 2;
+            return left ? 0 : 3;
+        }
         if (dx * dx + dy * dy <= FaceRadius * FaceRadius)
             return left ? 1 : 2;
         return left ? 0 : 3;

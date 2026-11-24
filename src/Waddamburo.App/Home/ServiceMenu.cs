@@ -132,6 +132,17 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
             listening();
             return;
         }
+        if (_touchEditing)
+        {
+            if (escape || pulses.IsDown(SdlKeyboardKey.Escape))
+                TouchDrum.Editing = false;
+            if (!TouchDrum.Editing)
+            {
+                _touchEditing = false;
+                set(s => s with { TouchDonLeft = TouchDrum.Dons[0], TouchDonRight = TouchDrum.Dons[1] });
+            }
+            return;
+        }
         // The tests sound each hit; at home SOUND TEST's hits are the menu's own ka and don already.
         var testing = _menu.Page?.Tag is Page.Io || _menu.Page?.Tag is Page.Sound && !_home;
         for (var pad = 0; pad < 8; pad++)
@@ -154,7 +165,19 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
     public RenderFrame Frame() => _menu.Frame();
 
     /// <summary>The menu's quads (home mode: over the game, which the renderer frosts).</summary>
-    public List<RenderQuad> Quads() => _menu.Quads();
+    public List<RenderQuad> Quads() => _touchEditing ? [] : _menu.Quads();
+
+    // Edit Touch Drums: the menu steps aside and touches (or the mouse) move the split circles; back saves them.
+    private void editTouchDrum()
+    {
+        TouchDrum.Dons = [_settings.TouchDonLeft, _settings.TouchDonRight];
+        TouchDrum.Editing = _touchEditing = true;
+    }
+
+    private bool _touchEditing;
+
+    /// <summary>The split touch drum's circles are being moved (GameShell draws them instead of the menu).</summary>
+    public bool EditingTouchDrum => _touchEditing;
 
     private void open(Page page, string section = "") => _menu.Push(this.page(page, section));
 
@@ -521,6 +544,24 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
                     })}}}", 640,
                     Step: step => set(s => s with { TouchDrum = (TouchDrumMode)wrap((int)s.TouchDrum, step, 0, 2) }),
                     IsDefault: () => _settings.TouchDrum == Defaults.TouchDrum, Hint: S("settings.touch_drum.hint")),
+                new(S("settings.touch_drum_layout"), 400, () => $"{{{S(_settings.TouchDrumLayout == TouchDrumLayout.Split
+                        ? "settings.touch_drum_layout.split" : "settings.touch_drum_layout.single")}}}", 640,
+                    Step: step => set(s => s with { TouchDrumLayout = (TouchDrumLayout)wrap((int)s.TouchDrumLayout, step, 0, 1) }),
+                    IsDefault: () => _settings.TouchDrumLayout == Defaults.TouchDrumLayout, Hint: S("settings.touch_drum_layout.hint")),
+                .. _settings.TouchDrumLayout == TouchDrumLayout.Single ? (Row[])
+                [
+                    new(S("settings.touch_drum_size"), 400, () => $"{_settings.TouchDrumSize}%", 640,
+                        Step: step => set(s => s with { TouchDrumSize = Math.Clamp(s.TouchDrumSize + 10 * step, 50, 150) }),
+                        IsDefault: () => _settings.TouchDrumSize == Defaults.TouchDrumSize, Hint: S("settings.touch_drum_size.hint")),
+                ] :
+                [
+                    new(S("settings.touch_drum_edit"), 400, Enter: editTouchDrum, Hint: S("settings.touch_drum_edit.hint")),
+                    new(S("settings.touch_drum_reset"), 400, Enter: () => set(s => s with
+                    {
+                        TouchDonLeft = Defaults.TouchDonLeft,
+                        TouchDonRight = Defaults.TouchDonRight,
+                    }), Hint: S("settings.touch_drum_reset.hint")),
+                ],
             ],
             new(S("service.io_test"), 400, Enter: () => open(Page.Io)),
             new(S("service.exit"), 400, Gap: true, Enter: _menu.Pop),

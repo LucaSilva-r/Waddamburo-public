@@ -15,6 +15,10 @@ public enum ControllerVibration { Off, BigNotes, AllNotes, EveryHit }
 /// or keys are played.</summary>
 public enum TouchDrumMode { Auto, On, Off }
 
+/// <summary>The touch drum's shape (config.cfg touch_drum_layout): one half drum at the bottom, or two don circles the
+/// player places (anywhere else is ka, by the screen's side).</summary>
+public enum TouchDrumLayout { Single, Split }
+
 /// <summary>
 /// Cabinet settings (the original's service-menu options plus Waddamburo's own), read from
 /// config.cfg: <c>key = value</c> lines, <c>#</c> comments. The file carries
@@ -508,6 +512,16 @@ public sealed partial record ArcadeSettings
 
     /// <summary>The on-screen drum and the menus' touch buttons on touch screens.</summary>
     public TouchDrumMode TouchDrum { get; init; } = TouchDrumMode.Auto;
+
+    /// <summary>The on-screen drum face's size, percent of the default (config.cfg touch_drum_size).</summary>
+    public int TouchDrumSize { get; init; } = 100;
+
+    public TouchDrumLayout TouchDrumLayout { get; init; } = TouchDrumLayout.Single;
+
+    /// <summary>The split layout's left and right don circles: centre on the stage (0-1), radius in stage heights.</summary>
+    public (float X, float Y, float R) TouchDonLeft { get; init; } = (.3f, .72f, .2f);
+
+    public (float X, float Y, float R) TouchDonRight { get; init; } = (.7f, .72f, .2f);
 
     /// <summary>Discord shows what the player is doing (home mode, while Discord runs).</summary>
     public bool DiscordPresence { get; init; } = true;

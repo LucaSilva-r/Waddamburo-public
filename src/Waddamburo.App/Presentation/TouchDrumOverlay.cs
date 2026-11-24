@@ -16,6 +16,12 @@ internal static class TouchDrumOverlay
     // As phone taiko games draw it: one white drum face (don); everything around it is ka, which flashes a ring on its side.
     public static IEnumerable<RenderQuad> Quads(OverlayPainter painter, ulong[] hits, ulong now)
     {
+        if (TouchDrum.Split)
+        {
+            foreach (var quad in splitQuads(painter, hits, now, editing: false))
+                yield return quad;
+            yield break;
+        }
         var centreX = TouchDrum.CenterX * StageWidth;
         var centreY = TouchDrum.CenterY * StageHeight;
         var face = TouchDrum.FaceRadius * StageHeight;
@@ -109,10 +115,44 @@ internal static class TouchDrumOverlay
         }, .6f + .4f * flash(hits[TouchDrum.Back], now));
     }
 
+    /// <summary>The split circles being edited: each with its resize knob, and how to use it.</summary>
+    public static IEnumerable<RenderQuad> EditorQuads(OverlayPainter painter, ulong[] hits, ulong now, string hint) =>
+        [
+            painter.Rect(0, 0, StageWidth, StageHeight, new RenderColor(0, 0, 0, .55f)),
+            .. splitQuads(painter, hits, now, editing: true),
+            painter.Text(hint, StageWidth / 2, 40, 900, 30),
+        ];
+
+    // The split layout: two don circles; a ka flashes a ring around its side's circle.
+    private static IEnumerable<RenderQuad> splitQuads(OverlayPainter painter, ulong[] hits, ulong now, bool editing)
+    {
+        for (var circle = 0; circle < 2; circle++)
+        {
+            var (x, y, r) = TouchDrum.Dons[circle];
+            float centreX = x * StageWidth, centreY = y * StageHeight, face = r * StageHeight, ring = face + 14;
+            var (ka, don) = circle == 0 ? (0, 1) : (3, 2);
+            if (flash(hits[ka], now) is > 0 and var kaFlash)
+                yield return disc(painter, "split-ka", ring, centreX, centreY, Ka, null, .8f * kaFlash);
+            yield return disc(painter, "split-face", face, centreX, centreY, Face, Outline, .8f);
+            if (flash(hits[don], now) is > 0 and var donFlash)
+                yield return disc(painter, "split-don", face, centreX, centreY, Don, Outline, .6f * donFlash);
+            if (editing)
+            {
+                var knob = TouchDrum.KnobRadius * StageHeight;
+                yield return disc(painter, "split-knob", knob, centreX + face, centreY, Ka, Outline, 1);
+            }
+        }
+    }
+
+    private static RenderQuad disc(OverlayPainter painter, string kind, float radius, float centreX, float centreY,
+        (byte, byte, byte) colour, (byte, byte, byte)? outline, float alpha) =>
+        painter.Canvas(("touch-disc", kind, MathF.Round(radius)), centreX - radius, centreY - radius, radius * 2, radius * 2,
+            canvas => canvas.RoundedRect(0, 0, radius * 2, radius * 2, radius, colour, outline is null ? 0 : 3, outline), alpha);
+
     // One side's quarter disc above the centre (the lower half lies below the stage), outlined or not.
     private static RenderQuad quarter(OverlayPainter painter, string kind, bool right, float centreX, float centreY,
         float radius, (byte, byte, byte) colour, (byte, byte, byte)? outline, float alpha) =>
-        painter.Canvas(("touch-drum", kind, right), right ? centreX : centreX - radius, centreY - radius, radius, radius,
+        painter.Canvas(("touch-drum", kind, right, radius), right ? centreX : centreX - radius, centreY - radius, radius, radius,
             canvas => canvas.RoundedRect(right ? -radius : 0, 0, radius * 2, radius * 2, radius, colour,
                 outline is null ? 0 : 3, outline), alpha);
 

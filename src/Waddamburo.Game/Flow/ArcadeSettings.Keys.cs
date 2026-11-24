@@ -52,6 +52,17 @@ public sealed partial record ArcadeSettings
         }, s => names.First(entry => EqualityComparer<T>.Default.Equals(entry.Value, get(s))).Name, saved);
     }
 
+    // A touch circle: "x, y, radius" (stage 0-1, radius in stage heights).
+    private static Key circle(string name, Func<ArcadeSettings, (float X, float Y, float R)> get,
+        Func<ArcadeSettings, (float X, float Y, float R), ArcadeSettings> set) =>
+        new(name, (s, value, line) => value.Split(',') is [var x, var y, var r]
+            && float.TryParse(x, NumberStyles.Float, CultureInfo.InvariantCulture, out var cx) && cx is >= 0 and <= 1
+            && float.TryParse(y, NumberStyles.Float, CultureInfo.InvariantCulture, out var cy) && cy is >= 0 and <= 1
+            && float.TryParse(r, NumberStyles.Float, CultureInfo.InvariantCulture, out var radius) && radius is > 0 and <= 1
+                ? set(s, (cx, cy, radius))
+                : throw new InvalidDataException($"{FileName} line {line}: {name} is x, y, radius (0-1), not '{value}'."),
+            s => string.Create(CultureInfo.InvariantCulture, $"{get(s).X:0.###}, {get(s).Y:0.###}, {get(s).R:0.###}"));
+
     // The keys in the order a save appends the missing ones (the menu's, the cabinet's, the mode); then the file-only ones.
     private static readonly Key[] Keys =
     [
@@ -142,6 +153,11 @@ public sealed partial record ArcadeSettings
         choice("touch_drum", static s => s.TouchDrum, static (s, v) => s with { TouchDrum = v },
             [("auto", TouchDrumMode.Auto), ("on", TouchDrumMode.On), ("off", TouchDrumMode.Off)],
             [("true", TouchDrumMode.On), ("false", TouchDrumMode.Off)]),
+        number("touch_drum_size", static s => s.TouchDrumSize, static (s, v) => s with { TouchDrumSize = v }, 50, 150),
+        choice("touch_drum_layout", static s => s.TouchDrumLayout, static (s, v) => s with { TouchDrumLayout = v },
+            [("single", TouchDrumLayout.Single), ("split", TouchDrumLayout.Split)]),
+        circle("touch_don_left", static s => s.TouchDonLeft, static (s, v) => s with { TouchDonLeft = v }),
+        circle("touch_don_right", static s => s.TouchDonRight, static (s, v) => s with { TouchDonRight = v }),
         flag("custom_upload_notice_seen", static s => s.CustomUploadNoticeSeen, static (s, v) => s with { CustomUploadNoticeSeen = v }),
         flag("osu_libraries_asked", static s => s.OsuLibrariesAsked, static (s, v) => s with { OsuLibrariesAsked = v }),
         flag("upload_custom_songs", static s => s.UploadCustomSongs, static (s, v) => s with { UploadCustomSongs = v }),

@@ -229,6 +229,20 @@ public sealed unsafe partial class SdlApplication
                     Recorder?.Event("window focused");
                     _focusedAt = currentEvent.window.timestamp;
                 }
+                // The split touch drum's editor takes the mouse too (a PC with a touch screen, or trying it out).
+                else if (TouchDrum.Editing && currentEvent.type is (uint)SDL_EventType.SDL_EVENT_MOUSE_BUTTON_DOWN
+                    or (uint)SDL_EventType.SDL_EVENT_MOUSE_BUTTON_UP or (uint)SDL_EventType.SDL_EVENT_MOUSE_MOTION
+                    && currentEvent.button.which != SDL_TOUCH_MOUSEID)
+                {
+                    int width, height;
+                    var motion = currentEvent.type == (uint)SDL_EventType.SDL_EVENT_MOUSE_MOTION;
+                    if ((!motion || (currentEvent.motion.state & SDL_MouseButtonFlags.SDL_BUTTON_LMASK) != 0)
+                        && SDL_GetWindowSize(_window, &width, &height) && width > 0 && height > 0)
+                        editTouchDrum(MouseFinger, (motion ? currentEvent.motion.x : currentEvent.button.x) / width,
+                            (motion ? currentEvent.motion.y : currentEvent.button.y) / height,
+                            currentEvent.type == (uint)SDL_EventType.SDL_EVENT_MOUSE_BUTTON_DOWN,
+                            currentEvent.type == (uint)SDL_EventType.SDL_EVENT_MOUSE_BUTTON_UP);
+                }
                 else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_MOUSE_MOTION && pointerMoved is not null)
                 {
                     int width, height;
@@ -305,6 +319,11 @@ public sealed unsafe partial class SdlApplication
                     else if (!currentEvent.key.repeat)
                         press(input, currentEvent.key.timestamp);
                 }
+                else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_FINGER_DOWN
+                    && editTouchDrum((ulong)currentEvent.tfinger.fingerID, currentEvent.tfinger.x, currentEvent.tfinger.y, true, false))
+                    TouchActive = true;
+                else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_FINGER_MOTION)
+                    editTouchDrum((ulong)currentEvent.tfinger.fingerID, currentEvent.tfinger.x, currentEvent.tfinger.y, false, false);
                 else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_FINGER_DOWN)
                 {
                     TouchActive = true;
@@ -328,6 +347,7 @@ public sealed unsafe partial class SdlApplication
                 }
                 else if (currentEvent.type is (uint)SDL_EventType.SDL_EVENT_FINGER_UP or (uint)SDL_EventType.SDL_EVENT_FINGER_CANCELED)
                 {
+                    TouchDrum.Release((ulong)currentEvent.tfinger.fingerID);
                     if (_fingers.Remove(currentEvent.tfinger.fingerID, out var input))
                         inputUp(input);
                 }

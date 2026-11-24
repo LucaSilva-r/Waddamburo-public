@@ -426,14 +426,39 @@ public sealed unsafe partial class SdlApplication
     // A finger's place in the window (0-1) on the touch drum, through the stage's last viewport.
     private int touchCode(float x, float y)
     {
+        var (stageX, stageY, aspect) = stagePoint(x, y);
+        return OverlayOpen ? TouchDrum.HitMenu(stageX, stageY, aspect, TouchKeyboard) : TouchDrum.Hit(stageX, stageY, aspect, TouchSearch, TouchNotices);
+    }
+
+    // A place in the window (0-1) on the stage (0-1), and the stage's aspect.
+    private (float X, float Y, float Aspect) stagePoint(float x, float y)
+    {
         int width, height;
         var stage = _renderer!.StageViewport;
         if (!SDL_GetWindowSizeInPixels(_window, &width, &height) || stage.Width <= 0 || stage.Height <= 0)
-            return OverlayOpen ? TouchDrum.HitMenu(x, y, keyboard: TouchKeyboard) : TouchDrum.Hit(x, y, search: TouchSearch, notices: TouchNotices);
-        float stageX = (x * width - stage.X) / stage.Width, stageY = (y * height - stage.Y) / stage.Height;
-        var aspect = (float)stage.Width / stage.Height;
-        return OverlayOpen ? TouchDrum.HitMenu(stageX, stageY, aspect, TouchKeyboard) : TouchDrum.Hit(stageX, stageY, aspect, TouchSearch, TouchNotices);
+            return (x, y, 16f / 9);
+        return ((x * width - stage.X) / stage.Width, (y * height - stage.Y) / stage.Height, (float)stage.Width / stage.Height);
     }
+
+    // Editing the split touch drum: a finger (or the mouse, finger MouseFinger) went down, moved or came up. The back
+    // button ends it. True: the event was the editor's.
+    private bool editTouchDrum(ulong finger, float x, float y, bool down, bool up)
+    {
+        if (!TouchDrum.Editing)
+            return false;
+        var (stageX, stageY, aspect) = stagePoint(x, y);
+        if (up)
+            TouchDrum.Release(finger);
+        else if (down && stageX * aspect < TouchDrum.BackSize && stageY < TouchDrum.BackSize)
+            TouchDrum.Editing = false;
+        else if (down)
+            TouchDrum.Grab(finger, stageX, stageY, aspect);
+        else
+            TouchDrum.Drag(finger, stageX, stageY, aspect);
+        return true;
+    }
+
+    private const ulong MouseFinger = ulong.MaxValue;
 
     private int padNumber(SDL_JoystickID id) => Array.FindIndex(_pads, pad => pad.Pad != IntPtr.Zero && pad.Id == id) + 1;
 
