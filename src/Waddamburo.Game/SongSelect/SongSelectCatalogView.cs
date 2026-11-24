@@ -73,7 +73,7 @@ public sealed record SongSelectCategory(
     public string? Description { get; init; }
 
     /// <summary>Green's own feature folder art (see <see cref="SongSelectEvent.Art"/>): the folder is one of the movie's feature folders.</summary>
-    public int? FeatureArt { get; init; }
+    public string? FeatureArt { get; init; }
 }
 
 /// <summary>A search's query and matching songs, in order (any library).</summary>
