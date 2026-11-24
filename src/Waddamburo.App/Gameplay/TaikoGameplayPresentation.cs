@@ -310,6 +310,14 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
     }
 
     private readonly LumenQuadBuffer _sceneQuads = new();
+    private readonly LumenQuadBuffer _backdropQuads = new();
+
+    /// <summary>The background video to draw this frame (GameplayFlow sets it per frame; null: none).</summary>
+    public GameplayVideoLayer? Video { get; set; }
+
+    // 1P's lane band ends here (stage pixels): the under-the-lane video fills the stage below it.
+    // ponytail: Green's 1P layout measured on screen; a layout editor move of the lane does not move it.
+    private const float UnderLaneTop = 348;
 
     /// <remarks>Lasts until the next one (its quads are reused).</remarks>
     public LumenRenderSnapshot CreateSnapshot(TimeSpan time, float interpolation)
@@ -320,17 +328,46 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         // Both lanes' backs (backdrops, lanes, notes), then their fronts, then the shared overlays:
         // each lane is separate on screen, and the kusudama covers both.
         var parts = _lanes.Select(lane => lane.CreateLayers(time)).ToArray();
-        var layers = parts.SelectMany(part => part.Back).Concat(parts.SelectMany(part => part.Front)).Concat(_shared);
-        var snapshot = new LumenScenePlayer(1280, 720, layers).CreateRenderSnapshot(interpolation, player =>
+        var backs = parts.SelectMany(part => part.Back);
+        // A background video goes over every lane's backdrops (they are drawn first, all of them: two lanes' backdrops
+        // and lanes do not overlap) and under everything else.
+        var backdrops = Video is null ? [] : backs.Where(layer => _lanes.Any(lane => lane.IsBackdrop(layer))).ToArray();
+        var layers = (backdrops.Length == 0 ? backs : backs.Except(backdrops)).Concat(parts.SelectMany(part => part.Front)).Concat(_shared);
+        float beats(LumenPlayer player)
         {
             foreach (var lane in _lanes)
                 if (lane.BeatInterpolation(player) is { } beat)
                     return beat;
             return interpolation;
-        }, _sceneQuads);
+        }
+        var snapshot = new LumenScenePlayer(1280, 720, layers).CreateRenderSnapshot(interpolation, beats, _sceneQuads);
+        if (Video is { } video)
+            snapshot = new LumenRenderSnapshot(1280, 720, [
+                // A seen-through video (added or keyed: holograms, green screens) takes the dancers' place.
+                .. new LumenScenePlayer(1280, 720, video.HidesDancers ? backdrops.Where(layer => !_lanes.Any(lane => lane.IsDancer(layer)))
+                    : backdrops).CreateRenderSnapshot(interpolation, beats, _backdropQuads).Quads,
+                videoQuad(video), .. snapshot.Quads]);
         foreach (var lane in _lanes)
             snapshot = lane.Tint(snapshot);
         return snapshot;
+    }
+
+    // The video filling its area (the stage, or below 1P's lane), cropped to keep its shape, darkened by its dim.
+    private static LumenRenderQuad videoQuad(GameplayVideoLayer video)
+    {
+        var shade = 1 - video.Dim;
+        // The chart's own box: the whole frame in it, as the charter sized it.
+        var (left, top, width, height) = video.Area ?? (0, video.UnderLane ? UnderLaneTop : 0, 1280, 720 - (video.UnderLane ? UnderLaneTop : 0));
+        // Else cover: the UVs keep the middle of the frame that fits the area's shape.
+        var (u, v) = video.Area is not null ? (0f, 0f)
+            : video.Aspect > width / height ? ((1 - width / height / video.Aspect) / 2, 0f) : (0f, (1 - video.Aspect * height / width) / 2);
+        float right = left + width, bottom = top + height;
+        return new LumenRenderQuad(0,
+            new LumenRenderVertex(left, top, u, v), new LumenRenderVertex(right, top, 1 - u, v),
+            new LumenRenderVertex(right, bottom, 1 - u, 1 - v), new LumenRenderVertex(left, bottom, u, 1 - v),
+            new LumenRenderColor(shade, shade, shade, 1), LumenRenderColor.Transparent,
+            video.Additive ? LumenRenderBlend.Add : LumenRenderBlend.Normal,
+            NativeSurface: Waddamburo.App.Presentation.BackgroundVideo.Surface);
     }
 
     /// <summary>One player's lane: judgement, score, gauge, Don and the lane's movies.</summary>
@@ -366,6 +403,10 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
 
         private static TimeSpan shown(TimeSpan time) => time;
         private readonly int _characterSlot;
+        private readonly HashSet<LumenPlayer> _backdrops = [];
+        public bool IsDancer(LumenSceneLayer layer) => layer.Player == _dancers;
+
+        public bool IsBackdrop(LumenSceneLayer layer) => _backdrops.Contains(layer.Player);
         private readonly int _side;
         private readonly int? _soundLane;
         private readonly LumenSceneLayer[] _beatLayers;
@@ -762,6 +803,10 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
             // Don is drawn right after his backdrop (reference frame order).
             // Waiwai: both Dons stand in front of the stage lights and projectors (user-confirmed: the
             // second lane's Don, drawn after them, looked right).
+            // The backdrops (skies, dancers' floor, Go-Go splash…: depth 3002 and up) a background video covers;
+            // Don-chan (3001) and the chibi runners (3000) stay over it.
+            _backdrops = background.Where(static pair => GameplaySceneComposition.Depth(pair.Key) >= 3002)
+                .Select(static pair => pair.Value.Player).ToHashSet();
             _characterSlot = stage is not null
                 ? background.Count(pair => GameplaySceneComposition.Depth(pair.Key) >= 3000)
                 : Array.FindIndex(background, pair => pair.Key is "donbg" or "donbg_w_00") + 1;
@@ -1010,3 +1055,8 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
 /// </summary>
 internal sealed record TimingMark(bool Early, bool Great, float X, float Y, float Radius, long At,
     Waddamburo.Lumen.Runtime.LumenMatrix Placement);
+
+/// <summary>A frame's background video: its width over height, where it goes, and how much it is darkened (0-1).</summary>
+internal readonly record struct GameplayVideoLayer(float Aspect, bool UnderLane, float Dim, bool Additive = false,
+    (float X, float Y, float Width, float Height)? Area = null, bool HidesDancers = false);
+

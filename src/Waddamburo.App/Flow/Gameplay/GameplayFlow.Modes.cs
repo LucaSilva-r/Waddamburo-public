@@ -26,6 +26,13 @@ internal sealed partial class GameplayFlow
         protected Play Play => Flow._play;
 
         /// <summary>
+        /// The background video at chart time <paramref name="chartTime"/>, and where it is in it: the chart's video
+        /// starts its offset after the song's audio, which starts at the chart's authored offset.
+        /// </summary>
+        public virtual (ChartVideo Video, TimeSpan Time)? Video(TimeSpan chartTime) =>
+            Flow._sourceCharts.FirstOrDefault() is { Video: { } video } chart ? (video, chartTime - chart.AuthoredOffset - video.Offset) : null;
+
+        /// <summary>
         /// Several songs played as one (a dan course): no single chart to hash, review, replay or lay out, the stage
         /// number always shows, and the play saves whole at its end (<see cref="Save"/>), not as a song.
         /// </summary>

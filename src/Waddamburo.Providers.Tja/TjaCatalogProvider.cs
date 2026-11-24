@@ -286,10 +286,50 @@ public sealed partial class TjaCatalogProvider : ISongCatalogProvider, ICatalogA
             locator,
             _options.MaximumMeasures,
             _options.MaximumNotes);
+        if (video(TjaMetadataReader.Read(bytes), locator.RelativePath) is { } movie)
+            playable = playable with { Video = movie };
         if (playable.Lyrics.IsEmpty && (otherCourseLyrics(bytes, chart, locator.Course)
             ?? await lyricsAsync(bytes, path, playable.AuthoredOffset, cancellationToken).ConfigureAwait(false)) is { IsEmpty: false } lyrics)
             playable = playable with { Lyrics = lyrics };
         return modchart is null ? playable : ChartModFile.Apply(playable, modchart);
+    }
+
+    // BGMOVIE (TJAPlayer3, OpenTaiko): a video beside the chart, starting MOVIEOFFSET seconds after the audio.
+    private ChartVideo? video(TjaMetadata metadata, string chartPath)
+    {
+        if (metadata.Get("BGMOVIE") is not { } name)
+            return null;
+        try
+        {
+            var path = resolveContainedPath(Path.Combine(Path.GetDirectoryName(chartPath) ?? "", name.Trim()));
+            // Charts made on Windows name their files in any case.
+            if (!File.Exists(path) && Path.GetDirectoryName(path) is { } folder && Directory.Exists(folder))
+                path = Directory.EnumerateFiles(folder).FirstOrDefault(file =>
+                    string.Equals(Path.GetFileName(file), Path.GetFileName(path), StringComparison.OrdinalIgnoreCase)) ?? path;
+            if (!File.Exists(path))
+                return null;
+            var offset = double.TryParse(metadata.Get("MOVIEOFFSET"), System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var seconds) && double.IsFinite(seconds) ? seconds : 0;
+            // Waddamburo's own: BGMOVIEBLEND:add (hologram videos) and BGMOVIEKEY:RRGGBB[,tolerance] (a green screen).
+            var key = metadata.Get("BGMOVIEKEY")?.Split(',', StringSplitOptions.TrimEntries);
+            return new ChartVideo(path, TimeSpan.FromSeconds(offset))
+            {
+                Additive = string.Equals(metadata.Get("BGMOVIEBLEND")?.Trim(), "add", StringComparison.OrdinalIgnoreCase),
+                KeyColor = key is [var colour, ..] && int.TryParse(colour.TrimStart('#'), System.Globalization.NumberStyles.HexNumber,
+                    System.Globalization.CultureInfo.InvariantCulture, out var rgb) ? rgb & 0xFFFFFF : null,
+                KeyTolerance = key is [_, var tolerance, ..] && int.TryParse(tolerance, out var distance) ? Math.Clamp(distance, 0, 441) : 60,
+                // BGMOVIERECT:x,y,width,height in the 1280x720 stage's pixels.
+                Area = metadata.Get("BGMOVIERECT")?.Split(',', StringSplitOptions.TrimEntries)
+                    .Select(value => float.TryParse(value, System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out var number) ? number : float.NaN).ToArray()
+                    is [var x, var y, var width, var height] && float.IsFinite(x + y) && width > 0 && height > 0
+                    ? (x, y, width, height) : null,
+            };
+        }
+        catch (Exception exception) when (exception is ArgumentException or IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     // The song's lyrics are often written in one course only (ANTI-HERO: Ura): another course's #LYRIC lines, the same

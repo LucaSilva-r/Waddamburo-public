@@ -356,6 +356,9 @@ public sealed record PlayableChart
     /// <summary>The song's lyrics in chart time, in order (TJA #LYRIC, or its LYRICS .lrc file); none for most charts.</summary>
     public ImmutableArray<ChartLyric> Lyrics { get; init; } = [];
 
+    /// <summary>The background video the chart names (TJA BGMOVIE, an osu! beatmap's Video event), when its file exists.</summary>
+    public ChartVideo? Video { get; init; }
+
     /// <summary>The tempo at <paramref name="time"/>: every note asks on every frame, so this does not walk the list.</summary>
     public double BeatsPerMinuteAt(TimeSpan time, ChartBranch? route = null)
     {
@@ -515,4 +518,23 @@ public interface IPlayableChartProvider
         ChartKey chart,
         CatalogAssetKey asset,
         CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// A chart's background video: its file, and when it starts after the song's audio (TJA MOVIEOFFSET in seconds,
+/// osu!'s Video event in milliseconds; negative: before it).
+/// </summary>
+public sealed record ChartVideo(string Path, TimeSpan Offset)
+{
+    /// <summary>Added onto the backdrops (light on black: hologram videos), which then stay; the dancers go.</summary>
+    public bool Additive { get; init; }
+
+    /// <summary>A colour (0xRRGGBB) drawn transparent, a green screen's; null: none.</summary>
+    public int? KeyColor { get; init; }
+
+    /// <summary>How far from <see cref="KeyColor"/> (RGB distance, 0-441) a pixel still counts as it.</summary>
+    public int KeyTolerance { get; init; } = 60;
+
+    /// <summary>The box the chart puts the video in (1280x720 stage pixels; it fills it), over the player's choice of area.</summary>
+    public (float X, float Y, float Width, float Height)? Area { get; init; }
 }

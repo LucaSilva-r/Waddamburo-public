@@ -394,6 +394,17 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
             ],
             .. shared(SongsSection),
             new(S("service.lyrics"), 400, Enter: () => open(Page.Lyrics), Hint: S("service.lyrics.hint")),
+            new(S("service.background_video"), 400, () => $"{{{S(_settings.BackgroundVideo switch
+                {
+                    BackgroundVideoMode.Off => "service.off",
+                    BackgroundVideoMode.UnderLane => "service.background_video.under_lane",
+                    _ => "service.on",
+                })}}}", 800,
+                Step: step => set(s => s with { BackgroundVideo = (BackgroundVideoMode)wrap((int)s.BackgroundVideo, step, 0, 2) }),
+                IsDefault: () => _settings.BackgroundVideo == Defaults.BackgroundVideo, Hint: S("service.background_video.hint")),
+            new(S("service.background_video_dim"), 400, () => $"{_settings.BackgroundVideoDim}%", 800,
+                Step: step => set(s => s with { BackgroundVideoDim = Math.Clamp(s.BackgroundVideoDim + 10 * step, 0, 90) }),
+                IsDefault: () => _settings.BackgroundVideoDim == Defaults.BackgroundVideoDim, Hint: S("service.background_video_dim.hint")),
             new(S("service.exit"), 400, Gap: true, Enter: _menu.Pop),
         ],
         // A song's lyrics (#45): on/off and their look, previewed over the menu while this page is open.

@@ -49,6 +49,10 @@ internal sealed partial class GameplayFlow
             Shell.Gameplay.Dan = plan; // put back by a restart (the play's end took it off)
         }
 
+        // Each song's own video, on that song's clock.
+        public override (ChartVideo Video, TimeSpan Time)? Video(TimeSpan chartTime) =>
+            course.Songs[_song] is { Chart.Video: { } video } song ? (video, chartTime - song.Zero - song.Chart.AuthoredOffset - video.Offset) : null;
+
         public override GameplayTimeline Timeline() => new(course.Songs[0].Chart.AuthoredOffset, DanCourseTimeline.CardLeadIn);
 
         // A new song's audio clock starts a little behind where the last one stopped: time holds until it catches up.

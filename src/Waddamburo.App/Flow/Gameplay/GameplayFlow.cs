@@ -629,6 +629,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             TaikoSongInfoPresentation.UpdateVisibility(info,
                 showStage: !Shell.HideArcadeHud || _mode.SeveralSongs || _play.SongInfoMode,
                 showInfo: _play.Lanes.Battle?.ResultShownAt is null);
+        showVideo(time);
         return Shell.Gameplay.CreateSnapshot(time, _play.Paused ? _play.PauseInterpolation
             : Shell.Editor.FreezeAnimations && Shell.Editor.IsOpen ? 1 : interpolation);
     }

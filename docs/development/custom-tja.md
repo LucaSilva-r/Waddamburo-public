@@ -169,3 +169,21 @@ read by `DanCourses`). JSON comments and trailing commas are allowed.
 - Unranked: course hashes are `custom:` + a hash of the course's JSON and its charts (an edit starts its bests over).
   Plays are saved and their bests show on the boards, but they are never uploaded nor counted for Don Medals
   (`ScoreStore.PendingDanPlays`, `PendingMedalSongs`).
+
+## Background videos
+
+`BGMOVIE:file` (TJAPlayer3, OpenTaiko) plays a video from the chart's folder behind the lane; `MOVIEOFFSET:seconds`
+starts it that long after the song's audio (negative: before). osu! beatmaps' `Video,<ms>,"file"` event is read the
+same way (`OsuTaikoChartReader.Video`). The chart carries it as `PlayableChart.Video` (`ChartVideo`), resolved when
+the chart loads; gameplay draws it over the backdrops, or below 1P's lane (`background_video`, `background_video_dim`).
+
+Black bars (rows and columns black in every frame so far, as osu!taiko videos leave the top for osu!'s playfield) are
+see-through, so the backdrops show there (`VideoMask`). Waddamburo's own headers:
+
+| Header | Effect |
+|---|---|
+| `BGMOVIEBLEND:add` | The video is added onto the backdrops (light on black); the dancers are hidden. Washes out over bright backdrops (Go-Go, a full gauge): keying holds up better. |
+| `BGMOVIEKEY:RRGGBB[,tolerance]` | A matte for that colour (green screens; `000000,40` for hologram videos on black): pixels within the tolerance (RGB distance, 60 by default) are background where they join the frame's edge, or anywhere within a third of it; darker detail inside the figure stays. Softened edge; the dancers are hidden. |
+| `BGMOVIERECT:x,y,width,height` | The whole video in that box (1280x720 stage pixels), over the player's area setting (off still hides it). Below 1P's lane, 16:9: `309,348,662,372`. |
+
+Not read: OpenTaiko's `BGA<nn>:` videos switched by `#BGAON`/`#BGAOFF`, and `BGIMAGE:`.

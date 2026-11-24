@@ -61,7 +61,7 @@ internal sealed partial class GameShell
     // texture sizes); a patched movie keeps its upscales as RGBA (the patch derives textures from them) and
     // its derived textures are not upscaled again (a split layer upscaled alone gets sharpened edges).
     public RenderTextureId? ResolveSurface(LumenNativeSurfaceKey surface) =>
-        _attract.Movie?.Resolve(surface) ?? Don?.Resolve(surface)
+        _attract.Movie?.Resolve(surface) ?? _gameplay.ResolveVideo(surface) ?? Don?.Resolve(surface)
         ?? _art.Resolve(surface)
         ?? Titles.Resolve(surface);
 

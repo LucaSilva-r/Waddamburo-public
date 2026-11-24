@@ -1,0 +1,34 @@
+using Waddamburo.App.Presentation;
+using Waddamburo.Game.Flow;
+using Waddamburo.Lumen.Rendering;
+using Waddamburo.Platform.Sdl.Rendering;
+
+namespace Waddamburo.App.Flow.Gameplay;
+
+internal sealed partial class GameplayFlow
+{
+    // The playing chart's background video (BackgroundVideo), opened when a song that has one is drawn.
+    // ponytail: it stays open after the song until the next song's first frame replaces or closes it.
+    private BackgroundVideo? _video;
+
+    /// <summary>The background video's frame, for the scene's native fill.</summary>
+    public RenderTextureId? ResolveVideo(LumenNativeSurfaceKey surface) => _video?.Resolve(surface);
+
+    // Each frame: the video of the chart at that time, its frame, and where the scene draws it.
+    private void showVideo(TimeSpan chartTime)
+    {
+        var mode = Shell.Arcade.BackgroundVideo;
+        var wanted = mode == BackgroundVideoMode.Off || Demo ? null : _mode.Video(chartTime);
+        if (wanted?.Video.Path != _video?.Path)
+        {
+            _video?.Dispose();
+            _video = wanted is { } open ? BackgroundVideo.Open(Shell.Application, open.Video) : null;
+        }
+        if (_video is not null && wanted is { } shown)
+            _video.Show(shown.Time);
+        Shell.Gameplay.Video = _video is { Visible: true } video
+            ? new(video.Width / video.Height, mode == BackgroundVideoMode.UnderLane && _play.Charts.Length == 1,
+                Shell.Arcade.BackgroundVideoDim / 100f, video.Additive, video.Area, video.HidesDancers)
+            : null;
+    }
+}

@@ -19,6 +19,16 @@ public sealed class OsuLazerCatalogProviderTests
         song.Charts.ToDictionary(static chart => chart.Course!.Value, static chart => chart.DifficultyName);
 
     [Fact]
+    public void VideoEventGivesItsFileAndOffset()
+    {
+        const string beatmap = "osu file format v14\n[General]\nAudioFilename: audio.mp3\n[Events]\n//Background and Video events\n"
+            + "0,0,\"bg.jpg\",0,0\nVideo,-120,\"movies\\clip.mp4\"\n[TimingPoints]\n0,500,4,1,0,100,1,0\n";
+        Assert.Equal(("movies/clip.mp4", TimeSpan.FromMilliseconds(-120)), OsuTaikoChartReader.Video(beatmap));
+        Assert.Equal(("old.avi", TimeSpan.FromMilliseconds(500)), OsuTaikoChartReader.Video("[Events]\n1,500,\"old.avi\"\n"));
+        Assert.Null(OsuTaikoChartReader.Video("[Events]\n0,0,\"bg.jpg\",0,0\n"));
+    }
+
+    [Fact]
     public void LazerHashStoreDoesNotTreatStorageFoldersAsSongPrivacyFolders()
     {
         var root = Path.Combine(Path.GetTempPath(), $"wdb-lazer-privacy-{Guid.NewGuid():N}");

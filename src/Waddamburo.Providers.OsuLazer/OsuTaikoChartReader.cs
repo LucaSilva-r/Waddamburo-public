@@ -12,6 +12,33 @@ public static class OsuTaikoChartReader
 {
     private const double BaseSliderMultiplier = 1.4;
 
+    /// <summary>
+    /// The beatmap's background video ([Events] <c>Video,offset,"file"</c>, or <c>1,...</c>): its file name in the set
+    /// and its start after the audio (milliseconds). Null: none.
+    /// </summary>
+    public static (string File, TimeSpan Offset)? Video(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        var events = false;
+        foreach (var raw in text.Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line.StartsWith('[') && line.EndsWith(']'))
+            {
+                if (events)
+                    break;
+                events = line == "[Events]";
+                continue;
+            }
+            if (!events || line.Split(',', 3) is not [var type, var offset, var file] || type is not ("Video" or "1"))
+                continue;
+            var name = file.Split(',')[0].Trim().Trim('"');
+            if (name.Length > 0 && int.TryParse(offset, NumberStyles.Integer, CultureInfo.InvariantCulture, out var milliseconds))
+                return (name.Replace('\\', '/'), TimeSpan.FromMilliseconds(milliseconds));
+        }
+        return null;
+    }
+
     public static PlayableChart Read(string text, ChartKey key, int level)
     {
         ArgumentNullException.ThrowIfNull(text);

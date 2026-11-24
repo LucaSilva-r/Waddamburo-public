@@ -15,6 +15,10 @@ public enum ControllerVibration { Off, BigNotes, AllNotes, EveryHit }
 /// or keys are played.</summary>
 public enum TouchDrumMode { Auto, On, Off }
 
+/// <summary>A chart's background video (config.cfg background_video): over the backdrops of every layout, under the lane
+/// only (one player; the backdrops above it stay), or not shown.</summary>
+public enum BackgroundVideoMode { On, UnderLane, Off }
+
 /// <summary>The touch drum's shape (config.cfg touch_drum_layout): one half drum at the bottom, or two don circles the
 /// player places (anywhere else is ka, by the screen's side).</summary>
 public enum TouchDrumLayout { Single, Split }
@@ -541,6 +545,12 @@ public sealed partial record ArcadeSettings
     /// <summary>Which hits get the early/late glow under the judgement circle.</summary>
     /// <summary>A song's lyrics (TJA #LYRIC or its .lrc) shown while it plays (#45).</summary>
     public bool Lyrics { get; init; }
+
+    /// <summary>A chart's background video (TJA BGMOVIE, osu! Video): where it shows, or off.</summary>
+    public BackgroundVideoMode BackgroundVideo { get; init; } = BackgroundVideoMode.On;
+
+    /// <summary>How much the background video is darkened (percent), so the notes stay readable.</summary>
+    public int BackgroundVideoDim { get; init; } = 20;
 
     /// <summary>The lyrics' place from the bottom centre (stage pixels), size (percent), outline (0xRRGGBB) and backing band (percent opacity).</summary>
     public int LyricsX { get; init; }
