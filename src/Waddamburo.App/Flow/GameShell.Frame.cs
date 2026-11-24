@@ -237,6 +237,7 @@ internal sealed partial class GameShell
         // always: touch_drum (auto: until a controller or keys play; off) governs the drum alone, so a player without a
         // controller still reaches every menu.
         Application.TouchDrumEnabled = Arcade.TouchDrum != TouchDrumMode.Off;
+        SdlDonRenderer.ResolutionScale = Arcade.DonResolution / 100f;
         TouchDrum.FaceRadius = .42f * Arcade.TouchDrumSize / 100;
         TouchDrum.Split = Arcade.TouchDrumLayout == TouchDrumLayout.Split || TouchDrum.Editing;
         if (!TouchDrum.Editing)

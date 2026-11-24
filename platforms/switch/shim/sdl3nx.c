@@ -18,6 +18,7 @@ static void set_error(const char *s) { snprintf(g_err, sizeof g_err, "%s", s); }
 const char *SDL_GetError(void) { return g_err; }
 bool SDL_SetHint(const char *n, const char *v) { return true; }
 bool SDL_SetAppMetadata(const char *a, const char *b, const char *c) { return true; }
+bool SDL_SetClipboardText(const char *t) { return false; } // ponytail: no clipboard on the Switch (Song Select's H copies hashes)
 Uint64 SDL_GetTicksNS(void) { return armTicksToNs(armGetSystemTick()); }
 void SDL_free(void *p) { free(p); }
 

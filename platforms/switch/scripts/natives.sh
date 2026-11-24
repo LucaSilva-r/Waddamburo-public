@@ -53,11 +53,13 @@ fi
 if [ $WHAT = waddamburo -o $WHAT = all ]; then
   N=$ROOT/native; O=$OUT/natives/obj; mkdir -p $O
   gcc() { aarch64-none-elf-gcc "$@"; }
-  aarch64-none-elf-gcc $CF -std=gnu11 -DWADDAMBURO_MEDIA_BUILDING_LIBRARY=1 -DWADDAMBURO_MEDIA_HAS_FFMPEG=1 -DWADDAMBURO_MEDIA_HAS_VGMSTREAM=1 \
+  # Our FFmpeg's headers before $CF's portlibs: devkitPro ships an older FFmpeg (other struct layouts: frame sizes and
+  # timestamps read from the wrong fields).
+  aarch64-none-elf-gcc -I$P/include $CF -std=gnu11 -DWADDAMBURO_MEDIA_BUILDING_LIBRARY=1 -DWADDAMBURO_MEDIA_HAS_FFMPEG=1 -DWADDAMBURO_MEDIA_HAS_VGMSTREAM=1 \
     -I$N/media/include -I$P/include -I$OUT/natives/vgmstream-src/src -c $N/media/src/media.c -o $O/media.o
-  aarch64-none-elf-gcc $CF -std=gnu11 -DWADDAMBURO_MEDIA_BUILDING_LIBRARY=1 -DWADDAMBURO_MEDIA_HAS_FFMPEG=1 -DWADDAMBURO_MEDIA_HAS_VGMSTREAM=1 \
+  aarch64-none-elf-gcc -I$P/include $CF -std=gnu11 -DWADDAMBURO_MEDIA_BUILDING_LIBRARY=1 -DWADDAMBURO_MEDIA_HAS_FFMPEG=1 -DWADDAMBURO_MEDIA_HAS_VGMSTREAM=1 \
     -I$N/media/include -I$P/include -I$OUT/natives/vgmstream-src/src -c $N/media/src/video.c -o $O/video.o
-  aarch64-none-elf-gcc $CF -std=gnu11 -DWADDAMBURO_MEDIA_BUILDING_LIBRARY=1 -DWADDAMBURO_MEDIA_HAS_FFMPEG=1 -DWADDAMBURO_MEDIA_HAS_VGMSTREAM=1 \
+  aarch64-none-elf-gcc -I$P/include $CF -std=gnu11 -DWADDAMBURO_MEDIA_BUILDING_LIBRARY=1 -DWADDAMBURO_MEDIA_HAS_FFMPEG=1 -DWADDAMBURO_MEDIA_HAS_VGMSTREAM=1 \
     -I$N/media/include -I$P/include -I$OUT/natives/vgmstream-src/src -c $N/media/src/transcode.c -o $O/transcode.o
   aarch64-none-elf-ar rcs $P/lib/libwaddamburo_media.a $O/media.o $O/video.o $O/transcode.o
   aarch64-none-elf-gcc $CF -std=gnu11 -DWADDAMBURO_TEXT_BUILDING_LIBRARY=1 -I$N/text/include -I$DEVKITPRO/portlibs/switch/include/freetype2 \

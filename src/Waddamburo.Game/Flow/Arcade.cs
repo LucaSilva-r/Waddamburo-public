@@ -554,6 +554,9 @@ public sealed partial record ArcadeSettings
     /// <summary>How much the background video is darkened (percent), so the notes stay readable.</summary>
     public int BackgroundVideoDim { get; init; } = 20;
 
+    /// <summary>Don-chan's 3D rendering resolution, percent of the window's (lower on phones, whose GPUs it costs most).</summary>
+    public int DonResolution { get; init; } = OperatingSystem.IsAndroid() || OperatingSystem.IsIOS() ? 60 : 100;
+
     /// <summary>The most frames a second a background video shows (30 or 60): 30 halves the decoding on weak CPUs.</summary>
     public int BackgroundVideoFps { get; init; } = 30;
 

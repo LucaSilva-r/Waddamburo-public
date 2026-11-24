@@ -686,6 +686,9 @@ internal sealed unsafe partial class RenderDevice : IDisposable
                     BottomRight = inAtlas(quad.BottomRight, rect), BottomLeft = inAtlas(quad.BottomLeft, rect),
                 };
             var multiply = quad.MultiplyColor;
+            // An additive quad tells fs_quad by its multiply alpha, stored as -1 - alpha (normal ones are 0..1).
+            if (quad.Blend == RenderBlend.Add && quad.LumaKey <= 0)
+                multiply = multiply with { Alpha = -1 - multiply.Alpha };
             var add = quad.AddColor;
             var corners = vertices.Slice(index * 6, 6);
             corners[0] = vertex(quad.TopLeft, multiply, add);
@@ -703,6 +706,8 @@ internal sealed unsafe partial class RenderDevice : IDisposable
             if (index < quadCount && sameBatch(quads[start], quads[index])
                 && drawn(quads[start].Texture.Value).idx == drawn(quads[index].Texture.Value).idx)
                 continue;
+            if (s_batchStats && index < quadCount)
+                countBreak(quads[start], quads[index]);
             var first = quads[start];
             bgfx.set_state(stateFor(first), 0);
             var stencilOperation = first.MaskOperation switch
@@ -732,8 +737,24 @@ internal sealed unsafe partial class RenderDevice : IDisposable
         corner with { U = rect.U + corner.U * rect.Width, V = rect.V + corner.V * rect.Height };
 
     // The texture itself is compared by the caller (its page: atlased textures batch together).
+    // WADDAMBURO_BATCH_STATS=1: why consecutive quads went into separate draws, per frame, in the exit summary.
+    private static readonly bool s_batchStats = Environment.GetEnvironmentVariable("WADDAMBURO_BATCH_STATS") == "1";
+    private readonly Dictionary<string, int> _breaks = [];
+
+    private void countBreak(in RenderQuad a, in RenderQuad b)
+    {
+        var why = blendState(a.Blend) != blendState(b.Blend) ? "blend" : a.MaskOperation != b.MaskOperation || a.MaskDepth != b.MaskDepth ? "mask"
+            : a.Sampling != b.Sampling ? "sampling" : tiles(a) != tiles(b) ? "tiles" : a.LumaKey != b.LumaKey ? "luma"
+            : _atlased.ContainsKey(a.Texture.Value) || _atlased.ContainsKey(b.Texture.Value) ? "atlas page" : "texture";
+        _breaks[why] = _breaks.GetValueOrDefault(why) + 1;
+    }
+
+    // Add draws in the normal blend state (fs_quad writes its alpha as 0: s + d(1 - 0) = s + d), so normal and additive quads,
+    // which Lumen movies interleave, share draws.
+    private static RenderBlend blendState(RenderBlend blend) => blend == RenderBlend.Add ? RenderBlend.Normal : blend;
+
     private static bool sameBatch(in RenderQuad a, in RenderQuad b) =>
-        a.Blend == b.Blend && a.MaskOperation == b.MaskOperation && a.LumaKey == b.LumaKey
+        blendState(a.Blend) == blendState(b.Blend) && a.MaskOperation == b.MaskOperation && a.LumaKey == b.LumaKey
         && a.MaskDepth == b.MaskDepth && a.Sampling == b.Sampling && tiles(a) == tiles(b);
 
     private static ulong stateFor(in RenderQuad quad)
@@ -742,7 +763,8 @@ internal sealed unsafe partial class RenderDevice : IDisposable
             return 0; // stencil only: no colour writes
         // Premultiplied source: normal s + d(1 - sa), add s + d, screen s + d(1 - s), multiply sd + d(1 - sa).
         var source = quad.Blend == RenderBlend.Multiply ? bgfx.StateFlags.BlendDstColor : bgfx.StateFlags.BlendOne;
-        var destination = quad.Blend switch
+        // fs_luma has no additive flag: its quads keep their own blend.
+        var destination = (quad.LumaKey > 0 ? quad.Blend : blendState(quad.Blend)) switch
         {
             RenderBlend.Add => bgfx.StateFlags.BlendOne,
             RenderBlend.Screen => bgfx.StateFlags.BlendInvSrcColor,
@@ -820,7 +842,8 @@ internal sealed unsafe partial class RenderDevice : IDisposable
             return;
         if (_framesPresented > 0)
             Console.WriteLine(FormattableString.Invariant(
-                $"Draws: {(double)_drawsSubmitted / _framesPresented:F1} quad draws a frame over {_framesPresented} frames; {_pages.Count} atlas pages, {_atlased.Count} atlased textures."));
+                $"Draws: {(double)_drawsSubmitted / _framesPresented:F1} quad draws a frame over {_framesPresented} frames; {_pages.Count} atlas pages, {_atlased.Count} atlased textures.")
+                + (s_batchStats ? FormattableString.Invariant($" Breaks a frame: {string.Join(", ", _breaks.OrderByDescending(p => p.Value).Select(p => FormattableString.Invariant($"{p.Key} {(double)p.Value / _framesPresented:F1}")))}.") : ""));
         foreach (var (id, texture) in _textures)
             if (!_borrowedTextures.Contains(id) && !_atlased.ContainsKey(id))
                 bgfx.destroy_texture(texture);

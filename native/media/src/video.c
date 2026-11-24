@@ -95,7 +95,12 @@ waddamburo_media_result WADDAMBURO_MEDIA_CALL waddamburo_media_video_open_file(
         goto ffmpeg_failure;
     /* Every core (FFmpeg picks the count): one thread could not keep a 1080p60 background video up with the game
        running (84 frames a second alone, without SIMD). */
+#if defined(__SWITCH__)
+    /* FFmpeg built for no OS cannot count cores there (it would take one): the three the game runs on. */
+    video->codec->thread_count = 3;
+#else
     video->codec->thread_count = 0;
+#endif
     video->codec->thread_type = FF_THREAD_FRAME | FF_THREAD_SLICE;
     status = avcodec_open2(video->codec, decoder, NULL);
     if (status < 0)

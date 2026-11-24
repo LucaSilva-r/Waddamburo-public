@@ -148,6 +148,7 @@ internal sealed class BackgroundVideo : IDisposable
         if (newest is null)
             return;
         _application.UpdateRgba8(Texture, _decoder.Width, _decoder.Height, newest);
+        _uploaded++;
         _spare.Add(newest);
         _shown = newestTime;
     }
@@ -183,7 +184,12 @@ internal sealed class BackgroundVideo : IDisposable
                     continue;
                 }
                 var pixels = _spare.TryTake(out var reused) ? reused : new byte[size];
-                if (!_decoder.TryReadFrame(pixels, out var time))
+                var started = System.Diagnostics.Stopwatch.GetTimestamp();
+                var read = _decoder.TryReadFrame(pixels, out var time);
+                _decodeTicks += System.Diagnostics.Stopwatch.GetElapsedTime(started).Ticks;
+                if (read)
+                    (_decoded, _lastDecoded) = (_decoded + 1, time);
+                if (!read)
                 {
                     ended = true;
                     _spare.Add(pixels);
@@ -209,6 +215,7 @@ internal sealed class BackgroundVideo : IDisposable
                     continue;
                 }
                 lastKept = time.Ticks;
+                _kept++;
                 _mask.Apply(pixels);
                 // Wait for room, but give up on the frame when a seek asks for another place.
                 while (!_frames.TryAdd((pixels, time, generation), 20, _stop.Token))
@@ -225,10 +232,17 @@ internal sealed class BackgroundVideo : IDisposable
         }
     }
 
+    // Totals for the summary line at the end: whether a slow device decodes, keeps and shows the video.
+    private int _decoded, _kept, _uploaded;
+    private long _decodeTicks;
+    private TimeSpan _lastDecoded;
+
     public void Dispose()
     {
         _stop.Cancel();
         _worker.Join();
+        Console.WriteLine(FormattableString.Invariant(
+            $"Background video {System.IO.Path.GetFileName(Path)}: {_decoded} frames decoded (to {_lastDecoded.TotalSeconds:F1} s, {(_decoded == 0 ? 0 : TimeSpan.FromTicks(_decodeTicks).TotalMilliseconds / _decoded):F1} ms each), {_kept} kept, {_uploaded} shown."));
         _decoder.Dispose();
         _application.ReleaseTexture(Texture);
         _frames.Dispose();

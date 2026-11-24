@@ -269,11 +269,17 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
             _accessoryTicks[index] += frames;
     }
 
+    /// <summary>
+    /// Don-chan's render targets as a share of the window's scale (config.cfg don_resolution): his two passes fill a
+    /// full target each per player, a weak phone GPU's largest cost in menus; he is small on screen.
+    /// </summary>
+    public static float ResolutionScale { get; set; } = 1;
+
     void IGpuRenderPrepass.Record(uint width, uint height)
     {
         // At the window's own scale. Drawing at twice it (anti-aliased by the downscale) looked the same to the
         // user, and the kusudama and balloon camera's big target then took a Celeron's GPU from 16 to 25 ms a frame.
-        var scale = Math.Min(width / 1280f, height / 720f);
+        var scale = Math.Min(width / 1280f, height / 720f) * ResolutionScale;
         uint pixels(float units) => (uint)Math.Clamp(MathF.Round(units * scale / 8) * 8, 64, 4096);
         for (var index = 0; index < _players.Length; index++)
         {
