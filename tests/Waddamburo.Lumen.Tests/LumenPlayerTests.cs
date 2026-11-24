@@ -2188,6 +2188,25 @@ public sealed class LumenPlayerTests
         Assert.Throws<ArgumentOutOfRangeException>(() => scene.CreateRenderSnapshot(float.PositiveInfinity));
     }
 
+    // The movie editor clears depths with `template with { PackedDepth = depth << 16 }`: the removal follows PackedDepth
+    // (custom genre folders kept the stock description under their own when it followed Depth).
+    [Fact]
+    public void RemoveObjectFollowsItsPackedDepth()
+    {
+        var movie = createMovie();
+        var sprite = movie.Sprites.Single();
+        var placement = sprite.Timeline.OfKind(LmbCommandKind.PlaceObject).First();
+        var template = LmbTimelineCommand.RemoveObject(0, 9u << 16, default); // Depth 9: nothing there
+        movie = movie with { Sprites = [sprite with { Timeline = [
+            LmbTimelineCommand.ShowFrame(0, 2, default), placement with { Depth = 0 }, placement with { Depth = 5 },
+            LmbTimelineCommand.ShowFrame(1, 1, default), template with { PackedDepth = 5u << 16 },
+        ] }] };
+        var player = new LumenPlayer(movie, 1280, 720);
+        Assert.Equal(2, player.CreateRenderSnapshot().Quads.Length);
+        player.Advance();
+        Assert.Single(player.CreateRenderSnapshot().Quads);
+    }
+
     [Fact]
     public void ClipDepthMasksOnlyFollowingSiblingsAndSurvivesMoveAndSeek()
     {

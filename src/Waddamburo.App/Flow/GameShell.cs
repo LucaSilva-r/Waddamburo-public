@@ -896,7 +896,8 @@ internal sealed partial class GameShell : IDisposable
             },
             // A card given to the drum, or the account chosen for it in the home player setup.
             Dan = _danCourses,
-            Event = () => _event.Current,
+            // Art this Green lacks: the folder's name is drawn instead (a missing art's fill would be unresolvable).
+            Event = () => _event.Current is { Art: { } art } running && !_art.HasFeatureBoard(art) ? running with { Art = null } : _event.Current,
             PlayerLook = side => TaikoGuest.Profiles[side]?.Look,
             OnlineAvailable = () => Room.Available,
             AiBattleInstalled = _aiBattleInstalled,

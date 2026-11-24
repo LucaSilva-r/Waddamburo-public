@@ -19,6 +19,19 @@ internal sealed class FeatureBoardArt(NutData nutData)
             || part is not ("v" or "h" or "icon" or "image") || release.Length is 0 or > 16
             || !release.All(static c => char.IsAsciiLetterOrDigit(c) || c == '-') || !int.TryParse(index, out var art))
             return null;
-        return nutData.Texture($"{release}/appendable/00/featureboard_{part}/featureboard_{part}.nut", art);
+        return nutData.Texture(path(release, part), art);
     }
+
+    /// <summary>
+    /// Whether this Green has all four parts of an art ("release:index"): a dump imported with Green's own files only, or an
+    /// older one, can lack another release's featureboard set. Read from disk, nothing uploaded.
+    /// </summary>
+    public bool Has(string art) =>
+        art.Split(':') is [var release, var index] && int.TryParse(index, out var at) && at >= 0
+        && release.Length is > 0 and <= 16 && release.All(static c => char.IsAsciiLetterOrDigit(c) || c == '-')
+        && Parts.All(part => at < nutData.Textures(path(release, part)).Length);
+
+    private static readonly string[] Parts = ["v", "h", "icon", "image"];
+
+    private static string path(string release, string part) => $"{release}/appendable/00/featureboard_{part}/featureboard_{part}.nut";
 }

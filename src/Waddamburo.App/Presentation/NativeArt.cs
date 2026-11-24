@@ -39,6 +39,9 @@ internal sealed class NativeArt(SdlApplication application, string fontPath, str
     // ponytail: never evicted; the parts keep their textures for good anyway.
     private readonly Dictionary<LumenNativeSurfaceKey, RenderTextureId> _art = [];
 
+    /// <summary>Whether this Green has a feature folder art ("release:index"); see <see cref="FeatureBoardArt.Has"/>.</summary>
+    public bool HasFeatureBoard(string art) => featureBoards.Has(art);
+
     public RenderTextureId? Resolve(LumenNativeSurfaceKey surface)
     {
         if (_art.TryGetValue(surface, out var known))

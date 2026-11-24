@@ -1101,7 +1101,9 @@ public sealed class LumenPlayer : IAvm1Host
                     applyPlacement(instance, place, queueActions);
                     break;
                 case { Kind: LmbCommandKind.RemoveObject } remove:
-                    var depth = TimelineDepthBase + remove.Depth;
+                    // From PackedDepth, the word the file carries: a command made `with { PackedDepth = ... }` (the movie editor's
+                    // clears) keeps its template's Depth.
+                    var depth = TimelineDepthBase + (int)(remove.PackedDepth >> 16);
                     if (instance.Children.TryGetValue(depth, out var removed))
                     {
                         instance.Children.Remove(depth);
