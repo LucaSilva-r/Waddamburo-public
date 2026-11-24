@@ -283,6 +283,7 @@ that uses it). A switch is on with `1` unless its line says otherwise.
 | `WADDAMBURO_ICON_GALLERY` | 1: Song Select shows every option icon on its boards. | Game |
 | `WADDAMBURO_INPUT_TRACE` | 1: presses printed in --press format (KEY@tick). | App |
 | `WADDAMBURO_NAME` | Player 1's name board shows this name. | App |
+| `WADDAMBURO_NO_ATLAS` | 1: every texture on its own, no atlas pages (comparisons; a GPU that misdraws the atlas). | Platform.Sdl |
 | `WADDAMBURO_NO_GENRE_PATCH` | 1: Song Select's movie runs without the genre patch. | Game |
 | `WADDAMBURO_ONLINE_ECHO` | Online play alone: your own hits come back as the partner's lane, this many ms later. | App |
 | `WADDAMBURO_ONLINE_LAN` | 1: LAN addresses offered to strangers too. | App |
@@ -297,7 +298,9 @@ that uses it). A switch is on with `1` unless its line says otherwise.
 | `WADDAMBURO_RESULT_PLAYERS` | 2: --start-scene results show the diagnostic result for both players. | App |
 | `WADDAMBURO_SCROLL_TRACE` | 1: Song Select's scroll steps on the console. | Game |
 | `WADDAMBURO_SETUP_BOTH` | 1: the home player setup opens for both drums. | App |
+| `WADDAMBURO_SETUP_PAGE` | --setup-preview opens this first-setup page (steps, importing, pc). | App |
 | `WADDAMBURO_SETUP_TRACE` | 1: the home player setup's columns on the console. | App |
+| `WADDAMBURO_SOFTWARE_MIX` | 1: the old managed mix thread on SDL outputs instead of device voices (comparisons). | Platform.Sdl |
 | `WADDAMBURO_TICK_STATS` | 1: the game logic's average time and allocation per tick, every 600 ticks. | App |
 | `WADDAMBURO_TITLE` | Player 1's title plate (plate:text). | App |
 | `WADDAMBURO_TREE_EVERY` | Movie viewer: the display list printed every this many ticks. | App |
