@@ -280,7 +280,7 @@ public sealed class SongSelectCatalogView
                 boardStyle(""), [], link)
             {
                 Tint = LibraryTint(link),
-                Art = libraryArt(snapshot, link),
+                Art = libraryArt(link),
             }));
         if (tutorial && mode == SongSelectMode.Waiwai)
             categories = categories.Append(new SongSelectCategory(new CategoryKey(SongSourceKind.Stock, "waiwai-tutorial"),
@@ -452,7 +452,7 @@ public sealed class SongSelectCatalogView
     private static string songs(int count) => count == 1 ? "1 song" : $"{count} songs";
 
     // The library folders' slogans: one column per line, short enough for a column (about 9 characters).
-    private static FolderArt? libraryArt(SongCatalogSnapshot snapshot, SongSourceKind library) => library switch
+    private static FolderArt? libraryArt(SongSourceKind library) => library switch
     {
         SongSourceKind.Stock => new FolderArt(FolderArtStyle.Original, LibraryName(library),
             Japanese ? "オリジナル\n曲で\nあそぼう!!" : "Play the\noriginal\nsongs!!"),

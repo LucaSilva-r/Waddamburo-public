@@ -60,12 +60,9 @@ public sealed class ResultHostBinding(
     /// <summary>AI battle: the normal results closed (the section results come next).</summary>
     public Action? NormalResultClosed { get; init; }
 
-    private LumenHostContext? _context;
-
     public void Install(LumenHostContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
-        _context = context;
         context.RegisterExternalInterfaceCall(call =>
         {
             if (call.Arguments.Length > 0 && call.Arguments[0].Kind == LumenHostValueKind.Text
@@ -158,7 +155,6 @@ public sealed class ResultHostBinding(
     private static void sendPlay(LumenPlayer player, TaikoPlayResult play, int side, long? best)
     {
         var p = number(side);
-        var no = LumenHostValue.FromBoolean(false);
         call(player, "SetCourse", p, number(play.CourseIndex));
         call(player, "SetScore", p, number(play.Score));
         call(player, "SetBestScore", p, number(best ?? -10)); // -10: a guest

@@ -98,7 +98,7 @@ internal static class FolderArtPainter
     /// The genre description slot (160x400): up to three vertical columns, right to left, each starting
     /// lower than the one before (the game's own descriptions are staggered so).
     /// </summary>
-    public static RgbaTextSurface Description(string lines, string fontPath, uint outlineRgb, int scale, bool squash)
+    public static RgbaTextSurface Description(string lines, string fontPath, uint outlineRgb, int scale)
     {
         var canvas = new VectorCanvas(DescriptionWidth, DescriptionHeight, scale, fontPath);
         foreach (var (line, index) in lines.Split('\n').Where(static line => line.Length > 0).Take(DescriptionColumns)

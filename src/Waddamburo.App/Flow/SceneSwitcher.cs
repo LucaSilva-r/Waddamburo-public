@@ -22,7 +22,6 @@ internal sealed class SceneSwitcher(
 {
     private SceneId? _fadeTarget;
     private int _fadeStartTick;
-    private long _liveAfterCollect;
 
     /// <summary>The scene on screen.</summary>
     public LumenGameSceneInstance Active { get; private set; } = null!;
@@ -162,13 +161,6 @@ internal sealed class SceneSwitcher(
         }
     }
 
-    // The old scene's archives and decoded pixels are large-object garbage the GC neither compacts
-    // nor returns on its own, so the heap only grew across songs. The loading frame is still up.
-    // Only when there is much to give back: a collection costs 50-90 ms and most switches now free little.
-    // Into a lane (songs, replays, training, calibration) only under a restart's black: the rainbow
-    // keeps moving over a normal start, so the next switch out collects instead. On a lane the GC also
-    // avoids blocking full collections of its own.
-    // ponytail: 128 MiB grown since the last clean-up (garbage and all); tune if RSS creeps.
     // What the mix queues ahead of a collection: what the last ones took (500 ms on a Switch, 75 ms on a PC), so the sound
     // plays through. The first one is a guess.
     private TimeSpan _collectCover = TimeSpan.FromMilliseconds(150);
@@ -176,12 +168,14 @@ internal sealed class SceneSwitcher(
     private void cover(TimeSpan collected) =>
         _collectCover = TimeSpan.FromMilliseconds(Math.Clamp(Math.Max(collected.TotalMilliseconds * 1.2, _collectCover.TotalMilliseconds * 0.8), 150, 700));
 
-    /// <summary>A full collection now; what is live after it is what the next clean-up measures growth from.</summary>
-    public void Collect()
+    /// <summary>
+    /// A full, compacting collection now: the old scene's archives and decoded pixels are large-object garbage the GC
+    /// neither compacts nor returns on its own.
+    /// </summary>
+    private static void collect()
     {
         System.Runtime.GCSettings.LargeObjectHeapCompactionMode = System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
         GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
-        _liveAfterCollect = GC.GetTotalMemory(false);
     }
 
     private void tidyMemory()
@@ -195,7 +189,7 @@ internal sealed class SceneSwitcher(
         // mixer plays on (it is native), and the mix queues past it where it is not.
         var started = Stopwatch.GetTimestamp();
         shell.Audio?.FillAhead(_collectCover);
-        Collect();
+        collect();
         cover(Stopwatch.GetElapsedTime(started));
     }
 }

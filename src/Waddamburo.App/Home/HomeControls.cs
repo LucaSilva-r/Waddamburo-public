@@ -36,7 +36,7 @@ internal sealed class HomeControls : IDisposable
     private float _lastInterpolation;
     private float _pauseInterpolation;
 
-    public HomeControls(GameShell shell, GameplayFlow gameplay, CalibrationFlow calibration, string fontPath, string assetRoot)
+    public HomeControls(GameShell shell, GameplayFlow gameplay, CalibrationFlow calibration, string assetRoot)
     {
         _calibration = calibration;
         _shell = shell;

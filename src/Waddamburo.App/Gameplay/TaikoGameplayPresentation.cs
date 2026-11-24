@@ -995,12 +995,6 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
 
         public LumenRenderSnapshot Tint(LumenRenderSnapshot snapshot) => _character?.Tint(snapshot) ?? snapshot;
 
-        private static void call(LumenPlayer player, string name, params LumenHostValue[] arguments)
-        {
-            if (!player.TryInvokeCallback(name, arguments))
-                throw new InvalidDataException($"Gameplay movie is missing callback '{name}'.");
-        }
-
         private static void label(LumenPlayer player, string name)
         {
             if (!player.TryGotoLabel("", name))

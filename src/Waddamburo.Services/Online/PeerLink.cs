@@ -314,11 +314,11 @@ public sealed class PeerLink : IAsyncDisposable
             if (data.Length >= HeaderLength && data[0] is Probe or ProbeAnswer or Payload)
                 handlePacket(data, from, viaRelay: false);
             else if (StunMessage.Parse(data) is { } message)
-                handleStun(message, from);
+                handleStun(message);
         }
     }
 
-    private void handleStun(StunMessage message, IPEndPoint from)
+    private void handleStun(StunMessage message)
     {
         if (_pending.TryRemove(Convert.ToHexString(message.TransactionId), out var answer))
             answer.TrySetResult(message);

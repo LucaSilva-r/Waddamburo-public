@@ -47,7 +47,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
 
     /// <summary>The next song's charts (one per player) and layout, for <see cref="Enter"/>.</summary>
     /// <summary>Plays a dan course: after <see cref="Prepare"/> with its merged chart.</summary>
-    public void PrepareCourse(DanCourseTimeline course, IReadOnlyList<SongSelectSong> songs, DanCourseStatus status) =>
+    public void PrepareCourse(DanCourseTimeline course, IReadOnlyList<SongSelectSong> songs) =>
         // The course stays the mode after its results, which end it: a restart plays it again.
         _mode = new DanCoursePlay(this, course, songs, Shell.Gameplay.Dan!);
 

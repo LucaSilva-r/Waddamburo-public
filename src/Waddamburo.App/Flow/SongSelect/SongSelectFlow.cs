@@ -497,7 +497,6 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         // A course: all its songs as one chart.
         DanCourseTimeline? timeline = null;
         var courseSongs = new List<SongSelectSong>();
-        var courseStatus = _course;
         if (_course is { } picked)
         {
             _course = null;
@@ -563,7 +562,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         gameplay.AiSession = _cover.AiSetup is { IsCompletedSuccessfully: true } setup ? setup.Result : null;
         _cover.AiSetup = null;
         if (timeline is not null)
-            gameplay.PrepareCourse(timeline, courseSongs, courseStatus!);
+            gameplay.PrepareCourse(timeline, courseSongs);
         Shell.Scenes.Show(FlowScenes.Gameplay);
     }
 }

@@ -288,8 +288,6 @@ internal sealed partial class GameShell : IDisposable
     private SystemIndicators? _indicators;
     private RenderTextureId[] _indicatorTextures = [];
     private SceneId? _indicatorScene;
-    private static readonly HashSet<SceneId> _attractScenes =
-        [FlowScenes.Logo, FlowScenes.Title, FlowScenes.Caution, FlowScenes.Movie];
     private readonly InputLatches _input = new();
     private bool _returnToAttract; // the entry gave up (applied on the next tick, outside its callbacks)
     // Arcade: the service menu (Escape, the test switch), the coin switches and the cabinet's running totals.
@@ -777,7 +775,7 @@ internal sealed partial class GameShell : IDisposable
                 Random = new Random(20261105);
                 _benchmark = new BenchmarkRun(this, benchmarkSong, options.Benchmark == BenchmarkMode.Restart);
             }
-            _home = new HomeControls(this, _gameplay, calibration, options.FontPath, assetRoot);
+            _home = new HomeControls(this, _gameplay, calibration, assetRoot);
             Editor = new EffectsEditorHost(this, _gameplay, () => _home.CloseForEffectsEditor());
             _search = new SongSearch(this, _libraries.Snapshot);
             _scores = new ScoreListOverlay(this, Painter, new OptionIcons(Application, options.AssetRoot));

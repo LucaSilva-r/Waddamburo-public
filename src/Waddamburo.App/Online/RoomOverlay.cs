@@ -92,7 +92,7 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
     private bool _browsing; // the public rooms' page
     private bool _warning; // the first time: playing online shows the player's IP address, accepted or not
     private Action<bool>? _share; // the first time a song of the player's is sent: whether they may share it
-    private readonly object _bannerSlot = new(), _statusSlot = new();
+    private readonly object _bannerSlot = new();
 
     public bool IsOpen => _panel || _prompt != Prompt.None;
 
@@ -374,12 +374,6 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
         {
             Console.Error.WriteLine($"Error SETTINGS_SAVE: {exception.Message}");
         }
-    }
-
-    private void move(int step, int count)
-    {
-        _selection = (_selection + step + count) % count;
-        this.step();
     }
 
     // The public rooms, fetched again every few seconds while the lobby shows them; never waited on.

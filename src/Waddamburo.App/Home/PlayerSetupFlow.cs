@@ -211,7 +211,7 @@ internal sealed class PlayerSetupFlow : IDisposable
             {
                 if (_workSide == index)
                     cancelWork();
-                var choices = choicesFor(index);
+                var choices = this.choices();
                 var next = (position(index, choices) + (right ? 1 : choices.Count - 1)) % choices.Count;
                 select(side, choices[next].Kind, choices[next].Baid);
                 side.Message = null;
@@ -271,7 +271,7 @@ internal sealed class PlayerSetupFlow : IDisposable
     private bool sameAccount() => current(0) is { HasDon: true, Baid: not 0 } left && left.Baid == current(1).Baid;
 
     // Guest, the stored accounts, Join with code (a friend), Sign in (add an account).
-    private List<SetupChoice> choicesFor(int index)
+    private List<SetupChoice> choices()
     {
         var online = _server is not null;
         return
@@ -304,7 +304,7 @@ internal sealed class PlayerSetupFlow : IDisposable
 
     private SetupChoice current(int index)
     {
-        var choices = choicesFor(index);
+        var choices = this.choices();
         var side = _sides[index];
         var choice = choices[position(index, choices)];
         return choice.Kind == SetupChoiceKind.Friend && side.Visitor is { } visitor
