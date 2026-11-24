@@ -94,7 +94,8 @@ dotnet build Waddamburo.slnx -c Release --no-restore
 The downloaded libraries belong to the latest release (`-Release vX.Y.Z` / an `vX.Y.Z`
 argument picks another). If the native code changed since then, the game reports that the
 media library or the text rasterizer "has an incompatible ABI": build the libraries
-yourself (below). Their licenses are in `licenses.zip` on the same release.
+yourself (below). Their licenses are in `licenses.zip`, inside the same release's
+`Waddamburo.sources-and-licenses.zip`.
 
 If the game says "The FFmpeg decoder backend is not built" or "built without FFmpeg", it
 is using libraries without FFmpeg: run the fetch script (or the package preset), then

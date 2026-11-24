@@ -123,7 +123,8 @@ The version comes from a `vX.Y.Z` tag on HEAD (or `WADDAMBURO_VERSION`); anythin
 builds `0.0.0-dev`. Releases self-update (`src/Waddamburo.App/Hosting/SelfUpdate.cs`)
 from the latest GitHub release of this repository. To release, push a `vX.Y.Z` tag:
 `.github/workflows/release.yml` runs this script on GitHub's Ubuntu 22.04 runner (so the
-AppImage needs only glibc 2.35) and drafts a release with the binaries, `licenses.zip`, `licenses-win-x64.zip`,
+AppImage needs only glibc 2.35) and drafts a release with the four binaries and one `Waddamburo.sources-and-licenses.zip` (GitHub lists assets by name: it
+sorts last) holding the native libraries, `licenses.zip`, `licenses-win-x64.zip`,
 `ffmpeg-source.zip`, and the platform-specific `ffmpeg-relink-*.zip` archives; for the Switch (GPL as a whole: its
 FFmpeg has nvtegra hardware decoding), `licenses-switch.zip` and `ffmpeg-source-switch.zip` instead. The
 AppImage carries the notices in `usr/share/licenses`. The APK carries its notices

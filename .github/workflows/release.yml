@@ -191,9 +191,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          assets=(Waddamburo.exe Waddamburo-x86_64.AppImage Waddamburo.apk Waddamburo.nro licenses.zip licenses-win-x64.zip
-            licenses-switch.zip native-*.zip ffmpeg-source.zip ffmpeg-relink-linux-x64.zip ffmpeg-relink-win-x64.zip
-            ffmpeg-relink-android-arm64.zip ffmpeg-relink-android-x64.zip ffmpeg-source-switch.zip)
+          # Players see the four builds; everything else (licenses, FFmpeg sources and relink inputs, native libraries)
+          # is one archive, named to sort after them (GitHub lists assets by name).
+          zip -0 Waddamburo.sources-and-licenses.zip licenses*.zip native-*.zip ffmpeg-*.zip
+          assets=(Waddamburo.exe Waddamburo-x86_64.AppImage Waddamburo.apk Waddamburo.nro Waddamburo.sources-and-licenses.zip)
           if draft=$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft); then
             if [ "$draft" != true ]; then
               echo "Release $GITHUB_REF_NAME has already been published."
@@ -202,7 +203,7 @@ jobs:
             gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber "${assets[@]}"
           else
             gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft --generate-notes \
-              --notes "Waddamburo uses FFmpeg under the LGPL 2.1 or later. Download ffmpeg-source.zip and the ffmpeg-relink archive for your platform. [Relinking instructions](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_SHA/docs/development/ffmpeg.md#relinking-a-release) The Switch build (Waddamburo.nro) is GPL-2.0-or-later as a whole (its FFmpeg has hardware decoding, nvtegra): ffmpeg-source-switch.zip and this tag's source." \
+              --notes "Waddamburo uses FFmpeg under the LGPL 2.1 or later. Waddamburo.sources-and-licenses.zip holds the licenses, ffmpeg-source.zip and the ffmpeg-relink archive for each platform. [Relinking instructions](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_SHA/docs/development/ffmpeg.md#relinking-a-release) The Switch build (Waddamburo.nro) is GPL-2.0-or-later as a whole (its FFmpeg has hardware decoding, nvtegra): ffmpeg-source-switch.zip (in the same archive) and this tag's source." \
               --title "Waddamburo $GITHUB_REF_NAME" "${assets[@]}"
           fi
 
@@ -225,8 +226,8 @@ jobs:
           mv Waddamburo-x86_64.AppImage Waddamburo-nightly-x86_64.AppImage
           mv Waddamburo.apk Waddamburo-nightly.apk
           mv Waddamburo.nro Waddamburo-nightly.nro
+          zip -0 Waddamburo.sources-and-licenses.zip licenses*.zip native-*.zip ffmpeg-*.zip
           gh release create "${GITHUB_SHA::7}" --repo "$GITHUB_REPOSITORY" --prerelease --target "$GITHUB_SHA" --generate-notes \
             --title "Waddamburo nightly ${GITHUB_SHA::7}" Waddamburo-nightly.exe Waddamburo-nightly-x86_64.AppImage Waddamburo-nightly.apk Waddamburo-nightly.nro \
-            --notes "Waddamburo uses FFmpeg under the LGPL 2.1 or later. Download ffmpeg-source.zip and the ffmpeg-relink archive for your platform. [Relinking instructions](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_SHA/docs/development/ffmpeg.md#relinking-a-release) The Switch build (Waddamburo.nro) is GPL-2.0-or-later as a whole (its FFmpeg has hardware decoding, nvtegra): ffmpeg-source-switch.zip and this tag's source." \
-            licenses.zip licenses-win-x64.zip native-*.zip ffmpeg-source.zip ffmpeg-relink-linux-x64.zip ffmpeg-relink-win-x64.zip \
-            ffmpeg-relink-android-arm64.zip ffmpeg-relink-android-x64.zip licenses-switch.zip ffmpeg-source-switch.zip
+            --notes "Waddamburo uses FFmpeg under the LGPL 2.1 or later. Waddamburo.sources-and-licenses.zip holds the licenses, ffmpeg-source.zip and the ffmpeg-relink archive for each platform. [Relinking instructions](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_SHA/docs/development/ffmpeg.md#relinking-a-release) The Switch build (Waddamburo.nro) is GPL-2.0-or-later as a whole (its FFmpeg has hardware decoding, nvtegra): ffmpeg-source-switch.zip (in the same archive) and this tag's source." \
+            Waddamburo.sources-and-licenses.zip

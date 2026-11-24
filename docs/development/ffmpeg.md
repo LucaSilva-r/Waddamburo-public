@@ -78,7 +78,8 @@ sound-effect mixer. SDL device ownership and queue semantics are documented in
 ## Relinking a release
 
 Waddamburo uses FFmpeg under the LGPL 2.1 or later. The release page provides
-the tagged Waddamburo source, `ffmpeg-source.zip` with the exact unmodified
+the tagged Waddamburo source and `Waddamburo.sources-and-licenses.zip`, which holds (as they are, one zip each)
+the licenses, the native libraries, `ffmpeg-source.zip` with the exact unmodified
 FFmpeg and Opus sources, and `ffmpeg-relink-<platform>.zip` with the original
 configure options and the vgmstream inputs used by the media library.
 
