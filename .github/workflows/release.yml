@@ -52,7 +52,10 @@ jobs:
           global-json-file: global.json
           cache: true
           cache-dependency-path: '**/packages.lock.json'
+      # No sound card on the runner: SDL's dummy output for the audio device tests.
       - run: dotnet test Waddamburo.slnx -c Release
+        env:
+          SDL_AUDIO_DRIVER: dummy
 
   build:
     needs: version
