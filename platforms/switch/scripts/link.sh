@@ -15,7 +15,7 @@ syms --defined-only rt-link/* > def.txt
 { syms --defined-only natives/prefix/lib/*.a bgfx/prefix/lib/*.a
   (cd "$DEVKITPRO/portlibs/switch/lib" && "$NM" --defined-only libz.a libfreetype.a libharfbuzz.a libpng16.a libbz2.a libopus.a 2>/dev/null | awk 'NF==3{print $3}')
 } | sort -u > ours.txt
-comm -23 undef.txt def.txt | comm -23 - ours.txt | grep -v -e '^__start_' -e '^__stop_' -e '^SDL_' -e '^sdlnx_' -e '^nxtls_' -e '^_Z' \
+comm -23 undef.txt def.txt | comm -23 - ours.txt | grep -v -e '^__start_' -e '^__stop_' -e '^SDL_' -e '^sdlnx_' -e '^nxtls_' -e '^nxfwd_' -e '^_Z' \
   | awk '{print $1" lx_"$1}' > rename.map
 echo "main lx_dotnet_main" >> rename.map
 for f in rt-link/*; do aarch64-none-elf-objcopy --redefine-syms=rename.map "$f"; done
@@ -40,6 +40,17 @@ aarch64-none-elf-gcc $CF -c "$S/main.c" -o obj/main.o
 aarch64-none-elf-gcc $CF -c "$S/net.c" -o obj/net.o
 aarch64-none-elf-gcc $CF -c "$S/tls.c" -o obj/tls.o
 aarch64-none-elf-gcc $CF -c "$S/exc.S" -o obj/exc.o
+# The home-menu forwarder's program: patched nx-hbloader (deps), its title id in the NPDM; forwarder.c embeds both.
+FWD=$OUT/forwarder
+if [ ! -f "$FWD/forwarder.nso" ]; then
+  rm -rf "$FWD" && cp -r "$OUT/ext/nx-hbloader" "$FWD"
+  # an application (hbloader itself is an applet: program type 2), with Waddamburo's title id
+  sed -e 's/"name": "hbloader"/"name": "Waddamburo"/' -e 's/0x010000000000100D/0x0500005744420000/g' \
+    -e '/"type": "application_type"/{n;s/"value": 2/"value": 1/}' "$FWD/hbl.json" > "$FWD/forwarder.json"
+  grep -A1 '"application_type"' "$FWD/forwarder.json" | grep -q '"value": 1' || { echo "forwarder.json: application_type not set"; exit 1; }
+  make -C "$FWD" CONFIG_JSON=forwarder.json TARGET=forwarder APP_VERSION=2.4.5 > "$FWD.log" 2>&1 || { tail -20 "$FWD.log"; exit 1; }
+fi
+aarch64-none-elf-gcc $CF -DFORWARDER_NSO="\"$FWD/forwarder.nso\"" -DFORWARDER_NPDM="\"$FWD/forwarder.npdm\"" -c "$S/forwarder.c" -o obj/forwarder.o
 aarch64-none-elf-gcc $CF -I"$OUT/ext/sdl3/include" -c "$S/sdl3nx.c" -o obj/sdl3nx.o
 aarch64-none-elf-gcc $CF -I"$OUT/bgfx/include" -include "$S/gcc-compat.h" -D__NX__ -c "$S/gfx.c" -o obj/gfx.o
 aarch64-none-elf-gcc $CF -I"$DEVKITPRO/portlibs/switch/include" -c "$S/cryptonx.c" -o obj/cryptonx.o
@@ -51,7 +62,7 @@ R=${R:-rt-link} N=${N:-natives/prefix/lib} B=${B:-bgfx/prefix/lib} F=${FFMPEG_LI
 NRO=${NRO:-$ROOT/out/package/Waddamburo.nro}
 aarch64-none-elf-g++ -specs="$DEVKITPRO/libnx/switch.specs" -g $ARCH -Wl,--eh-frame-hdr -Wl,--wrap=__syscall_thread_create \
   -Wl,--wrap=__syscall_thread_join -Wl,--wrap=nvMapCreate -Wl,--wrap=nvAddressSpaceMap -Wl,-Map,app.map -o app.elf \
-  obj/main.o obj/shim.o obj/net.o obj/tls.o obj/exc.o obj/gfx.o obj/sdl3nx.o $R/app.o $R/libbootstrapper.o obj/cryptonx.o \
+  obj/main.o obj/shim.o obj/net.o obj/tls.o obj/exc.o obj/forwarder.o obj/gfx.o obj/sdl3nx.o $R/app.o $R/libbootstrapper.o obj/cryptonx.o \
   -Wl,--start-group $R/libRuntime.WorkstationGC.a $R/libSystem.Native.a $R/libSystem.Globalization.Native.a \
   $R/libSystem.IO.Compression.Native.a $R/libSystem.Net.Security.Native.a $R/libSystem.Security.Cryptography.Native.OpenSsl.a \
   $R/libbrotlienc.a $R/libbrotlidec.a $R/libbrotlicommon.a $R/libeventpipe-disabled.a $R/libstandalonegc-disabled.a \

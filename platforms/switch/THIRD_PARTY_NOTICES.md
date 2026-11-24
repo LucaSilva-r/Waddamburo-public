@@ -20,6 +20,7 @@ under `/opt/devkitpro`) and at the projects below.
 | Mbed TLS (mbedcrypto) | Apache-2.0 | https://github.com/Mbed-TLS/mbedtls |
 | SQLite | Public domain | https://sqlite.org |
 | SDL 3 headers (the ABI `shim/sdl3nx.c` implements) | zlib License | https://github.com/libsdl-org/SDL |
+| nx-hbloader 2.4.5 (the HOME-menu forwarder's program, `patches/hbloader`; embedded in the NSP Waddamburo makes) | ISC | https://github.com/switchbrew/nx-hbloader |
 
 Portions of this software are copyright © The FreeType Project (www.freetype.org). All rights reserved.
 

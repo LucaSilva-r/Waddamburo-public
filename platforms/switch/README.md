@@ -57,11 +57,21 @@ it does not hand faults to the game's exception handler (a caught NullReferenceE
   objects get their own allocator, FreeType reads fonts from memory. The system refuses GPU buffers past ~4870 (one a
   texture): the texture atlas and `ScenePresenter`'s budget keep far below.
 - **SDL3**: `shim/sdl3nx.c` is the subset Waddamburo calls (window, focus and HOME-menu events, 8 pads from a 1 kHz HID
-  thread, audout at 48 kHz mixing bound streams with per-stream gain on its own thread). Keyboard, text input and
-  dialogs are stubs.
+  thread, audout at 48 kHz mixing bound streams with per-stream gain on its own thread). Text input opens the system
+  keyboard (swkbd); dialogs are stubs.
 - **Crypto**: hashing and HMAC on mbedTLS (`shim/cryptonx.c` overrides the OpenSSL-backed `CryptoNative_*`).
+- **Network**: BSD sockets, DNS and epoll on libnx (`shim/net.c`); TLS through the console's ssl service (`shim/tls.c`).
+
+## HOME-menu icon (forwarder)
+
+Service menu › HOME MENU ICON writes `sdmc:/switch/taiko/Waddamburo.nsp`, which the user installs with Goldleaf (or
+DBI/Tinfoil; sigpatches needed, the signatures are zero). It is made on the console from the console's own
+`sdmc:/switch/prod.keys` (Lockpick_RCM from hekate): `header_key` for the NCA headers, `key_area_key_application_00`
+for the key areas. Program: nx-hbloader patched to start the NRO the menu ran from (its path is written into the NSO,
+whose segments are stored plain) and to exit after it; it runs as an application (program type 1), so the game gets the
+full memory. Control: the NRO's own NACP and icon. Title id `0500005744420000` (homebrew range). `shim/forwarder.c`
+also builds on a PC (`cc -DFORWARDER_TEST shim/forwarder.c -lcrypto`) to check its output with hactool.
 
 ## Open
 
-Networking (sockets, DNS and TLS are stubs: no sign-in, online scores, dan or shop), the system keyboard (swkbd),
-score saving off the main thread (~250 ms SQLite on the SD card in the results switch).
+Nothing known.

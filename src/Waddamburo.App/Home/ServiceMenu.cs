@@ -441,6 +441,18 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
                 new(S("service.desktop_entry"), 400, () => $"{{{S(Hosting.DesktopEntry.Installed ? "service.desktop_entry.added" : "service.desktop_entry.not_added")}}}", 560,
                     Enter: () => Hosting.DesktopEntry.Install(), Colour: static () => OverlayMenu.Green, Hint: S("service.desktop_entry.hint")),
             ],
+            .. !PlatformInfo.IsSwitch ? (Row[])[] :
+            [
+                new(S("service.forwarder"), 400, () => $"{{{S(SwitchForwarder.Last switch
+                    {
+                        SwitchForwarder.Result.Made => "service.forwarder.made",
+                        SwitchForwarder.Result.NoKeys => "service.forwarder.no_keys",
+                        SwitchForwarder.Result.KeysIncomplete => "service.forwarder.keys_incomplete",
+                        SwitchForwarder.Result.NroUnreadable => "service.forwarder.no_nro",
+                        SwitchForwarder.Result.WriteFailed => "service.forwarder.write_failed",
+                        _ => File.Exists(SwitchForwarder.NspPath) ? "service.forwarder.made" : "service.forwarder.not_made",
+                    })}}}", 560, Enter: () => SwitchForwarder.Make(), Colour: static () => OverlayMenu.Green, Hint: S("service.forwarder.hint")),
+            ],
             new(S("service.exit"), 400, Gap: true, Enter: _menu.Pop),
         ],
         // DISPLAY takes the graphics settings too (one page for the picture).

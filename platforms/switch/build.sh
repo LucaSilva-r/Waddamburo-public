@@ -52,6 +52,11 @@ deps() {
     fetch "https://github.com/libsdl-org/SDL/archive/$sdl.tar.gz" "$downloads/SDL-$sdl.tar.gz" \
         7009fddd4c608817435471dbb964da401bc7932dee0cbcfe5883df38e94b63e7
 
+    # nx-hbloader 2.4.5, the program of the home-menu forwarder (patches/hbloader, scripts/link.sh, shim/forwarder.c).
+    local hbl=82b95122c5ae8dc059bf23893ba7623c72c86773
+    fetch "https://github.com/switchbrew/nx-hbloader/archive/$hbl.tar.gz" "$downloads/nx-hbloader-$hbl.tar.gz" \
+        c0e6a7a485d3ef87a25de2fb564d71be97c71ed8161703436b4f089ea1c15c16
+
     [[ -d $ext/ffmpeg-$ffmpeg ]] || tar -xJf "$downloads/ffmpeg-$ffmpeg.tar.xz" -C "$ext"
     [[ -d $ext/vgmstream-$vgm ]] || tar -xzf "$downloads/vgmstream-$vgm.tar.gz" -C "$ext"
     [[ -d $ext/sqlite-amalgamation-3530300 ]] || (cd "$ext" && cmake -E tar xf "$downloads/sqlite-amalgamation-3530300.zip")
@@ -60,6 +65,11 @@ deps() {
         mkdir -p "$ext/bgfx-src.part" && tar -xzf "$downloads/bgfx.cmake.$bgfx.tar.gz" -C "$ext/bgfx-src.part" --strip-components=1
         for patch in "$here"/patches/*.patch; do patch -s -p1 -d "$ext/bgfx-src.part" < "$patch"; done
         mv "$ext/bgfx-src.part" "$ext/bgfx-src"
+    fi
+    if [[ ! -d $ext/nx-hbloader ]]; then
+        mkdir -p "$ext/nx-hbloader.part" && tar -xzf "$downloads/nx-hbloader-$hbl.tar.gz" -C "$ext/nx-hbloader.part" --strip-components=1
+        patch -s -p1 -d "$ext/nx-hbloader.part" < "$here/patches/hbloader/forwarder.patch"
+        mv "$ext/nx-hbloader.part" "$ext/nx-hbloader"
     fi
     echo "FFMPEG=$ffmpeg VGMSTREAM=$vgm" > "$ext/versions.env"
 }

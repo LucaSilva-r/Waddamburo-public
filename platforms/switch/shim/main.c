@@ -34,6 +34,7 @@ static ssize_t log_write(void *c, const char *b, size_t n) {
 static void log_thread(void *arg) { for (;;) { svcSleepThread(500000000ll); log_flush(); } }
 
 int main(int argc, char **argv) {
+    extern const char *g_nro_path; g_nro_path = argc > 0 ? argv[0] : NULL; // forwarder.c: the NRO a forwarder starts
     mkdir("sdmc:/switch/waddamburo", 0777); // .NET ignores a HOME folder that does not exist
     setenv("HOME", "/switch/waddamburo", 1); // before shim_init snapshots environ for the runtime: .NET folders (cache) go here
     consoleInit(NULL);

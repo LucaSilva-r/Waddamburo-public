@@ -1,0 +1,29 @@
+--- a/source/main.c
++++ b/source/main.c
+@@ -5,6 +5,11 @@
+ 
+ #define DEFAULT_NRO "sdmc:/hbmenu.nro"
+ 
++// Waddamburo forwarder: the NRO to start. Waddamburo writes the path after the 32-byte marker when it makes the NSP
++// (the NSO's segments are stored uncompressed for that). Once that NRO returns without a next one, the title exits.
++__attribute__((used)) static volatile char g_forwarderTarget[0x320] = "WADDAMBURO-FORWARDER-NRO-PATH:\0\0";
++static bool g_forwarderStarted;
++
+ const char g_noticeText[] =
+     "nx-hbloader " VERSION "\0"
+     "Do you mean to tell me that you're thinking seriously of building that way, when and if you are an architect?";
+@@ -353,9 +358,12 @@
+ 
+     if (g_nextNroPath[0] == '\0')
+     {
+-        memcpy(g_nextNroPath, DEFAULT_NRO, sizeof(DEFAULT_NRO));
+-        memcpy(g_nextArgv,    DEFAULT_NRO, sizeof(DEFAULT_NRO));
++        if (g_forwarderStarted || g_forwarderTarget[32] == '\0')
++            svcExitProcess();
++        for (size_t i = 0; i < sizeof g_nextNroPath - 1 && g_forwarderTarget[32 + i]; i++)
++            g_nextNroPath[i] = g_nextArgv[i] = g_forwarderTarget[32 + i];
+     }
++    g_forwarderStarted = true;
+ 
+     memcpy(g_argv, g_nextArgv, sizeof g_argv);
+ 
