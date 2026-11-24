@@ -108,10 +108,10 @@ CMake must be 3.25 or newer (Ubuntu 22.04's is too old).
 
 ```sh
 # Ubuntu / Debian
-sudo apt install build-essential cmake ninja-build make pkg-config curl python3 \
+sudo apt install build-essential cmake ninja-build make pkg-config curl python3 nasm \
     libx11-dev libgl-dev libwayland-dev
 # Fedora
-sudo dnf install gcc gcc-c++ cmake ninja-build make pkgconf curl python3 \
+sudo dnf install gcc gcc-c++ cmake ninja-build make pkgconf curl python3 nasm \
     libX11-devel mesa-libGL-devel wayland-devel
 
 cd native
@@ -130,7 +130,7 @@ The Windows libraries are built with mingw-w64, the same compiler as the release
 
    ```sh
    pacman -S --needed make mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake \
-       mingw-w64-x86_64-ninja mingw-w64-x86_64-pkgconf
+       mingw-w64-x86_64-ninja mingw-w64-x86_64-pkgconf mingw-w64-x86_64-nasm
    ```
 
 3. In the same MINGW64 shell, build in your checkout:

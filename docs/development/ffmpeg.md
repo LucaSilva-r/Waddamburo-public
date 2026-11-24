@@ -22,9 +22,12 @@ The allowlist supports the product's declared inputs:
 
 | Kind | Enabled components |
 | --- | --- |
-| Decoders | ATRAC3plus; H.264 (attract movies); MP3; Vorbis; Opus; FLAC; unsigned 8-bit, signed 16/24/32-bit, and float 32-bit little-endian PCM |
-| Demuxers | WAV, MP3, Ogg, FLAC; MPEG program stream (PAMF movies) and raw H.264 (its stream probe) |
-| Parsers | MPEG audio, Vorbis, Opus, FLAC, H.264 |
+| Decoders | ATRAC3plus; H.264 (attract movies, background videos); MP3; Vorbis; Opus; FLAC; unsigned 8-bit, signed 16/24/32-bit, and float 32-bit little-endian PCM; for background videos MPEG-4 Part 2, Sorenson H.263 (FLV1, with H.263), VP6/VP6F, MS-MPEG4 v1-v3, WMV3 (with VC-1), MPEG-1/2 video, MJPEG |
+| Demuxers | WAV, MP3, Ogg, FLAC; MPEG program stream (PAMF movies) and raw H.264 (its stream probe); for background videos MP4/MOV, AVI, FLV, Matroska/WebM, ASF (WMV), MPEG video |
+| Parsers | MPEG audio, Vorbis, Opus, FLAC, H.264, MPEG-4 video, MPEG video, VC-1, MJPEG |
+
+The video set is what osu! beatmaps ship (a 1,881-video lazer library, 2026-11-24: H.264 82%, MPEG-4 Part 2 14%,
+FLV1 3%, the rest under 1% each); it added 0.86 MB to the Linux media library. All are LGPL in FFmpeg.
 | Scaling | `swscale` converts decoded YUV movie frames to RGBA |
 | Protocols | Local files only; managed-memory inputs use Waddamburo's AVIO callbacks |
 | Encoders | libopus (the decoded-audio cache) |

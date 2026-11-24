@@ -28,7 +28,8 @@ extern "C" {
 #define WADDAMBURO_MEDIA_ABI_VERSION_1_2 WADDAMBURO_MEDIA_ABI_VERSION(1U, 2U)
 #define WADDAMBURO_MEDIA_ABI_VERSION_1_3 WADDAMBURO_MEDIA_ABI_VERSION(1U, 3U)
 #define WADDAMBURO_MEDIA_ABI_VERSION_1_4 WADDAMBURO_MEDIA_ABI_VERSION(1U, 4U)
-#define WADDAMBURO_MEDIA_ABI_VERSION_CURRENT WADDAMBURO_MEDIA_ABI_VERSION_1_4
+#define WADDAMBURO_MEDIA_ABI_VERSION_1_5 WADDAMBURO_MEDIA_ABI_VERSION(1U, 5U)
+#define WADDAMBURO_MEDIA_ABI_VERSION_CURRENT WADDAMBURO_MEDIA_ABI_VERSION_1_5
 
 typedef int32_t waddamburo_media_result;
 
@@ -175,6 +176,12 @@ waddamburo_media_video_read_frame(
 
 WADDAMBURO_MEDIA_API void WADDAMBURO_MEDIA_CALL
 waddamburo_media_video_destroy(waddamburo_media_video *video);
+
+/* ABI 1.5: any container FFmpeg was built with (a .pam still reads as a program stream), frames at most
+   720 lines high (the stage's height), and seeking: the next read_frame returns the first frame at or
+   after the time (decoded from the keyframe before it). */
+WADDAMBURO_MEDIA_API waddamburo_media_result WADDAMBURO_MEDIA_CALL
+waddamburo_media_video_seek(waddamburo_media_video *video, int64_t microseconds);
 
 /* ABI 1.4: re-encodes any decodable file as 48 kHz stereo Opus in Ogg (the decoded-audio cache). */
 WADDAMBURO_MEDIA_API waddamburo_media_result WADDAMBURO_MEDIA_CALL

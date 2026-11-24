@@ -20,6 +20,7 @@ struct waddamburo_media_video {
     int stream_index;
     int draining;
     int64_t start_pts;
+    int64_t skip_until_microseconds;
     AVRational time_base;
     uint32_t width;
     uint32_t height;
@@ -66,8 +67,11 @@ waddamburo_media_result WADDAMBURO_MEDIA_CALL waddamburo_media_video_open_file(
     }
 
     /* PAMF (PS3 movies) is an MPEG program stream behind a sector-aligned header the
-       probe does not recognise; the program-stream demuxer resynchronises past it. */
-    const AVInputFormat *program_stream = av_find_input_format("mpeg");
+       probe does not recognise; the program-stream demuxer resynchronises past it. Anything else is probed. */
+    size_t path_length = strlen(utf8_path);
+    int pamf = path_length >= 4 && (strcmp(utf8_path + path_length - 4, ".pam") == 0
+        || strcmp(utf8_path + path_length - 4, ".PAM") == 0);
+    const AVInputFormat *program_stream = pamf ? av_find_input_format("mpeg") : NULL;
     int status = avformat_open_input(&video->format, utf8_path, program_stream, NULL);
     if (status < 0)
         goto ffmpeg_failure;
@@ -88,6 +92,10 @@ waddamburo_media_result WADDAMBURO_MEDIA_CALL waddamburo_media_video_open_file(
     status = avcodec_parameters_to_context(video->codec, stream->codecpar);
     if (status < 0)
         goto ffmpeg_failure;
+    /* Every core (FFmpeg picks the count): one thread could not keep a 1080p60 background video up with the game
+       running (84 frames a second alone, without SIMD). */
+    video->codec->thread_count = 0;
+    video->codec->thread_type = FF_THREAD_FRAME | FF_THREAD_SLICE;
     status = avcodec_open2(video->codec, decoder, NULL);
     if (status < 0)
         goto ffmpeg_failure;
@@ -98,9 +106,16 @@ waddamburo_media_result WADDAMBURO_MEDIA_CALL waddamburo_media_video_open_file(
         goto ffmpeg_failure;
     }
     video->time_base = stream->time_base;
+    video->skip_until_microseconds = INT64_MIN;
     video->start_pts = stream->start_time == AV_NOPTS_VALUE ? 0 : stream->start_time;
     video->width = (uint32_t)video->codec->width;
     video->height = (uint32_t)video->codec->height;
+    /* Frames come out at most 720 lines high (even sizes): a 1080p background is converted and uploaded
+       at the stage's size instead of 2.25 times it. */
+    if (video->height > 720U && video->width > 0U) {
+        video->width = (uint32_t)(((uint64_t)video->width * 720U / video->height + 1U) & ~1U);
+        video->height = 720U;
+    }
     if (video->width == 0 || video->height == 0) {
         status = AVERROR_INVALIDDATA;
         goto ffmpeg_failure;
@@ -130,6 +145,7 @@ waddamburo_media_result WADDAMBURO_MEDIA_CALL waddamburo_media_video_read_frame(
         || capacity < (uint64_t)video->width * video->height * 4U)
         return WADDAMBURO_MEDIA_ERROR_INVALID_ARGUMENT;
 
+next_frame:
     for (;;) {
         int status = avcodec_receive_frame(video->codec, video->frame);
         if (status == 0)
@@ -156,6 +172,14 @@ waddamburo_media_result WADDAMBURO_MEDIA_CALL waddamburo_media_video_read_frame(
     }
 
     AVFrame *frame = video->frame;
+    int64_t frame_pts = frame->best_effort_timestamp == AV_NOPTS_VALUE ? video->start_pts : frame->best_effort_timestamp;
+    int64_t frame_microseconds = av_rescale_q(frame_pts - video->start_pts, video->time_base, AV_TIME_BASE_Q);
+    /* After a seek: the frames between the keyframe and the time asked for are decoded, not converted. */
+    if (frame_microseconds < video->skip_until_microseconds) {
+        av_frame_unref(frame);
+        goto next_frame;
+    }
+    video->skip_until_microseconds = INT64_MIN;
     video->scaler = sws_getCachedContext(video->scaler, frame->width, frame->height, frame->format,
         (int)video->width, (int)video->height, AV_PIX_FMT_RGBA, SWS_BILINEAR, NULL, NULL, NULL);
     if (video->scaler == NULL) {
@@ -171,9 +195,25 @@ waddamburo_media_result WADDAMBURO_MEDIA_CALL waddamburo_media_video_read_frame(
     int stride[4] = { (int)video->width * 4, 0, 0, 0 };
     sws_scale(video->scaler, (const uint8_t *const *)frame->data, frame->linesize, 0, frame->height,
         destination, stride);
-    int64_t pts = frame->best_effort_timestamp == AV_NOPTS_VALUE ? video->start_pts : frame->best_effort_timestamp;
-    *pts_microseconds = av_rescale_q(pts - video->start_pts, video->time_base, AV_TIME_BASE_Q);
+    *pts_microseconds = frame_microseconds;
     av_frame_unref(frame);
+    return WADDAMBURO_MEDIA_OK;
+}
+
+waddamburo_media_result WADDAMBURO_MEDIA_CALL waddamburo_media_video_seek(waddamburo_media_video *video,
+    int64_t microseconds)
+{
+    if (video == NULL)
+        return WADDAMBURO_MEDIA_ERROR_INVALID_ARGUMENT;
+    if (microseconds < 0)
+        microseconds = 0;
+    int64_t target = video->start_pts + av_rescale_q(microseconds, AV_TIME_BASE_Q, video->time_base);
+    if (av_seek_frame(video->format, video->stream_index, target, AVSEEK_FLAG_BACKWARD) < 0
+        && av_seek_frame(video->format, -1, microseconds, AVSEEK_FLAG_BACKWARD) < 0)
+        return WADDAMBURO_MEDIA_ERROR_IO;
+    avcodec_flush_buffers(video->codec);
+    video->draining = 0;
+    video->skip_until_microseconds = microseconds;
     return WADDAMBURO_MEDIA_OK;
 }
 #else
@@ -211,5 +251,13 @@ waddamburo_media_result WADDAMBURO_MEDIA_CALL waddamburo_media_video_read_frame(
 void WADDAMBURO_MEDIA_CALL waddamburo_media_video_destroy(waddamburo_media_video *video)
 {
     (void)video;
+}
+
+waddamburo_media_result WADDAMBURO_MEDIA_CALL waddamburo_media_video_seek(waddamburo_media_video *video,
+    int64_t microseconds)
+{
+    (void)video;
+    (void)microseconds;
+    return WADDAMBURO_MEDIA_ERROR_BACKEND_UNAVAILABLE;
 }
 #endif

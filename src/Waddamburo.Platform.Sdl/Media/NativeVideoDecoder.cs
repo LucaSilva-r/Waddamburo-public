@@ -2,7 +2,7 @@ using System.Runtime.InteropServices;
 
 namespace Waddamburo.Platform.Sdl.Media;
 
-/// <summary>Sequential RGBA8 frames of a movie file (PAMF/MPEG program stream with H.264).</summary>
+/// <summary>RGBA8 frames of a movie file (PAMF, or a background video: MP4, AVI, FLV, MKV, WMV...), at most 720 lines high.</summary>
 public sealed unsafe class NativeVideoDecoder : IDisposable
 {
     private nint _handle;
@@ -52,6 +52,15 @@ public sealed unsafe class NativeVideoDecoder : IDisposable
                 _ => throw new IOException($"Video decoding failed ({result})."),
             };
         }
+    }
+
+    /// <summary>The next <see cref="TryReadFrame"/> returns the first frame at or after <paramref name="time"/>.</summary>
+    public void Seek(TimeSpan time)
+    {
+        ObjectDisposedException.ThrowIf(_handle == 0, this);
+        var result = NativeMediaMethods.VideoSeek(_handle, (long)time.TotalMicroseconds);
+        if (result != MediaResult.Ok)
+            throw new IOException($"Video seeking failed ({result}).");
     }
 
     public void Dispose()

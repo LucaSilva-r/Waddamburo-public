@@ -25,7 +25,8 @@ endif()
 find_program(WADDAMBURO_MAKE_EXECUTABLE NAMES gmake make REQUIRED)
 cmake_host_system_information(RESULT _ffmpeg_jobs QUERY NUMBER_OF_LOGICAL_CORES)
 
-set(_ffmpeg_platform_options --arch=x86_64 --disable-x86asm)
+# x86 SIMD (nasm): H.264 and the scaler several times faster, which background videos need.
+set(_ffmpeg_platform_options --arch=x86_64 --x86asmexe=nasm)
 set(_ffmpeg_configure_command <SOURCE_DIR>/configure)
 
 if(ANDROID)
@@ -35,6 +36,7 @@ if(ANDROID)
     set(_ffmpeg_arch_options --arch=aarch64)
     set(_ffmpeg_android_triple aarch64-linux-android)
   elseif(ANDROID_ABI STREQUAL "x86_64")
+    # ponytail: no x86 SIMD on Android x86_64 (Chromebooks): FFmpeg's x86 assembly needs text relocations there.
     set(_ffmpeg_arch_options --arch=x86_64 --disable-x86asm)
     set(_ffmpeg_android_triple x86_64-linux-android)
   else()
@@ -130,13 +132,16 @@ set(_ffmpeg_common_options
   --disable-avfilter
   --enable-swscale
   --enable-decoder=atrac3p,h264,mp3,mp3float,vorbis,flac,opus,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le,pcm_u8
-  --enable-demuxer=wav,mp3,ogg,flac,mpegps,h264
+  # Background videos: every codec osu! beatmaps ship (a 1,881-video lazer library: H.264 82%, MPEG-4 Part 2
+  # 14%, Sorenson/FLV1 3%, then VP6, MS-MPEG4, WMV3, MPEG-1/2, MJPEG).
+  --enable-decoder=mpeg4,flv,vp6f,msmpeg4v1,msmpeg4v2,msmpeg4v3,wmv3,mpeg1video,mpeg2video,mjpeg
+  --enable-demuxer=wav,mp3,ogg,flac,mpegps,h264,mov,avi,flv,matroska,asf,mpegvideo
   # The decoded-audio cache (vgmstream-cli output) is re-encoded as Opus in Ogg.
   --enable-libopus
   --pkg-config-flags=--static
   --enable-encoder=libopus
   --enable-muxer=ogg
-  --enable-parser=mpegaudio,vorbis,flac,opus,h264
+  --enable-parser=mpegaudio,vorbis,flac,opus,h264,mpeg4video,mpegvideo,vc1,mjpeg
   --enable-protocol=file
   --disable-network
   --disable-programs
