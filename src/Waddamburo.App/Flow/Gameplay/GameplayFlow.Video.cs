@@ -22,7 +22,9 @@ internal sealed partial class GameplayFlow
         if (wanted?.Video.Path != _video?.Path)
         {
             _video?.Dispose();
-            _video = wanted is { } open ? BackgroundVideo.Open(Shell.Application, open.Video) : null;
+            _video = wanted is { } open ? BackgroundVideo.Open(Shell.Application, open.Video,
+                open.Video.Area?.Height ?? (mode == BackgroundVideoMode.UnderLane && _play.Charts.Length == 1 ? 372 : 720),
+                Shell.Arcade.BackgroundVideoFps) : null;
         }
         if (_video is not null && wanted is { } shown)
             _video.Show(shown.Time);

@@ -162,4 +162,12 @@ internal static partial class NativeMediaMethods
     [LibraryImport(LibraryName, EntryPoint = "waddamburo_media_video_seek")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial MediaResult VideoSeek(nint video, long microseconds);
+
+    [LibraryImport(LibraryName, EntryPoint = "waddamburo_media_video_skip_unreferenced")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial MediaResult VideoSkipUnreferenced(nint video, int skip);
+
+    [LibraryImport(LibraryName, EntryPoint = "waddamburo_media_video_limit_height")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial MediaResult VideoLimitHeight(nint video, uint height, out uint width, out uint newHeight);
 }

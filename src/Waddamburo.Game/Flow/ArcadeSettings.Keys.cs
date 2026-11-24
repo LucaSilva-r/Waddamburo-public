@@ -170,6 +170,7 @@ public sealed partial record ArcadeSettings
         choice("background_video", static s => s.BackgroundVideo, static (s, v) => s with { BackgroundVideo = v },
             [("on", BackgroundVideoMode.On), ("under_lane", BackgroundVideoMode.UnderLane), ("off", BackgroundVideoMode.Off)]),
         number("background_video_dim", static s => s.BackgroundVideoDim, static (s, v) => s with { BackgroundVideoDim = v }, 0, 90),
+        number("background_video_fps", static s => s.BackgroundVideoFps, static (s, v) => s with { BackgroundVideoFps = v }, 30, 60),
         number("lyrics_x", static s => s.LyricsX, static (s, v) => s with { LyricsX = v }, -640, 640),
         number("lyrics_y", static s => s.LyricsY, static (s, v) => s with { LyricsY = v }, -700, 0),
         number("lyrics_scale", static s => s.LyricsScale, static (s, v) => s with { LyricsScale = v }, 50, 200),

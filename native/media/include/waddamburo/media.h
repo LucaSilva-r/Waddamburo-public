@@ -183,6 +183,17 @@ waddamburo_media_video_destroy(waddamburo_media_video *video);
 WADDAMBURO_MEDIA_API waddamburo_media_result WADDAMBURO_MEDIA_CALL
 waddamburo_media_video_seek(waddamburo_media_video *video, int64_t microseconds);
 
+/* Nonzero: frames nothing refers to (B-frames) are not decoded, about half the work of a typical 60 fps video;
+   for a decoder running late. Zero: every frame again. */
+WADDAMBURO_MEDIA_API waddamburo_media_result WADDAMBURO_MEDIA_CALL
+waddamburo_media_video_skip_unreferenced(waddamburo_media_video *video, int32_t skip);
+
+/* Frames come out at most this many lines high (even sizes, the shape kept): as big as they are drawn. The new size
+   is returned; call it before reading frames. */
+WADDAMBURO_MEDIA_API waddamburo_media_result WADDAMBURO_MEDIA_CALL
+waddamburo_media_video_limit_height(waddamburo_media_video *video, uint32_t height, uint32_t *width_out,
+    uint32_t *height_out);
+
 /* ABI 1.4: re-encodes any decodable file as 48 kHz stereo Opus in Ogg (the decoded-audio cache). */
 WADDAMBURO_MEDIA_API waddamburo_media_result WADDAMBURO_MEDIA_CALL
 waddamburo_media_transcode_opus(

@@ -405,6 +405,9 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
             new(S("service.background_video_dim"), 400, () => $"{_settings.BackgroundVideoDim}%", 800,
                 Step: step => set(s => s with { BackgroundVideoDim = Math.Clamp(s.BackgroundVideoDim + 10 * step, 0, 90) }),
                 IsDefault: () => _settings.BackgroundVideoDim == Defaults.BackgroundVideoDim, Hint: S("service.background_video_dim.hint")),
+            new(S("service.background_video_fps"), 400, () => $"{_settings.BackgroundVideoFps}", 800,
+                Step: _ => set(s => s with { BackgroundVideoFps = s.BackgroundVideoFps >= 60 ? 30 : 60 }),
+                IsDefault: () => _settings.BackgroundVideoFps == Defaults.BackgroundVideoFps, Hint: S("service.background_video_fps.hint")),
             new(S("service.exit"), 400, Gap: true, Enter: _menu.Pop),
         ],
         // A song's lyrics (#45): on/off and their look, previewed over the menu while this page is open.

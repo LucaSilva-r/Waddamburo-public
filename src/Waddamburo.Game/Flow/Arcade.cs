@@ -547,10 +547,15 @@ public sealed partial record ArcadeSettings
     public bool Lyrics { get; init; }
 
     /// <summary>A chart's background video (TJA BGMOVIE, osu! Video): where it shows, or off.</summary>
+    // On everywhere; a weak phone's player turns it off (software decoding; MediaCodec through FFmpeg was slower still:
+    // every frame copied back through Java; a SurfaceTexture straight into bgfx would be the hardware path).
     public BackgroundVideoMode BackgroundVideo { get; init; } = BackgroundVideoMode.On;
 
     /// <summary>How much the background video is darkened (percent), so the notes stay readable.</summary>
     public int BackgroundVideoDim { get; init; } = 20;
+
+    /// <summary>The most frames a second a background video shows (30 or 60): 30 halves the decoding on weak CPUs.</summary>
+    public int BackgroundVideoFps { get; init; } = 30;
 
     /// <summary>The lyrics' place from the bottom centre (stage pixels), size (percent), outline (0xRRGGBB) and backing band (percent opacity).</summary>
     public int LyricsX { get; init; }

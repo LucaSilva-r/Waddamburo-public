@@ -11,6 +11,7 @@
 #include <libavutil/imgutils.h>
 #include <libswscale/swscale.h>
 
+
 struct waddamburo_media_video {
     AVFormatContext *format;
     AVCodecContext *codec;
@@ -99,6 +100,7 @@ waddamburo_media_result WADDAMBURO_MEDIA_CALL waddamburo_media_video_open_file(
     status = avcodec_open2(video->codec, decoder, NULL);
     if (status < 0)
         goto ffmpeg_failure;
+
     video->packet = av_packet_alloc();
     video->frame = av_frame_alloc();
     if (video->packet == NULL || video->frame == NULL) {
@@ -216,6 +218,29 @@ waddamburo_media_result WADDAMBURO_MEDIA_CALL waddamburo_media_video_seek(waddam
     video->skip_until_microseconds = microseconds;
     return WADDAMBURO_MEDIA_OK;
 }
+
+waddamburo_media_result WADDAMBURO_MEDIA_CALL waddamburo_media_video_limit_height(waddamburo_media_video *video,
+    uint32_t height, uint32_t *width_out, uint32_t *height_out)
+{
+    if (video == NULL || width_out == NULL || height_out == NULL || height < 2)
+        return WADDAMBURO_MEDIA_ERROR_INVALID_ARGUMENT;
+    if (video->height > height) {
+        video->width = (uint32_t)(((uint64_t)video->width * height / video->height + 1U) & ~1U);
+        video->height = height & ~1U;
+    }
+    *width_out = video->width;
+    *height_out = video->height;
+    return WADDAMBURO_MEDIA_OK;
+}
+
+waddamburo_media_result WADDAMBURO_MEDIA_CALL waddamburo_media_video_skip_unreferenced(waddamburo_media_video *video,
+    int32_t skip)
+{
+    if (video == NULL)
+        return WADDAMBURO_MEDIA_ERROR_INVALID_ARGUMENT;
+    video->codec->skip_frame = skip ? AVDISCARD_NONREF : AVDISCARD_DEFAULT;
+    return WADDAMBURO_MEDIA_OK;
+}
 #else
 waddamburo_media_result WADDAMBURO_MEDIA_CALL waddamburo_media_video_open_file(
     const char *utf8_path,
@@ -258,6 +283,24 @@ waddamburo_media_result WADDAMBURO_MEDIA_CALL waddamburo_media_video_seek(waddam
 {
     (void)video;
     (void)microseconds;
+    return WADDAMBURO_MEDIA_ERROR_BACKEND_UNAVAILABLE;
+}
+
+waddamburo_media_result WADDAMBURO_MEDIA_CALL waddamburo_media_video_limit_height(waddamburo_media_video *video,
+    uint32_t height, uint32_t *width_out, uint32_t *height_out)
+{
+    (void)video;
+    (void)height;
+    (void)width_out;
+    (void)height_out;
+    return WADDAMBURO_MEDIA_ERROR_BACKEND_UNAVAILABLE;
+}
+
+waddamburo_media_result WADDAMBURO_MEDIA_CALL waddamburo_media_video_skip_unreferenced(waddamburo_media_video *video,
+    int32_t skip)
+{
+    (void)video;
+    (void)skip;
     return WADDAMBURO_MEDIA_ERROR_BACKEND_UNAVAILABLE;
 }
 #endif

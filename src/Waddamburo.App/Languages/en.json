@@ -650,6 +650,8 @@
   "service.background_video.hint": "A SONG'S VIDEO (TJA BGMOVIE, OSU! BEATMAP VIDEO) OVER THE GAMEPLAY BACKGROUNDS. UNDER THE LANE: ONLY THE AREA BELOW THE LANE, WITH ONE PLAYER.",
   "service.background_video_dim": "VIDEO DIM",
   "service.background_video_dim.hint": "DARKENS THE BACKGROUND VIDEO SO THE NOTES STAY EASY TO READ.",
+  "service.background_video_fps": "VIDEO FRAME RATE",
+  "service.background_video_fps.hint": "THE MOST FRAMES A SECOND A BACKGROUND VIDEO SHOWS. 30 HALVES THE DECODING WORK, FOR SLOWER DEVICES.",
   "service.lyrics": "LYRICS",
   "service.lyrics.hint": "A SONG'S LYRICS WHILE IT PLAYS, WHEN ITS TJA HAS THEM (#LYRIC OR A LYRICS .LRC FILE). THE SAMPLE LINE SHOWS THE LOOK.",
   "service.lyrics_x": "POSITION X",

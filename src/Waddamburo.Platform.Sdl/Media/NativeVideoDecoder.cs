@@ -31,9 +31,9 @@ public sealed unsafe class NativeVideoDecoder : IDisposable
         Duration = info.DurationMicroseconds < 0 ? null : TimeSpan.FromMicroseconds(info.DurationMicroseconds);
     }
 
-    public uint Width { get; }
+    public uint Width { get; private set; }
 
-    public uint Height { get; }
+    public uint Height { get; private set; }
 
     public TimeSpan? Duration { get; }
 
@@ -61,6 +61,24 @@ public sealed unsafe class NativeVideoDecoder : IDisposable
         var result = NativeMediaMethods.VideoSeek(_handle, (long)time.TotalMicroseconds);
         if (result != MediaResult.Ok)
             throw new IOException($"Video seeking failed ({result}).");
+    }
+
+    /// <summary>Frames come out at most <paramref name="height"/> lines high (the shape kept); before the first frame.</summary>
+    public void LimitHeight(uint height)
+    {
+        ObjectDisposedException.ThrowIf(_handle == 0, this);
+        if (NativeMediaMethods.VideoLimitHeight(_handle, height, out var width, out var limited) == MediaResult.Ok)
+            (Width, Height) = (width, limited);
+    }
+
+    /// <summary>True: B-frames (nothing refers to them) are not decoded, for a decoder running late.</summary>
+    public bool SkipUnreferenced
+    {
+        set
+        {
+            ObjectDisposedException.ThrowIf(_handle == 0, this);
+            NativeMediaMethods.VideoSkipUnreferenced(_handle, value ? 1 : 0);
+        }
     }
 
     public void Dispose()

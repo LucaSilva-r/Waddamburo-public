@@ -18,6 +18,9 @@ internal sealed class BackgroundVideo : IDisposable
     private static readonly TimeSpan SeekAhead = TimeSpan.FromSeconds(1.5);
     // A frame this far behind the song's time is dropped by the worker.
     private static readonly long LateTicks = TimeSpan.FromMilliseconds(50).Ticks;
+    private static readonly long StarveTicks = TimeSpan.FromMilliseconds(100).Ticks;
+    // The shortest time between two frames shown (a frame rate cap; a millisecond's slack for rounded timestamps).
+    private long _frameTicks;
 
     private readonly SdlApplication _application;
     private readonly NativeVideoDecoder _decoder;
@@ -51,16 +54,21 @@ internal sealed class BackgroundVideo : IDisposable
     }
 
     /// <summary>Opens the video (null: it cannot be decoded; the song plays without it).</summary>
-    public static BackgroundVideo? Open(SdlApplication application, Waddamburo.Catalog.ChartVideo video)
+    /// <param name="drawnHeight">How high it is drawn on the 720-line stage: frames come out no bigger than that needs.</param>
+    /// <param name="maximumFps">The most frames a second shown (30 or 60): at 30 the decoder skips B-frames throughout.</param>
+    public static BackgroundVideo? Open(SdlApplication application, Waddamburo.Catalog.ChartVideo video, float drawnHeight = 720,
+        int maximumFps = 60)
     {
         var path = video.Path;
         try
         {
             var decoder = new NativeVideoDecoder(path);
+            // Phones: the drawn size (their screens are about the stage's); else half again, for sharper large windows.
+            decoder.LimitHeight((uint)Math.Clamp(drawnHeight * (PlatformInfo.IsMobile ? 1 : 1.5f), 120, 720));
             Console.WriteLine($"Background video {System.IO.Path.GetFileName(path)}: {decoder.Width}x{decoder.Height}"
                 + $"{(video.Additive ? ", added" : "")}{(video.KeyColor is { } key ? $", key #{key:X6}" : "")}"
                 + $"{(video.LumaCurve is { } curve ? $", luma key {curve}" : "")}.");
-            return new BackgroundVideo(application, decoder, video);
+            return new BackgroundVideo(application, decoder, video) { _frameTicks = TimeSpan.FromSeconds(1d / Math.Clamp(maximumFps, 1, 240)).Ticks - TimeSpan.TicksPerMillisecond };
         }
         catch (Exception exception) when (exception is IOException or NotSupportedException or InvalidOperationException
             or DllNotFoundException or EntryPointNotFoundException)
@@ -157,6 +165,8 @@ internal sealed class BackgroundVideo : IDisposable
         {
             var size = (int)(_decoder.Width * _decoder.Height * 4);
             var ended = false;
+            var skipping = false;
+            long lastKept = long.MinValue / 2;
             while (!_stop.IsCancellationRequested)
             {
                 // The generation is read after the seek: a seek raises it before it posts its time.
@@ -179,12 +189,26 @@ internal sealed class BackgroundVideo : IDisposable
                     _spare.Add(pixels);
                     continue;
                 }
-                // Late already (the decoder fell behind): not masked nor queued, the next one may be on time.
-                if (time.Ticks < Interlocked.Read(ref _targetTicks) - LateTicks)
+                // Late already (the decoder fell behind): not masked nor queued, the next one may be on time; but one in
+                // every StarveTicks of video is kept, so a slow device shows the video at a lower rate, not none.
+                // Running late, the decoder also skips B-frames (about half its work) until it catches up.
+                var late = time.Ticks < Interlocked.Read(ref _targetTicks) - LateTicks;
+                // Capped at 30 frames a second, B-frames are always skipped (every other frame of most 60 fps videos).
+                var skip = late || _frameTicks > TimeSpan.FromSeconds(1d / 45).Ticks;
+                if (skip != skipping)
+                    _decoder.SkipUnreferenced = skipping = skip;
+                // Above the cap: not converted further, masked, queued nor uploaded.
+                if (time.Ticks - lastKept < _frameTicks)
                 {
                     _spare.Add(pixels);
                     continue;
                 }
+                if (late && time.Ticks - lastKept < StarveTicks)
+                {
+                    _spare.Add(pixels);
+                    continue;
+                }
+                lastKept = time.Ticks;
                 _mask.Apply(pixels);
                 // Wait for room, but give up on the frame when a seek asks for another place.
                 while (!_frames.TryAdd((pixels, time, generation), 20, _stop.Token))
