@@ -34,9 +34,20 @@ internal sealed class NativeArt(SdlApplication application, string fontPath, str
     /// <summary>The boot's music credit pages (the copyright NUT's).</summary>
     public int CopyrightPages => copyright.Pages;
 
-    public RenderTextureId? Resolve(LumenNativeSurfaceKey surface) =>
-        danArt.Resolve(surface) ?? seasonArt.Resolve(surface) ?? copyright.Resolve(surface) ?? featureBoards.Resolve(surface) ?? costumeIcons.Resolve(surface) ?? waiwaiResults.Resolve(surface)
-        ?? _textFields.Resolve(surface) ?? _nameTexts.Resolve(surface) ?? tones.Resolve(surface);
+    // The art decoded from NUTs by key (dan plates, seasons, copyright, feature boards, costumes, Waiwai, tones): each part
+    // parses its keys (strings) and the frame asks every frame. Text is drawn at the window's scale, so it asks each time.
+    // ponytail: never evicted; the parts keep their textures for good anyway.
+    private readonly Dictionary<LumenNativeSurfaceKey, RenderTextureId> _art = [];
+
+    public RenderTextureId? Resolve(LumenNativeSurfaceKey surface)
+    {
+        if (_art.TryGetValue(surface, out var known))
+            return known;
+        if ((danArt.Resolve(surface) ?? seasonArt.Resolve(surface) ?? copyright.Resolve(surface) ?? featureBoards.Resolve(surface)
+            ?? costumeIcons.Resolve(surface) ?? waiwaiResults.Resolve(surface) ?? tones.Resolve(surface)) is { } art)
+            return _art[surface] = art;
+        return _textFields.Resolve(surface) ?? _nameTexts.Resolve(surface);
+    }
 
     public void Dispose()
     {

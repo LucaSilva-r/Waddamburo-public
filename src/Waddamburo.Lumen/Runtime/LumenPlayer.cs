@@ -23,7 +23,8 @@ public sealed class LumenPlayer : IAvm1Host
     private readonly Dictionary<uint, SpriteTimeline> _sprites;
     private readonly Dictionary<uint, LmbTextDefinition> _texts;
     private readonly List<LumenRuntimeDiagnostic> _diagnostics = [];
-    private readonly HashSet<string> _diagnosticKeys = new(StringComparer.Ordinal);
+    // Reported diagnostics by (code, character, frame, detail): a tuple, so the per-frame check builds no string.
+    private readonly HashSet<(string Code, uint Character, int Frame, string Detail)> _diagnosticKeys = [];
     private readonly List<PendingFrameAction> _pendingActions = [];
     private readonly List<(DisplayInstance Instance, Avm1FunctionValue Class)> _pendingConstructions = [];
     private int _frameDepth;
@@ -198,9 +199,20 @@ public sealed class LumenPlayer : IAvm1Host
     {
         if (_scopedFills == 0)
             return null;
+        // "ancestor/slot" built on the stack and looked up as a span: this runs for every fill quad, every frame.
+        var lookup = _nativeFills.GetAlternateLookup<ReadOnlySpan<char>>();
+        Span<char> name = stackalloc char[256];
         for (var ancestor = instance.Parent; ancestor is not null; ancestor = ancestor.Parent)
-            if (ancestor.Name.Length > 0 && _nativeFills.TryGetValue($"{ancestor.Name}/{slot}", out var fill))
+        {
+            var length = ancestor.Name.Length + 1 + slot.Length;
+            if (ancestor.Name.Length == 0 || length > name.Length)
+                continue;
+            ancestor.Name.CopyTo(name);
+            name[ancestor.Name.Length] = '/';
+            slot.CopyTo(name[(ancestor.Name.Length + 1)..]);
+            if (lookup.TryGetValue(name[..length], out var fill))
                 return fill;
+        }
         return null;
     }
 
@@ -618,7 +630,7 @@ public sealed class LumenPlayer : IAvm1Host
             lines.Add($"{new string(' ', 2 * level)}{(instance.Name.Length > 0 ? instance.Name : "-")} ch={instance.CharacterId} "
                 + $"frame={instance.Frame}{(label is null ? "" : $"({label})")}{(instance.Playing ? " playing" : "")}"
                 + $"{(instance.Visible ? "" : " HIDDEN")} a={instance.Color.Multiply.Alpha:0.##} at=({instance.Transform.X:0},{instance.Transform.Y:0})");
-            foreach (var child in instance.Children.Values)
+            foreach (var child in childrenOf(instance))
                 visit(child, level + 1);
         }
         visit(_root, 0);
@@ -734,7 +746,7 @@ public sealed class LumenPlayer : IAvm1Host
 
     private static DisplayInstance? findBySuffix(DisplayInstance instance, string[] names)
     {
-        foreach (var child in instance.Children.Values)
+        foreach (var child in childrenOf(instance))
         {
             if (child.Removed)
                 continue;
@@ -839,14 +851,25 @@ public sealed class LumenPlayer : IAvm1Host
     /// </summary>
     public void HoldStill() => snapshotInstances(_root);
 
+    // Lists reused by advanceSubtree (it runs every tick, and again inside scripts that fast-forward a clip: a pool).
+    private readonly Stack<List<DisplayInstance>> _instanceLists = new();
+
     private void advanceSubtree(DisplayInstance root, bool queueActions)
     {
-        var existing = new List<DisplayInstance>();
-        collectPlayingInstances(root, existing);
-        foreach (var instance in existing)
+        var existing = _instanceLists.Count > 0 ? _instanceLists.Pop() : [];
+        try
         {
-            if (!instance.Removed)
-                advanceInstance(instance, queueActions);
+            collectPlayingInstances(root, existing);
+            for (var index = 0; index < existing.Count; index++)
+            {
+                if (!existing[index].Removed)
+                    advanceInstance(existing[index], queueActions);
+            }
+        }
+        finally
+        {
+            existing.Clear();
+            _instanceLists.Push(existing);
         }
     }
 
@@ -944,7 +967,7 @@ public sealed class LumenPlayer : IAvm1Host
         {
             instance.Frame = keyFrame;
             applyCommands(instance, timeline.KeyFrames[keyFrame], queueActions: false);
-            foreach (var child in instance.Children.Values)
+            foreach (var child in childrenOf(instance))
             {
                 if (!_sprites.TryGetValue(child.CharacterId, out var childTimeline)
                     || childTimeline.Frames.IsEmpty)
@@ -1007,7 +1030,7 @@ public sealed class LumenPlayer : IAvm1Host
                 child.Removed = true;
             instance.ReusableTimelineChildren = null;
         }
-        foreach (var child in instance.Children.Values)
+        foreach (var child in childrenOf(instance))
         {
             child.PreviousTransform = null;
             child.PreviousMultiply = null;
@@ -1094,7 +1117,7 @@ public sealed class LumenPlayer : IAvm1Host
         {
             enqueueAction(instance, action);
         }
-        foreach (var child in instance.Children.Values)
+        foreach (var child in childrenOf(instance))
         {
             if (_sprites.ContainsKey(child.CharacterId))
                 enqueueCurrentFrameActions(child);
@@ -1366,23 +1389,63 @@ public sealed class LumenPlayer : IAvm1Host
         return default;
     }
 
+    private Avm1Lookup addCallback(Avm1ExecutionContext context, DisplayInstance instance, IReadOnlyList<object?> arguments)
+    {
+        if (arguments.Count >= 3
+            && arguments[0] is string callbackName
+            && arguments[2] is Avm1FunctionValue callbackFunction)
+        {
+            var thisObject = arguments[1];
+            context.OnCommit(() => _callbacks[callbackName] = new CallbackRegistration(instance, thisObject, callbackFunction));
+            return new Avm1Lookup(true, true);
+        }
+        return new Avm1Lookup(true, false);
+    }
+
+    // Array.pop, shift, join and reverse.
+    private Avm1Lookup listMethod(Avm1ExecutionContext context, Avm1ArrayObject listArray, string name, IReadOnlyList<object?> arguments)
+    {
+        var lengthLookup = context.GetMember(listArray, "length");
+        var length = lengthLookup.Found ? toNumber(lengthLookup.Value) : 0;
+        var count = double.IsFinite(length) && length > 0 ? (int)length : 0;
+        string key(int index) => index.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        if (name == "join")
+        {
+            var separator = arguments.Count > 0 && arguments[0] is not Avm1Undefined ? toAvmString(arguments[0]) : ",";
+            return new Avm1Lookup(true, string.Join(separator, Enumerable.Range(0, count).Select(index =>
+                context.GetMember(listArray, key(index)) is { Found: true, Value: not (null or Avm1Undefined) } item
+                    ? toAvmString(item.Value) : "")));
+        }
+        // In place, and the array itself (reward_shop's reward list).
+        if (name == "reverse")
+        {
+            var items = Enumerable.Range(0, count).Select(index => context.GetMember(listArray, key(index)).Value).ToList();
+            for (var index = 0; index < count; index++)
+                context.SetMember(listArray, key(index), items[count - 1 - index]);
+            return new Avm1Lookup(true, listArray);
+        }
+        if (count == 0)
+            return new Avm1Lookup(true, Avm1Undefined.Instance);
+        object? removed;
+        if (name == "pop")
+            removed = context.GetMember(listArray, key(count - 1)).Value;
+        else
+        {
+            removed = context.GetMember(listArray, key(0)).Value;
+            for (var index = 1; index < count; index++)
+                context.SetMember(listArray, key(index - 1), context.GetMember(listArray, key(index)).Value);
+        }
+        context.SetMember(listArray, "length", (double)(count - 1));
+        return new Avm1Lookup(true, removed ?? Avm1Undefined.Instance);
+    }
+
     Avm1Lookup IAvm1Host.CallMethod(Avm1ExecutionContext context, object? target, string name, IReadOnlyList<object?> arguments, int instructionOffset)
     {
         var instance = (DisplayInstance)context.Owner;
+        // Branches whose lambdas would capture this method's parameters live in methods of their own: a captured
+        // parameter makes C# allocate the closure on every call, and this runs for every script call.
         if (ReferenceEquals(target, _externalInterface) && name == "addCallback")
-        {
-            if (arguments.Count >= 3
-                && arguments[0] is string callbackName
-                && arguments[2] is Avm1FunctionValue callbackFunction)
-            {
-                context.OnCommit(() => _callbacks[callbackName] = new CallbackRegistration(
-                    instance,
-                    arguments[1],
-                    callbackFunction));
-                return new Avm1Lookup(true, true);
-            }
-            return new Avm1Lookup(true, false);
-        }
+            return addCallback(context, instance, arguments);
         if (name == "toString" && target is null or bool or double or string or Avm1Undefined)
             return new Avm1Lookup(true, toAvmString(target));
         if (target is string text && name == "charAt")
@@ -1419,40 +1482,7 @@ public sealed class LumenPlayer : IAvm1Host
             return new Avm1Lookup(true, newLength);
         }
         if (target is Avm1ArrayObject listArray && name is "pop" or "shift" or "join" or "reverse")
-        {
-            var lengthLookup = context.GetMember(listArray, "length");
-            var length = lengthLookup.Found ? toNumber(lengthLookup.Value) : 0;
-            var count = double.IsFinite(length) && length > 0 ? (int)length : 0;
-            string key(int index) => index.ToString(System.Globalization.CultureInfo.InvariantCulture);
-            if (name == "join")
-            {
-                var separator = arguments.Count > 0 && arguments[0] is not Avm1Undefined ? toAvmString(arguments[0]) : ",";
-                return new Avm1Lookup(true, string.Join(separator, Enumerable.Range(0, count).Select(index =>
-                    context.GetMember(listArray, key(index)) is { Found: true, Value: not (null or Avm1Undefined) } item
-                        ? toAvmString(item.Value) : "")));
-            }
-            // In place, and the array itself (reward_shop's reward list).
-            if (name == "reverse")
-            {
-                var items = Enumerable.Range(0, count).Select(index => context.GetMember(listArray, key(index)).Value).ToList();
-                for (var index = 0; index < count; index++)
-                    context.SetMember(listArray, key(index), items[count - 1 - index]);
-                return new Avm1Lookup(true, listArray);
-            }
-            if (count == 0)
-                return new Avm1Lookup(true, Avm1Undefined.Instance);
-            object? removed;
-            if (name == "pop")
-                removed = context.GetMember(listArray, key(count - 1)).Value;
-            else
-            {
-                removed = context.GetMember(listArray, key(0)).Value;
-                for (var index = 1; index < count; index++)
-                    context.SetMember(listArray, key(index - 1), context.GetMember(listArray, key(index)).Value);
-            }
-            context.SetMember(listArray, "length", (double)(count - 1));
-            return new Avm1Lookup(true, removed ?? Avm1Undefined.Instance);
-        }
+            return listMethod(context, listArray, name, arguments);
         if (target is MovieClipLoaderObject loader && name == "addListener"
             && arguments.Count > 0 && arguments[0] is Avm1Object listener)
         {
@@ -1519,7 +1549,8 @@ public sealed class LumenPlayer : IAvm1Host
             };
             context.SetTransientMember(emptyParent, emptyName, empty);
             context.SetTransientChild(emptyParent, emptyDepth, empty);
-            context.OnCommit(() => placeScriptChild(emptyParent, empty));
+            var emptyAt = emptyParent; // a block local: capturing the pattern variable allocated the closure on every call
+            context.OnCommit(() => placeScriptChild(emptyAt, empty));
             return new Avm1Lookup(true, empty);
         }
         if (target is DisplayInstance attachTarget
@@ -1529,9 +1560,10 @@ public sealed class LumenPlayer : IAvm1Host
             && arguments[1] is string instanceName
             && tryAvmDepth(arguments[2], out var attachDepth))
         {
+            var linkage = linkageName;
             var exported = _movie.Sprites
                 .Select(sprite => _sprites[sprite.CharacterId])
-                .FirstOrDefault(timeline => timeline.ExportName == linkageName);
+                .FirstOrDefault(timeline => timeline.ExportName == linkage);
             if (exported.ExportName is null)
             {
                 reportOnce(
@@ -1560,7 +1592,8 @@ public sealed class LumenPlayer : IAvm1Host
                 constructInstance(attached, attachedClass);
             context.SetTransientMember(attachTarget, instanceName, attached);
             context.SetTransientChild(attachTarget, attachDepth, attached);
-            context.OnCommit(() => placeScriptChild(attachTarget, attached));
+            var attachAt = attachTarget;
+            context.OnCommit(() => placeScriptChild(attachAt, attached));
             return new Avm1Lookup(true, attached);
         }
         // A copy of the clip beside it (same parent): its symbol at its first frame, its colour, blend and class
@@ -1594,7 +1627,8 @@ public sealed class LumenPlayer : IAvm1Host
                 constructInstance(duplicate, duplicateClass);
             context.SetTransientMember(duplicateParent, duplicateName, duplicate);
             context.SetTransientChild(duplicateParent, duplicateDepth, duplicate);
-            context.OnCommit(() => placeScriptChild(duplicateParent, duplicate));
+            var duplicateAt = duplicateParent;
+            context.OnCommit(() => placeScriptChild(duplicateAt, duplicate));
             return new Avm1Lookup(true, duplicate);
         }
         if (target is DisplayInstance targetInstance && name is "play" or "stop")
@@ -1632,7 +1666,8 @@ public sealed class LumenPlayer : IAvm1Host
             && arguments[0] is string exportName
             && arguments[1] is Avm1FunctionValue registeredClass)
         {
-            context.OnCommit(() => registerClass(exportName, registeredClass));
+            var (classExport, classFunction) = (exportName, registeredClass);
+            context.OnCommit(() => registerClass(classExport, classFunction));
             return new Avm1Lookup(true, true);
         }
         var receiver = target is Avm1SuperValue super ? super.ThisValue : target;
@@ -2024,7 +2059,7 @@ public sealed class LumenPlayer : IAvm1Host
         {
             queueConstruction(instance, function);
         }
-        foreach (var child in instance.Children.Values)
+        foreach (var child in childrenOf(instance))
             bindClass(child, exportName, function);
     }
 
@@ -2721,7 +2756,7 @@ public sealed class LumenPlayer : IAvm1Host
                             Source: Inspect ? describe(instance, $"native fill '{slot}'") : null));
                         continue;
                     }
-                    reportOnce("LUM_NATIVE_FILL_DEFERRED", instance.CharacterId, instance.Frame, $"Fill-zero/native shape '{slot}' has no host surface yet.");
+                    reportOnce("LUM_NATIVE_FILL_DEFERRED", instance.CharacterId, instance.Frame, "Fill-zero/native shape '{0}' has no host surface yet.", slot);
                     continue;
                 }
 
@@ -2871,17 +2906,21 @@ public sealed class LumenPlayer : IAvm1Host
         LumenNativeSurfaceKey Surface,
         LumenNativeSurfacePlacement? Placement);
 
-    private void reportOnce(string code, uint characterId, int frame, string message)
+    private void reportOnce(string code, uint characterId, int frame, string message) =>
+        reportOnce(code, characterId, frame, message, null);
+
+    // A message with one argument ({0}) is formatted only the first time: some are reported every frame (a fill the host
+    // has not drawn yet).
+    private void reportOnce(string code, uint characterId, int frame, string message, string? argument)
     {
-        var key = $"{code}:{characterId}:{frame}:{message}";
-        if (_diagnosticKeys.Add(key))
+        if (_diagnosticKeys.Add((code, characterId, frame, argument ?? message)))
         {
             _diagnostics.Add(new LumenRuntimeDiagnostic(
                 LumenRuntimeDiagnosticSeverity.Warning,
                 code,
                 characterId,
                 frame,
-                message));
+                argument is null ? message : string.Format(System.Globalization.CultureInfo.InvariantCulture, message, argument)));
         }
     }
 
@@ -2919,6 +2958,23 @@ public sealed class LumenPlayer : IAvm1Host
             snapshotInstances(children[index]);
     }
 
+    // A clip's children in depth order without SortedList's enumerator (a heap object per walk, per clip, per tick).
+    private static Children childrenOf(DisplayInstance instance) => new(instance.Children);
+
+    private readonly struct Children(SortedList<long, DisplayInstance> list)
+    {
+        public Enumerator GetEnumerator() => new(list);
+
+        public struct Enumerator(SortedList<long, DisplayInstance> list)
+        {
+            private int _index = -1;
+
+            public readonly DisplayInstance Current => list.GetValueAtIndex(_index);
+
+            public bool MoveNext() => ++_index < list.Count;
+        }
+    }
+
     private static void resetInterpolation(DisplayInstance instance)
     {
         if (instance.Removed)
@@ -2926,13 +2982,13 @@ public sealed class LumenPlayer : IAvm1Host
         instance.PreviousTransform = instance.Transform;
         instance.PreviousMultiply = instance.Color.Multiply;
         instance.PreviousVisible = instance.Visible;
-        foreach (var child in instance.Children.Values)
+        foreach (var child in childrenOf(instance))
             resetInterpolation(child);
     }
 
     private static void clearChildren(DisplayInstance instance)
     {
-        foreach (var child in instance.Children.Values)
+        foreach (var child in childrenOf(instance))
             child.Removed = true;
         instance.Children.Clear();
     }

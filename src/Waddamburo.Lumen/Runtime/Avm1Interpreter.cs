@@ -233,39 +233,39 @@ internal static class Avm1Interpreter
                     context.PendingPlayback = false;
                     break;
                 case 0x0A: // Add
-                    if (!tryBinary(stack, (left, right) => toNumber(left) + toNumber(right)))
+                    if (!tryBinary(stack, (left, right) => Box(toNumber(left) + toNumber(right))))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x0B: // Subtract
-                    if (!tryBinary(stack, (left, right) => toNumber(left) - toNumber(right)))
+                    if (!tryBinary(stack, (left, right) => Box(toNumber(left) - toNumber(right))))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x0C: // Multiply
-                    if (!tryBinary(stack, (left, right) => toNumber(left) * toNumber(right)))
+                    if (!tryBinary(stack, (left, right) => Box(toNumber(left) * toNumber(right))))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x0D: // Divide
-                    if (!tryBinary(stack, (left, right) => toNumber(left) / toNumber(right)))
+                    if (!tryBinary(stack, (left, right) => Box(toNumber(left) / toNumber(right))))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x3F: // Modulo
-                    if (!tryBinary(stack, (left, right) => toNumber(left) % toNumber(right)))
+                    if (!tryBinary(stack, (left, right) => Box(toNumber(left) % toNumber(right))))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x0E: // Equals
                 case 0x49: // Equals2
-                    if (!tryBinary(stack, (left, right) => looseEquals(left, right)))
+                    if (!tryBinary(stack, (left, right) => Box(looseEquals(left, right))))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x0F: // Less
                 case 0x48: // Less2
-                    if (!tryBinary(stack, (left, right) => lessThan(left, right)))
+                    if (!tryBinary(stack, (left, right) => Box(lessThan(left, right))))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x12: // Not
                     if (!tryPop(stack, out var condition))
                         return Avm1ExecutionStatus.StackUnderflow;
-                    if (!tryPush(stack, !toBoolean(condition), limits.MaxStackValues))
+                    if (!tryPush(stack, Box(!toBoolean(condition)), limits.MaxStackValues))
                         return Avm1ExecutionStatus.StackLimit;
                     break;
                 case 0x17: // Pop
@@ -279,7 +279,7 @@ internal static class Avm1Interpreter
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x18: // ToInteger (truncate toward zero)
-                    if (!tryUnary(stack, value => Math.Truncate(toNumber(value))))
+                    if (!tryUnary(stack, value => Box(Math.Truncate(toNumber(value)))))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x1C: // GetVariable
@@ -444,27 +444,27 @@ internal static class Avm1Interpreter
                         return Avm1ExecutionStatus.StackLimit;
                     break;
                 case 0x60: // BitAnd
-                    if (!tryBinary(stack, (left, right) => (double)(toInt32(left) & toInt32(right))))
+                    if (!tryBinary(stack, (left, right) => Box((double)(toInt32(left) & toInt32(right)))))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x61: // BitOr
-                    if (!tryBinary(stack, (left, right) => (double)(toInt32(left) | toInt32(right))))
+                    if (!tryBinary(stack, (left, right) => Box((double)(toInt32(left) | toInt32(right)))))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x62: // BitXor
-                    if (!tryBinary(stack, (left, right) => (double)(toInt32(left) ^ toInt32(right))))
+                    if (!tryBinary(stack, (left, right) => Box((double)(toInt32(left) ^ toInt32(right)))))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x63: // BitLShift
-                    if (!tryBinary(stack, (left, right) => (double)(toInt32(left) << (toInt32(right) & 0x1f))))
+                    if (!tryBinary(stack, (left, right) => Box((double)(toInt32(left) << (toInt32(right) & 0x1f)))))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x64: // BitRShift
-                    if (!tryBinary(stack, (left, right) => (double)(toInt32(left) >> (toInt32(right) & 0x1f))))
+                    if (!tryBinary(stack, (left, right) => Box((double)(toInt32(left) >> (toInt32(right) & 0x1f)))))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x65: // BitURShift
-                    if (!tryBinary(stack, (left, right) => (double)((uint)toInt32(left) >> (toInt32(right) & 0x1f))))
+                    if (!tryBinary(stack, (left, right) => Box((double)((uint)toInt32(left) >> (toInt32(right) & 0x1f)))))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x47: // Add2
@@ -472,7 +472,7 @@ internal static class Avm1Interpreter
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x4A: // ToNumber
-                    if (!tryUnary(stack, value => toNumber(value)))
+                    if (!tryUnary(stack, value => Box(toNumber(value))))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x4B: // ToString
@@ -480,19 +480,19 @@ internal static class Avm1Interpreter
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x50: // Increment
-                    if (!tryUnary(stack, value => toNumber(value) + 1))
+                    if (!tryUnary(stack, value => Box(toNumber(value) + 1)))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x51: // Decrement
-                    if (!tryUnary(stack, value => toNumber(value) - 1))
+                    if (!tryUnary(stack, value => Box(toNumber(value) - 1)))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x66: // StrictEquals
-                    if (!tryBinary(stack, (left, right) => strictEquals(left, right)))
+                    if (!tryBinary(stack, (left, right) => Box(strictEquals(left, right))))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x67: // Greater
-                    if (!tryBinary(stack, (left, right) => lessThan(right, left)))
+                    if (!tryBinary(stack, (left, right) => Box(lessThan(right, left))))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x96: // Push
@@ -641,7 +641,7 @@ internal static class Avm1Interpreter
                     pushed = strings[value.StringIndex].Value;
                     break;
                 case 1 or 6 or 7:
-                    pushed = value.Number;
+                    pushed = Box(value.Number);
                     break;
                 case 2:
                     pushed = null;
@@ -650,7 +650,7 @@ internal static class Avm1Interpreter
                     pushed = Avm1Undefined.Instance;
                     break;
                 case 5:
-                    pushed = value.Boolean;
+                    pushed = Box(value.Boolean);
                     break;
                 case 4 when value.Register < registers.Length:
                     pushed = registers[value.Register];
@@ -776,6 +776,17 @@ internal static class Avm1Interpreter
             modulo += 4_294_967_296d;
         return unchecked((int)(uint)modulo);
     }
+
+    // Values go on the stack as objects: a bool or a double boxes. True and false have one box each, and so have the whole
+    // numbers scripts use most (frames, depths, counters): an expression no longer allocates its result.
+    private static readonly object BoxedTrue = true, BoxedFalse = false;
+    private static readonly object[] BoxedWholes = [.. Enumerable.Range(-256, 1280).Select(static whole => (object)(double)whole)];
+
+    internal static object Box(bool value) => value ? BoxedTrue : BoxedFalse;
+
+    internal static object Box(double value) =>
+        value >= -256 && value < 1024 && value == Math.Floor(value) && !(value == 0 && double.IsNegative(value))
+            ? BoxedWholes[(int)value + 256] : value;
 
     private static bool tryBinary(List<object?> stack, Func<object?, object?, object?> operation)
     {

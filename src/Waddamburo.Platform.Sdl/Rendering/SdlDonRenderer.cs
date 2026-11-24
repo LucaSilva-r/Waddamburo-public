@@ -80,6 +80,7 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
     public float Interpolation { get; set; } = 1;
     private readonly Target[] _targets = new Target[3];
     private readonly float[] _poseUniforms = new float[16 * (PaletteSize + 1)];
+    private Matrix4x4[]? _animatedWorld; // reused each frame (EvaluateWorld into it)
     private readonly bgfx.ProgramHandle _modelProgram;
     private readonly bgfx.ProgramHandle _postProgram;
     private readonly bgfx.VertexBufferHandle _postTriangle;
@@ -305,7 +306,8 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         var target = _targets[playerIndex];
         player.Sample(Interpolation, _pose, _skeleton.ExpressionOffset);
         ReadOnlySpan<float> frame = _pose;
-        var animatedWorld = _skeleton.EvaluateWorld(frame);
+        var animatedWorld = _animatedWorld ??= new Matrix4x4[_skeleton.Channels.Length];
+        _skeleton.EvaluateWorld(frame, animatedWorld);
         var matrices = MemoryMarshal.Cast<float, Matrix4x4>(_poseUniforms.AsSpan());
         var targetSize = _targetSizes[playerIndex];
         var camera = _layouts[playerIndex] switch
@@ -812,7 +814,8 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
             var weight = (float)(position - index);
             for (var i = 0; i < frame.Length; i++)
                 frame[i] = current[i] + (next[i] - current[i]) * weight;
-            var world = Skeleton.EvaluateWorld(frame);
+            Span<Matrix4x4> world = stackalloc Matrix4x4[Skeleton.Channels.Length];
+            Skeleton.EvaluateWorld(frame, world);
             uniforms[0] = camera;
             for (var bone = 0; bone < PaletteSize; bone++)
                 uniforms[bone + 1] = bone < world.Length ? InverseBind[bone] * world[bone] * donPlacement : Matrix4x4.Identity;
