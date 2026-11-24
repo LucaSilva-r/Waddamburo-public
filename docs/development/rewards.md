@@ -5,7 +5,7 @@ Status: phases 0-6 done and deployed (v0.32.1, 2026-11-21); phase 7 (events) is 
 
 ## What Green has
 
-Green's ごほうびタイム **is `reward_shop`**. Traced (`research/traces/session-rewards-1.md`, a 2-song credit
+Green's ごほうびタイム **is `reward_shop`**. Traced (a 2-song credit
 then two card entries, 2026-11-19): last result → `reward_shop` in medal mode → `shop_gameover`, and at the next
 card entry → `reward_shop` in shopping mode → song select. Green never showed `total_result` and made no Don
 Point or present calls.
@@ -97,14 +97,14 @@ everything from them.
   menu gets "Reward shop", which opens `reward_shop` in shopping mode and goes back to song select.
 - **Skins.** Show the shop only when the skin provides the `reward_shop` slot.
 - **Shop tutorial.** `reward_shop` has a first-visit tutorial, shown when the card's `itemshop_tutorial_flg`
-  is 0 (seen in the recomp with a card that never used the shop; TaikOnline already stores the flag from
+  is 0 (seen with a card that never used the shop; TaikOnline already stores the flag from
   `playresult`). Waddamburo shows it on a profile's first shop visit and saves the flag the same way.
 - **Website.** The TaikOnline profile shows medals and points (BoardController already has `don_medals`).
   A web shop like Donder Hiroba's can come later.
 
 ## Phases
 
-0. **Research. Done 2026-11-19:** `research/traces/session-rewards-{1,2}.md` (shop in both modes, 6
+0. **Research. Done 2026-11-19:** two traced sessions (shop in both modes, 6
    purchases; an Abekobe credit earning title 140 silently).
 1. **TaikOnline fixes** (they also affect real cabinets). Fixed 2026-11-19 (TaikOnline `staging`, uncommitted):
    the release-song bitfield was off by one (song n at bit n−1; Green reads bit n), so bought songs showed as
@@ -118,12 +118,11 @@ everything from them.
    `WaddamburoUnlocks`, user decisions): "Only what I earned" locks only goods with a known way to earn them (today the
    reward shop's, every season; condition titles join in phase 6); owned = bought in Waddamburo or unlocked on a real
    Green cabinet (the card's Green row). The profile sends `earned_only` and `locked` (songs by musicid, costumes by
-   id); the toggle and the greyed, refused costumes are on the website's Don-chan page. From the wiki (lab
-   `research/wiki/`): Green's AI battle rewards lock too (5 songs, 3 costumes, by verified wins); Katsu Medal goods stay
+   id); the toggle and the greyed, refused costumes are on the website's Don-chan page. From the wiki:
+   Green's AI battle rewards lock too (5 songs, 3 costumes, by verified wins); Katsu Medal goods stay
    free (no way to earn them in Green, user decision); title-unlocked items wait for phase 6.
    **Daily shop pool** (2026-11-20, user decisions): every kigurumi, head, body and stock song with no way to earn it by
-   playing Green (Katsu Medal shop, older versions, expired campaigns and month-of-year titles; 429 items, lab
-   `research/ghidra/green_item_routes.tsv`) is sold in Waddamburo's shop: each day the season's Green goods plus the
+   playing Green (Katsu Medal shop, older versions, expired campaigns and month-of-year titles; 429 items) is sold in Waddamburo's shop: each day the season's Green goods plus the
    next pool items fill the movie's lineup areas (costume boxes 1-11, song boxes 12-17; box 0 is the exit; a costume past box
    11 pushes the last song off the lineup), so the pool comes round in about six to seven weeks. TaikOnline
    `WaddamburoShopPool` + data file `green_shop_pool.json` (fixed shuffled order); pool goods lock in "Only what I
