@@ -1,7 +1,7 @@
 # Rewards: Don Medals, reward shop, Don Points, titles
 
 Plan for Green's reward systems in Waddamburo (Discord suggestion "Events/Gouhoubi Shop").
-Status: medals and the arcade shop built; gating, home screens and titles to do. Delete this file when done (git history keeps it).
+Status: phases 0-6 done and deployed (v0.32.1, 2026-11-21); phase 7 (events) is next. Delete this file when events are done (git history keeps it).
 
 ## What Green has
 

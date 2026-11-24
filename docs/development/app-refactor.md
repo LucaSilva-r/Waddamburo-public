@@ -1,6 +1,6 @@
 # App refactor checkpoint
 
-Status: proposed, 2026-11-18. Scope: `src/Waddamburo.App` (29k lines, no test project) and the two
+Status: phases 0-6 done (2026-11-19); only the optional LumenPlayer split (2.6) is left. Scope: `src/Waddamburo.App` (29k lines, no test project) and the two
 places it leans on hardest (`ArcadeSettings`, `SdlApplication.Run`). Formats, Catalog, Providers,
 Lumen and the Game rules stay as they are; `LumenPlayer` is an optional last phase.
 
