@@ -312,9 +312,15 @@ public sealed partial class TjaCatalogProvider : ISongCatalogProvider, ICatalogA
                 System.Globalization.CultureInfo.InvariantCulture, out var seconds) && double.IsFinite(seconds) ? seconds : 0;
             // Waddamburo's own: BGMOVIEBLEND:add (hologram videos) and BGMOVIEKEY:RRGGBB[,tolerance] (a green screen).
             var key = metadata.Get("BGMOVIEKEY")?.Split(',', StringSplitOptions.TrimEntries);
+            // BGMOVIEBLEND:luma[,curve]: brightness is opacity (8 by default).
+            var blend = metadata.Get("BGMOVIEBLEND")?.Split(',', StringSplitOptions.TrimEntries) ?? [];
             return new ChartVideo(path, TimeSpan.FromSeconds(offset))
             {
-                Additive = string.Equals(metadata.Get("BGMOVIEBLEND")?.Trim(), "add", StringComparison.OrdinalIgnoreCase),
+                Additive = blend is [var add, ..] && string.Equals(add, "add", StringComparison.OrdinalIgnoreCase),
+                LumaCurve = blend is [var luma, ..] && string.Equals(luma, "luma", StringComparison.OrdinalIgnoreCase)
+                    ? blend is [_, var curve, ..] && float.TryParse(curve, System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out var steep) && steep >= 1 ? Math.Min(steep, 64) : 8
+                    : null,
                 KeyColor = key is [var colour, ..] && int.TryParse(colour.TrimStart('#'), System.Globalization.NumberStyles.HexNumber,
                     System.Globalization.CultureInfo.InvariantCulture, out var rgb) ? rgb & 0xFFFFFF : null,
                 KeyTolerance = key is [_, var tolerance, ..] && int.TryParse(tolerance, out var distance) ? Math.Clamp(distance, 0, 441) : 60,

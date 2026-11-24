@@ -41,9 +41,9 @@ internal sealed class BackgroundVideo : IDisposable
         _decoder = decoder;
         Path = video.Path;
         Additive = video.Additive;
-        HidesDancers = video.Additive || video.KeyColor is not null;
+        HidesDancers = video.Additive || video.KeyColor is not null || video.LumaCurve is not null;
         Area = video.Area;
-        _mask = new VideoMask((int)decoder.Width, (int)decoder.Height, video.KeyColor, video.KeyTolerance);
+        _mask = new VideoMask((int)decoder.Width, (int)decoder.Height, video.KeyColor, video.KeyTolerance, video.LumaCurve);
         Texture = application.UploadRgba8(decoder.Width, decoder.Height, new byte[decoder.Width * decoder.Height * 4]);
         _worker = new Thread(decode) { IsBackground = true, Name = "Background video decoder" };
         _worker.Start();
@@ -57,7 +57,8 @@ internal sealed class BackgroundVideo : IDisposable
         {
             var decoder = new NativeVideoDecoder(path);
             Console.WriteLine($"Background video {System.IO.Path.GetFileName(path)}: {decoder.Width}x{decoder.Height}"
-                + $"{(video.Additive ? ", added" : "")}{(video.KeyColor is { } key ? $", key #{key:X6}" : "")}.");
+                + $"{(video.Additive ? ", added" : "")}{(video.KeyColor is { } key ? $", key #{key:X6}" : "")}"
+                + $"{(video.LumaCurve is { } curve ? $", luma key {curve}" : "")}.");
             return new BackgroundVideo(application, decoder, video);
         }
         catch (Exception exception) when (exception is IOException or NotSupportedException or InvalidOperationException

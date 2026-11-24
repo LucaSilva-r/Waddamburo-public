@@ -529,6 +529,12 @@ public sealed record ChartVideo(string Path, TimeSpan Offset)
     /// <summary>Added onto the backdrops (light on black: hologram videos), which then stay; the dancers go.</summary>
     public bool Additive { get; init; }
 
+    /// <summary>
+    /// Brightness is opacity (a luma key, for light on black: hologram videos): alpha = 1 - (1 - brightness)^curve,
+    /// the colour divided back so it matches the video over black. Null: off; a bigger curve keeps dark parts more solid.
+    /// </summary>
+    public float? LumaCurve { get; init; }
+
     /// <summary>A colour (0xRRGGBB) drawn transparent, a green screen's; null: none.</summary>
     public int? KeyColor { get; init; }
 

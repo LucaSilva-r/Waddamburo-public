@@ -183,7 +183,8 @@ see-through, so the backdrops show there (`VideoMask`). Waddamburo's own headers
 | Header | Effect |
 |---|---|
 | `BGMOVIEBLEND:add` | The video is added onto the backdrops (light on black); the dancers are hidden. Washes out over bright backdrops (Go-Go, a full gauge): keying holds up better. |
-| `BGMOVIEKEY:RRGGBB[,tolerance]` | A matte for that colour (green screens; `000000,40` for hologram videos on black): pixels within the tolerance (RGB distance, 60 by default) are background where they join the frame's edge, or anywhere within a third of it; darker detail inside the figure stays. Softened edge; the dancers are hidden. |
+| `BGMOVIEBLEND:luma[,curve]` | A luma key, for videos of light on black (holograms): brightness is opacity, alpha = 1 - (1 - brightness)^curve (8 by default; bigger keeps dark parts more solid), the colour divided back so it matches the video over black. Black goes, lit parts are solid, dark parts partly see-through (no holes). The dancers are hidden. |
+| `BGMOVIEKEY:RRGGBB[,tolerance]` | A matte for that colour (green screens; on black videos the luma key holds up better): pixels within the tolerance (RGB distance, 60 by default) are background where they join the frame's edge, or anywhere within a third of it; darker detail inside the figure stays. Softened edge; the dancers are hidden. |
 | `BGMOVIERECT:x,y,width,height` | The whole video in that box (1280x720 stage pixels), over the player's area setting (off still hides it). Below 1P's lane, 16:9: `309,348,662,372`. |
 
 Not read: OpenTaiko's `BGA<nn>:` videos switched by `#BGAON`/`#BGAOFF`, and `BGIMAGE:`.
