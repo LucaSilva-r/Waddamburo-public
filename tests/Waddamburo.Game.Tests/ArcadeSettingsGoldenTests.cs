@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using Waddamburo.Game.Flow;
 
 namespace Waddamburo.Game.Tests;
@@ -9,8 +8,21 @@ namespace Waddamburo.Game.Tests;
 /// </summary>
 public sealed class ArcadeSettingsGoldenTests
 {
-    private static string golden(string name, [CallerFilePath] string source = "") =>
-        Path.Combine(Path.GetDirectoryName(source)!, "Golden", name);
+    // The source folder's Golden, found above the test binary (CI builds map source paths, so no CallerFilePath).
+    private static readonly string Folder = findFolder();
+
+    private static string findFolder()
+    {
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
+        {
+            var folder = Path.Combine(directory.FullName, "tests", "Waddamburo.Game.Tests", "Golden");
+            if (Directory.Exists(folder))
+                return folder;
+        }
+        throw new DirectoryNotFoundException("tests/Waddamburo.Game.Tests/Golden not found above " + AppContext.BaseDirectory);
+    }
+
+    private static string golden(string name) => Path.Combine(Folder, name);
 
     [Fact]
     public void EverySettingSavesAndParsesBack()

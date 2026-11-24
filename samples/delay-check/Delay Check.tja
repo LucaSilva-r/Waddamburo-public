@@ -1,0 +1,96 @@
+TITLE:Delay Check
+SUBTITLE:--Positive, negative and overlapping #DELAY against a click track
+GENRE:Test Charts
+BPM:120
+WAVE:click.ogg
+OFFSET:0
+DEMOSTART:0
+
+// The audio clicks every beat (0.5 s), high on each bar line; a measure is 2 s.
+// Every section starts on a bar line and is followed by an empty measure.
+COURSE:Easy
+LEVEL:1
+BALLOON:4
+#START
+0,
+// 1. Baseline: four Don on the clicks.
+1111,
+0,
+// 2. PeepoDrumKit +16 ms note offset (#DELAY x before the note, #DELAY 0 after it).
+// #DELAY adds up, so from the 2nd Don on everything stays 16 ms late.
+1
+#DELAY 0.016
+1
+#DELAY 0
+11,
+0,
+// 3. PeepoDrumKit -16 ms: back on the clicks from the 2nd Don on. Failed to load before 2026-10-02.
+1
+#DELAY -0.016
+1
+#DELAY 0
+11,
+0,
+// 4. Ka half a beat late, then put back: Don, Ka between clicks 2 and 3, Don, Don.
+1
+#DELAY 0.25
+2
+#DELAY -0.25
+11,
+0,
+// 5. Ka half a beat early: Don, Ka between clicks 1 and 2, Don, Don.
+1
+#DELAY -0.25
+2
+#DELAY 0.25
+11,
+0,
+// 6. Out of file order: the Ka is written after the first Don but lands half a beat before the bar line.
+1
+#DELAY -0.75
+2
+#DELAY 0.75
+11,
+0,
+// 7. Two measures overlap: big Don, big Ka, big Don, big Ka on clicks 3 to 6 of the pair.
+#DELAY 1
+3030,
+#DELAY -1.5
+4040,
+#DELAY 0.5
+0,
+// 8. Roll stretched by half a beat: it ends on the next bar line.
+50
+#DELAY 0.5
+08,
+#DELAY -0.5
+0,
+// 9. Balloon (4 hits) cut short by a negative delay: it ends 1.5 beats after it starts.
+70
+#DELAY -0.75
+08,
+#DELAY 0.75
+0,
+// 10. Go-Go at 240 BPM: four Don on 16ths, then four Ka a 32nd late.
+#GOGOSTART
+#BPMCHANGE 240
+1111
+#DELAY 0.0625
+2222,
+#DELAY -0.0625
+0,
+#BPMCHANGE 120
+#GOGOEND
+0,
+// 11. A #SCROLL 0.5 that a negative delay moves before the #SCROLL 2: the later command wins,
+// so the whole measure scrolls at half speed.
+#SCROLL 2
+1
+#DELAY -1
+#SCROLL 0.5
+#DELAY 1
+111,
+#SCROLL 1
+0,
+0,
+#END

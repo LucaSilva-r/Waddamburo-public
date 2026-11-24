@@ -42,6 +42,18 @@ jobs:
             echo "version=${stable#v}-nightly" >> "$GITHUB_OUTPUT"
           fi
 
+  # Every test project; a release or nightly waits for them.
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: '**/packages.lock.json'
+      - run: dotnet test Waddamburo.slnx -c Release
+
   build:
     needs: version
     strategy:
@@ -164,7 +176,7 @@ jobs:
 
   release:
     if: github.ref_type == 'tag'
-    needs: build
+    needs: [build, test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v8
@@ -192,7 +204,7 @@ jobs:
 
   nightly:
     if: github.ref_type != 'tag' && inputs.nightly
-    needs: [version, build]
+    needs: [version, build, test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v8

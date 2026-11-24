@@ -23,6 +23,7 @@ crashdumps/
 *.nud
 *.nsh
 *.tja
+!samples/*/*.tja
 *.ttf
 *.otf
 *.bmp
