@@ -212,19 +212,18 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         }
         if (switchLibrary() || calibrate())
             return;
-        // A Group or Sort spine (the osu!lazer library): the next grouping or order, saved, Song Select
-        // reloading on that spine.
         // The Online spine: the lobby opens over Song Select.
         if (Shell.Loaded.SongSelect?.BrowseRequested == SongBrowseControl.Online)
         {
             Shell.Room.OpenLobby();
             return;
         }
-        if (Shell.Loaded.SongSelect?.BrowseRequested is { } control)
+        // A choice in a Group or Sort folder (osu! and Wii libraries): applied, saved, Song Select reloading on that folder.
+        if (Shell.Loaded.SongSelect?.BrowsePicked is (var control, var value))
         {
             Shell.Reload.Start(() =>
             {
-                var browse = Shell.SelectMemory.CycleBrowse(control);
+                var browse = Shell.SelectMemory.PickBrowse(control, value);
                 Shell.Arcade = Shell.Arcade with { OsuBrowse = browse };
                 if (Shell.Options.ArcadePath is { } path)
                 {
@@ -237,7 +236,8 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
                         Console.Error.WriteLine($"Error SETTINGS_SAVE: {exception.Message}");
                     }
                 }
-                Console.WriteLine($"osu!lazer library: group by {SongBrowse.Name(browse.Group)}, sort by {SongBrowse.Name(browse.Sort)}.");
+                if (Shell.SelectMemory.Library is not (SongSourceKind.Wii or SongSourceKind.WiiU))
+                    Console.WriteLine($"osu!lazer library: group by {SongBrowse.Name(browse.Group)}, sort by {SongBrowse.Name(browse.Sort)}.");
             });
             return;
         }

@@ -285,6 +285,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
     /// <summary>The players decided a Group or Sort spine: Song Select reloads with the next grouping or order.</summary>
     public SongBrowseControl? BrowseRequested { get; private set; }
 
+    /// <summary>A Group or Sort folder's choice was decided (its value: the mode's name, or Genre/Game for the Wii libraries).</summary>
+    public (SongBrowseControl Control, string Value)? BrowsePicked { get; private set; }
+
     /// <summary>Song Select reloads for the host (library, grouping, order, search): its music plays on.</summary>
     public bool Reloading { get; set; }
 
@@ -467,6 +470,8 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                     DanRequested = true;
                     Picked = (_session.Catalog.Categories[integer(call, 0)].Key, picked.Descriptor.Key); // back comes here
                 }
+                else if (picked is not null && SongSelectCatalogView.BrowseOptionOf(picked.Descriptor.Key) is { } option)
+                    BrowsePicked = option;
                 CourseSelectSong = _session.Catalog.TryGetSong(integer(call, 0), integer(call, 1), out var song) ? song : null;
                 LeavingCourseSelect = false;
                 // The option rows exist by now (not yet at setup): the speed row grows to Nijiiro's speeds.

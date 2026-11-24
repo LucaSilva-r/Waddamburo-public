@@ -327,7 +327,7 @@ internal sealed class LayerHostFactory(
             danSeries: arcade.Home ? Dan?.Series : null,
             online: !credit.Waiwai && !credit.AiBattle && !credit.TwoPlayers && OnlineAvailable?.Invoke() == true, onlySong: memory.OnlineSong, received: Received,
             courseStar: memory.OnlineSong is null, rollFolder: arcade.RandomSongFolder,
-            eventFolder: memory.OnlineSong is null ? Event?.Invoke() : null,
+            eventFolder: memory.OnlineSong is null ? Event?.Invoke() : null, byGame: memory.WiiByGame,
             recentCharts: credit.TwoPlayers || memory.OnlineSong is not null ? null : RecentCharts?.Invoke(credit.PlayerSide));
         var (start, startSong) = memory.Start(view, loaded.SongSelect?.Picked);
         var binding = loaded.SongSelect = new SongSelectHostBinding(

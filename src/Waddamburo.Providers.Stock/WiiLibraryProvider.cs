@@ -33,6 +33,9 @@ public sealed class WiiLibraryProvider : ISongCatalogProvider, ICatalogAssetReso
         _discs = [.. discs.OrderByDescending(static disc => disc.Order).Select(static disc => (disc.Disc, disc.Release))];
     }
 
+    /// <summary>The key prefix of a folder holding one disc's songs.</summary>
+    public const string ReleasePrefix = "release:";
+
     public CatalogProviderId Id { get; }
 
     public SongSourceKind Source { get; }
@@ -53,6 +56,8 @@ public sealed class WiiLibraryProvider : ISongCatalogProvider, ICatalogAssetReso
         }
 
         var songs = new List<(SongDescriptor Song, string? Genre)>();
+        // Each disc's songs, merged copies on every disc they came from: the Group: Game folders.
+        var byDisc = _discs.Select(static _ => new List<SongKey>()).ToArray();
         foreach (var group in found.GroupBy(static entry => bareId(entry.Song.Key)))
         {
             var copies = group.ToList();
@@ -68,7 +73,12 @@ public sealed class WiiLibraryProvider : ISongCatalogProvider, ICatalogAssetReso
                     (keep, most) = (index, other);
             }
             foreach (var copy in same ? [copies[keep]] : copies)
-                songs.Add((relabel(copy.Song, copy.Disc, same ? null : _discs[copy.Disc].Release), copy.Genre));
+            {
+                var song = relabel(copy.Song, copy.Disc, same ? null : _discs[copy.Disc].Release);
+                songs.Add((song, copy.Genre));
+                foreach (var disc in same ? copies.Select(static other => other.Disc).Distinct() : [copy.Disc])
+                    byDisc[disc].Add(song.Key);
+            }
         }
         var categories = songs.GroupBy(static song => song.Genre ?? "")
             .OrderBy(static genre => Array.IndexOf(Genres, genre.Key) is var order and >= 0 ? order : int.MaxValue)
@@ -77,7 +87,12 @@ public sealed class WiiLibraryProvider : ISongCatalogProvider, ICatalogAssetReso
             {
                 Genre = genre.Key.Length == 0 ? null : genre.Key,
                 Colour = WiiCatalogProvider.GenreColour(genre.Key),
-            });
+            }).ToList();
+        // "release:" folders are listed instead of the genres when Song Select groups by game (as osu!'s "collection:").
+        for (var disc = 0; disc < _discs.Length; disc++)
+            if (byDisc[disc].Count > 0)
+                categories.Add(new SongCategoryDescriptor(new CategoryKey(Source, $"{ReleasePrefix}{_discs[disc].Release}"),
+                    _discs[disc].Release, categories.Count, byDisc[disc]));
         return new SongCatalogContribution(Id, Source, songs.Select(static song => song.Song), categories, diagnostics);
     }
 

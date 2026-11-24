@@ -22,13 +22,23 @@ internal sealed class SongSelectMemory(SongCatalogSnapshot catalog, Func<ArcadeS
     /// <summary>The osu!lazer library's grouping and order (from the settings; its spines cycle them).</summary>
     public SongBrowse OsuBrowse { get; set; } = arcadeSettings().OsuBrowse;
 
-    /// <summary>Cycles the grouping or order a spine names; the reloaded Song Select starts on that spine.</summary>
-    public SongBrowse CycleBrowse(SongBrowseControl control)
+    /// <summary>Applies a Group or Sort folder's choice; the reloaded Song Select starts on that folder.</summary>
+    public SongBrowse PickBrowse(SongBrowseControl control, string value)
     {
         _browseLeft = control;
-        return OsuBrowse = control == SongBrowseControl.Group ? OsuBrowse.NextGroup() : OsuBrowse.NextSort();
+        // ponytail: the Wii libraries' Group (genre or game) lasts the session, not saved in config.cfg.
+        if (Library is SongSourceKind.Wii or SongSourceKind.WiiU)
+            WiiByGame = value == "Game";
+        else if (control == SongBrowseControl.Group && Enum.TryParse<SongGroupMode>(value, out var group))
+            OsuBrowse = OsuBrowse with { Group = group };
+        else if (control == SongBrowseControl.Sort && Enum.TryParse<SongSortMode>(value, out var sort))
+            OsuBrowse = OsuBrowse with { Sort = sort };
+        return OsuBrowse;
     }
     private SongBrowseControl? _browseLeft;
+
+    /// <summary>The Wii and Wii U libraries list one folder per disc instead of the genres.</summary>
+    public bool WiiByGame { get; private set; }
 
     /// <summary>The next Song Select opens on this song (an online host's pick), in its own library.</summary>
     public void FocusSong(SongKey song)

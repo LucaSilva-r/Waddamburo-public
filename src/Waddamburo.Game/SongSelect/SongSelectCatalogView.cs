@@ -158,6 +158,7 @@ public sealed class SongSelectCatalogView
     /// them, with a Group and a Sort spine after the folders to change either.
     /// <paramref name="online"/> adds an Online spine (it opens the online lobby); <paramref name="onlySong"/> lists that song alone.
     /// <paramref name="eventFolder"/> lists the running event's stock songs in a folder of its name (none listed: no folder).
+    /// <paramref name="byGame"/> (the Wii and Wii U libraries) lists one folder per disc instead of the genres; a Group spine switches.
     /// </summary>
     public SongSelectCatalogView(SongCatalogSnapshot snapshot, SongSelectMode mode = SongSelectMode.Normal,
         bool modeSwitch = false, SongSourceKind? library = null, IEnumerable<SongSourceKind>? links = null,
@@ -165,7 +166,7 @@ public sealed class SongSelectCatalogView
         SongSearchResults? search = null, bool danDojo = false,
         IReadOnlyList<(string Id, string Name)>? danSeries = null, bool online = false, SongKey? onlySong = null,
         Func<SongKey, SongDescriptor?>? received = null, bool courseStar = false, IReadOnlyList<string>? recentCharts = null, Random? random = null, bool rollFolder = false,
-        SongSelectEvent? eventFolder = null)
+        SongSelectEvent? eventFolder = null, bool byGame = false)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         Revision = snapshot.Revision;
@@ -186,6 +187,8 @@ public sealed class SongSelectCatalogView
             ? browsed(snapshot, browse, osu)
             : snapshot.Categories
                 .Where(category => library is null || category.Key.Source == library)
+                // The Wii libraries' per-disc folders (WiiLibraryProvider), listed instead of the genres when grouped by game.
+                .Where(category => category.Key.StableId.StartsWith("release:", StringComparison.Ordinal) == (byGame && wii(library)))
                 .Select(category => (category.Key, category.Name, Songs: category.Songs.Select(key => snapshot.Songs[key]),
                     Descriptor: (SongCategoryDescriptor?)category));
         var searchFolder = search is null ? [] : new[]
@@ -292,9 +295,13 @@ public sealed class SongSelectCatalogView
             } : [])
             .Concat(library is { } browsing && browsing.IsOsu() && browse is not null ? new[]
             {
-                control(browsing, SongBrowseControl.Group, $"Group: {SongBrowse.Name(browse.Group)}"),
-                control(browsing, SongBrowseControl.Sort, $"Sort: {SongBrowse.Name(browse.Sort)}"),
+                control(browsing, SongBrowseControl.Group, $"Group: {SongBrowse.Name(browse.Group)}",
+                    Enum.GetValues<SongGroupMode>().Select(static group => (group.ToString(), SongBrowse.Name(group)))),
+                control(browsing, SongBrowseControl.Sort, $"Sort: {SongBrowse.Name(browse.Sort)}",
+                    Enum.GetValues<SongSortMode>().Select(static sort => (sort.ToString(), SongBrowse.Name(sort)))),
             } : [])
+            .Concat(wii(library) ? new[] { control(library!.Value, SongBrowseControl.Group, $"Group: {(byGame ? "Game" : "Genre")}",
+                [("Genre", "Genre"), ("Game", "Game")]) } : [])
             .Concat((links ?? []).Select(link => new SongSelectCategory(new CategoryKey(link, "library"),
                 LibraryName(link), FeatureLabel, SongCategoryPresentation.AlwaysVisible | SongCategoryPresentation.FolderEnd,
                 boardStyle(""), [], link)
@@ -385,9 +392,30 @@ public sealed class SongSelectCatalogView
             _ => "J-POP",
         }) : Categories[category].BoardStyle;
 
-    private static SongSelectCategory control(SongSourceKind library, SongBrowseControl control, string name) =>
+    private static bool wii(SongSourceKind? library) => library is SongSourceKind.Wii or SongSourceKind.WiiU;
+
+    // A Group or Sort folder: its spines are the choices (as the dan dojo folder's series); deciding one applies it.
+    private static SongSelectCategory control(SongSourceKind library, SongBrowseControl control, string name,
+        IEnumerable<(string Value, string Title)> options) =>
         new(new CategoryKey(library, $"control:{control}"), name, FeatureLabel,
-            SongCategoryPresentation.AlwaysVisible | SongCategoryPresentation.FolderEnd, boardStyle(""), [], Control: control);
+            SongCategoryPresentation.AlwaysVisible | SongCategoryPresentation.HideSongCount, boardStyle(""),
+            [.. options.Select(option => optionSong(control, option.Value, option.Title))], Control: control);
+
+    private const string BrowseOptionPrefix = "browse-option:";
+
+    // A spine, not a song (no notes or music), as danSeriesSong.
+    private static SongSelectSong optionSong(SongBrowseControl control, string value, string title)
+    {
+        var key = new SongKey(SongSourceKind.Stock, $"{BrowseOptionPrefix}{control}:{value}");
+        return new SongSelectSong(new SongDescriptor(key, new SongTitle(title), null,
+            [new SongChartDescriptor(new ChartKey(key, "option"), "option", new CatalogAssetKey(new CatalogProviderId("option"), key.StableId))]), default, [.. new int?[5]]);
+    }
+
+    /// <summary>The Group or Sort choice a spine in such a folder stands for; null: a real song.</summary>
+    public static (SongBrowseControl Control, string Value)? BrowseOptionOf(SongKey song) =>
+        song.StableId.StartsWith(BrowseOptionPrefix, StringComparison.Ordinal)
+        && song.StableId[BrowseOptionPrefix.Length..].Split(':', 2) is [var control, var value]
+        && Enum.TryParse<SongBrowseControl>(control, out var parsed) ? (parsed, value) : null;
 
     private readonly SongCatalogSnapshot _snapshot;
     private readonly ImmutableArray<SongSelectSong> _courseStarPool;
