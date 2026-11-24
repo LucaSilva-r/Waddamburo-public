@@ -24,9 +24,13 @@ hbmenu's netloader (press **Y**), then:
 export SWITCH_IP=192.168.x.y
 platforms/switch/tools/send.sh                        # nxlink the .nro; keeps out/switch/sent.elf
 platforms/switch/tools/log.sh                         # the game's log (sys-ftpd; SWITCH_FTP_USER/PASSWORD/PORT)
-platforms/switch/tools/log.sh wdb-spike.log > err.log # the shim's stderr: [hitch] profiles of frames over 25 ms
+platforms/switch/tools/log.sh wdb-spike.log > err.log # the shim's stderr: [hitch] profiles of frames over 25 ms (*)
 platforms/switch/tools/hitch.sh err.log               # symbolized per 10 s window, main and render thread
 ```
+
+(*) The shim's sampling profiler runs only when an empty file `sdmc:/switch/taiko/profile` exists (it pauses every
+thread each millisecond). Waddamburo's own slow-frame lines need `WADDAMBURO_HITCH_TRACE=1` in the shim's built-in
+environment (`g_env` in `shim/shim.c`).
 
 A frozen game: attach Atmosphère's GDB stub (port 22225) with `out/switch/sent.elf` at the module's base. Emulators are
 not useful past boot: Ryujinx's thread pause/register calls do not behave like Horizon's (the GC's suspension hangs) and

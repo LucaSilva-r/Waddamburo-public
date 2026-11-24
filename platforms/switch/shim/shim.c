@@ -289,7 +289,6 @@ ssize_t lx___getdelim(char **l, size_t *n, int d, FILE *fp) { return __getdelim(
 
 // Built-in environment: the GC must not try to reserve 256 GiB.
 static const char *g_env[][2] = {
-    { "WADDAMBURO_HITCH_TRACE", "1" },         // ponytail: diagnostics while tuning the Switch port
     { "DOTNET_GCgen0size", "10000000" },        // 256 MiB gen0 budget: garbage waits for the full collection at the next scene switch
     { "DOTNET_GCRegionRange", g_region_range }, // set from the arena actually reserved (arena_init)
     { "DOTNET_GCHeapHardLimit", g_hard_limit }, // what it really has: it compacts before it runs out

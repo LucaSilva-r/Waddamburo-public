@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 #include <switch.h>
 #include <stdio.h>
+#include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -52,7 +53,8 @@ int main(int argc, char **argv) {
       fprintf(stderr, "[apm] mode %d (0 handheld, 1 docked), configurations %x (rc %x) %x (rc %x)\n", appletGetPerformanceMode(), n, r, b, r2); }
     shim_init();
     fprintf(stderr, "main: shim ok\n");
-    if (getenv("NO_WD") == NULL) { void shim_start_watchdog(void); shim_start_watchdog(); }
+    // The sampling profiler pauses every thread each millisecond: only on request (an empty file named profile beside USRDIR).
+    if (access("sdmc:/switch/taiko/profile", F_OK) == 0) { void shim_start_watchdog(void); shim_start_watchdog(); }
     fprintf(stderr, "starting runtime\n");
     consoleUpdate(NULL);
     int r;
