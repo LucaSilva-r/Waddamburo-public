@@ -33,6 +33,11 @@ internal sealed class ChartHashes(ScoreStore? store,
         return _known[chart.Key] = hash;
     }
 
+    /// <summary>The library's chart keys (as strings) known to have that hash.</summary>
+    public IReadOnlyList<string> KeysOf(string sha256) =>
+        [.. _known.Where(entry => entry.Value == sha256).Select(static entry => entry.Key.ToString())
+            .Union(store?.ChartKeysWithHash(sha256) ?? [])];
+
     /// <summary>Running: the library is being hashed again (<see cref="Rehash"/>).</summary>
     public bool Rehashing { get; private set; }
 

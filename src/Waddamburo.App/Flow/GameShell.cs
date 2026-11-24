@@ -630,7 +630,8 @@ internal sealed partial class GameShell : IDisposable
             if (Sync.Online)
                 ChartHashes.HashLibraryInBackground(snapshot.Songs.Values);
             _danCourses = new DanCourses(snapshot, ChartHashes, options.ScoresPath is { } scores
-                ? Path.Combine(Path.GetDirectoryName(scores)!, "dan-courses.json") : null, Online.UpdateGate.Server(Arcade), Arcade.ServerInsecure);
+                ? Path.Combine(Path.GetDirectoryName(scores)!, "dan-courses.json") : null, Online.UpdateGate.Server(Arcade), Arcade.ServerInsecure,
+                Arcade.TjaFolder ?? options.TjaRoot, Assets.LoadChartAsync);
             _event = new CurrentEvent(Online.UpdateGate.Server(Arcade), Arcade.ServerInsecure);
 
             _boot.Begin("I/O");

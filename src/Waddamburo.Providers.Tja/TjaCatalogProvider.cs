@@ -226,6 +226,10 @@ public sealed partial class TjaCatalogProvider : ISongCatalogProvider, ICatalogA
         return ValueTask.FromResult(stream);
     }
 
+    /// <summary>A TJA chart's file, relative to its library's folder (null: not a TJA chart).</summary>
+    public static string? RelativeChartPath(CatalogAssetKey asset) =>
+        asset is not null && TjaChartAssetKeyCodec.IsChart(asset) ? TjaChartAssetKeyCodec.Decode(asset).RelativePath : null;
+
     /// <summary>A single-player TJA held in memory (the benchmark's own chart): <paramref name="course"/>'s first chart.</summary>
     public static PlayableChart ReadChart(ReadOnlySpan<byte> bytes, ChartKey key, TaikoCourse course) =>
         TjaPlayableChartReader.Read(bytes, key, new TjaChartLocator("", "", course, "", 1), int.MaxValue, int.MaxValue);

@@ -953,6 +953,22 @@ public sealed class ScoreStore : IDisposable
         }
     }
 
+    /// <summary>The chart keys stored with that hash (a chart may sit in several libraries).</summary>
+    public List<string> ChartKeysWithHash(string sha256)
+    {
+        lock (_connection)
+        {
+            using var command = _connection.CreateCommand();
+            command.CommandText = "SELECT chart_key FROM chart_hashes WHERE sha256 = $sha";
+            command.Parameters.AddWithValue("$sha", sha256);
+            using var reader = command.ExecuteReader();
+            var keys = new List<string>();
+            while (reader.Read())
+                keys.Add(reader.GetString(0));
+            return keys;
+        }
+    }
+
     public string? ChartHashOf(string chartKey)
     {
         lock (_connection)
@@ -1146,6 +1162,7 @@ public sealed class ScoreStore : IDisposable
                 UNION ALL
                 SELECT id, baid, 'dan', engine_version, played_at, NULL, NULL, 0, NULL FROM dan_plays
                     WHERE ($baid IS NULL OR baid = $baid) AND baid <> 0 AND medal_sent_at IS NULL
+                        AND course_hash NOT LIKE 'custom:%'
                 ORDER BY 5 LIMIT $limit
                 """;
             command.Parameters.AddWithValue("$baid", (object?)baid ?? DBNull.Value);
@@ -1196,6 +1213,7 @@ public sealed class ScoreStore : IDisposable
                 SELECT id, baid, course_hash, result_level, score, great, good, miss, max_combo, rolls, gauge_percent,
                     songs_played, scoring_version, engine_version, audio_offset_ms, input_offset_ms, played_at, songs
                 FROM dan_plays WHERE ($baid IS NULL OR baid = $baid) AND baid <> 0 AND uploaded_at IS NULL
+                    AND course_hash NOT LIKE 'custom:%' -- the player's own courses (Dani folder) are unranked
                 ORDER BY played_at LIMIT $limit
                 """;
             command.Parameters.AddWithValue("$baid", (object?)baid ?? DBNull.Value);

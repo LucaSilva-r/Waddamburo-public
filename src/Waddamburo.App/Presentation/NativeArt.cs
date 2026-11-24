@@ -25,7 +25,7 @@ internal sealed class NativeArt(SdlApplication application, string fontPath, str
 
     private ToneArt tones => _tones ??= new ToneArt(_nut);
     private CostumeIconTextures costumeIcons => _costumeIcons ??= new CostumeIconTextures(application, _nut, dataRoot);
-    private DanChallengeArt danArt => _danArt ??= new DanChallengeArt(_nut);
+    private DanChallengeArt danArt => _danArt ??= new DanChallengeArt(_nut, application, fontPath);
     private CopyrightArt copyright => _copyright ??= new CopyrightArt(_nut);
     private FeatureBoardArt featureBoards => _featureBoards ??= new FeatureBoardArt(_nut);
     private SeasonArt seasonArt => _seasonArt ??= new SeasonArt(_nut);

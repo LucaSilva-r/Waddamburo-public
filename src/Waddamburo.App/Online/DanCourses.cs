@@ -16,18 +16,27 @@ internal sealed class DanCourses
     private readonly string? _path;
     private volatile DanCatalogue? _catalogue;
     private volatile IReadOnlyCollection<DanLibraryChart> _library = [];
+    // The player's own series (CustomDans: the TJA library's Dani folder), after the server's.
+    private volatile List<DanSeries> _custom = [];
+    private readonly Func<Task<List<DanSeries>>> _loadCustom;
 
-    public DanCourses(SongCatalogSnapshot snapshot, ChartHashes hashes, string? path, Uri? server, bool insecure)
+    public DanCourses(SongCatalogSnapshot snapshot, ChartHashes hashes, string? path, Uri? server, bool insecure,
+        string? tjaRoot = null, Func<ChartKey, CatalogAssetKey, CancellationToken, ValueTask<PlayableChart>>? loadChart = null)
     {
         _snapshot = snapshot;
         _hashes = hashes;
         _path = path;
+        _loadCustom = loadChart is null ? static () => Task.FromResult(new List<DanSeries>())
+            : () => CustomDans.LoadAsync(tjaRoot, snapshot, hashes, loadChart);
         _catalogue = path is null ? null : DanCatalogue.Load(path);
         _ = Task.Run(() => refreshAsync(server, insecure));
     }
 
     /// <summary>Whether the dan dojo folder has anything to open.</summary>
-    public bool Available => _catalogue is not null;
+    public bool Available => _catalogue is not null || _custom.Count > 0;
+
+    // Every series: the server's, then the player's own.
+    private IEnumerable<DanSeries> series() => (_catalogue?.Series ?? []).Concat(_custom);
 
     /// <summary>Whether the library has been matched against the catalogue, so a board's lock means something.</summary>
     public bool Ready => _ready;
@@ -48,10 +57,9 @@ internal sealed class DanCourses
         var boards = new List<DaniSelectBoard> { new(DaniSelectHostBinding.BackId, true, []) };
         var courses = new List<DanCourseStatus?> { null };
         _uids.Clear();
-        var catalogue = _catalogue;
         var challenges = 0;
         var library = _library;
-        foreach (var course in catalogue?.Series.Find(candidate => candidate.Id == series)?.Courses ?? [])
+        foreach (var course in this.series().FirstOrDefault(candidate => candidate.Id == series)?.Courses ?? [])
         {
             var status = DanCourseStatus.Of(course, library);
             boards.Add(new DaniSelectBoard(course.Rank, status.Playable, [.. status.Songs.Select(board)],
@@ -62,6 +70,8 @@ internal sealed class DanCourses
                 Challenge = course.Rank == DanRanks.Challenge ? ++challenges : null,
             });
             courses.Add(status);
+            if (course.Rank == DanRanks.Challenge && series.StartsWith(CustomDans.Prefix, StringComparison.Ordinal))
+                Presentation.DanChallengeArt.CustomNames[(series, challenges)] = course.Name;
         }
         return (boards, courses);
     }
@@ -70,7 +80,7 @@ internal sealed class DanCourses
     public int ChallengeNumber(string series, DanCourse course)
     {
         var challenges = 0;
-        foreach (var candidate in _catalogue?.Series.Find(entry => entry.Id == series)?.Courses ?? [])
+        foreach (var candidate in this.series().FirstOrDefault(entry => entry.Id == series)?.Courses ?? [])
         {
             if (candidate.Rank == DanRanks.Challenge)
                 challenges++;
@@ -82,7 +92,8 @@ internal sealed class DanCourses
 
     /// <summary>The series, newest first, with the names their spines show.</summary>
     public IReadOnlyList<(string Id, string Name)> Series =>
-        [.. (_catalogue?.Series ?? []).Select(static series => (series.Id, SeriesName(series.Id)))];
+        [.. series().Select(static series => (series.Id, series.Id.StartsWith(CustomDans.Prefix, StringComparison.Ordinal)
+            ? series.Name : SeriesName(series.Id)))];
 
     private static string SeriesName(string id) => id.StartsWith("nijiiro-", StringComparison.Ordinal)
         ? (Strings.Language.StartsWith("ja", StringComparison.Ordinal) ? "ニジイロ" : "Nijiiro ") + id["nijiiro-".Length..]
@@ -150,11 +161,11 @@ internal sealed class DanCourses
             .Select(static category => (int?)Scenes.GameplaySceneComposition.GenreIndex(category.Genre ?? category.Name)).FirstOrDefault() ?? 0;
 
     /// <summary>Matches the library against the courses again (after the library was hashed again).</summary>
-    public void Rematch()
+    public void Rematch() => _ = Task.Run(async () =>
     {
-        if (_catalogue is { } catalogue)
-            _ = Task.Run(async () => _library = await libraryAsync(catalogue).ConfigureAwait(false));
-    }
+        _custom = await _loadCustom().ConfigureAwait(false);
+        _library = await libraryAsync().ConfigureAwait(false);
+    });
 
     private async Task refreshAsync(Uri? server, bool insecure)
     {
@@ -173,16 +184,23 @@ internal sealed class DanCourses
                 Console.WriteLine($"Dan courses not refreshed: {exception.Message}");
             }
         }
-        if (_catalogue is { } catalogue)
-            _library = await libraryAsync(catalogue).ConfigureAwait(false);
+        try
+        {
+            _custom = await _loadCustom().ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            Console.WriteLine($"Custom dan courses not loaded: {exception.Message}");
+        }
+        _library = await libraryAsync().ConfigureAwait(false);
         _ready = true;
     }
 
     // ponytail: only the songs the catalogue names, so an approved custom chart (another song id) is not found
     // yet; go through the whole library's stored hashes when approvals arrive.
-    private async Task<IReadOnlyCollection<DanLibraryChart>> libraryAsync(DanCatalogue catalogue)
+    private async Task<IReadOnlyCollection<DanLibraryChart>> libraryAsync()
     {
-        var named = catalogue.Series.SelectMany(static series => series.Courses).SelectMany(static course => course.Songs)
+        var named = series().SelectMany(static series => series.Courses).SelectMany(static course => course.Songs)
             .Select(static song => song.SongKey).ToHashSet(StringComparer.Ordinal);
         var library = new List<DanLibraryChart>();
         foreach (var song in _snapshot.Songs.Values.Where(song => named.Contains(song.Key.StableId)))

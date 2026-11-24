@@ -108,6 +108,7 @@
   "settings.upload_custom_songs": "Upload Custom Songs",
   "settings.upload_custom_songs.hint": "Uploads scores, replays and charts for new TJA and osu! plays. Plays made while off stay local permanently, even after re-enabling. Local replays remain available either way.",
   "custom_upload.banner_auto": "Score upload disabled: Auto Play",
+  "song_select.hashes_copied": "Chart hashes of {0} copied (for a custom dan dojo in the Dani folder).",
   "favourites.added": "Added to favourites: {0}",
   "favourites.removed": "Removed from favourites: {0}",
   "song_select.no_music": "No music installed for this song (add an older game version that has it)",

@@ -251,6 +251,17 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             else
                 Console.WriteLine("Favourite: the cursor is on no song.");
         }
+        // H copies the song's charts as custom dan dojo entries ({ "hash": ... } per course) for the Dani folder's files.
+        // ponytail: a plain keyboard key, not a bindable button; hashing an unhashed chart blocks for its parse.
+        if (input.Keys.IsDown(Waddamburo.Platform.Sdl.SdlKeyboardKey.H) && Shell.Loaded.SongSelect?.SongUnderCursor is { } hashed)
+        {
+            var lines = hashed.Descriptor.Charts.Where(static chart => chart.Course is not null)
+                .Select(chart => (chart, hash: Shell.ChartHashes.HashAsync(chart).AsTask().GetAwaiter().GetResult()))
+                .Where(static entry => entry.hash is not null)
+                .Select(entry => $"{{ \"hash\": \"{entry.hash}\", \"title\": {System.Text.Json.JsonSerializer.Serialize($"{hashed.Descriptor.Title.Primary} ({entry.chart.Course})")} }},");
+            if (Waddamburo.Platform.Sdl.SdlApplication.SetClipboard(string.Join('\n', lines)))
+                Shell.Sync.Notices.AddLocal(Strings.T("song_select.hashes_copied", hashed.Descriptor.Title.Primary), lifetime: TimeSpan.FromSeconds(6));
+        }
         // Online, a guest only plays the host's song.
         if (Shell.PlayRequests.Pending is { } request && Shell.Match.Accept(request))
             coverForGameplay(request);

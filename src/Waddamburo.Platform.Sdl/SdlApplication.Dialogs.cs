@@ -69,4 +69,7 @@ public sealed unsafe partial class SdlApplication
             Console.Error.WriteLine($"File picker: {exception}");
         }
     }
+
+    /// <summary>Puts text on the system clipboard (false: SDL refused).</summary>
+    public static bool SetClipboard(string text) => SDL_SetClipboardText(text);
 }
