@@ -411,6 +411,9 @@ public sealed class SongSelectCatalogView
             [new SongChartDescriptor(new ChartKey(key, "option"), "option", new CatalogAssetKey(new CatalogProviderId("option"), key.StableId))]), default, [.. new int?[5]]);
     }
 
+    /// <summary>A spine that is no song (a dan series, a Group or Sort choice): no music to miss.</summary>
+    public static bool IsSpine(SongKey song) => DanSeriesOf(song) is not null || BrowseOptionOf(song) is not null;
+
     /// <summary>The Group or Sort choice a spine in such a folder stands for; null: a real song.</summary>
     public static (SongBrowseControl Control, string Value)? BrowseOptionOf(SongKey song) =>
         song.StableId.StartsWith(BrowseOptionPrefix, StringComparison.Ordinal)

@@ -222,7 +222,8 @@ internal sealed partial class GameShell
         }
         // A song without its music (a withdrawn one whose newer data kept only a placeholder): no preview, a silent play.
         if (Active.Id == FlowScenes.SongSelect
-            && (Loaded.SongSelect?.CourseSelectSong ?? Loaded.SongSelect?.SongUnderCursor) is { Descriptor.AudioAsset: null })
+            && (Loaded.SongSelect?.CourseSelectSong ?? Loaded.SongSelect?.SongUnderCursor) is { Descriptor.AudioAsset: null } silent
+            && !Waddamburo.Game.SongSelect.SongSelectCatalogView.IsSpine(silent.Descriptor.Key))
         {
             top.Add(Painter.Rect(380, bannerY, 520, 26, new RenderColor(0.45f, 0.32f, 0.05f, 0.85f)));
             top.Add(Painter.Text(Strings.T("song_select.no_music"), 640, bannerY + 13, 508, 22));
