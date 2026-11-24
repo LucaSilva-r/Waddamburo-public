@@ -43,4 +43,5 @@ namespace Waddamburo.Services.Scores;
 [JsonSerializable(typeof(PairingClient.CardRequest))]
 [JsonSerializable(typeof(AccountBook.StoredBook))]
 [JsonSerializable(typeof(Waddamburo.Game.Dan.DanCatalogue))]
+[JsonSerializable(typeof(Waddamburo.Game.SongSelect.SongSelectEvent))]
 internal sealed partial class ScoreJson : JsonSerializerContext;

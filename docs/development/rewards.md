@@ -1,7 +1,7 @@
 # Rewards: Don Medals, reward shop, Don Points, titles
 
 Plan for Green's reward systems in Waddamburo (Discord suggestion "Events/Gouhoubi Shop").
-Status: phases 0-6 done and deployed (v0.32.1, 2026-11-21); phase 7 (events) is next. Delete this file when events are done (git history keeps it).
+Status: phases 0-7 built (events 2026-11-24, on TaikOnline staging); phase 8 later. Delete this file once events are deployed (git history keeps it).
 
 ## What Green has
 
@@ -147,7 +147,10 @@ everything from them.
 6. **Condition titles.** Done 2026-11-20: 356 of Green's titles checked per credit on TaikOnline (`WaddamburoTitles`,
    `green_title_conditions.json`); arcade credits report their end (`medals/credit-end`) so the medal screen shows
    their rewards; the play upload carries the drum and Song Select's timer.
-7. **Events (next).** Green's collab campaigns, as Donder Hiroba ran them (player screenshots of the 2026 Touhou
+7. **Events. Built 2026-11-24** (TaikOnline `WaddamburoEvents`, `/waddamburo/events`; client event folder): 13 of Green's
+   collabs rotate two weeks each; tickets per card play of their songs, puchi 5 tickets (raffle prizes 10); SideM and
+   crossbeats puchi by playing their song. The folder shows Green's own feature art (featureboard NUTs) where Green has
+   it. Original plan: Green's collab campaigns, as Donder Hiroba ran them (player screenshots of the 2026 Touhou
    collab; the wiki's "チケットで交換"): during an event's period, each card play of one of its target songs (a genre or
    song tag; in game, its event folder) earns 1 collab ticket, normal play or AI battle; the campaign page exchanges
    tickets for that collab's rewards, each a fixed price (puchi 1-10 tickets, title parts 1), no gacha. Rewards stay

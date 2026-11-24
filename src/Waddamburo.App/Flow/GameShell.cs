@@ -131,6 +131,7 @@ internal sealed partial class GameShell : IDisposable
     public void RehashLibrary() => ChartHashes.Rehash(_libraries.Snapshot.Songs.Values, _danCourses.Rematch);
 
     private readonly DanCourses _danCourses;
+    private readonly CurrentEvent _event;
 
     /// <summary>The score database and the server side (uploads, bests, rankings, cabinet pairing).</summary>
     public ScoreSync Sync { get; }
@@ -630,6 +631,7 @@ internal sealed partial class GameShell : IDisposable
                 ChartHashes.HashLibraryInBackground(snapshot.Songs.Values);
             _danCourses = new DanCourses(snapshot, ChartHashes, options.ScoresPath is { } scores
                 ? Path.Combine(Path.GetDirectoryName(scores)!, "dan-courses.json") : null, Online.UpdateGate.Server(Arcade), Arcade.ServerInsecure);
+            _event = new CurrentEvent(Online.UpdateGate.Server(Arcade), Arcade.ServerInsecure);
 
             _boot.Begin("I/O");
             if (ApplyControls(warn: true) is { Count: > 0 } controls)
@@ -893,6 +895,7 @@ internal sealed partial class GameShell : IDisposable
             },
             // A card given to the drum, or the account chosen for it in the home player setup.
             Dan = _danCourses,
+            Event = () => _event.Current,
             PlayerLook = side => TaikoGuest.Profiles[side]?.Look,
             OnlineAvailable = () => Room.Available,
             AiBattleInstalled = _aiBattleInstalled,

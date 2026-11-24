@@ -120,6 +120,9 @@ internal sealed class LayerHostFactory(
     /// <summary>Whether Song Select offers the Online folder.</summary>
     public Func<bool>? OnlineAvailable { get; init; }
 
+    /// <summary>TaikOnline's running event, for Song Select's event folder (null: none).</summary>
+    public Func<Waddamburo.Game.SongSelect.SongSelectEvent?>? Event { get; init; }
+
     /// <summary>Whether Green's AI battle movies are installed (the entry's mode select offers it only then).</summary>
     public bool AiBattleInstalled { get; init; } = true;
 
@@ -324,6 +327,7 @@ internal sealed class LayerHostFactory(
             danSeries: arcade.Home ? Dan?.Series : null,
             online: !credit.Waiwai && !credit.AiBattle && !credit.TwoPlayers && OnlineAvailable?.Invoke() == true, onlySong: memory.OnlineSong, received: Received,
             courseStar: memory.OnlineSong is null, rollFolder: arcade.RandomSongFolder,
+            eventFolder: memory.OnlineSong is null ? Event?.Invoke() : null,
             recentCharts: credit.TwoPlayers || memory.OnlineSong is not null ? null : RecentCharts?.Invoke(credit.PlayerSide));
         var (start, startSong) = memory.Start(view, loaded.SongSelect?.Picked);
         var binding = loaded.SongSelect = new SongSelectHostBinding(

@@ -591,7 +591,8 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             if (category.Key == SongSelectCatalogView.RollKey)
             {
             }
-            else if (label == SongSelectCatalogView.FeatureLabel && custom < genres)
+            // A folder with Green's feature art is one of the movie's feature folders (its art fills a feature slot).
+            else if (label == SongSelectCatalogView.FeatureLabel && custom < genres && category.FeatureArt is null)
                 label = customGenre(custom++, category);
             else if (label == SongSelectCatalogView.FeatureLabel)
             {
@@ -1089,10 +1090,19 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
                 var distance = Math.Abs(folder.Category - cursor);
                 return Math.Min(distance, count - distance);
             });
-            var name = _session.Catalog.Categories[nearest.Category].Name;
+            var category = _session.Catalog.Categories[nearest.Category];
+            var name = category.Name;
             if (_slotNames[group.Key] == name)
                 continue;
             _slotNames[group.Key] = name;
+            if (category.FeatureArt is { } art)
+            {
+                requirePlayer().SetNativeFill($"feature_board_tate_{group.Key:00}", SongSelectEvent.FeatureBoard("v", art));
+                requirePlayer().SetNativeFill($"feature_board_yoko_{group.Key:00}", SongSelectEvent.FeatureBoard("h", art));
+                requirePlayer().SetNativeFill($"feature_board_icon_{group.Key:00}", SongSelectEvent.FeatureBoard("icon", art));
+                requirePlayer().SetNativeFill($"feature_board_image_{group.Key:00}", SongSelectEvent.FeatureBoard("image", art));
+                continue;
+            }
             requirePlayer().SetNativeFill($"feature_board_tate_{group.Key:00}",
                 _session.GetFolderName(name, SongBoardTextureKind.Compact));
             requirePlayer().SetNativeFill($"feature_board_yoko_{group.Key:00}",
@@ -1123,8 +1133,12 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable
             var folder = _featureFolders.FindIndex(entry => entry.Category == (int)shown);
             if (folder < 0)
                 continue;
-            _player.SetNativeFill($"{Boards[board]}/feature_board_tate_{_featureFolders[folder].Slot:00}",
-                _session.GetFolderName(_session.Catalog.Categories[(int)shown].Name, SongBoardTextureKind.Compact));
+            var shownCategory = _session.Catalog.Categories[(int)shown];
+            var slot = _featureFolders[folder].Slot;
+            _player.SetNativeFill($"{Boards[board]}/feature_board_tate_{slot:00}", shownCategory.FeatureArt is { } art
+                ? SongSelectEvent.FeatureBoard("v", art) : _session.GetFolderName(shownCategory.Name, SongBoardTextureKind.Compact));
+            if (shownCategory.FeatureArt is { } icon)
+                _player.SetNativeFill($"{Boards[board]}/feature_board_icon_{slot:00}", SongSelectEvent.FeatureBoard("icon", icon));
         }
         // The banner over the centre (feature_board_yoko_*) follows the cursor.
         if (_player.CallScriptNumber("_global.container", "GetCurrentMusicInfo", "genreIndex") is { } cursor

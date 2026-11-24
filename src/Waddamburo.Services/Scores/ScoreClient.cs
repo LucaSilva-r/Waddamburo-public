@@ -216,6 +216,14 @@ public sealed class ScoreClient(HttpClient http)
         return (await response.Content.ReadFromJsonAsync(ScoreJson.Default.DanCatalogue, cancellationToken).ConfigureAwait(false))!;
     }
 
+    /// <summary>The running event (public: no account needed).</summary>
+    public async Task<Waddamburo.Game.SongSelect.SongSelectEvent> EventAsync(CancellationToken cancellationToken = default)
+    {
+        using var response = await http.GetAsync("api/wdb/event", cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync(ScoreJson.Default.SongSelectEvent, cancellationToken).ConfigureAwait(false))!;
+    }
+
     /// <summary>A player's bests per chart hash (home: the token's player; cabinet: <paramref name="baid"/>).</summary>
     /// <remarks>Also the player's AI battles (rank and wins derive from them).</remarks>
     public async Task<(List<RemoteBest> Bests, List<RemotePlay> Recent, List<RemoteAiPlay> AiPlays)> BestsAsync(long? baid = null, CancellationToken cancellationToken = default)

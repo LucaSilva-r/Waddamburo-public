@@ -146,6 +146,27 @@ public sealed class SongSelectSessionTests
     }
 
     [Fact]
+    public async Task EventFolderListsTheEventsStockSongsFirstAndIsLeftOutWithoutThem()
+    {
+        using var catalog = new GlobalSongCatalog([new SyntheticProvider(source: SongSourceKind.Stock)]);
+        var snapshot = await catalog.RefreshAsync();
+        var event_ = new SongSelectEvent("touhou", "東方Project×太鼓の達人", DateTimeOffset.Now, DateTimeOffset.Now.AddDays(14), ["synthetic"]);
+
+        var view = new SongSelectCatalogView(snapshot, eventFolder: event_);
+        Assert.Equal(SongSelectCatalogView.EventKey, view.Categories[0].Key);
+        Assert.Equal("東方Project×太鼓の達人", view.Categories[0].Name);
+        Assert.Equal(SongSelectCatalogView.FeatureLabel, view.Categories[0].AuthoredLabel);
+        Assert.Equal("synthetic", Assert.Single(view.Categories[0].Songs).Descriptor.Key.StableId);
+
+        // None of its songs here (or not a stock song of that id): no folder.
+        Assert.DoesNotContain(new SongSelectCatalogView(snapshot, eventFolder: event_ with { MusicIds = ["other"] }).Categories,
+            category => category.Key == SongSelectCatalogView.EventKey);
+        using var tja = new GlobalSongCatalog([new SyntheticProvider()]);
+        Assert.DoesNotContain(new SongSelectCatalogView(await tja.RefreshAsync(), eventFolder: event_).Categories,
+            category => category.Key == SongSelectCatalogView.EventKey);
+    }
+
+    [Fact]
     public async Task CourseStarFolderListsSongsOfTheChosenCourseAndStar()
     {
         using var catalog = new GlobalSongCatalog([new SyntheticProvider()]);
@@ -398,11 +419,11 @@ public sealed class SongSelectSessionTests
         }
     }
 
-    private sealed class SyntheticProvider(bool includeUra = false) : ISongCatalogProvider
+    private sealed class SyntheticProvider(bool includeUra = false, SongSourceKind source = SongSourceKind.Tja) : ISongCatalogProvider
     {
         public CatalogProviderId Id { get; } = new("synthetic");
 
-        public SongSourceKind Source => SongSourceKind.Tja;
+        public SongSourceKind Source => source;
 
         public ValueTask<SongCatalogContribution> ScanAsync(
             IProgress<CatalogScanProgress>? progress,

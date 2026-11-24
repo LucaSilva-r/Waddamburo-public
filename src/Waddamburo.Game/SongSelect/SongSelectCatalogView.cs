@@ -71,6 +71,9 @@ public sealed record SongSelectCategory(
 
     /// <summary>The open folder's description lines ('\n'); null takes <see cref="Art"/>'s lines.</summary>
     public string? Description { get; init; }
+
+    /// <summary>Green's own feature folder art (see <see cref="SongSelectEvent.Art"/>): the folder is one of the movie's feature folders.</summary>
+    public int? FeatureArt { get; init; }
 }
 
 /// <summary>A search's query and matching songs, in order (any library).</summary>
@@ -114,6 +117,9 @@ public sealed class SongSelectCatalogView
     /// <summary>The by-difficulty folder (GenreResource.COURSE_STAR, id 18).</summary>
     public const string CourseStarLabel = "むずかしさから曲をえらぶ";
 
+    /// <summary>The running event's folder (see <see cref="SongSelectEvent"/>).</summary>
+    public static readonly CategoryKey EventKey = new(SongSourceKind.Stock, "event");
+
     /// <summary>The by-difficulty folder's key.</summary>
     public static readonly CategoryKey CourseStarKey = new(SongSourceKind.Stock, "course-star");
 
@@ -151,13 +157,15 @@ public sealed class SongSelectCatalogView
     /// <paramref name="browse"/> (the osu!lazer library only) groups its songs into folders and sorts
     /// them, with a Group and a Sort spine after the folders to change either.
     /// <paramref name="online"/> adds an Online spine (it opens the online lobby); <paramref name="onlySong"/> lists that song alone.
+    /// <paramref name="eventFolder"/> lists the running event's stock songs in a folder of its name (none listed: no folder).
     /// </summary>
     public SongSelectCatalogView(SongCatalogSnapshot snapshot, SongSelectMode mode = SongSelectMode.Normal,
         bool modeSwitch = false, SongSourceKind? library = null, IEnumerable<SongSourceKind>? links = null,
         IEnumerable<SongKey>? favourites = null, bool tutorial = false, SongBrowse? browse = null,
         SongSearchResults? search = null, bool danDojo = false,
         IReadOnlyList<(string Id, string Name)>? danSeries = null, bool online = false, SongKey? onlySong = null,
-        Func<SongKey, SongDescriptor?>? received = null, bool courseStar = false, IReadOnlyList<string>? recentCharts = null, Random? random = null, bool rollFolder = false)
+        Func<SongKey, SongDescriptor?>? received = null, bool courseStar = false, IReadOnlyList<string>? recentCharts = null, Random? random = null, bool rollFolder = false,
+        SongSelectEvent? eventFolder = null)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         Revision = snapshot.Revision;
@@ -262,6 +270,18 @@ public sealed class SongSelectCatalogView
                 SongCategoryPresentation.AlwaysVisible | SongCategoryPresentation.HideSongCount | SongCategoryPresentation.Roll,
                 boardStyle(""), [shuffled[^1]])];
         RollPool = [.. shuffled];
+        // The event's songs, as the other folders list them (locked ones are already gone), under the event's name.
+        var eventMusic = eventFolder is null || mode != SongSelectMode.Normal ? [] : eventFolder.MusicIds.ToHashSet(StringComparer.Ordinal);
+        var eventSongs = genres.SelectMany(static category => category.Songs)
+            .Where(song => song.Descriptor.Key.Source == SongSourceKind.Stock && eventMusic.Contains(song.Descriptor.Key.StableId))
+            .DistinctBy(static song => song.Descriptor.Key).ToArray();
+        extraFolders = eventSongs.Length == 0 ? extraFolders : [new SongSelectCategory(EventKey, eventFolder!.Name, FeatureLabel,
+            SongCategoryPresentation.AlwaysVisible, boardStyle(eventFolder.Name), [.. eventSongs])
+            {
+                FeatureArt = eventFolder.Art,
+                // Without Green's art: a named folder of its own colour.
+                Tint = eventFolder.Art is null ? (230, 60, 120) : null,
+            }, .. extraFolders];
         var categories = searchFolder.Concat(tutorialFolder).Concat(courseStarFolder).Concat(extraFolders).Concat(favouriteFolder).Concat(historyFolder).Concat(genres)
             .Concat(danDojo && mode == SongSelectMode.Normal && library is null or SongSourceKind.Stock ? new[]
             {
