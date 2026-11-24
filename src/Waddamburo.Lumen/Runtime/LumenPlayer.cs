@@ -1011,11 +1011,18 @@ public sealed class LumenPlayer : IAvm1Host
 
     private void rewindTimeline(DisplayInstance instance, int targetFrame, bool queueActions)
     {
-        var reusable = instance.Children
-            .Where(static pair => pair.Value.FromTimeline)
-            .ToDictionary(static pair => pair.Key, static pair => pair.Value);
-        foreach (var depth in reusable.Keys)
-            instance.Children.Remove(depth);
+        // The timeline's children come out from the end (RemoveAt shifts what follows; nothing does there): a song
+        // select scroll rewinds clips with many children every tick.
+        var children = instance.Children;
+        var reusable = new Dictionary<long, DisplayInstance>();
+        for (var index = children.Count - 1; index >= 0; index--)
+        {
+            var child = children.GetValueAtIndex(index);
+            if (!child.FromTimeline)
+                continue;
+            reusable[children.GetKeyAtIndex(index)] = child;
+            children.RemoveAt(index);
+        }
 
         instance.ReusableTimelineChildren = reusable;
         instance.Frame = -1;
@@ -1648,14 +1655,16 @@ public sealed class LumenPlayer : IAvm1Host
                     context.PendingPlayback = name == "gotoAndPlay";
                 jumpInstance(jumpTarget, targetFrame, name == "gotoAndPlay");
             }
-            else
+            // Some movies jump to a missing label every frame: the message (every label, sorted) only the first time.
+            else if (!_diagnosticKeys.Contains(("LUM_AVM_GOTO_INVALID", instance.CharacterId, instance.Frame, jumpTarget.Name)))
                 reportOnce(
                     "LUM_AVM_GOTO_INVALID",
                     instance.CharacterId,
                     instance.Frame,
                     $"Movie clip method '{name}' on character {jumpTarget.CharacterId} "
                     + $"instance '{jumpTarget.Name}' could not resolve target '{toAvmString(arguments[0])}'; "
-                    + $"available labels: {string.Join(", ", _sprites[jumpTarget.CharacterId].Labels.Keys.Order(StringComparer.Ordinal))}.");
+                    + $"available labels: {string.Join(", ", _sprites[jumpTarget.CharacterId].Labels.Keys.Order(StringComparer.Ordinal))}.",
+                    jumpTarget.Name, format: false);
             return new Avm1Lookup(true, Avm1Undefined.Instance);
         }
         if (name.Length == 0 && target is Avm1Object)
@@ -2911,7 +2920,8 @@ public sealed class LumenPlayer : IAvm1Host
 
     // A message with one argument ({0}) is formatted only the first time: some are reported every frame (a fill the host
     // has not drawn yet).
-    private void reportOnce(string code, uint characterId, int frame, string message, string? argument)
+    // format false: the message is final, argument only keys it.
+    private void reportOnce(string code, uint characterId, int frame, string message, string? argument, bool format = true)
     {
         if (_diagnosticKeys.Add((code, characterId, frame, argument ?? message)))
         {
@@ -2920,7 +2930,7 @@ public sealed class LumenPlayer : IAvm1Host
                 code,
                 characterId,
                 frame,
-                argument is null ? message : string.Format(System.Globalization.CultureInfo.InvariantCulture, message, argument)));
+                argument is null || !format ? message : string.Format(System.Globalization.CultureInfo.InvariantCulture, message, argument)));
         }
     }
 

@@ -161,13 +161,19 @@ internal sealed class Avm1ExecutionContext(
             (s_free ??= new()).TryPop(out var reused) ? reused
             : typeof(TKey) == typeof(string) ? (Dictionary<TKey, object?>)(object)new Dictionary<string, object?>(StringComparer.Ordinal) : [];
 
+        // Clear costs the dictionary's capacity, not its contents: one that grew large (a call writing many members) would
+        // make every later reuse pay for it, so only small ones come back.
+        private const int MaximumPooledCapacity = 32;
+
         public static void Return(ref Dictionary<TKey, object?>? dictionary)
         {
             if (dictionary is null)
                 return;
-            dictionary.Clear();
-            if ((s_free ??= new()).Count < 64)
+            if (dictionary.EnsureCapacity(0) <= MaximumPooledCapacity && (s_free ??= new()).Count < 64)
+            {
+                dictionary.Clear();
                 s_free.Push(dictionary);
+            }
             dictionary = null;
         }
     }
