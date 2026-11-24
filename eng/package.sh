@@ -7,7 +7,7 @@
 #   out/package/licenses-win-x64.zip        notices from the Windows .NET runtime pack
 #   out/package/Waddamburo.apk              the Android app (target android: needs the Android SDK, NDK and JDK)
 #   out/package/Waddamburo.nro              the Switch homebrew (target switch: platforms/switch/README.md), with
-#                                            licenses-switch.zip and ffmpeg-relink-switch.zip (FFmpeg is linked statically)
+#                                            licenses-switch.zip and ffmpeg-source-switch.zip (GPL: its patched FFmpeg)
 #   out/package/ffmpeg-source.zip           pinned FFmpeg and Opus source archives (from the Linux job)
 #   out/package/ffmpeg-relink-*.zip         platform-specific configure options and vgmstream link inputs
 #   out/package/native-{win,linux}-x64.zip  the native libraries alone, for building from source
@@ -240,7 +240,7 @@ EOF
         cp LICENSE NOTICE.md THIRD_PARTY_NOTICES.md eng/packaging/licenses/* "$notices/"
         cp platforms/switch/THIRD_PARTY_NOTICES.md "$notices/THIRD_PARTY_NOTICES-switch.md"
         cp native/texture/third_party/bc7enc/LICENSE "$notices/bc7enc.LICENSE.txt"
-        cp "$switch/ext/ffmpeg-$FFMPEG"/COPYING.LGPLv2.1 "$switch/ext/ffmpeg-$FFMPEG"/LICENSE.md "$notices/FFmpeg/"
+        cp "$switch/ext/ffmpeg-$FFMPEG"/COPYING.GPLv2 "$switch/ext/ffmpeg-$FFMPEG"/LICENSE.md "$notices/FFmpeg/"
         grep -o -- '--[a-z-]*\(=[^ ]*\)\?' platforms/switch/scripts/natives.sh | sort -u > "$notices/FFmpeg/configure-options-switch.txt"
         cp "$switch/ext/vgmstream-$VGMSTREAM/COPYING" "$notices/vgmstream/"
         cp "$switch"/bgfx/licenses/* "$notices/"
@@ -249,26 +249,11 @@ EOF
         nuget_inventory src/Waddamburo.App/packages.lock.json > "$notices/nuget-packages.txt"
         rm -f "$out/licenses-switch.zip" && (cd "$notices" && cmake -E tar cf "$out/licenses-switch.zip" --format=zip .)
         echo "$out/licenses-switch.zip"
-        # LGPL relink inputs: everything but FFmpeg, as linked, and the script that links it (scripts/link.sh's last step).
-        relink=$switch/relink && rm -rf "$relink" && mkdir -p "$relink"
-        cp -r "$switch/obj" "$switch/rt-link" "$relink/"
-        cp "$switch/libfreetype_nx.a" "$switch/libdrm_nouveau_nx.a" "$relink/"
-        mkdir -p "$relink/natives" "$relink/bgfx"
-        cp "$switch"/natives/prefix/lib/lib{waddamburo_media,waddamburo_text,waddamburo_texture,vgmstream,e_sqlite3}.a "$relink/natives/"
-        cp "$switch"/bgfx/prefix/lib/*.a "$relink/bgfx/"
-        cp "$notices/FFmpeg/configure-options-switch.txt" platforms/switch/icon.jpg "$relink/"
-        { cat <<HEADER
-#!/bin/bash
-# Links Waddamburo.nro again against another FFmpeg build (same options: configure-options-switch.txt). Inside the
-# devkitpro/devkita64 image: FFMPEG_LIB=/path/to/its/lib ./link.sh
-set -e; cd "\$(dirname "\$0")"; export PATH=\$DEVKITPRO/devkitA64/bin:\$DEVKITPRO/tools/bin:\$PATH
-ARCH="-march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE" VERSION=$version
-R=rt-link N=natives B=bgfx F=\${FFMPEG_LIB:?set FFMPEG_LIB} NRO=\$PWD/Waddamburo.nro HERE=\$PWD
-HEADER
-          sed -n '/^aarch64-none-elf-g++ -specs/,/^ls -la/p' platforms/switch/scripts/link.sh; } > "$relink/link.sh"
-        chmod +x "$relink/link.sh"
-        rm -f "$out/ffmpeg-relink-switch.zip" && (cd "$relink" && cmake -E tar cf "$out/ffmpeg-relink-switch.zip" --format=zip .)
-        echo "$out/ffmpeg-relink-switch.zip"
+        # GPL (nvtegra): the Switch build's FFmpeg source as built, the release tarball and devkitPro's patch; the rest of
+        # the corresponding source is this repository at the release's tag.
+        rm -f "$out/ffmpeg-source-switch.zip" && (cd "$root/out/downloads" && cmake -E tar cf "$out/ffmpeg-source-switch.zip" \
+            --format=zip "ffmpeg-${FFMPEG%-nvtegra}.tar.xz" "ffmpeg-${FFMPEG%-nvtegra}-switch.patch")
+        echo "$out/ffmpeg-source-switch.zip"
         echo "$out/Waddamburo.nro"
         ;;
     *)

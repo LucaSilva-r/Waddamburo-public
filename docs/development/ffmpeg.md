@@ -18,6 +18,12 @@ re-encodes vgmstream-cli's WAV output as Opus for the decoded-audio cache
 (`waddamburo_media_transcode_opus`, ABI 1.4). FFmpeg's own Opus encoder is not used: its
 psychoacoustic queue overflows and drops audio on songs that start with silence.
 
+The Switch is the exception (`platforms/switch/build.sh`): it builds FFmpeg 7.1 with devkitPro's Switch patch
+(pinned by commit and SHA-256), which adds averne's nvtegra backend, NVDEC hardware video decoding: background videos
+up to 1080p60 that the console's CPU cannot decode. nvtegra is GPL-2.0-or-later and builds only with `--enable-gpl`,
+so `Waddamburo.nro` is distributed under the GPL as a whole; its release carries `ffmpeg-source-switch.zip` (the
+tarball and the patch) instead of a relink archive. The other platforms stay LGPL.
+
 The allowlist supports the product's declared inputs:
 
 | Kind | Enabled components |

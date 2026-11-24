@@ -10,13 +10,19 @@
 #include <libavutil/error.h>
 #include <libavutil/imgutils.h>
 #include <libswscale/swscale.h>
-
+#if defined(__SWITCH__)
+#include <libavutil/hwcontext.h>
+#include <libavutil/opt.h>
+#endif
 
 struct waddamburo_media_video {
     AVFormatContext *format;
     AVCodecContext *codec;
     AVPacket *packet;
     AVFrame *frame;
+    AVFrame *downloaded; /* a hardware-decoded frame, copied back to memory */
+    int scaler_format;
+    AVFrame *scaled; /* wraps the caller's buffer for sws_scale_frame */
     struct SwsContext *scaler;
     int stream_index;
     int draining;
@@ -26,6 +32,45 @@ struct waddamburo_media_video {
     uint32_t width;
     uint32_t height;
 };
+
+#if defined(__SWITCH__)
+/* The Switch's FFmpeg (devkitPro's patch: averne's nvtegra) decodes on the Tegra's NVDEC; the software decoder takes
+   what it cannot (a format the hardware does not offer). */
+static enum AVPixelFormat video_nvtegra_format(AVCodecContext *codec, const enum AVPixelFormat *formats)
+{
+    for (const enum AVPixelFormat *format = formats; *format != AV_PIX_FMT_NONE; format++)
+        if (*format == AV_PIX_FMT_NVTEGRA)
+            return *format;
+    return avcodec_default_get_format(codec, formats);
+}
+
+/* The A57s convert and scale 1080p in ~23 ms on one core: here on three (slice threads), with the fast bilinear. */
+static struct SwsContext *video_switch_scaler(const AVFrame *frame, uint32_t width, uint32_t height)
+{
+    struct SwsContext *scaler = sws_alloc_context();
+    if (scaler == NULL)
+        return NULL;
+    av_opt_set_int(scaler, "srcw", frame->width, 0);
+    av_opt_set_int(scaler, "srch", frame->height, 0);
+    av_opt_set_int(scaler, "src_format", frame->format, 0);
+    av_opt_set_int(scaler, "dstw", width, 0);
+    av_opt_set_int(scaler, "dsth", height, 0);
+    av_opt_set_int(scaler, "dst_format", AV_PIX_FMT_RGBA, 0);
+    av_opt_set_int(scaler, "sws_flags", SWS_FAST_BILINEAR, 0);
+    av_opt_set_int(scaler, "threads", 3, 0);
+    if (sws_init_context(scaler, NULL, NULL) < 0) {
+        sws_freeContext(scaler);
+        return NULL;
+    }
+    return scaler;
+}
+
+static void video_keep(void *opaque, uint8_t *data)
+{
+    (void)opaque;
+    (void)data;
+}
+#endif
 
 static void video_set_error(waddamburo_media_error *error, waddamburo_media_result code, int native_code,
     const char *message)
@@ -44,6 +89,8 @@ void WADDAMBURO_MEDIA_CALL waddamburo_media_video_destroy(waddamburo_media_video
         return;
     sws_freeContext(video->scaler);
     av_frame_free(&video->frame);
+    av_frame_free(&video->downloaded);
+    av_frame_free(&video->scaled);
     av_packet_free(&video->packet);
     avcodec_free_context(&video->codec);
     avformat_close_input(&video->format);
@@ -95,11 +142,14 @@ waddamburo_media_result WADDAMBURO_MEDIA_CALL waddamburo_media_video_open_file(
         goto ffmpeg_failure;
     /* Every core (FFmpeg picks the count): one thread could not keep a 1080p60 background video up with the game
        running (84 frames a second alone, without SIMD). */
-#if defined(__SWITCH__)
-    /* FFmpeg built for no OS cannot count cores there (it would take one): the three the game runs on. */
-    video->codec->thread_count = 3;
-#else
     video->codec->thread_count = 0;
+#if defined(__SWITCH__)
+    AVBufferRef *device = NULL;
+    if (av_hwdevice_ctx_create(&device, AV_HWDEVICE_TYPE_NVTEGRA, NULL, NULL, 0) == 0) {
+        video->codec->hw_device_ctx = device;
+        video->codec->get_format = video_nvtegra_format;
+        video->codec->thread_count = 1; /* the hardware decodes: no frame threads */
+    }
 #endif
     video->codec->thread_type = FF_THREAD_FRAME | FF_THREAD_SLICE;
     status = avcodec_open2(video->codec, decoder, NULL);
@@ -179,6 +229,22 @@ next_frame:
     }
 
     AVFrame *frame = video->frame;
+#if defined(__SWITCH__)
+    if (frame->format == AV_PIX_FMT_NVTEGRA) {
+        if (video->downloaded == NULL && (video->downloaded = av_frame_alloc()) == NULL) {
+            av_frame_unref(frame);
+            return WADDAMBURO_MEDIA_ERROR_INTERNAL;
+        }
+        av_frame_unref(video->downloaded);
+        int copied = av_hwframe_transfer_data(video->downloaded, frame, 0);
+        if (copied >= 0)
+            copied = av_frame_copy_props(video->downloaded, frame);
+        av_frame_unref(frame);
+        if (copied < 0)
+            return WADDAMBURO_MEDIA_ERROR_INTERNAL;
+        frame = video->downloaded;
+    }
+#endif
     int64_t frame_pts = frame->best_effort_timestamp == AV_NOPTS_VALUE ? video->start_pts : frame->best_effort_timestamp;
     int64_t frame_microseconds = av_rescale_q(frame_pts - video->start_pts, video->time_base, AV_TIME_BASE_Q);
     /* After a seek: the frames between the keyframe and the time asked for are decoded, not converted. */
@@ -187,8 +253,16 @@ next_frame:
         goto next_frame;
     }
     video->skip_until_microseconds = INT64_MIN;
+#if defined(__SWITCH__)
+    if (video->scaler == NULL || video->scaler_format != frame->format) {
+        sws_freeContext(video->scaler);
+        video->scaler = video_switch_scaler(frame, video->width, video->height);
+        video->scaler_format = frame->format;
+    }
+#else
     video->scaler = sws_getCachedContext(video->scaler, frame->width, frame->height, frame->format,
         (int)video->width, (int)video->height, AV_PIX_FMT_RGBA, SWS_BILINEAR, NULL, NULL, NULL);
+#endif
     if (video->scaler == NULL) {
         av_frame_unref(frame);
         return WADDAMBURO_MEDIA_ERROR_UNSUPPORTED;
@@ -198,10 +272,30 @@ next_frame:
             ? SWS_CS_ITU601 : SWS_CS_ITU709);
     sws_setColorspaceDetails(video->scaler, coefficients, frame->color_range == AVCOL_RANGE_JPEG,
         sws_getCoefficients(SWS_CS_DEFAULT), 1, 0, 1 << 16, 1 << 16);
+#if defined(__SWITCH__)
+    AVFrame *scaled = video->scaled != NULL ? video->scaled : (video->scaled = av_frame_alloc());
+    if (scaled == NULL) {
+        av_frame_unref(frame);
+        return WADDAMBURO_MEDIA_ERROR_INTERNAL;
+    }
+    scaled->format = AV_PIX_FMT_RGBA;
+    scaled->width = (int)video->width;
+    scaled->height = (int)video->height;
+    scaled->data[0] = rgba;
+    scaled->linesize[0] = (int)video->width * 4;
+    scaled->buf[0] = av_buffer_create(rgba, (size_t)video->width * video->height * 4, video_keep, NULL, 0);
+    int scaled_status = scaled->buf[0] != NULL ? sws_scale_frame(video->scaler, scaled, frame) : AVERROR(ENOMEM);
+    av_frame_unref(scaled);
+    if (scaled_status < 0) {
+        av_frame_unref(frame);
+        return WADDAMBURO_MEDIA_ERROR_INTERNAL;
+    }
+#else
     uint8_t *destination[4] = { rgba, NULL, NULL, NULL };
     int stride[4] = { (int)video->width * 4, 0, 0, 0 };
     sws_scale(video->scaler, (const uint8_t *const *)frame->data, frame->linesize, 0, frame->height,
         destination, stride);
+#endif
     *pts_microseconds = frame_microseconds;
     av_frame_unref(frame);
     return WADDAMBURO_MEDIA_OK;

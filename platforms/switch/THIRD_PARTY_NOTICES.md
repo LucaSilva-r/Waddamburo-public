@@ -24,5 +24,9 @@ under `/opt/devkitpro`) and at the projects below.
 
 Portions of this software are copyright © The FreeType Project (www.freetype.org). All rights reserved.
 
-FFmpeg is linked statically under the LGPL 2.1: `ffmpeg-relink-switch.zip` (next to the release) has every other object
-file and library with the link script, to link `Waddamburo.nro` again against a modified FFmpeg.
+`Waddamburo.nro` is distributed under the GNU GPL, version 2 or (at your option) any later version (`FFmpeg/COPYING.GPLv2`):
+its FFmpeg is 7.1 with devkitPro's Switch patch, which adds averne's nvtegra hardware decoding (GPL-2.0-or-later), built
+with `--enable-gpl`. Its complete corresponding source: `ffmpeg-source-switch.zip` next to the release (the FFmpeg
+tarball and the patch, as `platforms/switch/build.sh` applies them) and the Waddamburo source at the release's tag
+(Waddamburo itself is MIT; `platforms/switch/` builds the whole). Mbed TLS and FreeType are taken under their GPL
+options (GPL-2.0-or-later), the other components' licenses above are GPL-compatible.

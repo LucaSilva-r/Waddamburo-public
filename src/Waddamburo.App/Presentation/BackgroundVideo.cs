@@ -36,7 +36,8 @@ internal sealed class BackgroundVideo : IDisposable
     private TimeSpan? _asked;
     private long _targetTicks;
 
-    private readonly VideoMask _mask;
+    // Only for a keyed colour (BGMOVIEKEY).
+    private readonly VideoMask? _mask;
 
     private BackgroundVideo(SdlApplication application, NativeVideoDecoder decoder, Waddamburo.Catalog.ChartVideo video)
     {
@@ -46,7 +47,7 @@ internal sealed class BackgroundVideo : IDisposable
         Additive = video.Additive;
         HidesDancers = video.Additive || video.KeyColor is not null || video.LumaCurve is not null;
         Area = video.Area;
-        _mask = new VideoMask((int)decoder.Width, (int)decoder.Height, video.KeyColor, video.KeyTolerance);
+        _mask = video.KeyColor is null ? null : new VideoMask((int)decoder.Width, (int)decoder.Height, video.KeyColor, video.KeyTolerance);
         LumaCurve = video.LumaCurve ?? 0;
         Texture = application.UploadRgba8(decoder.Width, decoder.Height, new byte[decoder.Width * decoder.Height * 4]);
         _worker = new Thread(decode) { IsBackground = true, Name = "Background video decoder" };
@@ -216,7 +217,7 @@ internal sealed class BackgroundVideo : IDisposable
                 }
                 lastKept = time.Ticks;
                 _kept++;
-                _mask.Apply(pixels);
+                _mask?.Apply(pixels);
                 // Wait for room, but give up on the frame when a seek asks for another place.
                 while (!_frames.TryAdd((pixels, time, generation), 20, _stop.Token))
                     if (Interlocked.Read(ref _seekTicks) >= 0)

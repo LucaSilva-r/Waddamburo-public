@@ -12,8 +12,9 @@ platforms/switch/build.sh app        # after C# changes only (natives and bgfx a
 ```
 
 Needs the .NET 10 SDK, curl and Docker (the devkitA64 steps run in the pinned `devkitpro/devkita64` image), or runs
-entirely inside that image when `DEVKITPRO` is set (CI). Sources are pinned: FFmpeg, vgmstream and bgfx.cmake come from
-`native/`'s CMake files (the same as the desktop builds), with `patches/` applied to bgfx; SQLite 3.53.3 and the SDL 3.5
+entirely inside that image when `DEVKITPRO` is set (CI). Sources are pinned: vgmstream and bgfx.cmake come from
+`native/`'s CMake files (the same as the desktop builds), with `patches/` applied to bgfx; FFmpeg is devkitPro's Switch
+one (7.1 and its patch: averne's nvtegra, NVDEC hardware video decoding), so the `.nro` is GPL-2.0-or-later as a whole; SQLite 3.53.3 and the SDL 3.5
 headers (`ppy.SDL3-CS`'s ABI, which `shim/sdl3nx.c` implements) are pinned in `build.sh`. `out/switch` keeps the build.
 
 ## Test on a console

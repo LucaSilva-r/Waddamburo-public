@@ -57,7 +57,7 @@ aarch64-none-elf-gcc $CF -I"$DEVKITPRO/portlibs/switch/include" -c "$S/cryptonx.
 "$NM" --defined-only obj/cryptonx.o | awk '$2=="T"{print $3}' > crypto-overrides.txt
 aarch64-none-elf-objcopy --weaken-symbols=crypto-overrides.txt rt-link/libSystem.Security.Cryptography.Native.OpenSsl.a
 
-# The link (also ffmpeg-relink-switch.zip's link.sh): R runtime, N natives, F FFmpeg, B bgfx; NRO the output.
+# The link: R runtime, N natives, F FFmpeg, B bgfx; NRO the output.
 R=${R:-rt-link} N=${N:-natives/prefix/lib} B=${B:-bgfx/prefix/lib} F=${FFMPEG_LIB:-natives/prefix/lib}
 NRO=${NRO:-$ROOT/out/package/Waddamburo.nro}
 aarch64-none-elf-g++ -specs="$DEVKITPRO/libnx/switch.specs" -g $ARCH -Wl,--eh-frame-hdr -Wl,--wrap=__syscall_thread_create \

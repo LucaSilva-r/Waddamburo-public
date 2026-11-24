@@ -40,8 +40,14 @@ fetch() { # url file sha256
 
 deps() {
     local downloads=$root/out/downloads ext=$out/ext
-    local ffmpeg=$(pin WADDAMBURO_FFMPEG_VERSION) vgm=$(pin WADDAMBURO_VGMSTREAM_REVISION) bgfx=$(pin WADDAMBURO_BGFX_VERSION)
-    fetch "https://ffmpeg.org/releases/ffmpeg-$ffmpeg.tar.xz" "$downloads/ffmpeg-$ffmpeg.tar.xz" "$(pin WADDAMBURO_FFMPEG_SHA256)"
+    local vgm=$(pin WADDAMBURO_VGMSTREAM_REVISION) bgfx=$(pin WADDAMBURO_BGFX_VERSION)
+    # FFmpeg: not native/'s version but devkitPro's Switch one, with its patch (averne's nvtegra: NVDEC hardware
+    # decoding; GPL, so the Switch build is GPL-2.0-or-later as a whole).
+    local ffmpeg=7.1 dkp=0e7866ba743b817e5a4f7f8268b94d4620202474
+    fetch "https://ffmpeg.org/releases/ffmpeg-$ffmpeg.tar.xz" "$downloads/ffmpeg-$ffmpeg.tar.xz" \
+        40973d44970dbc83ef302b0609f2e74982be2d85916dd2ee7472d30678a7abe6
+    fetch "https://raw.githubusercontent.com/devkitPro/pacman-packages/$dkp/switch/ffmpeg/ffmpeg-$ffmpeg.patch" \
+        "$downloads/ffmpeg-$ffmpeg-switch.patch" 1792380b992e3554a4abcddf0d7b395bfd8c118ac7c6e38c8f2fb0d39753a390
     fetch "https://github.com/vgmstream/vgmstream/archive/$vgm.tar.gz" "$downloads/vgmstream-$vgm.tar.gz" "$(pin WADDAMBURO_VGMSTREAM_SHA256)"
     fetch "https://github.com/bkaradzic/bgfx.cmake/releases/download/$bgfx/bgfx.cmake.$bgfx.tar.gz" \
         "$downloads/bgfx.cmake.$bgfx.tar.gz" "$(pin WADDAMBURO_BGFX_SHA256)"
@@ -57,7 +63,11 @@ deps() {
     fetch "https://github.com/switchbrew/nx-hbloader/archive/$hbl.tar.gz" "$downloads/nx-hbloader-$hbl.tar.gz" \
         c0e6a7a485d3ef87a25de2fb564d71be97c71ed8161703436b4f089ea1c15c16
 
-    [[ -d $ext/ffmpeg-$ffmpeg ]] || tar -xJf "$downloads/ffmpeg-$ffmpeg.tar.xz" -C "$ext"
+    if [[ ! -d $ext/ffmpeg-$ffmpeg-nvtegra ]]; then
+        rm -rf "$ext/ffmpeg-$ffmpeg" && tar -xJf "$downloads/ffmpeg-$ffmpeg.tar.xz" -C "$ext"
+        patch -s -p1 -d "$ext/ffmpeg-$ffmpeg" < "$downloads/ffmpeg-$ffmpeg-switch.patch"
+        mv "$ext/ffmpeg-$ffmpeg" "$ext/ffmpeg-$ffmpeg-nvtegra"
+    fi
     [[ -d $ext/vgmstream-$vgm ]] || tar -xzf "$downloads/vgmstream-$vgm.tar.gz" -C "$ext"
     [[ -d $ext/sqlite-amalgamation-3530300 ]] || (cd "$ext" && cmake -E tar xf "$downloads/sqlite-amalgamation-3530300.zip")
     [[ -d $ext/sdl3 ]] || { mkdir -p "$ext/sdl3" && tar -xzf "$downloads/SDL-$sdl.tar.gz" -C "$ext/sdl3" --strip-components=1 "SDL-$sdl/include"; }
@@ -71,7 +81,7 @@ deps() {
         patch -s -p1 -d "$ext/nx-hbloader.part" < "$here/patches/hbloader/forwarder.patch"
         mv "$ext/nx-hbloader.part" "$ext/nx-hbloader"
     fi
-    echo "FFMPEG=$ffmpeg VGMSTREAM=$vgm" > "$ext/versions.env"
+    echo "FFMPEG=$ffmpeg-nvtegra VGMSTREAM=$vgm" > "$ext/versions.env"
 }
 
 app() {

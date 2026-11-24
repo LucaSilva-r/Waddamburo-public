@@ -10,16 +10,17 @@ P=$OUT/natives/prefix; mkdir -p $P/lib $P/include
 ARCH="-march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE"
 CF="-O2 -ffunction-sections -fdata-sections $ARCH -D__SWITCH__ -I$DEVKITPRO/libnx/include -I$DEVKITPRO/portlibs/switch/include"
 if [ $WHAT = ffmpeg -o $WHAT = all ]; then
-  B=$OUT/natives/ffmpeg; mkdir -p $B; cd $B
+  B=$OUT/natives/ffmpeg; rm -rf $B; mkdir -p $B; cd $B # fresh: its src link names the source tree
   $OUT/ext/ffmpeg-$FFMPEG/configure --prefix=$P --enable-cross-compile --cross-prefix=aarch64-none-elf- \
     --arch=aarch64 --cpu=cortex-a57 --target-os=none --pkg-config=aarch64-none-elf-pkg-config \
     --extra-cflags="$CF -D_GNU_SOURCE" --extra-ldflags="$ARCH -specs=$DEVKITPRO/libnx/switch.specs -L$DEVKITPRO/portlibs/switch/lib -L$DEVKITPRO/libnx/lib" \
     --extra-libs="-lnx" --enable-static --disable-shared --enable-pic --enable-pthreads --disable-runtime-cpudetect \
-    --disable-autodetect --disable-everything --disable-iconv --disable-gpl --disable-nonfree --disable-version3 \
+    --disable-autodetect --disable-everything --disable-iconv --enable-gpl --enable-nvtegra --disable-nonfree --disable-version3 \
     --enable-avcodec --enable-avformat --enable-avutil --enable-swresample --disable-avdevice --disable-avfilter --enable-swscale \
     --enable-decoder=atrac3p,h264,mp3,mp3float,vorbis,flac,opus,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le,pcm_u8 \
     --enable-decoder=mpeg4,flv,vp6f,msmpeg4v1,msmpeg4v2,msmpeg4v3,wmv3,mpeg1video,mpeg2video,mjpeg \
     --enable-demuxer=wav,mp3,ogg,flac,mpegps,h264,mov,avi,flv,matroska,asf,mpegvideo --enable-libopus --pkg-config-flags=--static --enable-encoder=libopus \
+    --enable-hwaccel=h264_nvtegra,mpeg1_nvtegra,mpeg2_nvtegra,mpeg4_nvtegra,mjpeg_nvtegra,wmv3_nvtegra \
     --enable-muxer=ogg --enable-parser=mpegaudio,vorbis,flac,opus,h264,mpeg4video,mpegvideo,vc1,mjpeg --enable-protocol=file --disable-network \
     --disable-programs --disable-doc --disable-debug --enable-small > $OUT/natives-ffmpeg-config.log 2>&1 || { tail -20 ffbuild/config.log; exit 1; }
   make -j8 > $OUT/natives-ffmpeg-build.log 2>&1 || { grep -E "error" -A3 $OUT/natives-ffmpeg-build.log | head -30; exit 1; }

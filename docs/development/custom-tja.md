@@ -177,8 +177,8 @@ starts it that long after the song's audio (negative: before). osu! beatmaps' `V
 same way (`OsuTaikoChartReader.Video`). The chart carries it as `PlayableChart.Video` (`ChartVideo`), resolved when
 the chart loads; gameplay draws it over the backdrops, or below 1P's lane (`background_video`, `background_video_dim`).
 
-Black bars (rows and columns black in every frame so far, as osu!taiko videos leave the top for osu!'s playfield) are
-see-through, so the backdrops show there (`VideoMask`). Waddamburo's own headers:
+Black bars are drawn as they are (guessing them clipped figures rising into rows not shown yet and left gaps under
+osu! videos). Waddamburo's own headers:
 
 | Header | Effect |
 |---|---|

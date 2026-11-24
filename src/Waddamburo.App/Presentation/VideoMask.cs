@@ -1,56 +1,16 @@
 namespace Waddamburo.App.Presentation;
 
 /// <summary>
-/// A background video's see-through parts, cut on its decoding thread: black bars (rows and columns black in every
-/// frame so far: osu!taiko videos leave the top black for osu!'s playfield) and a keyed colour (a green screen).
+/// A background video's keyed colour (a green screen), cut on its decoding thread. Black bars are not cut: guessing them
+/// clipped figures rising into rows not shown yet, and left gaps under osu! videos' lower playfield.
 /// </summary>
 internal sealed class VideoMask(int width, int height, int? keyColor = null, int keyTolerance = 60)
 {
-    // Brighter than this (r + g + b) is picture: compressed black stays well under it.
-    private const int BlackSum = 48;
-
-    // Rows and columns that have shown picture: from then on they are never a bar again.
-    private readonly bool[] _rowSeen = new bool[height];
-    private readonly bool[] _columnSeen = new bool[width];
-    private bool _allSeen;
-    private int _frames;
-
-    /// <summary>Makes the frame's bars and keyed colour transparent (RGBA8, in place).</summary>
+    /// <summary>Makes the frame's keyed colour transparent (RGBA8, in place).</summary>
     public void Apply(Span<byte> rgba)
     {
-        if (!_allSeen)
-            cutBars(rgba, scan: _frames++ % 8 == 0);
         if (keyColor is { } key)
             cutKey(rgba, key);
-    }
-
-    // Looking for picture in the bars every 8th frame (a full pass); cutting them every frame.
-    private void cutBars(Span<byte> rgba, bool scan)
-    {
-        for (var y = 0; y < height && scan; y++)
-        {
-            var row = rgba.Slice(y * width * 4, width * 4);
-            for (var x = 0; x < width; x++)
-            {
-                if (_rowSeen[y] && _columnSeen[x])
-                    continue;
-                if (row[x * 4] + row[x * 4 + 1] + row[x * 4 + 2] > BlackSum)
-                    _rowSeen[y] = _columnSeen[x] = true;
-            }
-        }
-        _allSeen = Array.TrueForAll(_rowSeen, static seen => seen) && Array.TrueForAll(_columnSeen, static seen => seen);
-        for (var y = 0; y < height; y++)
-        {
-            var row = rgba.Slice(y * width * 4, width * 4);
-            if (!_rowSeen[y])
-            {
-                row.Clear();
-                continue;
-            }
-            for (var x = 0; x < width; x++)
-                if (!_columnSeen[x])
-                    row.Slice(x * 4, 4).Clear();
-        }
     }
 
     // The key's matte, worked out on a quarter-size frame (4x4 blocks, their average colour): a block within the tolerance

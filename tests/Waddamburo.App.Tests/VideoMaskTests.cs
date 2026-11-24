@@ -14,25 +14,6 @@ public sealed class VideoMaskTests
         return rgba;
     }
 
-    // A black top band (osu!taiko's) is see-through until a frame shows picture there; picture stays opaque, dark or not.
-    [Fact]
-    public void BlackBarsTurnTransparentUntilTheyShowPicture()
-    {
-        var mask = new VideoMask(4, 4);
-        var letterboxed = frame(4, 4, (_, y) => y < 2 ? ((byte)0, (byte)0, (byte)0) : ((byte)200, (byte)10, (byte)10));
-        mask.Apply(letterboxed);
-        Assert.Equal(0, letterboxed[3]);
-        Assert.Equal(255, letterboxed[(3 * 4) * 4 + 3]);
-        // Bars are looked at again every 8th frame.
-        var full = frame(4, 4, (_, _) => ((byte)90, (byte)90, (byte)90));
-        for (var shown = 0; shown < 8; shown++)
-            mask.Apply(full = frame(4, 4, (_, _) => ((byte)90, (byte)90, (byte)90)));
-        Assert.Equal(255, full[3]);
-        var dark = frame(4, 4, (_, _) => ((byte)0, (byte)0, (byte)0));
-        mask.Apply(dark);
-        Assert.Equal(255, dark[3]);
-    }
-
     // A black key (hologram videos): the background joined to the edge goes; a dark sleeve with a highlight that touches it
     // stays; a notch of pure black between the legs, which the hole filling closes, is cleared all the same.
     [Fact]
