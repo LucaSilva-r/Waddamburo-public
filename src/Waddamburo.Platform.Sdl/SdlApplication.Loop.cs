@@ -176,15 +176,22 @@ public sealed unsafe partial class SdlApplication
             {
                 BgfxSupport.SurfaceReturned();
                 _renderer!.SurfaceLost();
+                _pixelSize = null; // Android: the surface came back, perhaps at another size
             }
             while (_injected.TryDequeue(out var injected))
                 pendingPresses.Add(new SdlKeyPress(injected, TimeSpan.FromTicks(checked((long)(SDL_GetTicksNS() / 100)))));
             var performanceActive = performanceVisible?.Invoke() == true;
             var inputStart = performanceActive ? Stopwatch.GetTimestamp() : 0;
-            _pixelSize = null; // asked again this frame (a resize, a display change)
             SDL_Event currentEvent;
             while (SDL_PollEvent(&currentEvent))
             {
+                // The window's pixel size is asked again only when it changes (a per-frame query was a window-system
+                // round trip on every frame).
+                if (currentEvent.type is (uint)SDL_EventType.SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED
+                    or (uint)SDL_EventType.SDL_EVENT_WINDOW_RESIZED or (uint)SDL_EventType.SDL_EVENT_WINDOW_DISPLAY_CHANGED
+                    or (uint)SDL_EventType.SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED or (uint)SDL_EventType.SDL_EVENT_WINDOW_ENTER_FULLSCREEN
+                    or (uint)SDL_EventType.SDL_EVENT_WINDOW_LEAVE_FULLSCREEN)
+                    _pixelSize = null;
                 // F11 (fullscreen) before any UI: the effects editor's panels take the keys under the mouse.
                 if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_KEY_DOWN && currentEvent.key.key == SDL_Keycode.SDLK_F11 && !bound(currentEvent.key.scancode))
                 {

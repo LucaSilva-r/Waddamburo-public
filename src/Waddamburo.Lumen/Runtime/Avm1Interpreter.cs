@@ -81,10 +81,15 @@ internal static class Avm1Interpreter
         using var registerLease = Avm1ScratchPool.RentRegisters(Math.Min(limits.MaxRegisters, registerCount));
         var registers = registerLease.Registers;
         var nextRegister = 1;
-        var argumentArray = new Avm1ArrayObject(arguments);
-        var superValue = new Avm1SuperValue(
+        // `arguments` and `super` are built only when the function uses them: a DefineFunction2 says so in its flags
+        // (preload 0x04/0x10, or not suppressed 0x08/0x20), and most calls need neither (a list copy and an object each).
+        var flags = function.IsFunction2 ? definition.Flags : 0;
+        var wantsArguments = !function.IsFunction2 || (flags & 0x0004) != 0 || (flags & 0x0008) == 0;
+        var wantsSuper = function.IsFunction2 && ((flags & 0x0010) != 0 || (flags & 0x0020) == 0);
+        var argumentArray = wantsArguments ? new Avm1ArrayObject(arguments) : null;
+        var superValue = wantsSuper ? new Avm1SuperValue(
             thisValue,
-            function.OwnerPrototype ?? function.GetProperty("prototype").Value as Avm1Object);
+            function.OwnerPrototype ?? function.GetProperty("prototype").Value as Avm1Object) : null;
         if (function.IsFunction2 && (definition.Flags & 0x0001) != 0
             && !trySeedRegister(registers, ref nextRegister, thisValue))
         {

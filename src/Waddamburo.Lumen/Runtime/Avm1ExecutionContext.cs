@@ -25,11 +25,11 @@ internal sealed class Avm1ExecutionContext(
     public void SetVariable(string name, object? value)
     {
         if (tryFindLexicalOwner(name, out var owner))
-            (_lexicalWrites ??= [])[new LexicalKey(owner, name)] = value;
+            (_lexicalWrites ??= Pool<LexicalKey>.Rent())[new LexicalKey(owner, name)] = value;
         else if (TimelineTarget is not null)
             SetMember(TimelineTarget, name, value);
         else
-            (_variableWrites ??= new(StringComparer.Ordinal))[name] = value;
+            (_variableWrites ??= Pool<string>.Rent())[name] = value;
     }
 
     public void DefineLocal(string name, object? value)
@@ -37,7 +37,7 @@ internal sealed class Avm1ExecutionContext(
         if (LexicalScope is null)
             SetVariable(name, value);
         else
-            (_lexicalWrites ??= [])[new LexicalKey(LexicalScope, name)] = value;
+            (_lexicalWrites ??= Pool<LexicalKey>.Rent())[new LexicalKey(LexicalScope, name)] = value;
     }
 
     public Avm1LexicalScope? LexicalScope { get; } = lexicalScope;
@@ -75,7 +75,7 @@ internal sealed class Avm1ExecutionContext(
             : host.ReadMember(this, target, name);
 
     public void SetMember(object? target, string name, object? value) =>
-        (_memberWrites ??= [])[new MemberKey(target, name)] = value;
+        (_memberWrites ??= Pool<MemberKey>.Rent())[new MemberKey(target, name)] = value;
 
     public Avm1Lookup CallFunction(string name, IReadOnlyList<object?> arguments) =>
         host.CallFunction(this, name, arguments);
@@ -137,6 +137,10 @@ internal sealed class Avm1ExecutionContext(
         if (_memberWrites is not null)
             foreach (var (key, value) in _memberWrites)
                 host.WriteMember(this, key.Target, key.Name, value);
+        // The write dictionaries are spent: back to the pool, capacity kept (a fresh one per call grew by resizing).
+        Pool<LexicalKey>.Return(ref _lexicalWrites);
+        Pool<string>.Return(ref _variableWrites);
+        Pool<MemberKey>.Return(ref _memberWrites);
         if (_commitActions is null)
             return;
         foreach (var action in _commitActions)
@@ -145,6 +149,26 @@ internal sealed class Avm1ExecutionContext(
                 action();
             else
                 transactionParent.OnCommit(action);
+        }
+    }
+
+    // Per thread, so scripts on other threads (a loading screen's) never share one.
+    private static class Pool<TKey> where TKey : notnull
+    {
+        [ThreadStatic] private static Stack<Dictionary<TKey, object?>>? s_free;
+
+        public static Dictionary<TKey, object?> Rent() =>
+            (s_free ??= new()).TryPop(out var reused) ? reused
+            : typeof(TKey) == typeof(string) ? (Dictionary<TKey, object?>)(object)new Dictionary<string, object?>(StringComparer.Ordinal) : [];
+
+        public static void Return(ref Dictionary<TKey, object?>? dictionary)
+        {
+            if (dictionary is null)
+                return;
+            dictionary.Clear();
+            if ((s_free ??= new()).Count < 64)
+                s_free.Push(dictionary);
+            dictionary = null;
         }
     }
 
