@@ -903,6 +903,7 @@ internal sealed partial class GameShell : IDisposable
             Event = () => _event.Current is { Art: { } art } running && !_art.HasFeatureBoard(art) ? running with { Art = null } : _event.Current,
             PlayerLook = side => TaikoGuest.Profiles[side]?.Look,
             OnlineAvailable = () => Room.Available,
+            ServerOnline = () => Sync.Health?.State == Waddamburo.App.Online.LinkState.Online,
             AiBattleInstalled = _aiBattleInstalled,
             InOnlineRoom = () => Room.Session is not null,
             Received = ReceivedSongs.Find,

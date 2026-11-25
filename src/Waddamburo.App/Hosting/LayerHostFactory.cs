@@ -120,6 +120,9 @@ internal sealed class LayerHostFactory(
     /// <summary>Whether Song Select offers the Online folder.</summary>
     public Func<bool>? OnlineAvailable { get; init; }
 
+    /// <summary>Whether TaikOnline answers (checked from boot on): the entry's mode select then offers the reward shop.</summary>
+    public Func<bool>? ServerOnline { get; init; }
+
     /// <summary>TaikOnline's running event, for Song Select's event folder (null: none).</summary>
     public Func<Waddamburo.Game.SongSelect.SongSelectEvent?>? Event { get; init; }
 
@@ -182,7 +185,9 @@ internal sealed class LayerHostFactory(
                 CostumeIcon = static (type, id, name) => type is < 0 or > 2 ? null
                     : name ? CostumeIconTextures.NameKey(type, id) : CostumeIconTextures.Key(type, id),
                 Card = credit.EntryCard,
-                ShopAvailable = () => credit.ShopGoods is not null,
+                // Green always offers the shop (traced IsAvailableShop 1) and greys it itself for a drum without card
+                // data. Fixed for the scene: an answer that changes rebuilds the boards (the shop popped in late).
+                ShopAvailable = ServerOnline?.Invoke() == true ? static () => true : static () => false,
                 AiBattleAvailable = AiBattleInstalled,
                 Don = don,
                 ReturnToAttract = () => ReturnToAttract?.Invoke(),
@@ -567,7 +572,7 @@ internal sealed class LayerHostFactory(
     /// </summary>
     private LumenLayerHost rewardShopVisitHost()
     {
-        var state = credit.ShopGoods ?? throw new InvalidOperationException("reward_shop without a card's shop.");
+        var state = credit.WaitForShopGoods();
         // Each joined drum: a card whose shop came in buys with its medals; anyone else (a guest, a card the server missed)
         // only looks.
         int[] joined = credit.TwoPlayers ? [0, 1] : [credit.PlayerSide];

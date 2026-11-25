@@ -54,6 +54,19 @@ internal sealed class CreditSession
     /// <summary>The shop's goods: a card's whose shop is in (the season's goods are the same for every card).</summary>
     public ShopState? ShopGoods => Shops.FirstOrDefault(static shop => shop?.State.IsCompletedSuccessfully == true)?.State.Result;
 
+    /// <summary>
+    /// The reward shop scene's goods: the mode select offers the shop before a card's fetch is in, so this waits for one
+    /// still running (up to 10 s, the scene is loading anyway). ponytail: none came in (the fetch failed): an empty
+    /// shop to look at, not an error message.
+    /// </summary>
+    public ShopState WaitForShopGoods()
+    {
+        var pending = Shops.Where(static shop => shop is not null && !shop.State.IsCompleted).Select(static shop => (Task)shop!.State).ToArray();
+        if (ShopGoods is null && pending.Length > 0)
+            Task.WaitAny(pending, TimeSpan.FromSeconds(10));
+        return ShopGoods ?? new ShopState(0, "", 0, []);
+    }
+
     /// <summary>This credit's id: its songs' Don Medals are paid once (a new one with each credit).</summary>
     public Guid CreditId { get; set; } = Guid.NewGuid();
 

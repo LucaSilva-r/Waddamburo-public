@@ -245,8 +245,9 @@ public sealed class EntrySceneHost(IndicatorParts parts)
             PlayerJoined?.Invoke(side);
             assignCostumes(entry, side, PlayerLook?.Invoke(side));
             // An account plays as a card would: ModeSelect offers AI battle only with CardInfo.isCard and a player
-            // whose IsCoin and IsData are set (entry script); accounts never take the card path.
-            if (PlayerName?.Invoke(side) is { Length: > 0 })
+            // whose IsCoin and IsData are set (entry script), and greys the reward shop without one; accounts never
+            // take the card path. A home guest has a name ("Guest") but no look: no card data.
+            if (PlayerLook?.Invoke(side) is not null)
             {
                 entry.TryWriteScriptValue("_global.CardInfo.isCard", true);
                 entry.TryWriteScriptValue($"_global.res.playerInfo.{side}.isData", true);
