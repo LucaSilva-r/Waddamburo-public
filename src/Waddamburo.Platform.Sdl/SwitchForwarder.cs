@@ -35,3 +35,19 @@ public static partial class SwitchForwarder
     [LibraryImport("waddamburo_switch", StringMarshalling = StringMarshalling.Utf8)]
     private static partial int nxfwd_make(string keysPath, string nspPath);
 }
+
+/// <summary>Switch: the NRO this run started from, for the self-update (platforms/switch/shim/forwarder.c).</summary>
+public static partial class SwitchNro
+{
+    /// <summary>Its path as .NET opens it (/switch/...), or null when the loader gave none.</summary>
+    public static string? Path => PlatformInfo.IsSwitch ? Marshal.PtrToStringUTF8(nxfwd_nro_path()) : null;
+
+    /// <summary>Ends the process at once, every thread with it (the next start runs the NRO now at <see cref="Path"/>).</summary>
+    public static void ExitProcess() => nxfwd_exit_process();
+
+    [LibraryImport("waddamburo_switch")]
+    private static partial nint nxfwd_nro_path();
+
+    [LibraryImport("waddamburo_switch")]
+    private static partial void nxfwd_exit_process();
+}

@@ -48,6 +48,9 @@ internal static class SelfUpdate
         var apply = args.FirstOrDefault(static argument => argument.StartsWith(ApplyOption, StringComparison.Ordinal));
         var updated = args.Contains(UpdatedOption, StringComparer.Ordinal);
         args = args.Where(static argument => argument != UpdatedOption && !argument.StartsWith(ApplyOption, StringComparison.Ordinal)).ToArray();
+        // The Switch swaps its NRO in UpdateNow: no second process to hand over to.
+        if (PlatformInfo.IsSwitch)
+            return false;
         if (apply is not null)
         {
             // Running from <file>.update: the old instance is exiting; take its place.
@@ -121,7 +124,7 @@ internal static class SelfUpdate
                 [
                     (Strings.T("service.update.downloading", release.Tag), OverlayMenu.White),
                     ($"[{new string('#', filled)}{new string('-', 30 - filled)}] {done}%", OverlayMenu.Green),
-                    (Strings.T("service.update.restarts"), OverlayMenu.White),
+                    (Strings.T(PlatformInfo.IsSwitch ? "service.update.switch_closes" : "service.update.restarts"), OverlayMenu.White),
                 ];
             }, Footer: () => [(OverlayMenu.upper(WindowTitle), OverlayMenu.Cyan)]), home: false);
         var download = Task.Run(async () =>
@@ -130,6 +133,8 @@ internal static class SelfUpdate
             {
                 await downloadAsync(http, release, installed, value => Volatile.Write(ref percent, value), cancel.Token)
                     .ConfigureAwait(false);
+                if (PlatformInfo.IsSwitch)
+                    swapNro(installed); // in place before the player can close the game
             }
             catch (Exception exception) when (isNetworkFailure(exception) || exception is InvalidDataException)
             {
@@ -153,8 +158,51 @@ internal static class SelfUpdate
             Console.Error.WriteLine($"Update {release.Tag} failed: {failure.Message}");
             return false;
         }
+        if (PlatformInfo.IsSwitch)
+        {
+            // ponytail: the Switch reports an error however the game closes itself (a bare svcExitProcess, or appletExit
+            // with exit mode 1, both tried 2026-11-25), and returning to the loader leaves the runtime's threads in an
+            // unloaded NRO; so the player is told first. Find a clean exit and drop the warning.
+            menu.Open(new OverlayPage(() => Strings.T("service.update.title"), static () => [], Centred: true, Legend: false,
+                Body: () =>
+                [
+                    (Strings.T("service.update.switch_done", release.Tag), OverlayMenu.White),
+                    (Strings.T("service.update.switch_error"), OverlayMenu.Yellow),
+                    (Strings.T("service.update.switch_close"), OverlayMenu.White),
+                ], Footer: () => [(OverlayMenu.upper(WindowTitle), OverlayMenu.Cyan)]), home: false);
+            var keys = new List<SdlKeyboardKey>();
+            while (application.PumpAndPresent(menu.Frame(), out var escape, keys) && !escape && !keys.Contains(SdlKeyboardKey.Enter))
+            {
+                keys.Clear();
+                Thread.Sleep(15);
+            }
+            SwitchNro.ExitProcess();
+            return true;
+        }
         launch(installed + ".update", [.. args, ApplyOption + installed]);
         return true;
+    }
+
+    /// <summary>
+    /// Switch: the loader read the whole NRO into memory at start, so its file can be replaced while it runs; the next
+    /// start (hbmenu or the HOME-menu forwarder, same path) runs the new one. The old file stays as .old until the new
+    /// one is in place, so a power cut never leaves no NRO. A failure throws (IOException): the update fails.
+    /// </summary>
+    private static void swapNro(string installed)
+    {
+        try
+        {
+            File.Move(installed, installed + ".old", overwrite: true);
+            File.Move(installed + ".update", installed);
+            File.Delete(installed + ".old");
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            if (!File.Exists(installed) && File.Exists(installed + ".old"))
+                File.Move(installed + ".old", installed);
+            throw new IOException($"the update could not replace {installed}: {exception.Message}", exception);
+        }
+        Console.WriteLine($"Updated {installed}: the next start runs it.");
     }
 
     private sealed record Release(string Tag, Uri Download, long Size, string? Digest, Uri? Page);
@@ -203,6 +251,7 @@ internal static class SelfUpdate
             return null;
         // A nightly's files are named apart, to sit beside the stable ones.
         var assetName = OperatingSystem.IsAndroid() ? nightly ? "Waddamburo-nightly.apk" : "Waddamburo.apk"
+            : PlatformInfo.IsSwitch ? nightly ? "Waddamburo-nightly.nro" : "Waddamburo.nro"
             : (OperatingSystem.IsWindows(), nightly) switch
         {
             (true, false) => Arm64 ? "Waddamburo-arm64.exe" : "Waddamburo.exe",
@@ -243,7 +292,7 @@ internal static class SelfUpdate
             File.Delete(partial);
             throw new InvalidDataException("the download does not match its checksum");
         }
-        if (!OperatingSystem.IsWindows())
+        if (!OperatingSystem.IsWindows() && !PlatformInfo.IsSwitch)
             File.SetUnixFileMode(partial, File.GetUnixFileMode(installed));
         File.Move(partial, installed + ".update", overwrite: true);
     }
@@ -277,10 +326,11 @@ internal static class SelfUpdate
         }
     }
 
-    /// <summary>The file a release runs from: the AppImage, or the single-file exe on Windows.</summary>
+    /// <summary>The file a release runs from: the AppImage, the single-file exe on Windows, or the Switch's NRO.</summary>
     private static string? installedFile() =>
         Environment.GetEnvironmentVariable("APPIMAGE") is { Length: > 0 } appImage ? appImage
         : OperatingSystem.IsWindows() ? Environment.ProcessPath
+        : PlatformInfo.IsSwitch ? SwitchNro.Path
         : null;
 
     /// <summary>The window title: the release version (and a nightly's commit), or "dev" and the commit for other builds.</summary>

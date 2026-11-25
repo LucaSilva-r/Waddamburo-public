@@ -32,7 +32,15 @@ static ssize_t log_write(void *c, const char *b, size_t n) {
     else g_log_lost++; // never wait for the card here
     mutexUnlock(&g_log_lock); return n;
 }
-static void log_thread(void *arg) { for (;;) { svcSleepThread(500000000ll); log_flush(); } }
+// Stopped and joined before main returns: libnx then unloads this NRO (to start the next one), and a thread still
+// sleeping here woke into freed code (Instruction Abort after the self-update's exit, 2026-11-25).
+static Thread g_log_thread; static volatile bool g_log_running, g_log_stop;
+static void log_thread(void *arg) { while (!g_log_stop) { svcSleepThread(500000000ll); log_flush(); } }
+static void log_stop(void) {
+    if (!g_log_running) return;
+    g_log_stop = true; threadWaitForExit(&g_log_thread); threadClose(&g_log_thread); g_log_running = false;
+    log_flush();
+}
 
 int main(int argc, char **argv) {
     extern const char *g_nro_path; g_nro_path = argc > 0 ? argv[0] : NULL; // forwarder.c: the NRO a forwarder starts
@@ -48,7 +56,8 @@ int main(int argc, char **argv) {
         FILE *f = fopen(LOG_PATH, "w"); if (f) fclose(f);
         FILE *log = fopencookie(NULL, "w", (cookie_io_functions_t){ .write = log_write });
         if (log) { setvbuf(log, NULL, _IOLBF, 1024); stderr = log; } // threads created later inherit it
-        static Thread lt; threadCreate(&lt, log_thread, NULL, NULL, 0x4000, 0x3B, -2); threadStart(&lt);
+        if (R_SUCCEEDED(threadCreate(&g_log_thread, log_thread, NULL, NULL, 0x4000, 0x3B, -2)) && R_SUCCEEDED(threadStart(&g_log_thread)))
+            g_log_running = true;
     }
     fprintf(stderr, "main: start\n");
     { u32 n = 0, b = 0; Result r = apmGetPerformanceConfiguration(ApmPerformanceMode_Normal, &n), r2 = apmGetPerformanceConfiguration(ApmPerformanceMode_Boost, &b);
@@ -64,7 +73,7 @@ int main(int argc, char **argv) {
     char *args[] = { "waddamburo", "--game-data=/switch/taiko/USRDIR", NULL };
     int r = lx_dotnet_main(2, args);
     fprintf(stderr, "runtime returned %d\n", r);
-    log_flush();
+    log_stop();
     extern int g_no_console;
     if (g_no_console) return r; // graphics took the screen: no text console left to wait on
     padConfigureInput(1, HidNpadStyleSet_NpadStandard);

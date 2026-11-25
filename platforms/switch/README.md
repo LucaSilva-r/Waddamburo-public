@@ -73,6 +73,16 @@ whose segments are stored plain) and to exit after it; it runs as an application
 full memory. Control: the NRO's own NACP and icon. Title id `0500005744420000` (homebrew range). `shim/forwarder.c`
 also builds on a PC (`cc -DFORWARDER_TEST shim/forwarder.c -lcrypto`) to check its output with hactool.
 
+## Updates
+
+A release NRO updates itself at boot like the desktop builds (`Hosting/SelfUpdate.cs`, config `auto_update`): it downloads
+the release's `Waddamburo.nro` (a nightly: `Waddamburo-nightly.nro`) beside itself, checks its SHA-256, swaps it in (the
+loader read the running NRO into memory), then tells the player and closes the whole process on A (`svcExitProcess`:
+returning to hbloader would leave the runtime's threads running in an unloaded NRO). HOME reports that close as an error
+(appletExit with exit mode 1 too), which the screen says is expected. The next start, from hbmenu or the HOME-menu
+forwarder (the NSP holds only the path), runs the new file. The path comes from argv[0] (`nxfwd_nro_path`); a development build (version
+0.0.0) never updates.
+
 ## Open
 
 Nothing known.

@@ -389,6 +389,22 @@ INCBIN(fwd_npdm, FORWARDER_NPDM)
 
 const char *g_nro_path; // argv[0] as hbmenu or the forwarder gave it (main.c)
 
+// Waddamburo's self-update (Hosting/SelfUpdate.cs): this NRO's path as .NET opens it (/switch/...), NULL when unknown.
+const char *nxfwd_nro_path(void) {
+    if (!g_nro_path || !*g_nro_path) return NULL;
+    return strncmp(g_nro_path, "sdmc:", 5) ? g_nro_path : g_nro_path + 5;
+}
+
+// Ends the whole process (every thread with it) once the update is in place: returning to the loader would leave the
+// runtime's threads running inside an unloaded NRO (they crashed it, 2026-11-25). The next start, from hbmenu or a
+// HOME-menu forwarder, runs the new file at the same path. HOME then reports "the software was closed because an error
+// occurred" (so did appletExit with exit mode 1): the game warns the player first (Hosting/SelfUpdate.cs).
+void nxfwd_exit_process(void) {
+    void log_flush(void);
+    log_flush();
+    svcExitProcess();
+}
+
 // Waddamburo's FORWARDER row (Hosting/SwitchForwarder.cs). 0 = written; 1 = no prod.keys; 2 = prod.keys lacks the keys;
 // 3 = this NRO's path is unknown or unreadable; 4 = the NSP could not be written.
 // Paths as Waddamburo writes them (/switch/...) or with the device (sdmc:/switch/...).
