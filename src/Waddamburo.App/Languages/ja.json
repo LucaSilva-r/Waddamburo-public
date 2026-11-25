@@ -730,5 +730,15 @@
   "service.vibration.hint": "大音符：大音符、連打、風船、くす玉。すべての音符：音符を叩くたび。すべて：太鼓を叩くたび。",
   "service.vibration.big_notes": "大音符",
   "service.vibration.every_hit": "すべて",
-  "service.vibration.all_notes": "すべての音符"
+  "service.vibration.all_notes": "すべての音符",
+  "touch.scores": "スコア",
+  "touch.watch": "再生",
+  "touch.board": "切替",
+  "touch.close": "閉じる",
+  "touch.pause": "再生/停止",
+  "touch.slower": "遅く",
+  "touch.faster": "速く",
+  "touch.loop_start": "ループA",
+  "touch.loop_end": "ループB",
+  "touch.practise": "練習"
 }

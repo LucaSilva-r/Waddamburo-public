@@ -249,6 +249,7 @@ internal sealed partial class GameShell
         // As the notices key: not over a lane (the attract's demo excepted), nor while search takes the letters.
         Application.TouchNotices = !Application.OverlayOpen && _notices is not null && (!Scenes.OnLane || _gameplay.Demo) && !_search.IsOpen;
         Application.TouchKeyboard = PlatformInfo.IsMobile && _search.IsOpen;
+        Application.TouchKeys = PlatformInfo.IsMobile || Application.TouchActive ? touchKeys() : [];
         if (TouchDrum.Editing)
             top.AddRange(TouchDrumOverlay.EditorQuads(Painter, Application.TouchHits, SdlApplication.TicksNs, Strings.T("settings.touch_drum_edit.help")));
         if (PlatformInfo.IsMobile || Application.TouchActive)
@@ -266,6 +267,8 @@ internal sealed partial class GameShell
                 top.AddRange(TouchDrumOverlay.Quads(Painter, hits, now));
             if (Application.TouchSearch)
                 top.Add(TouchDrumOverlay.SearchQuad(Painter, hits, now));
+            if (!Application.OverlayOpen)
+                top.AddRange(TouchDrumOverlay.KeyQuads(Painter, Application.TouchKeys, hits, now));
             top.Add(TouchDrumOverlay.BackQuad(Painter, hits, now));
             if (Application.TouchNotices)
                 top.Add(TouchDrumOverlay.NoticesQuad(Painter, hits, now));
@@ -277,6 +280,35 @@ internal sealed partial class GameShell
             BlurredQuads = frame.BlurredQuads,
             BackdropBrightness = frame.BackdropBrightness,
         };
+    }
+
+    // The touch buttons for what a keyboard does here that the drum can't (each presses the key the scene already reads):
+    // song select's scores list and its navigation, a replay's and practice's play controls. None under an overlay.
+    private TouchKey[] touchKeys()
+    {
+        if (Application.OverlayOpen)
+            return [];
+        // In stage pixels (1280x720).
+        static TouchKey key(SdlKeyboardKey key, string label, float x, float y, float width = 140, float height = 70) =>
+            new(key, label, x / 1280, y / 720, width / 1280, height / 720);
+        // A column: at the right edge in song select (its list is centred), at the left over a lane (notes come from the right).
+        static TouchKey[] column(float x, params (SdlKeyboardKey Key, string Label)[] keys) =>
+            [.. keys.Select((entry, row) => key(entry.Key, entry.Label, x, 100 + row * 80))];
+        if (Active.Id == FlowScenes.SongSelect && _scores.IsOpen)
+            return column(1132, (SdlKeyboardKey.Up, "^"), (SdlKeyboardKey.Down, "v"), (GameActions.Key(GameAction.Confirm), Strings.T("touch.watch")),
+                (SdlKeyboardKey.Left, "<"), (SdlKeyboardKey.Right, ">"), (GameActions.Key(GameAction.Leaderboard), Strings.T("touch.board")),
+                (GameActions.Key(GameAction.Scores), Strings.T("touch.close")));
+        if (Active.Id == FlowScenes.SongSelect && !_search.IsOpen)
+            return [key(GameActions.Key(GameAction.Scores), Strings.T("touch.scores"), 1052, 8, 150, 63)];
+        if (_gameplay.Reviewing && _gameplay.Training is not null)
+            return column(8, (SdlKeyboardKey.Space, Strings.T("touch.pause")), (SdlKeyboardKey.Left, "<"), (SdlKeyboardKey.Right, ">"),
+                (SdlKeyboardKey.Down, Strings.T("touch.slower")), (SdlKeyboardKey.Up, Strings.T("touch.faster")),
+                (GameActions.Key(GameAction.LoopStart), Strings.T("touch.loop_start")), (GameActions.Key(GameAction.LoopEnd), Strings.T("touch.loop_end")));
+        if (_gameplay.Reviewing)
+            return column(8, [(SdlKeyboardKey.Space, Strings.T("touch.pause")), (SdlKeyboardKey.Left, "<"), (SdlKeyboardKey.Right, ">"),
+                (SdlKeyboardKey.Down, Strings.T("touch.slower")), (SdlKeyboardKey.Up, Strings.T("touch.faster")),
+                .. _gameplay.CanPractise ? [(GameActions.Key(GameAction.Practise), Strings.T("touch.practise"))] : Array.Empty<(SdlKeyboardKey, string)>()]);
+        return [];
     }
 
     private string? _uploadBanner;

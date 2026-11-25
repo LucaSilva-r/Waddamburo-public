@@ -57,6 +57,31 @@ internal static class TouchDrumOverlay
         }
     }
 
+    /// <summary>The scene's own touch buttons (<see cref="TouchKey"/>): the menu buttons' look; "&lt;", "&gt;", "^" and
+    /// "v" are drawn as arrows, any other label as text.</summary>
+    public static IEnumerable<RenderQuad> KeyQuads(OverlayPainter painter, IReadOnlyList<TouchKey> keys, ulong[] hits, ulong now)
+    {
+        for (var index = 0; index < Math.Min(keys.Count, TouchDrum.MaxKeys); index++)
+        {
+            var key = keys[index];
+            float w = key.Width * StageWidth, h = key.Height * StageHeight;
+            yield return painter.Canvas(("touch-key", key.Label, w, h), key.X * StageWidth, key.Y * StageHeight, w, h, canvas =>
+            {
+                canvas.RoundedRect(0, 0, w, h, 14, (40, 40, 40), 3, (230, 230, 230));
+                (byte, byte, byte) ink = (240, 240, 240);
+                float cx = w / 2, cy = h / 2, a = Math.Min(w, h) * .28f;
+                switch (key.Label)
+                {
+                    case "<": canvas.Triangle((cx - a, cy), (cx + a * .8f, cy - a), (cx + a * .8f, cy + a), ink); break;
+                    case ">": canvas.Triangle((cx + a, cy), (cx - a * .8f, cy - a), (cx - a * .8f, cy + a), ink); break;
+                    case "^": canvas.Triangle((cx, cy - a), (cx - a, cy + a * .8f), (cx + a, cy + a * .8f), ink); break;
+                    case "v": canvas.Triangle((cx, cy + a), (cx - a, cy - a * .8f), (cx + a, cy - a * .8f), ink); break;
+                    default: canvas.Text(key.Label, cx, cy, w * .85f, h * .42f); break;
+                }
+            }, .6f + .4f * flash(hits[TouchDrum.KeyBase + index], now));
+        }
+    }
+
     /// <summary>The screen keyboard's show/hide button (<see cref="TouchDrum.KeyboardButton"/>): a keyboard of keys.</summary>
     public static RenderQuad KeyboardQuad(OverlayPainter painter, ulong[] hits, ulong now)
     {

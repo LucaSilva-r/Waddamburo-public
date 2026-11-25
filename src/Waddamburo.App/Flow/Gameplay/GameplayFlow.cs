@@ -267,6 +267,9 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
     /// <summary>A replay (one player's, not Waiwai) can turn into practice: P in it.</summary>
     private bool canPractise => _play.Review is not null && _play.Training is null && _play.Charts.Length == 1;
 
+    /// <summary>A replay that can turn into practice (its touch button).</summary>
+    public bool CanPractise => canPractise;
+
     /// <summary>
     /// A replay becomes practice of the song, paused where it was (Space plays the drum live from there):
     /// the whole song is open again, the player's own offsets and look apply, and nothing is saved.

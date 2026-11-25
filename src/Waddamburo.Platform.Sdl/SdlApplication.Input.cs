@@ -19,6 +19,10 @@ public sealed unsafe partial class SdlApplication
     /// <summary>When each <see cref="TouchDrum.Hit"/> code was last touched (SDL nanoseconds), for the drum's flash.</summary>
     public ulong[] TouchHits { get; } = new ulong[TouchDrum.Codes];
 
+    /// <summary>The scene's own touch buttons (none while an overlay is open: its menu buttons answer), at most
+    /// <see cref="TouchDrum.MaxKeys"/>; a touch on one presses its key ahead of the drum under it.</summary>
+    public IReadOnlyList<TouchKey> TouchKeys { get; set; } = [];
+
     /// <summary>Touches play the drum (touch_drum = off: only the back, menu and search buttons answer).</summary>
     public bool TouchDrumEnabled { get; set; } = true;
 
@@ -356,6 +360,7 @@ public sealed unsafe partial class SdlApplication
             TouchDrum.Ok => SdlKeyboardKey.Enter,
             TouchDrum.Search => SdlKeyboardKey.Tab,
             TouchDrum.Notices => SdlKeyboardKey.E,
+            >= TouchDrum.KeyBase => input.Code - TouchDrum.KeyBase < TouchKeys.Count ? TouchKeys[input.Code - TouchDrum.KeyBase].Key : null,
             _ => SdlInputBindings.Pads[input.Code],
         }
         // An overlay's own navigation (#48): Enter, Escape and the arrows are always themselves there and a controller is
@@ -427,6 +432,10 @@ public sealed unsafe partial class SdlApplication
     private int touchCode(float x, float y)
     {
         var (stageX, stageY, aspect) = stagePoint(x, y);
+        if (!OverlayOpen)
+            for (var index = 0; index < Math.Min(TouchKeys.Count, TouchDrum.MaxKeys); index++)
+                if (TouchKeys[index].Contains(stageX, stageY))
+                    return TouchDrum.KeyBase + index;
         return OverlayOpen ? TouchDrum.HitMenu(stageX, stageY, aspect, TouchKeyboard) : TouchDrum.Hit(stageX, stageY, aspect, TouchSearch, TouchNotices);
     }
 

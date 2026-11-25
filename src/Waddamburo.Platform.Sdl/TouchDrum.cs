@@ -107,7 +107,10 @@ public static class TouchDrum
     public const int Back = 4;
 
     /// <summary>The menus' touch buttons' codes (<see cref="HitMenu"/>): the Up and Down arrows and Enter.</summary>
-    public const int Up = 5, Down = 6, Ok = 7, Search = 8, Keyboard = 9, Notices = 10, Codes = 11;
+    public const int Up = 5, Down = 6, Ok = 7, Search = 8, Keyboard = 9, Notices = 10;
+
+    /// <summary>The first code of the scene's own touch keys (<see cref="TouchKey"/>): KeyBase + its index.</summary>
+    public const int KeyBase = 11, MaxKeys = 12, Codes = KeyBase + MaxKeys;
 
     /// <summary>The screen keyboard's show/hide button while a text field is open (search), above the menu buttons: the
     /// keyboard covers the screen's lower half.</summary>
@@ -142,4 +145,13 @@ public static class TouchDrum
                 return code;
         return -1;
     }
+}
+
+/// <summary>
+/// A scene's own touch button (the scores list, replays, practice): a touch on it presses <see cref="Key"/>, held while the
+/// finger stays (held arrows scrub). The rectangle is in stage coordinates (0-1); <see cref="Label"/> is drawn on it.
+/// </summary>
+public readonly record struct TouchKey(SdlKeyboardKey Key, string Label, float X, float Y, float Width, float Height)
+{
+    public bool Contains(float x, float y) => x >= X && x < X + Width && y >= Y && y < Y + Height;
 }

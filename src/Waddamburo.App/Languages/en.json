@@ -730,5 +730,15 @@
   "service.vibration.hint": "Big notes: big notes, rolls, balloons and kusudama. All notes: every note hit too. Every hit: any drum hit.",
   "service.vibration.big_notes": "BIG NOTES",
   "service.vibration.every_hit": "EVERY HIT",
-  "service.vibration.all_notes": "ALL NOTES"
+  "service.vibration.all_notes": "ALL NOTES",
+  "touch.scores": "Scores",
+  "touch.watch": "Watch",
+  "touch.board": "Board",
+  "touch.close": "Close",
+  "touch.pause": "Play/Pause",
+  "touch.slower": "Slower",
+  "touch.faster": "Faster",
+  "touch.loop_start": "Loop A",
+  "touch.loop_end": "Loop B",
+  "touch.practise": "Practice"
 }
