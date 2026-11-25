@@ -32,6 +32,10 @@ internal sealed class BackgroundVideo : IDisposable
     private volatile int _generation;
     private long _seekTicks = -1; // the worker seeks here before its next frame (-1: none)
     private TimeSpan? _shown;
+    // Seeked, no frame shown since: the first frame of the new place shows even a little ahead of the time asked (the
+    // decoder starts at or just after it), so a seek while paused shows where it went.
+    private bool _sought;
+    private static readonly TimeSpan SoughtAhead = TimeSpan.FromMilliseconds(50);
     // The time asked for last (a jump from it is a seek) and the time the worker should be decoding towards.
     private TimeSpan? _asked;
     private long _targetTicks;
@@ -104,7 +108,8 @@ internal sealed class BackgroundVideo : IDisposable
     /// <summary>A frame is on the texture (before the video starts there is none to show).</summary>
     public bool Visible => _shown is not null;
 
-    public RenderTextureId? Resolve(LumenNativeSurfaceKey surface) => surface == Surface && Visible ? Texture : null;
+    // Always the texture: before the first frame the gameplay draws its quad black (GameplayVideoLayer.Shown).
+    public RenderTextureId? Resolve(LumenNativeSurfaceKey surface) => surface == Surface ? Texture : null;
 
     /// <summary>Shows the newest frame due at <paramref name="time"/> (video time; negative: not started yet).</summary>
     public void Show(TimeSpan time)
@@ -119,7 +124,10 @@ internal sealed class BackgroundVideo : IDisposable
         }
         // A jump of the song's clock (a restart, practice, a replay's seek) seeks; a decoder running late does not: it
         // drops the late frames and catches up (seeking there would only make it later).
+        // A review's held scrub back moves the time back a little each frame: once it is well behind the frame on
+        // screen, that seeks too.
         if (_asked is { } asked ? time < asked - TimeSpan.FromMilliseconds(100) || time > asked + SeekAhead
+                || _shown is { } shown && time < shown - TimeSpan.FromMilliseconds(100)
             : time > SeekAhead)
             seek(time);
         _asked = time;
@@ -141,7 +149,7 @@ internal sealed class BackgroundVideo : IDisposable
                 _next = null;
                 continue;
             }
-            if (next.Time > time)
+            if (next.Time > time && !(_sought && newest is null && next.Time <= time + SoughtAhead))
                 break;
             if (newest is not null)
                 _spare.Add(newest);
@@ -153,14 +161,16 @@ internal sealed class BackgroundVideo : IDisposable
         _application.UpdateRgba8(Texture, _decoder.Width, _decoder.Height, newest);
         _uploaded++;
         _spare.Add(newest);
-        _shown = newestTime;
+        (_shown, _sought) = (newestTime, false);
     }
 
     private void seek(TimeSpan time)
     {
-        _generation++;
+        // Posted before the generation is raised: a worker that sees the new generation then sees the seek too, so no
+        // frame of the old place is ever tagged with the new generation (it would hold back every frame after it).
         Interlocked.Exchange(ref _seekTicks, time.Ticks);
-        _shown = time;
+        _generation++;
+        (_shown, _sought) = (time, true);
     }
 
     private void decode()
@@ -173,13 +183,16 @@ internal sealed class BackgroundVideo : IDisposable
             long lastKept = long.MinValue / 2;
             while (!_stop.IsCancellationRequested)
             {
-                // The generation is read after the seek: a seek raises it before it posts its time.
+                // The generation is read before the seek is taken: a seek posts its time before it raises it.
+                var generation = _generation;
                 if (Interlocked.Exchange(ref _seekTicks, -1) is var ticks and >= 0)
                 {
                     _decoder.Seek(TimeSpan.FromTicks(ticks));
+                    // The frame rate cap counts from the new place: kept from the old one, a seek back (a restart, a
+                    // second play) dropped every frame until the song passed where it had been.
+                    lastKept = long.MinValue / 2;
                     ended = false;
                 }
-                var generation = _generation;
                 if (ended)
                 {
                     // The last frame stays on screen; a seek back starts it again.

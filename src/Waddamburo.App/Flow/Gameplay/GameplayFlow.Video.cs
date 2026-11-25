@@ -28,9 +28,12 @@ internal sealed partial class GameplayFlow
         }
         if (_video is not null && wanted is { } shown)
             _video.Show(shown.Time);
-        Shell.Gameplay.Video = _video is { Visible: true } video
+        // An opaque video (not added nor keyed) covers the backdrops from the song's start: before its first frame they
+        // are black, not the skin's (a video starting later in the song).
+        Shell.Gameplay.Video = _video is { } video && (video.Visible || !video.HidesDancers)
             ? new(video.Width / video.Height, mode == BackgroundVideoMode.UnderLane && _play.Charts.Length == 1,
-                Shell.Arcade.BackgroundVideoDim / 100f, video.Additive, video.Area, video.HidesDancers, video.LumaCurve)
+                Shell.Arcade.BackgroundVideoDim / 100f, video.Additive, video.Area, video.HidesDancers, video.LumaCurve,
+                video.Visible)
             : null;
     }
 }

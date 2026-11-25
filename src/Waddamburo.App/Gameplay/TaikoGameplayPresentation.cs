@@ -311,6 +311,7 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
 
     private readonly LumenQuadBuffer _sceneQuads = new();
     private readonly LumenQuadBuffer _backdropQuads = new();
+    private readonly LumenQuadBuffer _overDancerQuads = new();
 
     /// <summary>The background video to draw this frame (GameplayFlow sets it per frame; null: none).</summary>
     public GameplayVideoLayer? Video { get; set; }
@@ -342,11 +343,17 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         }
         var snapshot = new LumenScenePlayer(1280, 720, layers).CreateRenderSnapshot(interpolation, beats, _sceneQuads);
         if (Video is { } video)
-            snapshot = new LumenRenderSnapshot(1280, 720, [
-                // A seen-through video (added or keyed: holograms, green screens) takes the dancers' place.
-                .. new LumenScenePlayer(1280, 720, video.HidesDancers ? backdrops.Where(layer => !_lanes.Any(lane => lane.IsDancer(layer)))
-                    : backdrops).CreateRenderSnapshot(interpolation, beats, _backdropQuads).Quads,
-                videoQuad(video), .. snapshot.Quads]);
+        {
+            // A seen-through video (added or keyed: holograms, green screens) takes the dancers' place, at their depth:
+            // the backdrops above them (sparkles, the Go-Go splash) stay over it, as on a stage. An opaque one covers all.
+            bool dancer(LumenSceneLayer layer) => _lanes.Any(lane => lane.IsDancer(layer));
+            var split = video.HidesDancers && Array.FindIndex(backdrops, dancer) is var at and >= 0 ? at : backdrops.Length;
+            var under = new LumenScenePlayer(1280, 720, backdrops[..split].Where(layer => !video.HidesDancers || !dancer(layer)))
+                .CreateRenderSnapshot(interpolation, beats, _backdropQuads).Quads;
+            var over = new LumenScenePlayer(1280, 720, backdrops[split..].Where(layer => !dancer(layer)))
+                .CreateRenderSnapshot(interpolation, beats, _overDancerQuads).Quads;
+            snapshot = new LumenRenderSnapshot(1280, 720, [.. under, videoQuad(video), .. over, .. snapshot.Quads]);
+        }
         foreach (var lane in _lanes)
             snapshot = lane.Tint(snapshot);
         return snapshot;
@@ -362,12 +369,15 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         var (u, v) = video.Area is not null ? (0f, 0f)
             : video.Aspect > width / height ? ((1 - width / height / video.Aspect) / 2, 0f) : (0f, (1 - video.Aspect * height / width) / 2);
         float right = left + width, bottom = top + height;
+        // No frame yet (an opaque video starting later in the song): the quad is solid black (texture * 0 + opaque black).
+        var black = !video.Shown;
         return new LumenRenderQuad(0,
             new LumenRenderVertex(left, top, u, v), new LumenRenderVertex(right, top, 1 - u, v),
             new LumenRenderVertex(right, bottom, 1 - u, 1 - v), new LumenRenderVertex(left, bottom, u, 1 - v),
-            new LumenRenderColor(shade, shade, shade, 1), LumenRenderColor.Transparent,
-            video.Additive ? LumenRenderBlend.Add : LumenRenderBlend.Normal,
-            NativeSurface: Waddamburo.App.Presentation.BackgroundVideo.Surface, LumaKey: video.LumaKey);
+            black ? LumenRenderColor.Transparent : new LumenRenderColor(shade, shade, shade, 1),
+            black ? new LumenRenderColor(0, 0, 0, 1) : LumenRenderColor.Transparent,
+            video.Additive && !black ? LumenRenderBlend.Add : LumenRenderBlend.Normal,
+            NativeSurface: Waddamburo.App.Presentation.BackgroundVideo.Surface, LumaKey: black ? 0 : video.LumaKey);
     }
 
     /// <summary>One player's lane: judgement, score, gauge, Don and the lane's movies.</summary>
@@ -1058,5 +1068,6 @@ internal sealed record TimingMark(bool Early, bool Great, float X, float Y, floa
 
 /// <summary>A frame's background video: its width over height, where it goes, and how much it is darkened (0-1).</summary>
 internal readonly record struct GameplayVideoLayer(float Aspect, bool UnderLane, float Dim, bool Additive = false,
-    (float X, float Y, float Width, float Height)? Area = null, bool HidesDancers = false, float LumaKey = 0);
+    (float X, float Y, float Width, float Height)? Area = null, bool HidesDancers = false, float LumaKey = 0,
+    bool Shown = true); // Shown false: no frame yet, its quad is drawn black
 
