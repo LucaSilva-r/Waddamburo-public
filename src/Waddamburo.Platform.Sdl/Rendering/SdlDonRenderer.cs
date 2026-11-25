@@ -349,7 +349,18 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         }
 
         var accessory = _accessories[playerIndex];
-        var accessoryMeshes = accessory?.Pose(_accessoryTicks[playerIndex], matrices[1], matrices[0],
+        // The puchi is drawn straight into the post target, one render-target pass fewer than Don: where
+        // targets start at the bottom left (GL: Android, Switch) that pass's flip does not cancel, so flip it here.
+        var flipAccessory = bgfx.get_caps()->originBottomLeft != 0;
+        var accessoryCamera = camera;
+        if (flipAccessory)
+        {
+            accessoryCamera.M12 = -accessoryCamera.M12;
+            accessoryCamera.M22 = -accessoryCamera.M22;
+            accessoryCamera.M32 = -accessoryCamera.M32;
+            accessoryCamera.M42 = -accessoryCamera.M42;
+        }
+        var accessoryMeshes = accessory?.Pose(_accessoryTicks[playerIndex], matrices[1], accessoryCamera,
             MemoryMarshal.Cast<float, Matrix4x4>(_accessoryUniforms.AsSpan()));
 
         var modelView = (ushort)(playerIndex * 2);
@@ -420,10 +431,11 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
                         bgfx.set_uniform(_replaceBlueUniform, &blue, 1);
                         // CCW-front culling; reflecting the 2P camera reverses projected winding, so
                         // swap the culled side to keep the authored visible side.
+                        var mirrored = reflectedCamera ^ (overlay && flipAccessory); // the puchi's flip reverses it too
                         var cull = material.CullMode switch
                         {
-                            0x405 => reflectedCamera ? bgfx.StateFlags.CullCcw : bgfx.StateFlags.CullCw,
-                            0x404 => reflectedCamera ? bgfx.StateFlags.CullCw : bgfx.StateFlags.CullCcw,
+                            0x405 => mirrored ? bgfx.StateFlags.CullCcw : bgfx.StateFlags.CullCw,
+                            0x404 => mirrored ? bgfx.StateFlags.CullCw : bgfx.StateFlags.CullCcw,
                             _ => bgfx.StateFlags.None,
                         };
                         // Blended decals (face disc, costume prints) are tested against the opaque body so the
