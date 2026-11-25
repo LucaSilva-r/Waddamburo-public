@@ -93,6 +93,13 @@ public sealed class TaikoLumenPresentation
         _layout = new ChartModValues(chart.Effects.Layout);
         _stage = new StageEffects(_mods, _geometry, targetMoves: !chart.Effects.JudgeMoves.IsEmpty, _layout);
         StageEffects.Prime(_background.Concat(_foreground));
+        // ponytail: only the gauge has a separate part movie; share more pivots here if another element gets one.
+        var layers = _background.Concat(_foreground).ToArray();
+        LumenSceneLayer? withRole(Func<string, bool> wanted) => layers.FirstOrDefault(layer =>
+            _roles?.GetValueOrDefault(layer.Player) is { } role && wanted(role));
+        if (withRole(static role => role.StartsWith("gage_don_1p_", StringComparison.Ordinal)) is { } gauge
+            && withRole(static role => role == "gage_fire_1p") is { } fire)
+            StageEffects.SharePivot(gauge, fire);
         judgement.Judged += onJudged;
         callback(_board, "SetComboCount", LumenHostValue.FromNumber(0));
         // Traced: SetBranchAvailable(false) for every chart without 譜面分岐; true shows the normal route's lane.

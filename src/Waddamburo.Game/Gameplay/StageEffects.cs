@@ -175,6 +175,13 @@ public sealed class StageEffects
             _ = pivotOf(layer);
     }
 
+    /// <summary>
+    /// <paramref name="part"/> turns and scales about <paramref name="whole"/>'s pivot (the gauge's fire about the
+    /// gauge: about its own centre, a flipped gauge left it where the gauge had been).
+    /// </summary>
+    public static void SharePivot(LumenSceneLayer whole, LumenSceneLayer part) =>
+        Pivots.GetValue(part.Player, static _ => new()).Value = pivotOf(whole);
+
     // The centre of what a movie draws on the stage, found the first time it draws something.
     private static (float X, float Y) pivotOf(LumenSceneLayer layer)
     {
