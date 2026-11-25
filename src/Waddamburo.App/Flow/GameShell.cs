@@ -387,7 +387,10 @@ internal sealed partial class GameShell : IDisposable
     /// </summary>
     public void ApplyRecording()
     {
-        var wanted = (Options.RecordPerformance || Options.Benchmark != BenchmarkMode.Off || Arcade.RecordPerformance) && !Headless;
+        // ponytail: not on iOS, where .NET can't read the process's CPU time or memory (the report and the scene
+        // switch's profile line need them); add a mach task_info reader if iOS reports matter.
+        var wanted = (Options.RecordPerformance || Options.Benchmark != BenchmarkMode.Off || Arcade.RecordPerformance) && !Headless
+            && !OperatingSystem.IsIOS();
         if (wanted && Application.Recorder is null)
         {
             var version = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(typeof(GameShell).Assembly)?.InformationalVersion ?? "?";
