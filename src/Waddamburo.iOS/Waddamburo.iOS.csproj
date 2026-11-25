@@ -12,6 +12,9 @@
     <ApplicationVersion>1</ApplicationVersion>
     <ApplicationDisplayVersion>$(Version.Split('-')[0])</ApplicationDisplayVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- NativeAOT's trim/AOT notes on third-party assemblies (Realm, MongoDB.Bson, Remotion.Linq) stay warnings in
+         release builds, where warnings are errors: they are known and the game runs (tested on an iPhone 13). -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);IL2104;IL3053</WarningsNotAsErrors>
     <!-- The game references the desktop executable project (Waddamburo.App) as a library. -->
     <ValidateExecutableReferencesMatchSelfContained>false</ValidateExecutableReferencesMatchSelfContained>
     <IsAotCompatible>false</IsAotCompatible>
