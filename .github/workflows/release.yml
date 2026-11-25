@@ -154,7 +154,9 @@ jobs:
       - name: Install the .NET iOS workload
         if: matrix.target == 'ios'
         run: |
-          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          # The workload wants the newest Xcode, which the image installs beside an older default.
+          sudo xcode-select -s "$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)/Contents/Developer"
+          xcodebuild -version
           dotnet workload install ios
 
       - name: Install the Android NDK and workload
