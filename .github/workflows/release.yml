@@ -69,6 +69,10 @@ jobs:
           - target: linux
             runner: ubuntu-24.04
             image: linux
+          # linux-arm64: the same image built on GitHub's arm64 runner, so no cross toolchain.
+          - target: linux
+            runner: ubuntu-24.04-arm
+            image: linux-arm64
           - target: windows
             runner: ubuntu-24.04
             image: windows
@@ -163,11 +167,11 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.target }}
-          # The common notices and source archives come from the Linux build.
+          name: ${{ matrix.target }}-${{ matrix.runner }}
+          # The common notices and source archives come from the Linux build (both arches make the same ones).
           path: |
             out/package/Waddamburo.exe
-            out/package/Waddamburo-x86_64.AppImage
+            out/package/Waddamburo-*.AppImage
             out/package/Waddamburo.apk
             out/package/Waddamburo.nro
             out/package/licenses.zip
@@ -194,7 +198,7 @@ jobs:
           # Players see the four builds; everything else (licenses, FFmpeg sources and relink inputs, native libraries)
           # is one archive, named to sort after them (GitHub lists assets by name).
           zip -0 Waddamburo.sources-and-licenses.zip licenses*.zip native-*.zip ffmpeg-*.zip
-          assets=(Waddamburo.exe Waddamburo-x86_64.AppImage Waddamburo.apk Waddamburo.nro Waddamburo.sources-and-licenses.zip)
+          assets=(Waddamburo.exe Waddamburo-x86_64.AppImage Waddamburo-aarch64.AppImage Waddamburo.apk Waddamburo.nro Waddamburo.sources-and-licenses.zip)
           if draft=$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft); then
             if [ "$draft" != true ]; then
               echo "Release $GITHUB_REF_NAME has already been published."
@@ -224,10 +228,11 @@ jobs:
         run: |
           mv Waddamburo.exe Waddamburo-nightly.exe
           mv Waddamburo-x86_64.AppImage Waddamburo-nightly-x86_64.AppImage
+          mv Waddamburo-aarch64.AppImage Waddamburo-nightly-aarch64.AppImage
           mv Waddamburo.apk Waddamburo-nightly.apk
           mv Waddamburo.nro Waddamburo-nightly.nro
           zip -0 Waddamburo.sources-and-licenses.zip licenses*.zip native-*.zip ffmpeg-*.zip
           gh release create "${GITHUB_SHA::7}" --repo "$GITHUB_REPOSITORY" --prerelease --target "$GITHUB_SHA" --generate-notes \
-            --title "Waddamburo nightly ${GITHUB_SHA::7}" Waddamburo-nightly.exe Waddamburo-nightly-x86_64.AppImage Waddamburo-nightly.apk Waddamburo-nightly.nro \
+            --title "Waddamburo nightly ${GITHUB_SHA::7}" Waddamburo-nightly.exe Waddamburo-nightly-x86_64.AppImage Waddamburo-nightly-aarch64.AppImage Waddamburo-nightly.apk Waddamburo-nightly.nro \
             --notes "Waddamburo uses FFmpeg under the LGPL 2.1 or later. Waddamburo.sources-and-licenses.zip holds the licenses, ffmpeg-source.zip and the ffmpeg-relink archive for each platform. [Relinking instructions](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_SHA/docs/development/ffmpeg.md#relinking-a-release) The Switch build (Waddamburo.nro) is GPL-2.0-or-later as a whole (its FFmpeg has hardware decoding, nvtegra): ffmpeg-source-switch.zip (in the same archive) and this tag's source." \
             Waddamburo.sources-and-licenses.zip

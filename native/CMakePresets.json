@@ -112,6 +112,12 @@
       }
     },
     {
+      "name": "linux-arm64-package",
+      "displayName": "Linux arm64 self-contained release libraries (on an arm64 host)",
+      "inherits": "linux-package",
+      "binaryDir": "${sourceDir}/../out/build/native/linux-arm64/linux-package"
+    },
+    {
       "name": "windows-package",
       "displayName": "Windows x64 self-contained release libraries (mingw-w64: cross build on Linux, or an MSYS2 MINGW64 shell)",
       "inherits": "base",
@@ -200,6 +206,7 @@
     },
     { "name": "linux-audio-complete", "configurePreset": "linux-audio-complete" },
     { "name": "linux-package", "configurePreset": "linux-package" },
+    { "name": "linux-arm64-package", "configurePreset": "linux-arm64-package" },
     { "name": "windows-package", "configurePreset": "windows-package" },
     { "name": "android-package", "configurePreset": "android-package" },
     { "name": "android-x64-package", "configurePreset": "android-x64-package" },

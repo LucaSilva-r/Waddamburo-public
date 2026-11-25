@@ -38,7 +38,7 @@ Both put the libraries in `out/build/native/<rid>/<preset>/stage/Release/`, and 
 
 ## 1. Install the .NET SDK
 
-`global.json` pins the SDK to **exactly 10.0.201** (`rollForward: disable`). With any other
+`global.json` pins the SDK to **exactly 10.0.404** (`rollForward: disable`). With any other
 SDK version every `dotnet` command fails with "A compatible .NET SDK was not found".
 Install it next to any others:
 
@@ -46,7 +46,7 @@ Install it next to any others:
 # Windows (PowerShell)
 New-Item -ItemType Directory -Force out/tools | Out-Null
 Invoke-WebRequest https://dot.net/v1/dotnet-install.ps1 -OutFile out/tools/dotnet-install.ps1
-powershell -ExecutionPolicy Bypass -File out/tools/dotnet-install.ps1 -Version 10.0.201 -InstallDir "$env:LOCALAPPDATA\Microsoft\dotnet"
+powershell -ExecutionPolicy Bypass -File out/tools/dotnet-install.ps1 -Version 10.0.404 -InstallDir "$env:LOCALAPPDATA\Microsoft\dotnet"
 $env:DOTNET_ROOT = "$env:LOCALAPPDATA\Microsoft\dotnet"
 $env:PATH = "$env:DOTNET_ROOT;$env:PATH"
 ```
@@ -55,16 +55,16 @@ $env:PATH = "$env:DOTNET_ROOT;$env:PATH"
 # Linux
 mkdir -p out/tools
 curl -fsSL https://dot.net/v1/dotnet-install.sh -o out/tools/dotnet-install.sh
-bash out/tools/dotnet-install.sh --version 10.0.201 --install-dir "$HOME/.dotnet"
+bash out/tools/dotnet-install.sh --version 10.0.404 --install-dir "$HOME/.dotnet"
 export DOTNET_ROOT="$HOME/.dotnet"
 export PATH="$DOTNET_ROOT:$PATH"
 ```
 
 These environment variables apply to the current terminal. Set them again in a new
-terminal, or add them to your shell profile. Alternatively, use the 10.0.201 SDK
+terminal, or add them to your shell profile. Alternatively, use the 10.0.404 SDK
 installer from <https://dotnet.microsoft.com/download/dotnet/10.0>.
 
-Before continuing, `dotnet --version` in the repository folder must print `10.0.201`.
+Before continuing, `dotnet --version` in the repository folder must print `10.0.404`.
 
 ## 2. Get the native libraries and run
 
@@ -121,6 +121,10 @@ cmake --build --preset linux-package
 cd ..
 ```
 
+On an arm64 machine (Raspberry Pi 5, Asahi, ARM servers) use the `linux-arm64-package` preset
+instead; it builds natively, there is no cross build. `nasm` is not needed there. The arm64
+build has no ImGui editor overlays (ImGui.NET ships no linux-arm64 library).
+
 ### Windows (MSYS2)
 
 The Windows libraries are built with mingw-w64, the same compiler as the releases, in
@@ -173,7 +177,7 @@ to this shell's path too:
 ```sh
 cd /c/path/to/Waddamburo-public
 export PATH="$(cygpath -u "$LOCALAPPDATA")/Microsoft/dotnet:$PATH"
-dotnet --version            # must report 10.0.201
+dotnet --version            # must report 10.0.404
 ./eng/package.sh windows    # out/package/Waddamburo.exe and native-win-x64.zip
 cp out/package/Waddamburo.exe /c/path/to/game/USRDIR/
 ```

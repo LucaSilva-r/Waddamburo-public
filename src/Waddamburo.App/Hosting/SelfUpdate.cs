@@ -28,6 +28,8 @@ internal static class SelfUpdate
 {
     private const string ApplyOption = "--apply-update=";
     private const string UpdatedOption = "--updated";
+    private static string AppImageArch => System.Runtime.InteropServices.RuntimeInformation.OSArchitecture
+        == System.Runtime.InteropServices.Architecture.Arm64 ? "aarch64" : "x86_64";
 
     // ponytail: test hook; point it at a local server serving a releases/latest-shaped JSON (an array for nightlies).
     private static string LatestReleaseUrl => DiagnosticSwitches.UpdateUrl
@@ -203,8 +205,8 @@ internal static class SelfUpdate
         {
             (true, false) => "Waddamburo.exe",
             (true, true) => "Waddamburo-nightly.exe",
-            (false, false) => "Waddamburo-x86_64.AppImage",
-            (false, true) => "Waddamburo-nightly-x86_64.AppImage",
+            (false, false) => $"Waddamburo-{AppImageArch}.AppImage",
+            (false, true) => $"Waddamburo-nightly-{AppImageArch}.AppImage",
         };
         var asset = newest.GetProperty("assets").EnumerateArray()
             .FirstOrDefault(candidate => candidate.GetProperty("name").GetString() == assetName);

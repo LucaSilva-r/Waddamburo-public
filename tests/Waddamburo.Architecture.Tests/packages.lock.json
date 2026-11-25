@@ -215,6 +215,36 @@
         }
       }
     },
+    "net10.0/linux-arm64": {
+      "SQLitePCLRaw.lib.e_sqlite3": {
+        "type": "Transitive",
+        "resolved": "2.1.12",
+        "contentHash": "fWi8Dbknuhgg72fWinIdjXVaqO1hHL4YBBwVLnr7e1c9TAZwJ0QE38j9syW1hwx6HaqEVTwI+O07WPdZn8Rp0w=="
+      },
+      "ImGui.NET": {
+        "type": "CentralTransitive",
+        "requested": "[1.91.6.1, )",
+        "resolved": "1.91.6.1",
+        "contentHash": "Ph3j8pO6UM28PPJWP+5LEJSPVPkd8ivpVS8tRyY9b0IHn1HDIrMZ2o/FdiXaYW6YhNxMHmbevw6Jcfs+IDKi0Q=="
+      },
+      "ppy.SDL3-CS": {
+        "type": "CentralTransitive",
+        "requested": "[2026.722.0, )",
+        "resolved": "2026.722.0",
+        "contentHash": "Sof8ihhvW7z4YTVGoSjrAEeRiddIbvb9zXbEIfBoqRw38suzo6R5V+4krRVb4JwzyahS0tGFnNOxW2hHRr18Dg=="
+      },
+      "Realm": {
+        "type": "CentralTransitive",
+        "requested": "[20.1.0, )",
+        "resolved": "20.1.0",
+        "contentHash": "jDwR8r8gDZq3Mrlzx1MYtg7FodPFD4Kpku9QMh5Q0Lzia0nfTZo9/Q9ZMFGhwuZSv7T78EvMAr3LPm8iwR7wnQ==",
+        "dependencies": {
+          "Fody": "6.9.1",
+          "MongoDB.Bson": "2.21.0",
+          "Remotion.Linq": "2.2.0"
+        }
+      }
+    },
     "net10.0/linux-x64": {
       "SQLitePCLRaw.lib.e_sqlite3": {
         "type": "Transitive",

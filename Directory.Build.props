@@ -18,7 +18,7 @@
     <TreatWarningsAsErrors Condition="'$(CI)' == 'true' And '$(WADDAMBURO_VERSION)' != '' And !$(WADDAMBURO_VERSION.EndsWith('-nightly'))">true</TreatWarningsAsErrors>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <!-- Release targets (eng/package.sh); listed so RID-specific publishes keep the lock files stable. -->
-    <RuntimeIdentifiers>linux-x64;win-x64</RuntimeIdentifiers>
+    <RuntimeIdentifiers>linux-x64;linux-arm64;win-x64</RuntimeIdentifiers>
     <!-- Windows releases are single-file: flag single-file hazards in every build (this also keeps
          the analyzer's ILLink package in the lock files for normal and publish restores alike). -->
     <EnableSingleFileAnalyzer>true</EnableSingleFileAnalyzer>
@@ -28,7 +28,9 @@
        CMake preset once it has been built (BUILDING.md); eng/package.sh passes the directory explicitly. -->
   <PropertyGroup Condition="'$(WaddamburoNativeDir)' == ''">
     <WaddamburoPackageNativeDir Condition="$([MSBuild]::IsOSPlatform('Windows'))">$(MSBuildThisFileDirectory)out/build/native/win-x64/windows-package/stage/Release/bin</WaddamburoPackageNativeDir>
-    <WaddamburoPackageNativeDir Condition="!$([MSBuild]::IsOSPlatform('Windows'))">$(MSBuildThisFileDirectory)out/build/native/linux-x64/linux-package/stage/Release/lib</WaddamburoPackageNativeDir>
+    <WaddamburoHostLinuxRid>linux-x64</WaddamburoHostLinuxRid>
+    <WaddamburoHostLinuxRid Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)' == 'Arm64'">linux-arm64</WaddamburoHostLinuxRid>
+    <WaddamburoPackageNativeDir Condition="!$([MSBuild]::IsOSPlatform('Windows'))">$(MSBuildThisFileDirectory)out/build/native/$(WaddamburoHostLinuxRid)/linux-package/stage/Release/lib</WaddamburoPackageNativeDir>
     <WaddamburoNativeDir Condition="Exists('$(WaddamburoPackageNativeDir)')">$(WaddamburoPackageNativeDir)</WaddamburoNativeDir>
   </PropertyGroup>
   <!-- Releases use the JIT, but the game must stay NativeAOT-compatible (consoles and other targets

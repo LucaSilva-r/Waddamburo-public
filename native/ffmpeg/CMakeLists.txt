@@ -25,8 +25,12 @@ endif()
 find_program(WADDAMBURO_MAKE_EXECUTABLE NAMES gmake make REQUIRED)
 cmake_host_system_information(RESULT _ffmpeg_jobs QUERY NUMBER_OF_LOGICAL_CORES)
 
-# x86 SIMD (nasm): H.264 and the scaler several times faster, which background videos need.
-set(_ffmpeg_platform_options --arch=x86_64 --x86asmexe=nasm)
+# x86 SIMD (nasm): H.264 and the scaler several times faster, which background videos need. arm64 has NEON built in.
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
+  set(_ffmpeg_platform_options --arch=aarch64)
+else()
+  set(_ffmpeg_platform_options --arch=x86_64 --x86asmexe=nasm)
+endif()
 set(_ffmpeg_configure_command <SOURCE_DIR>/configure)
 
 if(ANDROID)

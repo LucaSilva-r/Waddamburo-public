@@ -2,7 +2,7 @@
 # Builds the release artifacts on a Linux x64 host:
 #   out/package/Waddamburo.exe              one self-contained Windows file (native libraries
 #                                            self-extract on first run)
-#   out/package/Waddamburo-x86_64.AppImage  the Linux build
+#   out/package/Waddamburo-x86_64.AppImage  the Linux build (Waddamburo-aarch64.AppImage on an arm64 host)
 #   out/package/licenses.zip                release licenses and notices
 #   out/package/licenses-win-x64.zip        notices from the Windows .NET runtime pack
 #   out/package/Waddamburo.apk              the Android app (target android: needs the Android SDK, NDK and JDK)
@@ -36,6 +36,8 @@ appimagetool_version=1.9.1
 appimagetool_sha256=ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
 runtime_version=20251108
 runtime_sha256=2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
+appimagetool_sha256_aarch64=f0837e7448a0c1e4e650a93bb3e85802546e60654ef287576f46c71c126a9158
+runtime_sha256_aarch64=00cbdfcf917cc6c0ff6d3347d59e0ca1f7f45a6df1a428a0d6d8a78664d87444
 
 fetch() { # url file sha256
     [[ -f $2 ]] || curl -fsSL -o "$2" "$1"
@@ -146,22 +148,32 @@ for target in $targets; do
         echo "$out/Waddamburo.exe"
         ;;
     linux)
-        native linux-package "$root/out/build/native/linux-x64/linux-package/stage/Release/lib" linux-x64
-        ffmpeg_source out/build/native/linux-x64/linux-package
-        tool=out/downloads/appimagetool-$appimagetool_version-x86_64.AppImage
-        runtime=out/downloads/appimage-runtime-$runtime_version-x86_64
-        fetch "https://github.com/AppImage/appimagetool/releases/download/$appimagetool_version/appimagetool-x86_64.AppImage" \
+        # The host's arch: linux-arm64 builds on an arm64 machine (the release's arm64 runner), no cross toolchain.
+        if [[ $(uname -m) == aarch64 ]]; then
+            arch=aarch64 rid=linux-arm64 preset=linux-arm64-package
+            appimagetool_sha256=$appimagetool_sha256_aarch64 runtime_sha256=$runtime_sha256_aarch64
+        else
+            arch=x86_64 rid=linux-x64 preset=linux-package
+        fi
+        build=out/build/native/$rid/linux-package
+        native $preset "$root/$build/stage/Release/lib" $rid
+        ffmpeg_source $build
+        tool=out/downloads/appimagetool-$appimagetool_version-$arch.AppImage
+        runtime=out/downloads/appimage-runtime-$runtime_version-$arch
+        fetch "https://github.com/AppImage/appimagetool/releases/download/$appimagetool_version/appimagetool-$arch.AppImage" \
             "$tool" "$appimagetool_sha256"
-        fetch "https://github.com/AppImage/type2-runtime/releases/download/$runtime_version/runtime-x86_64" \
+        fetch "https://github.com/AppImage/type2-runtime/releases/download/$runtime_version/runtime-$arch" \
             "$runtime" "$runtime_sha256"
         chmod +x "$tool"
         # ponytail: plain self-contained publish inside the AppDir; the AppImage is already one file.
         appdir=$out/Waddamburo.AppDir
-        publish linux-x64 "$root/out/build/native/linux-x64/linux-package/stage/Release/lib" "$appdir/usr/bin"
-        [[ -f "$appdir/usr/bin/libcimgui.so" ]] || { echo "error: missing ImGui native runtime" >&2; exit 1; }
+        publish $rid "$root/$build/stage/Release/lib" "$appdir/usr/bin"
+        # ponytail: ImGui.NET ships no linux-arm64 cimgui, so the arm64 build has no editor overlays; build cimgui
+        # in native/ if arm64 players need them.
+        [[ $rid == linux-arm64 || -f "$appdir/usr/bin/libcimgui.so" ]] || { echo "error: missing ImGui native runtime" >&2; exit 1; }
         cp eng/packaging/waddamburo.png "$appdir/waddamburo.png"
-        licenses out/build/native/linux-x64/linux-package "$appdir/usr/share/licenses/waddamburo"
-        runtime_licenses src/Waddamburo.App linux-x64 "$appdir/usr/share/licenses/waddamburo/dotnet"
+        licenses $build "$appdir/usr/share/licenses/waddamburo"
+        runtime_licenses src/Waddamburo.App $rid "$appdir/usr/share/licenses/waddamburo/dotnet"
         (cd "$appdir/usr/share/licenses" && rm -f "$out/licenses.zip" \
             && python3 -m zipfile -c "$out/licenses.zip" waddamburo/*)
         cat > "$appdir/waddamburo.desktop" <<'EOF'
@@ -177,9 +189,9 @@ EOF
 exec "$(dirname "$(readlink -f "$0")")/usr/bin/Waddamburo.App" "$@"
 EOF
         chmod +x "$appdir/AppRun"
-        ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 "$tool" --no-appstream --runtime-file "$runtime" \
-            "$appdir" "$out/Waddamburo-x86_64.AppImage" >/dev/null
-        echo "$out/Waddamburo-x86_64.AppImage"
+        ARCH=$arch APPIMAGE_EXTRACT_AND_RUN=1 "$tool" --no-appstream --runtime-file "$runtime" \
+            "$appdir" "$out/Waddamburo-$arch.AppImage" >/dev/null
+        echo "$out/Waddamburo-$arch.AppImage"
         echo "$out/licenses.zip"
         ;;
     android)
