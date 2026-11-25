@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 typedef uint8_t u8;
 typedef uint32_t u32;
@@ -334,6 +335,10 @@ static int forwarder_nsp(Buf *nsp, const u8 *nso, size_t nso_n, const u8 *npdm, 
     { // meta: the CNMT listing program and control
         u8 cnmt[0x20 + 0x10 + 2 * 0x38 + 0x20] = { 0 };
         w64(cnmt, TITLE_ID); cnmt[0xC] = 0x80; cnmt[0xE] = 0x10; cnmt[0x10] = 2;
+        // Title version: minutes since 2026, so each forwarder installs as an update over the last one. At the same
+        // version HOME kept the old icon (2026-11-25).
+        time_t now = time(NULL);
+        w32(cnmt + 0x8, now > 1767225600 ? (u32)((now - 1767225600) / 60) : 1);
         w64(cnmt + 0x20, TITLE_ID + 0x800);
         const Buf *contents[] = { &program, &control }; const u8 types[] = { 1, 3 };
         for (int i = 0; i < 2; i++) {
