@@ -218,8 +218,8 @@ EOF
         iconset=$out/waddamburo.iconset
         rm -rf "$iconset" && mkdir -p "$iconset"
         for size in 16 32 128 256 512; do
-            sips -z $size $size eng/packaging/waddamburo.png --out "$iconset/icon_${size}x${size}.png" >/dev/null
-            sips -z $((size * 2)) $((size * 2)) eng/packaging/waddamburo.png --out "$iconset/icon_${size}x${size}@2x.png" >/dev/null
+            sips -z $size $size eng/packaging/macos-icon.png --out "$iconset/icon_${size}x${size}.png" >/dev/null
+            sips -z $((size * 2)) $((size * 2)) eng/packaging/macos-icon.png --out "$iconset/icon_${size}x${size}@2x.png" >/dev/null
         done
         iconutil -c icns "$iconset" -o "$app/Contents/Resources/waddamburo.icns" && rm -rf "$iconset"
         cat > "$app/Contents/Info.plist" <<PLIST

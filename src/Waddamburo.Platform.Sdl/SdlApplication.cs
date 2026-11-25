@@ -117,9 +117,12 @@ public sealed unsafe partial class SdlApplication : IDisposable
         }
     }
 
-    // Windows takes the icon from the .exe; Linux windows have none of their own (desktops showed a letter).
+    // Windows takes the icon from the .exe; Linux windows have none of their own (desktops showed a letter). Not on
+    // macOS: SDL would set it as the Dock's, over the bundle's own icon.
     private static void setIcon(SDL_Window* window)
     {
+        if (OperatingSystem.IsMacOS())
+            return;
         using var resource = typeof(SdlApplication).Assembly.GetManifestResourceStream("Waddamburo.Icon.png");
         if (resource is null)
             return;

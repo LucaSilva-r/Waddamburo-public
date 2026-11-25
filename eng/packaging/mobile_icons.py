@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Mobile app icons (Android, iOS, Switch) from eng/packaging/waddamburo.svg: the logo on a graphite gradient.
+"""App icons (Android, iOS, macOS, Switch) from eng/packaging/waddamburo.svg: the logo on a graphite gradient.
 
 The outputs are committed; rerun after changing the SVG. Needs cairosvg and Pillow
 (python3 -m venv .venv && .venv/bin/pip install cairosvg pillow && .venv/bin/python eng/packaging/mobile_icons.py).
@@ -7,6 +7,8 @@ The outputs are committed; rerun after changing the SVG. Needs cairosvg and Pill
 - Android: legacy square and round launcher PNGs, plus an adaptive icon (gradient background, logo foreground in the
   66dp safe zone, the logo as the themed-icon monochrome layer).
 - iOS: one 1024 px opaque AppIcon (actool makes the other sizes).
+- macOS: the tile rounded inside a 1024 px canvas (Apple's grid: 824 px tile, 185 px corners), which
+  eng/package.sh turns into the .icns.
 - Switch: the NRO's 256 px baseline JPEG; the forwarder NSP copies it into every language's icon_*.dat.
 """
 import json
@@ -21,6 +23,7 @@ SVG = Path(__file__).with_name("waddamburo.svg")
 ANDROID = ROOT / "src/Waddamburo.Android/Resources"
 IOS = ROOT / "src/Waddamburo.iOS/Assets.xcassets"
 SWITCH = ROOT / "platforms/switch/icon.jpg"
+MACOS = Path(__file__).with_name("macos-icon.png")
 TOP_LEFT, BOTTOM_RIGHT = (0x55, 0x50, 0x59), (0x29, 0x26, 0x2C)
 DENSITIES = {"mdpi": 1, "hdpi": 1.5, "xhdpi": 2, "xxhdpi": 3, "xxxhdpi": 4}
 
@@ -85,5 +88,13 @@ tile(1024).convert("RGB").save(appicon / "AppIcon-1024.png")  # App Store icons 
     "info": {"author": "xcode", "version": 1},
 }, indent=2) + "\n")
 
+mac = tile(824 * 4)  # drawn large so the corners are smooth
+mask = Image.new("L", mac.size)
+ImageDraw.Draw(mask).rounded_rectangle((0, 0, mac.width - 1, mac.height - 1), radius=185 * 4, fill=255)
+mac.putalpha(mask)
+canvas = Image.new("RGBA", (1024, 1024))
+canvas.alpha_composite(mac.resize((824, 824), Image.Resampling.LANCZOS), (100, 100))
+canvas.save(MACOS)
+
 tile(256).convert("RGB").save(SWITCH, "JPEG", quality=92, subsampling=2, progressive=False)
-print("written: Android mipmaps, iOS AppIcon, Switch icon.jpg")
+print("written: Android mipmaps, iOS AppIcon, macOS icon, Switch icon.jpg")
