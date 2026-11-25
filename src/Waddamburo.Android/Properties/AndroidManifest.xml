@@ -6,7 +6,8 @@
   <uses-feature android:name="android.hardware.usb.host" android:required="false" />
   <uses-permission android:name="android.permission.INTERNET" />
   <uses-permission android:name="android.permission.VIBRATE" />
-  <application android:icon="@drawable/icon"
+  <!-- Launcher icons: Resources/mipmap-* from eng/packaging/mobile_icons.py (adaptive on Android 8+). -->
+  <application android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round"
                android:allowBackup="false" android:hardwareAccelerated="true"
                android:hasFragileUserData="true"
                android:appCategory="game" android:isGame="true" />

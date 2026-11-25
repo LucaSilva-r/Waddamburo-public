@@ -65,10 +65,6 @@
   </Target>
 
   <ItemGroup>
-    <AndroidResource Include="../../eng/packaging/waddamburo.png" Link="Resources/drawable/icon.png" />
-  </ItemGroup>
-
-  <ItemGroup>
     <ProjectReference Include="../Waddamburo.App/Waddamburo.App.csproj" />
   </ItemGroup>
 

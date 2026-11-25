@@ -3,6 +3,8 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleDisplayName</key><string>Waddamburo</string>
+    <!-- Assets.xcassets/AppIcon from eng/packaging/mobile_icons.py. -->
+    <key>XSAppIconAssets</key><string>Assets.xcassets/AppIcon.appiconset</string>
     <key>UIDeviceFamily</key><array><integer>1</integer><integer>2</integer></array>
     <key>UISupportedInterfaceOrientations</key>
     <array><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>

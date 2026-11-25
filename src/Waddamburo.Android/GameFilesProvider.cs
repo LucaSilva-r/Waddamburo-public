@@ -52,7 +52,7 @@ public sealed class GameFilesProvider : DocumentsProvider
             | DocumentRootFlags.SupportsIsChild));
         row.Add(DocumentsContract.Root.ColumnTitle, "Waddamburo");
         row.Add(DocumentsContract.Root.ColumnDocumentId, Top);
-        row.Add(DocumentsContract.Root.ColumnIcon, Resource.Drawable.icon);
+        row.Add(DocumentsContract.Root.ColumnIcon, Resource.Mipmap.ic_launcher);
         row.Add(DocumentsContract.Root.ColumnAvailableBytes, new StatFs(_base).AvailableBytes);
         return cursor;
     }
