@@ -481,6 +481,9 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
             meshes.AddRange(model($"parts/body/body_{body:000}000.nud"));
             meshes.AddRange(model($"parts/head/head_{head:000}000.nud"));
             face = $"parts/paint/paint_{paint:000}000.nut";
+            // A make this install lacks (bad id, later update's): the plain face.
+            if (paint < 0 || !assetExists(face))
+                face = "parts/paint/paint_000000.nut";
         }
         var mirrored = Path.ChangeExtension(face, null) + "r.nut";
         var playerTwoVariant = playerIndex == 1 && assetExists(mirrored);
