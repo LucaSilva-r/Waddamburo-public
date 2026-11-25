@@ -169,6 +169,25 @@ dotnet run --project src/Waddamburo.App -c Release -- "/path/to/USRDIR"
 `out/package/Waddamburo-macos-arm64.zip`. Without a Developer ID signature, macOS asks once:
 right-click the app and choose Open. macOS releases do not update themselves yet.
 
+### iOS
+
+On the Mac, with Xcode (the version the .NET `ios` workload asks for) and `dotnet workload install ios`:
+
+```sh
+cd native
+cmake --preset ios-package
+cmake --build --preset ios-package
+cd ..
+eng/package.sh ios   # out/package/Waddamburo.ipa, unsigned (NativeAOT)
+```
+
+Players sideload the IPA (SideStore, AltStore, TrollStore), which signs it with their own Apple ID.
+To run your own build on a device, sign it with your Apple ID's Personal Team: build once from an
+empty Xcode project to get its certificate and profile, then
+`dotnet publish src/Waddamburo.iOS -c Release -p:ApplicationId=<its bundle ID> "-p:CodesignKey=Apple Development: …" "-p:CodesignProvision=iOS Team Provisioning Profile: <its bundle ID>"`
+and `xcrun devicectl device install app`. The game's folders (Green, Custom Songs) are in the
+app's Documents, reachable from the Files app.
+
 ### Windows on Arm
 
 The arm64 libraries are cross-built on Linux with [llvm-mingw](https://github.com/mstorsjo/llvm-mingw)

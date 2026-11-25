@@ -79,6 +79,17 @@ elseif(WIN32)
     --toolchain=msvc
     --target-os=win64
     --enable-w32threads)
+elseif(IOS)
+  # Cross: the iPhone SDK's clang and sysroot (CMake resolved CMAKE_OSX_SYSROOT to its path).
+  list(APPEND _ffmpeg_platform_options
+    --enable-cross-compile
+    --target-os=darwin
+    --cc=${CMAKE_C_COMPILER}
+    --sysroot=${CMAKE_OSX_SYSROOT}
+    "--extra-cflags=-arch arm64 -miphoneos-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}"
+    "--extra-ldflags=-arch arm64 -miphoneos-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}"
+    --enable-pthreads
+    --enable-pic)
 elseif(APPLE)
   list(APPEND _ffmpeg_platform_options
     --target-os=darwin

@@ -83,6 +83,9 @@ jobs:
           # macOS: built on GitHub's Apple Silicon runner (Command Line Tools there), no container.
           - target: macos
             runner: macos-15
+          # iOS: Xcode 27 (the .NET ios workload needs it), NativeAOT, an unsigned IPA players sideload.
+          - target: ios
+            runner: xcode-27
           # Android stays on the runner (its SDK is there); ninja comes from PyPI.
           - target: android
             runner: ubuntu-24.04
@@ -145,8 +148,14 @@ jobs:
           key: android-ndk-29.0.14206865
 
       - name: Install the macOS build tools
-        if: matrix.target == 'macos'
+        if: matrix.target == 'macos' || matrix.target == 'ios'
         run: brew install ninja pkgconf
+
+      - name: Install the .NET iOS workload
+        if: matrix.target == 'ios'
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          dotnet workload install ios
 
       - name: Install the Android NDK and workload
         if: matrix.target == 'android'
@@ -184,6 +193,7 @@ jobs:
             out/package/Waddamburo.exe
             out/package/Waddamburo-arm64.exe
             out/package/Waddamburo-macos-arm64.zip
+            out/package/Waddamburo.ipa
             out/package/Waddamburo-*.AppImage
             out/package/Waddamburo.apk
             out/package/Waddamburo.nro
@@ -211,7 +221,7 @@ jobs:
           # Players see the builds; everything else (licenses, FFmpeg sources and relink inputs, native libraries)
           # is one archive, named to sort after them (GitHub lists assets by name).
           zip -0 Waddamburo.sources-and-licenses.zip licenses*.zip native-*.zip ffmpeg-*.zip
-          assets=(Waddamburo.exe Waddamburo-arm64.exe Waddamburo-macos-arm64.zip Waddamburo-x86_64.AppImage Waddamburo-aarch64.AppImage Waddamburo.apk Waddamburo.nro Waddamburo.sources-and-licenses.zip)
+          assets=(Waddamburo.exe Waddamburo-arm64.exe Waddamburo-macos-arm64.zip Waddamburo.ipa Waddamburo-x86_64.AppImage Waddamburo-aarch64.AppImage Waddamburo.apk Waddamburo.nro Waddamburo.sources-and-licenses.zip)
           if draft=$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft); then
             if [ "$draft" != true ]; then
               echo "Release $GITHUB_REF_NAME has already been published."
@@ -242,12 +252,13 @@ jobs:
           mv Waddamburo.exe Waddamburo-nightly.exe
           mv Waddamburo-arm64.exe Waddamburo-nightly-arm64.exe
           mv Waddamburo-macos-arm64.zip Waddamburo-nightly-macos-arm64.zip
+          mv Waddamburo.ipa Waddamburo-nightly.ipa
           mv Waddamburo-x86_64.AppImage Waddamburo-nightly-x86_64.AppImage
           mv Waddamburo-aarch64.AppImage Waddamburo-nightly-aarch64.AppImage
           mv Waddamburo.apk Waddamburo-nightly.apk
           mv Waddamburo.nro Waddamburo-nightly.nro
           zip -0 Waddamburo.sources-and-licenses.zip licenses*.zip native-*.zip ffmpeg-*.zip
           gh release create "${GITHUB_SHA::7}" --repo "$GITHUB_REPOSITORY" --prerelease --target "$GITHUB_SHA" --generate-notes \
-            --title "Waddamburo nightly ${GITHUB_SHA::7}" Waddamburo-nightly.exe Waddamburo-nightly-arm64.exe Waddamburo-nightly-macos-arm64.zip Waddamburo-nightly-x86_64.AppImage Waddamburo-nightly-aarch64.AppImage Waddamburo-nightly.apk Waddamburo-nightly.nro \
+            --title "Waddamburo nightly ${GITHUB_SHA::7}" Waddamburo-nightly.exe Waddamburo-nightly-arm64.exe Waddamburo-nightly-macos-arm64.zip Waddamburo-nightly.ipa Waddamburo-nightly-x86_64.AppImage Waddamburo-nightly-aarch64.AppImage Waddamburo-nightly.apk Waddamburo-nightly.nro \
             --notes "Waddamburo uses FFmpeg under the LGPL 2.1 or later. Waddamburo.sources-and-licenses.zip holds the licenses, ffmpeg-source.zip and the ffmpeg-relink archive for each platform. [Relinking instructions](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_SHA/docs/development/ffmpeg.md#relinking-a-release) The Switch build (Waddamburo.nro) is GPL-2.0-or-later as a whole (its FFmpeg has hardware decoding, nvtegra): ffmpeg-source-switch.zip (in the same archive) and this tag's source." \
             Waddamburo.sources-and-licenses.zip

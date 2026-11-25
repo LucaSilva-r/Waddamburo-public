@@ -293,6 +293,9 @@ namespace Waddamburo.Platform.Sdl.Rendering
                 init->swapChain.nwh = (void*)SDL_GetPointerProperty(properties, SDL_PROP_WINDOW_ANDROID_WINDOW_POINTER, IntPtr.Zero);
             else if (OperatingSystem.IsMacOS())
                 init->swapChain.nwh = (void*)SDL_GetPointerProperty(properties, SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, IntPtr.Zero);
+            else if (OperatingSystem.IsIOS())
+                // bgfx's Metal renderer draws into a CAMetalLayer: SDL makes a Metal view on the window (kept for its life).
+                init->swapChain.nwh = (void*)SDL_Metal_GetLayer(SDL_Metal_CreateView(window));
             else if (SDL_GetCurrentVideoDriver() == "wayland")
             {
                 init->swapChain.ndt = (void*)SDL_GetPointerProperty(properties, SDL_PROP_WINDOW_WAYLAND_DISPLAY_POINTER, IntPtr.Zero);

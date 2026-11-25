@@ -148,6 +148,17 @@
       }
     },
     {
+      "name": "ios-package",
+      "displayName": "iOS arm64 device release libraries (on a Mac with Xcode)",
+      "inherits": "macos-package",
+      "binaryDir": "${sourceDir}/../out/build/native/ios-arm64/ios-package",
+      "toolchainFile": "${sourceDir}/cmake/ios.cmake",
+      "cacheVariables": {
+        "CMAKE_OSX_ARCHITECTURES": "arm64",
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "15.0"
+      }
+    },
+    {
       "name": "windows-arm64-package",
       "displayName": "Windows arm64 self-contained release libraries (llvm-mingw cross build on Linux)",
       "inherits": "windows-package",
@@ -234,6 +245,7 @@
     { "name": "linux-arm64-package", "configurePreset": "linux-arm64-package" },
     { "name": "windows-package", "configurePreset": "windows-package" },
     { "name": "macos-package", "configurePreset": "macos-package" },
+    { "name": "ios-package", "configurePreset": "ios-package" },
     { "name": "windows-arm64-package", "configurePreset": "windows-arm64-package" },
     { "name": "android-package", "configurePreset": "android-package" },
     { "name": "android-x64-package", "configurePreset": "android-x64-package" },

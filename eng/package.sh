@@ -16,7 +16,7 @@
 # Needs: .NET 10 SDK, CMake, Ninja, make, gcc, mingw-w64 gcc (x86_64-w64-mingw32-gcc).
 # On Windows it runs in an MSYS2 MINGW64 shell and builds the Windows release only (BUILDING.md).
 #
-# usage: eng/package.sh [linux|windows|windows-arm64|macos|android|switch]   (default: linux and windows; windows on Windows)
+# usage: eng/package.sh [linux|windows|windows-arm64|macos|ios|android|switch]   (default: linux and windows; windows on Windows)
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -246,6 +246,20 @@ PLIST
         rm -f "$out/Waddamburo-macos-arm64.zip"
         ditto -c -k --keepParent "$app" "$out/Waddamburo-macos-arm64.zip"
         echo "$out/Waddamburo-macos-arm64.zip"
+        ;;
+    ios)
+        # On a Mac with Xcode and the .NET ios workload: an unsigned Waddamburo.ipa (NativeAOT). Players sideload it
+        # (SideStore, AltStore, TrollStore), which signs it with their own Apple ID.
+        native ios-package "$root/out/build/native/ios-arm64/ios-package/stage/Release/lib" ios-arm64
+        dotnet publish src/Waddamburo.iOS -c Release -p:Version="$version" -p:EnableCodeSigning=false \
+            -p:WaddamburoIosNativeDir="$root/out/build/native/ios-arm64/ios-package/stage/Release/lib"
+        payload=$out/ios-payload
+        rm -rf "$payload" && mkdir -p "$payload/Payload"
+        cp -R src/Waddamburo.iOS/bin/Release/net10.0-ios/ios-arm64/Waddamburo.iOS.app "$payload/Payload/"
+        licenses out/build/native/ios-arm64/ios-package "$payload/Payload/Waddamburo.iOS.app/licenses"
+        rm -f "$out/Waddamburo.ipa"
+        (cd "$payload" && zip -qry "$out/Waddamburo.ipa" Payload)
+        echo "$out/Waddamburo.ipa"
         ;;
     android)
         # Needs an Android SDK (ANDROID_HOME, default ~/Android/Sdk) with an NDK, JDK 17 or 21 (JAVA_HOME) and the

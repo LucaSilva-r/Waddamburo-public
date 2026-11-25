@@ -33,7 +33,8 @@ internal sealed class PresenceReporter(GameShell shell, GameplayFlow gameplay) :
 
     private void reportPresence()
     {
-        if (!shell.Arcade.Home || shell.Headless)
+        // Phones run no Discord desktop client to talk to (and iOS has no Unix domain sockets).
+        if (!shell.Arcade.Home || shell.Headless || Waddamburo.Platform.Sdl.PlatformInfo.IsMobile)
             return;
         _discord ??= new DiscordPresence();
         var partner = shell.Room.Session?.Partner?.DisplayName;

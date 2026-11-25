@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDisplayName</key><string>Waddamburo</string>
+    <key>UIDeviceFamily</key><array><integer>1</integer><integer>2</integer></array>
+    <key>UISupportedInterfaceOrientations</key>
+    <array><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
+    <key>UISupportedInterfaceOrientations~ipad</key>
+    <array><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
+    <key>UIRequiresFullScreen</key><true/>
+    <key>UIStatusBarHidden</key><true/>
+    <key>UILaunchScreen</key><dict/>
+    <!-- iOS 27 requires the scene lifecycle: SDL's own scene delegate runs the window. -->
+    <key>UIApplicationSceneManifest</key>
+    <dict>
+        <key>UIApplicationSupportsMultipleScenes</key><false/>
+        <key>UISceneConfigurations</key>
+        <dict>
+            <key>UIWindowSceneSessionRoleApplication</key>
+            <array>
+                <dict>
+                    <key>UISceneConfigurationName</key><string>Default Configuration</string>
+                    <key>UISceneDelegateClassName</key><string>SDLUIKitSceneDelegate</string>
+                </dict>
+            </array>
+        </dict>
+    </dict>
+    <!-- The game's folders in the Files app (On My iPhone › Waddamburo) and over USB from a Mac or PC. -->
+    <key>UIFileSharingEnabled</key><true/>
+    <key>LSSupportsOpeningDocumentsInPlace</key><true/>
+    <!-- Pairing with a PC (Green setup, song sync) is on the local network. -->
+    <key>NSLocalNetworkUsageDescription</key><string>Waddamburo pairs with your PC on the local network to receive the game files and your songs.</string>
+</dict>
+</plist>
