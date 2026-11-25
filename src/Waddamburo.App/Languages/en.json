@@ -164,7 +164,7 @@
   "settings.audio_output": "Output Mode",
   "settings.audio_output.shared": "Shared",
   "settings.audio_output.exclusive": "Exclusive",
-  "settings.audio_output.hint": "Exclusive: the sound device for the game alone, for the lowest latency; other programs are silent. ASIO: an ASIO driver (Windows). Leaving the settings asks to apply it.",
+  "settings.audio_output.hint": "Exclusive: the sound device for the game alone, for the lowest latency; other programs are silent (Linux: direct ALSA, a card PipeWire holds is busy). ASIO: an ASIO driver (Windows). Leaving the settings asks to apply it.",
   "settings.audio_device": "Output Device",
   "settings.audio_device.default": "System default",
   "settings.audio_device.hint": "The device the game plays on. Leaving the settings asks to apply it.",

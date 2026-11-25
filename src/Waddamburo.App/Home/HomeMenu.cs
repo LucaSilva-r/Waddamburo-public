@@ -97,9 +97,16 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     /// <summary>The playback devices' names (read again as the settings open).</summary>
     public static IReadOnlyList<string> AudioDevices { get; set; } = [];
 
-    // The Audio Device row's choices after the default: the devices, and the saved one when it is not plugged in.
-    private static string[] audioDevices(ArcadeSettings s) =>
-        s.AudioDevice is { } saved && !AudioDevices.Contains(saved) ? [.. AudioDevices, saved] : [.. AudioDevices];
+    /// <summary>Linux: the ALSA playback PCMs exclusive output lists (read again as the settings open).</summary>
+    public static IReadOnlyList<string> AlsaDevices { get; set; } = [];
+
+    // The Audio Device row's choices after the default: the devices (ALSA's for exclusive output on Linux), and the saved
+    // one when it is not plugged in.
+    private static string[] audioDevices(ArcadeSettings s)
+    {
+        var devices = OperatingSystem.IsLinux() && s.AudioOutput == AudioOutputMode.Exclusive ? AlsaDevices : AudioDevices;
+        return s.AudioDevice is { } saved && !devices.Contains(saved) ? [.. devices, saved] : [.. devices];
+    }
 
     /// <summary>The saved layouts' names (the Layouts page lists them).</summary>
     public static Func<IReadOnlyList<string>> LayoutNames { get; set; } = static () => [];
@@ -224,18 +231,20 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         new(Setting: toggle("settings.drum_sound_in_songs", static s => s.DrumSoundInSongs, static (s, v) => s with { DrumSoundInSongs = v })),
         // The output: applied at start (leaving the settings asks for the restart).
         new(T("section.audio_advanced")),
-        // Exclusive and ASIO output exist on Windows only.
+        // Exclusive output: WASAPI on Windows, direct ALSA on Linux; ASIO on Windows only.
         new(Setting: new(T("settings.audio_output"), static s => (int)s.AudioOutput, static (s, v) => s with { AudioOutput = (AudioOutputMode)v },
             static (value, step) => value + Math.Sign(step), 0,
             static value => T(value switch { 1 => "settings.audio_output.exclusive", 2 => "settings.audio_output.asio", _ => "settings.audio_output.shared" }),
-            2, Hint: T("settings.audio_output.hint")), Shown: static _ => OperatingSystem.IsWindows()),
+            OperatingSystem.IsWindows() ? 2 : 1, Hint: T("settings.audio_output.hint")),
+            Shown: static _ => OperatingSystem.IsWindows() || OperatingSystem.IsLinux()),
         // 0 = the system's default, then each device (a saved one that is unplugged listed last).
         new(Setting: new(T("settings.audio_device"), static s => s.AudioDevice is { } name ? Array.IndexOf(audioDevices(s), name) + 1 : 0,
             static (s, v) => audioDevices(s) is var devices && v == 0 || devices.Length == 0 ? s with { AudioDevice = null }
                 : s with { AudioDevice = devices[Math.Min(v, devices.Length) - 1] },
             static (value, step) => value + Math.Sign(step), 0, static _ => "", int.MaxValue, Hint: T("settings.audio_device.hint"))
         {
-            FormatFor = static s => s.AudioDevice ?? T("settings.audio_device.default"),
+            FormatFor = static s => s.AudioDevice is not { } device ? T("settings.audio_device.default")
+                : OperatingSystem.IsLinux() && s.AudioOutput == AudioOutputMode.Exclusive ? AlsaOutput.Label(device) : device,
         }, Shown: static s => !PlatformInfo.IsMobile && s.AudioOutput != AudioOutputMode.Asio),
         // ASIO: the driver (0 = the first installed, then each; a saved one no longer installed listed last) and its buffer.
         new(Setting: new(T("settings.asio_driver"), static s => s.AsioDriver is { } name ? Array.IndexOf(asioDrivers(s), name) + 1 : 0,

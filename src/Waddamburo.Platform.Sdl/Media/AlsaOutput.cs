@@ -24,9 +24,49 @@ public sealed unsafe class AlsaOutput : IPullAudioOutput
     private volatile bool _stopping;
     private long _submittedFrames, _queuedFrames;
 
+    // The last listing's labels by device name (the settings show them; the name is what is saved).
+    private static Dictionary<string, string> s_labels = [];
+
     /// <summary>
-    /// Opens the ALSA PCM <paramref name="deviceName"/> (null = "default"), with <paramref name="periodFrames"/> per period
-    /// (0 or less = 256).
+    /// The playback PCMs of every sound card, as plughw names (the card for the game alone, converted to its format),
+    /// from /proc/asound: no ALSA call, so a card PipeWire holds is listed too (opening it then fails, busy).
+    /// </summary>
+    public static string[] PlaybackDevices()
+    {
+        var invariant = System.Globalization.CultureInfo.InvariantCulture;
+        try
+        {
+            // /proc/asound/cards: " 0 [Generic        ]: HDA-Intel - HD-Audio Generic"; pcm: "03-00: name : name : playback 1".
+            var cards = File.ReadLines("/proc/asound/cards")
+                .Select(static line => System.Text.RegularExpressions.Regex.Match(line, @"^\s*(\d+) \[(\S+)\s*\]: .* - (.+)$"))
+                .Where(static match => match.Success)
+                .ToDictionary(match => int.Parse(match.Groups[1].Value, invariant),
+                    static match => (Id: match.Groups[2].Value, Name: match.Groups[3].Value.Trim()));
+            var labels = new Dictionary<string, string>();
+            foreach (var line in File.ReadLines("/proc/asound/pcm").Where(static line => line.Contains(": playback", StringComparison.Ordinal)))
+            {
+                var fields = line.Split(':');
+                var numbers = fields[0].Split('-');
+                if (numbers.Length != 2 || !cards.TryGetValue(int.Parse(numbers[0], invariant), out var card))
+                    continue;
+                var device = int.Parse(numbers[1], invariant);
+                labels[$"plughw:CARD={card.Id},DEV={device}"] = $"{card.Name}: {fields[1].Replace("(*)", "", StringComparison.Ordinal).Trim()} ({device})";
+            }
+            s_labels = labels;
+            return [.. labels.Keys];
+        }
+        catch (IOException)
+        {
+            return [];
+        }
+    }
+
+    /// <summary>The device's label from the last listing ("HD-Audio Generic: ALCS1200A Analog (0)"), else its name.</summary>
+    public static string Label(string device) => s_labels.GetValueOrDefault(device, device);
+
+    /// <summary>
+    /// Opens the ALSA PCM <paramref name="deviceName"/> (null = "default"), with <paramref name="periodFrames"/> per period:
+    /// 0 = the device minimum (ALSA rounds the request up), -1 = 256.
     /// </summary>
     public AlsaOutput(int sampleRate = SdlAudioDevice.DefaultSampleRate, int channels = SdlAudioDevice.DefaultChannels,
         int periodFrames = 0, string? deviceName = null)
@@ -40,7 +80,8 @@ public sealed unsafe class AlsaOutput : IPullAudioOutput
             fixed (byte* text = name)
                 check(snd_pcm_open(&pcm, text, Playback, 0), "open");
             _pcm = pcm;
-            var period = periodFrames > 0 ? periodFrames : 256;
+            // ponytail: unlike WASAPI, no fallback when the minimum can't keep up; the player raises the period.
+            var period = periodFrames switch { 0 => 16, < 0 => 256, _ => periodFrames };
             check(snd_pcm_set_params(_pcm, FormatS16, AccessInterleaved, (uint)channels, (uint)sampleRate, 1,
                 (uint)(1_000_000L * period * Periods / sampleRate)), "configure");
             nuint buffer, actualPeriod;

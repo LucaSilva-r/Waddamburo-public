@@ -53,6 +53,8 @@ internal sealed class HomeControls : IDisposable
         }, save, don => shell.Sounds?.Bank.Play("SE_COM", don ? 0 : 3, AudioBus.DrumHit, trace: false));
         HomeMenu.DisplayModes = shell.Headless ? [] : shell.Application.FullscreenModes();
         HomeMenu.AudioDevices = shell.Headless ? [] : SdlAudioDevice.PlaybackDeviceNames();
+        if (OperatingSystem.IsLinux())
+            HomeMenu.AlsaDevices = AlsaOutput.PlaybackDevices();
         HomeMenu.AsioDrivers = OperatingSystem.IsWindows() ? AsioOutput.DriverNames() : [];
         HomeMenu.RunningAudio = () => shell.AudioOutput.Running.AudioOutputSettings;
         HomeMenu.LayoutNames = () => PlayerLayouts.Names(gameplay.LayoutFolder);

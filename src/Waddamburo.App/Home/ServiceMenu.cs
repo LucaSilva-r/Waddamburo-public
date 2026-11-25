@@ -97,6 +97,8 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
         _canCalibrate = canCalibrate;
         // Read again each time: a device plugged in since shows (the output switches without a restart).
         HomeMenu.AudioDevices = Waddamburo.Platform.Sdl.Media.SdlAudioDevice.PlaybackDeviceNames();
+        if (OperatingSystem.IsLinux())
+            HomeMenu.AlsaDevices = Waddamburo.Platform.Sdl.Media.AlsaOutput.PlaybackDevices();
         HomeMenu.AsioDrivers = OperatingSystem.IsWindows() ? Waddamburo.Platform.Sdl.Media.AsioOutput.DriverNames() : [];
         (_settings, _credits, _drum, _exit, _apply, _rehash, _defaultTja) = (settings, credits, drum, exit, apply, rehash, defaultTja);
         (_home, _command) = (settings.Home, command);

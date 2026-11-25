@@ -164,7 +164,7 @@
   "settings.audio_output": "出力方式",
   "settings.audio_output.shared": "共有",
   "settings.audio_output.exclusive": "排他",
-  "settings.audio_output.hint": "排他: サウンドデバイスをゲーム専用にして遅延を最小にします。他のアプリの音は出ません。ASIO: ASIOドライバを使います。設定を閉じると反映するか確認します。",
+  "settings.audio_output.hint": "排他: サウンドデバイスをゲーム専用にして遅延を最小にします。他のアプリの音は出ません（Linux: ALSA直接出力。PipeWireが使用中のデバイスは開けません）。ASIO: ASIOドライバを使います。設定を閉じると反映するか確認します。",
   "settings.audio_device": "出力デバイス",
   "settings.audio_device.default": "システムの既定",
   "settings.audio_device.hint": "ゲームの音を出すデバイス。設定を閉じると反映するか確認します。",
