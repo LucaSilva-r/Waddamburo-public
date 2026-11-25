@@ -101,6 +101,9 @@ internal sealed class BackgroundVideo : IDisposable
 
     public RenderTextureId Texture { get; }
 
+    /// <summary>The file's length (null: not known).</summary>
+    public TimeSpan? Duration => _decoder.Duration;
+
     public float Width => _decoder.Width;
 
     public float Height => _decoder.Height;

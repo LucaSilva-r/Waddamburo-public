@@ -374,7 +374,10 @@ internal sealed class TaikoGameplayPresentation(Action<int?, TaikoInputAction>? 
         return new LumenRenderQuad(0,
             new LumenRenderVertex(left, top, u, v), new LumenRenderVertex(right, top, 1 - u, v),
             new LumenRenderVertex(right, bottom, 1 - u, 1 - v), new LumenRenderVertex(left, bottom, u, 1 - v),
-            black ? LumenRenderColor.Transparent : new LumenRenderColor(shade, shade, shade, 1),
+            // Faded: an opaque or added video to black, a keyed one (seen through by its alpha) to nothing.
+            black ? LumenRenderColor.Transparent : video.HidesDancers && !video.Additive
+                ? new LumenRenderColor(shade, shade, shade, video.Fade)
+                : new LumenRenderColor(shade * video.Fade, shade * video.Fade, shade * video.Fade, 1),
             black ? new LumenRenderColor(0, 0, 0, 1) : LumenRenderColor.Transparent,
             video.Additive && !black ? LumenRenderBlend.Add : LumenRenderBlend.Normal,
             NativeSurface: Waddamburo.App.Presentation.BackgroundVideo.Surface, LumaKey: black ? 0 : video.LumaKey);
@@ -1069,5 +1072,5 @@ internal sealed record TimingMark(bool Early, bool Great, float X, float Y, floa
 /// <summary>A frame's background video: its width over height, where it goes, and how much it is darkened (0-1).</summary>
 internal readonly record struct GameplayVideoLayer(float Aspect, bool UnderLane, float Dim, bool Additive = false,
     (float X, float Y, float Width, float Height)? Area = null, bool HidesDancers = false, float LumaKey = 0,
-    bool Shown = true); // Shown false: no frame yet, its quad is drawn black
+    bool Shown = true, float Fade = 1); // Shown false: no frame yet, its quad is drawn black; Fade: its fade in/out (0-1)
 
