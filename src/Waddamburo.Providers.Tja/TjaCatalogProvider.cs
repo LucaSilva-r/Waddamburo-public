@@ -38,7 +38,8 @@ public sealed partial class TjaCatalogProvider : ISongCatalogProvider, ICatalogA
         IProgress<CatalogScanProgress>? progress,
         CancellationToken cancellationToken)
     {
-        using var cached = MetadataCache?.Open(_root, "tja-v1", cancellationToken: cancellationToken);
+        // v2: LEVEL 9.6 / 9+ read as whole stars (v1 cached them as none).
+        using var cached = MetadataCache?.Open(_root, "tja-v2", cancellationToken: cancellationToken);
         return await inspectPaths(enumerateCharts(cancellationToken, cached?.Paths), progress, cancellationToken, cached).ConfigureAwait(false);
     }
 

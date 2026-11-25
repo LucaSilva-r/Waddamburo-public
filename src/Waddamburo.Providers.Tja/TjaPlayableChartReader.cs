@@ -108,8 +108,7 @@ internal static partial class TjaPlayableChartReader
                 var headerSeparator = line.IndexOf(':');
                 var header = headerSeparator < 0 ? string.Empty : line[..headerSeparator].Trim().ToUpperInvariant();
                 if (header == "LEVEL")
-                    level = int.TryParse(line[(headerSeparator + 1)..].Trim(), NumberStyles.Integer,
-                        CultureInfo.InvariantCulture, out var stars) && stars > 0 ? stars : null;
+                    level = TjaMetadataReader.LeadingLevel(line[(headerSeparator + 1)..].Trim()) is { } stars && stars > 0 ? stars : null;
                 if (header is "SCOREINIT" or "SCOREDIFF")
                 {
                     // SCOREINIT may carry a second Shin-uchi term; Gen 3 uses the first.

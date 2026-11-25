@@ -34,6 +34,20 @@ public sealed class TjaCatalogProviderTests
     }
 
     [Fact]
+    public async Task DecimalAndPlusLevelsKeepTheirWholeStars()
+    {
+        using var library = new TemporaryLibrary();
+        library.WriteText("A/song.tja", "TITLE:A\nBPM:120\nCOURSE:Hard\nLEVEL:9+\n#START\n1000,\n#END\n"
+            + "COURSE:Oni\nLEVEL:10.7\n#START\n1000,\n#END\nCOURSE:Edit\nLEVEL:12.888\n#START\n1000,\n#END\n");
+        var provider = new TjaCatalogProvider(library.Path);
+        var song = Assert.Single((await provider.ScanAsync(null, CancellationToken.None)).Songs);
+        Assert.Equal([(TaikoCourse.Hard, 9), (TaikoCourse.Oni, 10), (TaikoCourse.Ura, 10)],
+            song.Charts.OrderBy(static chart => chart.Course).Select(static chart => (chart.Course!.Value, chart.Level ?? 0)));
+        var ura = song.Charts.Single(static chart => chart.Course == TaikoCourse.Ura);
+        Assert.Equal(12, (await provider.LoadChartAsync(ura.Key, ura.ChartAsset)).Level);
+    }
+
+    [Fact]
     public async Task LyricsComeFromLyricCommandsOrTheLrcFileInChartTime()
     {
         using var library = new TemporaryLibrary();

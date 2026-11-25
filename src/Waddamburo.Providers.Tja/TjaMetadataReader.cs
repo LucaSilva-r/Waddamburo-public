@@ -134,9 +134,15 @@ internal static class TjaMetadataReader
     }
 
     private static int? tryParseLevel(string? value) =>
-        int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var level)
-            ? Math.Clamp(level, 1, 10)
-            : null;
+        LeadingLevel(value) is { } level ? Math.Clamp(level, 1, 10) : null;
+
+    /// <summary>A LEVEL's whole stars: "9", and the community's "9.6", "10.7", "9+" (the part after is dropped).</summary>
+    internal static int? LeadingLevel(string? value)
+    {
+        var digits = value is null ? 0 : value.TakeWhile(char.IsAsciiDigit).Count();
+        return digits > 0 && int.TryParse(value.AsSpan(0, Math.Min(digits, 9)), NumberStyles.None, CultureInfo.InvariantCulture, out var level)
+            ? level : null;
+    }
 
     private static string courseName(TaikoCourse course, string player) =>
         string.IsNullOrWhiteSpace(player) ? course.ToString() : $"{course} ({player})";
