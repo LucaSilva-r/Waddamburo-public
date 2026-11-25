@@ -70,8 +70,8 @@ internal sealed class DanCourses
                 Challenge = course.Rank == DanRanks.Challenge ? ++challenges : null,
             });
             courses.Add(status);
-            if (course.Rank == DanRanks.Challenge && series.StartsWith(CustomDans.Prefix, StringComparison.Ordinal))
-                Presentation.DanChallengeArt.CustomNames[(series, challenges)] = course.Name;
+            if (course.Rank == DanRanks.Challenge)
+                Presentation.DanChallengeArt.Names[(series, challenges)] = course.Name;
         }
         return (boards, courses);
     }

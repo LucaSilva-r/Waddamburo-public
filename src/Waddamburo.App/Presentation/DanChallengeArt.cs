@@ -9,11 +9,11 @@ namespace Waddamburo.App.Presentation;
 /// lists (Green 28, Blue 14, Red 13), so the n-th challenge course has the n-th texture.
 /// </summary>
 /// <remarks>The player's own series (CustomDans, "custom:" ids) have no art: their course name is drawn instead, at the size
-/// of Green's plate of that kind.</remarks>
+/// of Green's plate of that kind. So is a stock course whose plate this Green lacks (an install without that update).</remarks>
 internal sealed class DanChallengeArt(NutData nutData, Waddamburo.Platform.Sdl.SdlApplication application, string fontPath)
 {
-    /// <summary>Custom series' challenge names, by (series, challenge number): set as their boards are listed.</summary>
-    public static System.Collections.Concurrent.ConcurrentDictionary<(string Series, int Challenge), string> CustomNames { get; } = new();
+    /// <summary>Challenge names, by (series, challenge number): set as their boards are listed.</summary>
+    public static System.Collections.Concurrent.ConcurrentDictionary<(string Series, int Challenge), string> Names { get; } = new();
 
     private readonly Dictionary<string, RenderTextureId> _drawn = [];
 
@@ -37,10 +37,8 @@ internal sealed class DanChallengeArt(NutData nutData, Waddamburo.Platform.Sdl.S
         if (parts.Length < 4 || !int.TryParse(parts[^2], out var challenge) || challenge <= 0)
             return null;
         var series = string.Join(':', parts[1..^2]);
-        if (series.StartsWith("custom:", StringComparison.Ordinal))
-            return drawn(key.Value, CustomNames.GetValueOrDefault((series, challenge), ""), parts[^1]);
         if (!Series.TryGetValue(series, out var source))
-            return null;
+            return drawn(key.Value, Names.GetValueOrDefault((series, challenge), ""), parts[^1]);
         // The n-th challenge is the n-th texture of the folders' NUTs, one after another.
         var index = challenge - 1;
         foreach (var folder in source.Folders)
@@ -51,7 +49,8 @@ internal sealed class DanChallengeArt(NutData nutData, Waddamburo.Platform.Sdl.S
                 return nutData.Texture(path, index);
             index -= count;
         }
-        return null;
+        // ponytail: a missing folder before the last shifts the later plates; needs each folder's count without its file.
+        return drawn(key.Value, Names.GetValueOrDefault((series, challenge), ""), parts[^1]);
     }
 
     // Where each kind's plate has its name (fractions of the plate: left, top, right, bottom), inside its paper.
