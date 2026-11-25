@@ -34,7 +34,8 @@ public enum AudioOutputMode
 {
     /// <summary>SDL's output, shared with other programs (audio_buffer_frames applies).</summary>
     Shared,
-    /// <summary>Windows: WASAPI exclusive, the device for the game alone (audio_exclusive_period applies).</summary>
+    /// <summary>The device for the game alone (audio_exclusive_period applies): WASAPI exclusive on Windows, a direct ALSA
+    /// PCM on Linux (audio_device = its ALSA name, such as plughw:CARD=X,DEV=1).</summary>
     Exclusive,
     /// <summary>Windows: an ASIO driver (asio_driver, asio_buffer_frames).</summary>
     Asio,
@@ -123,8 +124,9 @@ public sealed partial record ArcadeSettings
 
         """,
         """
-        # audio_output: shared, exclusive (Windows): take the sound device for the game alone (WASAPI
-        # exclusive mode) for the lowest delay; other programs are silent while the game runs; or asio
+        # audio_output: shared, exclusive: take the sound device for the game alone (WASAPI exclusive mode on
+        # Windows, a direct ALSA PCM on Linux: audio_device = its ALSA name, for cabinets without PipeWire) for
+        # the lowest delay; other programs are silent while the game runs; or asio
         # (Windows): an ASIO driver. Recalibrate the offsets after changing it. Falls back to shared
         # output when the device or driver refuses.
         audio_output = shared

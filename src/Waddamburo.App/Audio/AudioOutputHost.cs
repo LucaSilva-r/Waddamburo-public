@@ -147,6 +147,25 @@ internal sealed class AudioOutputHost(GameShell shell) : IDisposable
                 return false;
             }
         }
+        if (settings.AudioOutput == AudioOutputMode.Exclusive && OperatingSystem.IsLinux())
+        {
+            try
+            {
+                var alsa = new AlsaOutput(periodFrames: settings.AudioExclusivePeriod, deviceName: settings.AudioDevice);
+                var (setting, device, frames, rate) = (settings.AudioExclusivePeriod, settings.AudioDevice, alsa.HardwareBufferFrames, alsa.Format.SampleRate);
+                Home.HomeMenu.OutputInUse = () => (AudioOutputMode.Exclusive, setting, device, frames, rate);
+                Console.WriteLine($"Audio: {alsa.Driver}, {alsa.HardwareBufferFrames} frames per period "
+                    + $"({1000.0 * alsa.HardwareBufferFrames / alsa.Format.SampleRate:0.##} ms) at {alsa.Format.SampleRate} Hz.");
+                output = alsa;
+                return true;
+            }
+            catch (InvalidOperationException exception)
+            {
+                Console.Error.WriteLine($"Audio: ALSA output unavailable. {exception.Message}");
+                (output, problem) = (null!, exception.Message);
+                return false;
+            }
+        }
         output = new SdlAudioDevice(requestedBufferFrames: settings.AudioBufferFrames, deviceName: settings.AudioDevice);
         return true;
     }
