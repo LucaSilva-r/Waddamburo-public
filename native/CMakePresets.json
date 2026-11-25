@@ -130,6 +130,13 @@
       }
     },
     {
+      "name": "windows-arm64-package",
+      "displayName": "Windows arm64 self-contained release libraries (llvm-mingw cross build on Linux)",
+      "inherits": "windows-package",
+      "binaryDir": "${sourceDir}/../out/build/native/win-arm64/windows-package",
+      "toolchainFile": "${sourceDir}/cmake/mingw-w64-arm64.cmake"
+    },
+    {
       "name": "android-package",
       "displayName": "Android arm64 release libraries (NDK cross build on Linux)",
       "inherits": "base",
@@ -208,6 +215,7 @@
     { "name": "linux-package", "configurePreset": "linux-package" },
     { "name": "linux-arm64-package", "configurePreset": "linux-arm64-package" },
     { "name": "windows-package", "configurePreset": "windows-package" },
+    { "name": "windows-arm64-package", "configurePreset": "windows-arm64-package" },
     { "name": "android-package", "configurePreset": "android-package" },
     { "name": "android-x64-package", "configurePreset": "android-x64-package" },
     { "name": "windows-debug", "configurePreset": "windows-debug" },

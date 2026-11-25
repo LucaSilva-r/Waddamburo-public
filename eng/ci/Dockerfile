@@ -3,6 +3,7 @@
 #   linux    Ubuntu 22.04 (its glibc is the oldest the AppImage runs on), the bgfx X11/GL/Wayland headers;
 #            built twice, as :linux (x86_64) and :linux-arm64 (on the arm64 runner)
 #   windows  Ubuntu 24.04 with the mingw-w64 cross compiler (posix threads)
+#   windows-arm64  Ubuntu 24.04 with llvm-mingw (Windows on Arm)
 # .NET comes from actions/setup-dotnet in the job (Microsoft's CDN), as before. zstd: actions/cache compresses with it.
 # Local check: docker build -f eng/ci/Dockerfile --target windows -t waddamburo-build:windows eng/ci
 
@@ -31,3 +32,19 @@ RUN apt-get -o Acquire::Retries=5 update \
         ca-certificates curl git zip unzip xz-utils zstd file pkg-config python3 patch make gcc g++ ninja-build nasm cmake \
         libicu74 libssl3t64 zlib1g gcc-mingw-w64-x86-64-posix g++-mingw-w64-x86-64-posix \
     && rm -rf /var/lib/apt/lists/*
+
+# windows-arm64: llvm-mingw (clang, lld, UCRT); gcc's mingw has no aarch64 target.
+FROM ubuntu:24.04 AS windows-arm64
+ARG LLVM_MINGW_VERSION=20261117
+ARG LLVM_MINGW_SHA256=e7a15a49a2ea95e9f3d8a9d0cfabe5052a4b10fb4777cc54de5a8c27b64bb701
+RUN apt-get -o Acquire::Retries=5 update \
+    && DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=5 install -y --no-install-recommends \
+        ca-certificates curl git zip unzip xz-utils zstd file pkg-config python3 patch make gcc g++ ninja-build cmake \
+        libicu74 libssl3t64 zlib1g \
+    && rm -rf /var/lib/apt/lists/*
+RUN curl -fsSL -o /tmp/llvm-mingw.tar.xz \
+        "https://github.com/mstorsjo/llvm-mingw/releases/download/${LLVM_MINGW_VERSION}/llvm-mingw-${LLVM_MINGW_VERSION}-ucrt-ubuntu-22.04-x86_64.tar.xz" \
+    && echo "${LLVM_MINGW_SHA256}  /tmp/llvm-mingw.tar.xz" | sha256sum --check \
+    && tar -xJf /tmp/llvm-mingw.tar.xz -C /opt && rm /tmp/llvm-mingw.tar.xz \
+    && mv /opt/llvm-mingw-${LLVM_MINGW_VERSION}-ucrt-ubuntu-22.04-x86_64 /opt/llvm-mingw
+ENV PATH=/opt/llvm-mingw/bin:$PATH

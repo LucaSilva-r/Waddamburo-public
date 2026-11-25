@@ -106,6 +106,11 @@ endif()
 if(DEFINED WADDAMBURO_CROSS_PREFIX)
   list(APPEND _opus_cmake_options -DWADDAMBURO_CROSS_PREFIX=${WADDAMBURO_CROSS_PREFIX})
 endif()
+if(WIN32 AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
+  # ponytail: Opus detects ARM CPUs on Windows only under MSVC (__try), and its NEON code needs that detection, so
+  # llvm-mingw builds it in plain C; it only encodes the decoded-audio cache, in the background.
+  list(APPEND _opus_cmake_options -DOPUS_DISABLE_INTRINSICS=ON)
+endif()
 ExternalProject_Add(waddamburo_opus
   URL "https://downloads.xiph.org/releases/opus/opus-${WADDAMBURO_OPUS_VERSION}.tar.gz"
   URL_HASH "SHA256=${WADDAMBURO_OPUS_SHA256}"

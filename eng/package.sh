@@ -16,7 +16,7 @@
 # Needs: .NET 10 SDK, CMake, Ninja, make, gcc, mingw-w64 gcc (x86_64-w64-mingw32-gcc).
 # On Windows it runs in an MSYS2 MINGW64 shell and builds the Windows release only (BUILDING.md).
 #
-# usage: eng/package.sh [linux|windows|android|switch]   (default: linux and windows; windows on Windows)
+# usage: eng/package.sh [linux|windows|windows-arm64|android|switch]   (default: linux and windows; windows on Windows)
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -133,19 +133,25 @@ publish() { # rid native-dir out-dir extra-args...
 mkdir -p "$out" out/downloads
 for target in $targets; do
     case $target in
-    windows)
-        native windows-package "$root/out/build/native/win-x64/windows-package/stage/Release/bin" win-x64
+    windows | windows-arm64)
+        # windows-arm64: llvm-mingw (aarch64-w64-mingw32-clang on PATH), Waddamburo-arm64.exe.
+        if [[ $target == windows-arm64 ]]; then
+            rid=win-arm64 preset=windows-arm64-package exe=Waddamburo-arm64.exe
+        else
+            rid=win-x64 preset=windows-package exe=Waddamburo.exe
+        fi
+        native $preset "$root/out/build/native/$rid/windows-package/stage/Release/bin" $rid
         # ImGui.NET supplies cimgui.dll as a NuGet runtime asset. VerifyImGuiBundle in
         # the App project checks it enters the same self-extracting bundle as SDL/bgfx.
-        publish win-x64 "$root/out/build/native/win-x64/windows-package/stage/Release/bin" "$out/win-x64" \
+        publish $rid "$root/out/build/native/$rid/windows-package/stage/Release/bin" "$out/$rid" \
             -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true \
             -p:EnableCompressionInSingleFile=true
-        cp "$out/win-x64/Waddamburo.App.exe" "$out/Waddamburo.exe"
-        win_notices=$out/windows-notices
+        cp "$out/$rid/Waddamburo.App.exe" "$out/$exe"
+        win_notices=$out/windows-notices-$rid
         rm -rf "$win_notices"
-        runtime_licenses src/Waddamburo.App win-x64 "$win_notices/dotnet"
-        (cd "$win_notices" && cmake -E tar cf "$out/licenses-win-x64.zip" --format=zip dotnet)
-        echo "$out/Waddamburo.exe"
+        runtime_licenses src/Waddamburo.App $rid "$win_notices/dotnet"
+        (cd "$win_notices" && cmake -E tar cf "$out/licenses-$rid.zip" --format=zip dotnet)
+        echo "$out/$exe"
         ;;
     linux)
         # The host's arch: linux-arm64 builds on an arm64 machine (the release's arm64 runner), no cross toolchain.

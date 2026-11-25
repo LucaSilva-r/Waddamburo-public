@@ -152,6 +152,13 @@ The Windows libraries are built with mingw-w64, the same compiler as the release
 
 Run the `cmake --build` line again after changing native code.
 
+### Windows on Arm
+
+The arm64 libraries are cross-built on Linux with [llvm-mingw](https://github.com/mstorsjo/llvm-mingw)
+(gcc's mingw has no arm64 target). Put its `bin` folder on `PATH`, then
+`eng/package.sh windows-arm64` builds the `windows-arm64-package` preset and
+`out/package/Waddamburo-arm64.exe`.
+
 ### Android
 
 The Android app has its own toolchain (Android SDK and NDK, JDK 21, .NET's Android workload) and build steps: see

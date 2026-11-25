@@ -1,0 +1,15 @@
+# Builds the Windows arm64 release libraries with llvm-mingw (clang, lld, UCRT), cross from Linux: gcc's mingw has no
+# aarch64 target. Its bin directory must be on PATH (the CI image puts it there).
+set(CMAKE_SYSTEM_NAME Windows)
+set(CMAKE_SYSTEM_PROCESSOR aarch64)
+set(WADDAMBURO_CROSS_PREFIX aarch64-w64-mingw32-)
+find_program(_waddamburo_llvm_mingw_cc ${WADDAMBURO_CROSS_PREFIX}clang REQUIRED)
+get_filename_component(_waddamburo_llvm_mingw "${_waddamburo_llvm_mingw_cc}" DIRECTORY)
+get_filename_component(_waddamburo_llvm_mingw "${_waddamburo_llvm_mingw}" DIRECTORY)
+set(CMAKE_C_COMPILER ${WADDAMBURO_CROSS_PREFIX}clang)
+set(CMAKE_CXX_COMPILER ${WADDAMBURO_CROSS_PREFIX}clang++)
+set(CMAKE_RC_COMPILER ${WADDAMBURO_CROSS_PREFIX}windres)
+set(CMAKE_FIND_ROOT_PATH "${_waddamburo_llvm_mingw}/aarch64-w64-mingw32")
+set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)

@@ -28,8 +28,10 @@ internal static class SelfUpdate
 {
     private const string ApplyOption = "--apply-update=";
     private const string UpdatedOption = "--updated";
-    private static string AppImageArch => System.Runtime.InteropServices.RuntimeInformation.OSArchitecture
-        == System.Runtime.InteropServices.Architecture.Arm64 ? "aarch64" : "x86_64";
+    // The process's arch, not the OS's: an x64 build under Windows on Arm's emulation updates to the x64 build.
+    private static bool Arm64 => System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture
+        == System.Runtime.InteropServices.Architecture.Arm64;
+    private static string AppImageArch => Arm64 ? "aarch64" : "x86_64";
 
     // ponytail: test hook; point it at a local server serving a releases/latest-shaped JSON (an array for nightlies).
     private static string LatestReleaseUrl => DiagnosticSwitches.UpdateUrl
@@ -203,8 +205,8 @@ internal static class SelfUpdate
         var assetName = OperatingSystem.IsAndroid() ? nightly ? "Waddamburo-nightly.apk" : "Waddamburo.apk"
             : (OperatingSystem.IsWindows(), nightly) switch
         {
-            (true, false) => "Waddamburo.exe",
-            (true, true) => "Waddamburo-nightly.exe",
+            (true, false) => Arm64 ? "Waddamburo-arm64.exe" : "Waddamburo.exe",
+            (true, true) => Arm64 ? "Waddamburo-nightly-arm64.exe" : "Waddamburo-nightly.exe",
             (false, false) => $"Waddamburo-{AppImageArch}.AppImage",
             (false, true) => $"Waddamburo-nightly-{AppImageArch}.AppImage",
         };
