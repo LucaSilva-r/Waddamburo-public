@@ -216,6 +216,7 @@ public sealed unsafe partial class SdlApplication
                 {
                     _heldInputs.Clear();
                     _fingers.Clear();
+                    _dragFingers.Clear();
                     _pressedKeys.Clear();
                     windowFocused = false;
                     Focused = false;
@@ -330,11 +331,26 @@ public sealed unsafe partial class SdlApplication
                     && editTouchDrum((ulong)currentEvent.tfinger.fingerID, currentEvent.tfinger.x, currentEvent.tfinger.y, true, false))
                     TouchActive = true;
                 else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_FINGER_MOTION)
+                {
                     editTouchDrum((ulong)currentEvent.tfinger.fingerID, currentEvent.tfinger.x, currentEvent.tfinger.y, false, false);
+                    if (_dragFingers.TryGetValue(currentEvent.tfinger.fingerID, out var last))
+                    {
+                        var x = stagePoint(currentEvent.tfinger.x, currentEvent.tfinger.y).X;
+                        _touchDrag += x - last;
+                        _dragFingers[currentEvent.tfinger.fingerID] = x;
+                    }
+                }
                 else if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_FINGER_DOWN)
                 {
                     TouchActive = true;
                     var code = touchCode(currentEvent.tfinger.x, currentEvent.tfinger.y);
+                    // The drum's pads only (the buttons over the area still answer).
+                    if (code < TouchDrum.Back && !OverlayOpen && TouchDragArea is { } area
+                        && stagePoint(currentEvent.tfinger.x, currentEvent.tfinger.y) is var (dragX, dragY, _) && area.Contains(dragX, dragY))
+                    {
+                        _dragFingers[currentEvent.tfinger.fingerID] = dragX;
+                        continue;
+                    }
                     // The buttons always answer (a player without a controller must reach the menus); the drum may be off.
                     if (code < 0 || !OverlayOpen && code < TouchDrum.Back && !TouchDrumEnabled)
                         continue;
@@ -355,6 +371,7 @@ public sealed unsafe partial class SdlApplication
                 else if (currentEvent.type is (uint)SDL_EventType.SDL_EVENT_FINGER_UP or (uint)SDL_EventType.SDL_EVENT_FINGER_CANCELED)
                 {
                     TouchDrum.Release((ulong)currentEvent.tfinger.fingerID);
+                    _dragFingers.Remove(currentEvent.tfinger.fingerID);
                     if (_fingers.Remove(currentEvent.tfinger.fingerID, out var input))
                         inputUp(input);
                 }

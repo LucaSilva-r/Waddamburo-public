@@ -159,16 +159,64 @@ internal sealed class ReviewSession : IDisposable
                 }
             scrub = (keys.IsDown(SdlKeyboardKey.Right) ? 1 : 0) - (keys.IsDown(SdlKeyboardKey.Left) ? 1 : 0);
         }
-        Step(scrub);
+        Step(scrub, drag: keysEnabled ? TouchDrag() : null);
+    }
+
+    // Chart seconds per real second a flicked lane runs on at, easing into the play (null: no flick), and whether the
+    // play was paused when it was flicked (playing or pausing ends the flick at once).
+    private double? _flick;
+    private const double MinFlick = 1.5; // ponytail: by feel, chart seconds per real second
+    private bool _flickPaused, _held;
+
+    /// <summary>
+    /// A finger holding the lane, or a flick running on (null: neither): the chart time to move by this frame, so the
+    /// notes follow the finger at the lane's scroll speed there (dragged left: on).
+    /// </summary>
+    public TimeSpan? TouchDrag()
+    {
+        var application = _shell.Application;
+        var across = application.TakeTouchDrag();
+        var elapsed = _frame.Elapsed.TotalSeconds;
+        if (application.TouchDragging || across != 0)
+        {
+            var (time, chart) = (Clock.Position, _charts[0]);
+            var pixelsPerSecond = NoteGeometry.ScrollPixelsPerSecond(chart.BeatsPerMinuteAt(time), Math.Abs(chart.ScrollAt(time)));
+            var moved = pixelsPerSecond < 1 ? 0 : -across * 1280 / pixelsPerSecond;
+            // The finger's pace over the last ~50 ms: a flick carries on at it, a finger held still first stops.
+            var flick = _flick ?? 0;
+            if (elapsed > 0)
+                flick += (moved / elapsed - flick) * Math.Min(1, elapsed / 0.05);
+            (_flick, _flickPaused, _held) = (flick, Clock.Paused, true);
+            return TimeSpan.FromSeconds(moved);
+        }
+        if (_flick is not { } pace)
+            return null;
+        // Let go slowly or held still: no flick, the play carries on (or stands) at once.
+        var released = _held;
+        _held = false;
+        if (released && Math.Abs(pace) < MinFlick)
+        {
+            _flick = null;
+            return null;
+        }
+        // It eases into the play's own pace (standing still, paused), so the song carries on from it without a stop.
+        var play = Clock.Paused ? 0 : Clock.Speed;
+        if (Math.Abs(pace - play) < 0.05 || Clock.Paused != _flickPaused || Clock.Position == Clock.Start || Clock.Position == Clock.End)
+        {
+            _flick = null;
+            return null;
+        }
+        _flick = pace = play + (pace - play) * Math.Exp(-elapsed / 0.5); // ponytail: friction by feel (time constant 0.5 s)
+        return TimeSpan.FromSeconds(pace * elapsed);
     }
 
     /// <summary>
     /// Moves the clock on by the frame (<paramref name="scrub"/>: a held seek key's direction) and shows the
     /// lanes there: the bake, or, given <paramref name="live"/> (a training attempt), the drum judged live.
     /// </summary>
-    public void Step(int scrub, SdlKeyboardSnapshot? live = null)
+    public void Step(int scrub, SdlKeyboardSnapshot? live = null, TimeSpan? drag = null)
     {
-        Clock.Update(_frame.Elapsed, scrub);
+        Clock.Update(_frame.Elapsed, scrub, drag);
         _frame.Restart();
         var time = Clock.Position;
         if (live is { } keys)

@@ -42,14 +42,20 @@ public sealed class ReviewClock(TimeSpan start, TimeSpan end)
     /// Runs on by <paramref name="realElapsed"/> times the speed (stopping at the end), or, while a seek
     /// key is held (<paramref name="scrub"/> -1 back, +1 forward), scrubs at a pace that ramps up the longer
     /// it is held; letting go stops the scrub at once and the play carries on as it was (paused or not).
+    /// <paramref name="drag"/> (a finger holding the lane): moves by that much instead, a scrub too.
     /// </summary>
-    public void Update(TimeSpan realElapsed, int scrub = 0)
+    public void Update(TimeSpan realElapsed, int scrub = 0, TimeSpan? drag = null)
     {
         if (realElapsed <= TimeSpan.Zero)
             return;
         var before = Position;
-        Scrubbing = scrub != 0;
-        if (Scrubbing)
+        Scrubbing = scrub != 0 || drag is not null;
+        if (drag is { } moved)
+        {
+            Position = clamp(Position + moved);
+            _scrubHeld = TimeSpan.Zero;
+        }
+        else if (Scrubbing)
         {
             Position = clamp(Position + realElapsed * (Math.Sign(scrub) * ScrubPace(_scrubHeld)));
             _scrubHeld += realElapsed;

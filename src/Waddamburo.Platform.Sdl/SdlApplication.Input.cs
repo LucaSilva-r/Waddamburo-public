@@ -11,6 +11,23 @@ public sealed unsafe partial class SdlApplication
     private readonly HashSet<SdlInput> _heldInputs = [];
     // Fingers on the touch drum: the input each went down as (its slot keeps two fingers on one pad apart).
     private readonly Dictionary<SDL_FingerID, SdlInput> _fingers = [];
+    // Fingers dragging the drag area: where each was last (stage x, 0-1).
+    private readonly Dictionary<SDL_FingerID, float> _dragFingers = [];
+    private float _touchDrag;
+
+    /// <summary>Where (stage, 0-1) a finger drags instead of playing the drum: a review's lane. Null: nowhere.</summary>
+    public System.Drawing.RectangleF? TouchDragArea { get; set; }
+
+    /// <summary>Whether a finger holds the drag area.</summary>
+    public bool TouchDragging => _dragFingers.Count > 0;
+
+    /// <summary>How far the fingers dragged across (stage widths, right positive) since the last call.</summary>
+    public float TakeTouchDrag()
+    {
+        var drag = _touchDrag;
+        _touchDrag = 0;
+        return drag;
+    }
 
     /// <summary>Whether the touch drum shows: a finger touched the screen since the last key or controller press
     /// (always at first on a phone).</summary>

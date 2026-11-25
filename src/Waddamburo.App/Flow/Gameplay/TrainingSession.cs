@@ -107,12 +107,13 @@ internal sealed class TrainingSession : IEffectsEditorTransport
             if (!jump)
                 scrub = (keys.IsDown(SdlKeyboardKey.Right) ? 1 : 0) - (keys.IsDown(SdlKeyboardKey.Left) ? 1 : 0);
         }
-        if (scrub != 0)
+        var drag = keysEnabled ? _review.TouchDrag() : null;
+        if (scrub != 0 || drag is not null)
             showAttempt();
         else if (!Live && !Clock.Paused && !_watch)
             goLive(Clock.Position); // let go (or resumed after a move): the drum plays on from here
         // Paused, the live lanes just stand (a hit would be judged at a frozen time).
-        _review.Step(scrub, Live && !Clock.Paused ? keys : null);
+        _review.Step(scrub, Live && !Clock.Paused ? keys : null, drag);
         if (Live && Clock.Position >= (LoopEnd ?? Clock.End))
             loopEnded();
     }
