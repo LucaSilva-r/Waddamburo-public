@@ -16,7 +16,7 @@
 # Needs: .NET 10 SDK, CMake, Ninja, make, gcc, mingw-w64 gcc (x86_64-w64-mingw32-gcc).
 # On Windows it runs in an MSYS2 MINGW64 shell and builds the Windows release only (BUILDING.md).
 #
-# usage: eng/package.sh [linux|windows|windows-arm64|android|switch]   (default: linux and windows; windows on Windows)
+# usage: eng/package.sh [linux|windows|windows-arm64|macos|android|switch]   (default: linux and windows; windows on Windows)
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -39,6 +39,9 @@ runtime_sha256=2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
 appimagetool_sha256_aarch64=f0837e7448a0c1e4e650a93bb3e85802546e60654ef287576f46c71c126a9158
 runtime_sha256_aarch64=00cbdfcf917cc6c0ff6d3347d59e0ca1f7f45a6df1a428a0d6d8a78664d87444
 
+# macOS has shasum, not sha256sum.
+command -v sha256sum >/dev/null || sha256sum() { shasum -a 256 "$@"; }
+
 fetch() { # url file sha256
     [[ -f $2 ]] || curl -fsSL -o "$2" "$1"
     echo "$3  $2" | sha256sum --check --status || { echo "error: checksum mismatch: $2" >&2; exit 1; }
@@ -47,7 +50,7 @@ fetch() { # url file sha256
 native() { # preset stage-dir rid: build the preset and package its libraries and FFmpeg relink inputs
     (cd native && cmake --preset "$1" && cmake --build --preset "$1")
     rm -f "$out/native-$3.zip"
-    (cd "$2" && cmake -E tar cf "$out/native-$3.zip" --format=zip $(ls waddamburo_*.dll libwaddamburo_*.so bgfx*.dll libbgfx*.so 2>/dev/null))
+    (cd "$2" && cmake -E tar cf "$out/native-$3.zip" --format=zip $(ls waddamburo_*.dll libwaddamburo_*.so libwaddamburo_*.dylib bgfx*.dll libbgfx*.so libbgfx*.dylib 2>/dev/null))
     echo "$out/native-$3.zip"
 
     (cd native && cmake --build --preset "$1" --target waddamburo_ffmpeg_relink)
@@ -199,6 +202,49 @@ EOF
             "$appdir" "$out/Waddamburo-$arch.AppImage" >/dev/null
         echo "$out/Waddamburo-$arch.AppImage"
         echo "$out/licenses.zip"
+        ;;
+    macos)
+        # On a Mac (Command Line Tools, cmake, ninja, pkg-config): an ad-hoc signed Waddamburo.app, zipped.
+        # ponytail: no self-update on macOS yet (SelfUpdate has no installed file there); players download the zip.
+        build=out/build/native/osx-arm64/macos-package
+        native macos-package "$root/$build/stage/Release/lib" osx-arm64
+        app=$out/Waddamburo.app
+        rm -rf "$app"
+        publish osx-arm64 "$root/$build/stage/Release/lib" "$app/Contents/MacOS"
+        mkdir -p "$app/Contents/Resources"
+        licenses $build "$app/Contents/Resources/licenses"
+        runtime_licenses src/Waddamburo.App osx-arm64 "$app/Contents/Resources/licenses/dotnet"
+        iconset=$out/waddamburo.iconset
+        rm -rf "$iconset" && mkdir -p "$iconset"
+        for size in 16 32 128 256 512; do
+            sips -z $size $size eng/packaging/waddamburo.png --out "$iconset/icon_${size}x${size}.png" >/dev/null
+            sips -z $((size * 2)) $((size * 2)) eng/packaging/waddamburo.png --out "$iconset/icon_${size}x${size}@2x.png" >/dev/null
+        done
+        iconutil -c icns "$iconset" -o "$app/Contents/Resources/waddamburo.icns" && rm -rf "$iconset"
+        cat > "$app/Contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key><string>Waddamburo</string>
+    <key>CFBundleDisplayName</key><string>Waddamburo</string>
+    <key>CFBundleIdentifier</key><string>org.waddamburo.Waddamburo</string>
+    <key>CFBundleExecutable</key><string>Waddamburo.App</string>
+    <key>CFBundleIconFile</key><string>waddamburo</string>
+    <key>CFBundlePackageType</key><string>APPL</string>
+    <key>CFBundleShortVersionString</key><string>${version%%[-+]*}</string>
+    <key>CFBundleVersion</key><string>$version</string>
+    <key>LSMinimumSystemVersion</key><string>14.0</string>
+    <key>LSApplicationCategoryType</key><string>public.app-category.music-games</string>
+    <key>NSHighResolutionCapable</key><true/>
+</dict>
+</plist>
+PLIST
+        # Ad-hoc: arm64 macOS runs only signed code; without a Developer ID, Gatekeeper asks once (right-click, Open).
+        codesign --force --deep --sign - "$app"
+        rm -f "$out/Waddamburo-macos-arm64.zip"
+        ditto -c -k --keepParent "$app" "$out/Waddamburo-macos-arm64.zip"
+        echo "$out/Waddamburo-macos-arm64.zip"
         ;;
     android)
         # Needs an Android SDK (ANDROID_HOME, default ~/Android/Sdk) with an NDK, JDK 17 or 21 (JAVA_HOME) and the

@@ -79,6 +79,14 @@ elseif(WIN32)
     --toolchain=msvc
     --target-os=win64
     --enable-w32threads)
+elseif(APPLE)
+  list(APPEND _ffmpeg_platform_options
+    --target-os=darwin
+    --cc=clang
+    --extra-cflags=-mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}
+    --extra-ldflags=-mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}
+    --enable-pthreads
+    --enable-pic)
 else()
   list(APPEND _ffmpeg_platform_options
     --target-os=linux

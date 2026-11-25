@@ -152,6 +152,23 @@ The Windows libraries are built with mingw-w64, the same compiler as the release
 
 Run the `cmake --build` line again after changing native code.
 
+### macOS (Apple Silicon)
+
+Install the Command Line Tools (`xcode-select --install`) and, with [Homebrew](https://brew.sh),
+`brew install cmake ninja pkgconf`. Then:
+
+```sh
+cd native
+cmake --preset macos-package
+cmake --build --preset macos-package
+cd ..
+dotnet run --project src/Waddamburo.App -c Release -- "/path/to/USRDIR"
+```
+
+`eng/package.sh macos` builds the ad-hoc signed `Waddamburo.app` and
+`out/package/Waddamburo-macos-arm64.zip`. Without a Developer ID signature, macOS asks once:
+right-click the app and choose Open. macOS releases do not update themselves yet.
+
 ### Windows on Arm
 
 The arm64 libraries are cross-built on Linux with [llvm-mingw](https://github.com/mstorsjo/llvm-mingw)

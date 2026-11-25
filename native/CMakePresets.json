@@ -130,6 +130,24 @@
       }
     },
     {
+      "name": "macos-package",
+      "displayName": "macOS arm64 self-contained release libraries (on a Mac with the Command Line Tools)",
+      "inherits": "base",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      },
+      "binaryDir": "${sourceDir}/../out/build/native/osx-arm64/macos-package",
+      "cacheVariables": {
+        "BUILD_TESTING": false,
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_OSX_ARCHITECTURES": "arm64",
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "14.0",
+        "WADDAMBURO_PACKAGE": true
+      }
+    },
+    {
       "name": "windows-arm64-package",
       "displayName": "Windows arm64 self-contained release libraries (llvm-mingw cross build on Linux)",
       "inherits": "windows-package",
@@ -215,6 +233,7 @@
     { "name": "linux-package", "configurePreset": "linux-package" },
     { "name": "linux-arm64-package", "configurePreset": "linux-arm64-package" },
     { "name": "windows-package", "configurePreset": "windows-package" },
+    { "name": "macos-package", "configurePreset": "macos-package" },
     { "name": "windows-arm64-package", "configurePreset": "windows-arm64-package" },
     { "name": "android-package", "configurePreset": "android-package" },
     { "name": "android-x64-package", "configurePreset": "android-x64-package" },

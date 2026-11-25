@@ -68,7 +68,10 @@ if(WADDAMBURO_PACKAGE)
   elseif(UNIX)
     find_package(Threads REQUIRED)
     target_link_libraries(waddamburo_media PRIVATE m Threads::Threads)
-    target_link_options(waddamburo_media PRIVATE -Wl,--exclude-libs,ALL)
+    # ponytail: Apple's linker has no --exclude-libs; FFmpeg's symbols stay exported from the dylib (harmless).
+    if(NOT APPLE)
+      target_link_options(waddamburo_media PRIVATE -Wl,--exclude-libs,ALL)
+    endif()
   endif()
 endif()
 set_target_properties(waddamburo_media PROPERTIES
@@ -77,6 +80,11 @@ set_target_properties(waddamburo_media PROPERTIES
 
 if(WADDAMBURO_PACKAGE AND NOT WADDAMBURO_FFMPEG_SOURCE_DIR AND TARGET waddamburo_vgmstream_build)
   set(_relink_dir "${CMAKE_BINARY_DIR}/ffmpeg-relink")
+  # Apple's strip spells --strip-debug as -S.
+  set(_strip_debug --strip-debug)
+  if(APPLE)
+    set(_strip_debug -S)
+  endif()
   add_custom_target(waddamburo_ffmpeg_relink
     COMMAND ${CMAKE_COMMAND} -E make_directory "${_relink_dir}/vgmstream"
     COMMAND ${CMAKE_COMMAND} -E copy
@@ -85,7 +93,7 @@ if(WADDAMBURO_PACKAGE AND NOT WADDAMBURO_FFMPEG_SOURCE_DIR AND TARGET waddamburo
       "${WADDAMBURO_VGMSTREAM_INCLUDE_DIR}/libvgmstream_streamfile.h"
       "${CMAKE_BINARY_DIR}/vgmstream/licenses/vgmstream/COPYING"
       "${_relink_dir}/vgmstream/"
-    COMMAND "${CMAKE_STRIP}" --strip-debug "${_relink_dir}/vgmstream/libvgmstream.a"
+    COMMAND "${CMAKE_STRIP}" ${_strip_debug} "${_relink_dir}/vgmstream/libvgmstream.a"
     COMMAND ${CMAKE_COMMAND} -E copy_directory
       "${CMAKE_BINARY_DIR}/ffmpeg/prefix/licenses/FFmpeg" "${_relink_dir}/FFmpeg"
     COMMAND ${CMAKE_COMMAND} -E copy
