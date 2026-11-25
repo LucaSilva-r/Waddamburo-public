@@ -1,17 +1,17 @@
-using System.Diagnostics;
-
 namespace Waddamburo.Platform.Sdl.Media;
 
 /// <summary>
 /// A whole song decoded into memory and played wherever a reviewed play's playhead goes, at the rate
 /// it moves: slower, faster or backwards, the pitch following like a record under a finger. The game
-/// calls <see cref="Follow"/> every frame; the audio thread runs on at that rate and leans towards the
-/// playhead (snapping to it after a jump), fading out when the playhead stands still.
+/// calls <see cref="Follow"/> every frame; the audio thread runs on at exactly that rate and jumps to the
+/// playhead when it strays (after a seek, or drift), fading out when the playhead stands still.
 /// </summary>
 /// <remarks>ponytail: the PCM is kept whole (about 40 MB a stereo minute at 48 kHz float); stream it when that matters.</remarks>
 public sealed class ScrubAudioSource : IAudioStreamSource
 {
     private static readonly double Snap = 0.15; // seconds the sound may stray before it jumps to the playhead
+    // Seconds the sound may stray on average (above the 20-40 ms a burst of rendering leads by) before it jumps.
+    private static readonly double Drift = 0.05;
     private readonly float[] _pcm;
     private readonly int _channels;
     private readonly int _frames;
@@ -21,14 +21,21 @@ public sealed class ScrubAudioSource : IAudioStreamSource
     private long _targetAt;
     private double _cursor = double.NaN;
     private float _gain;
+    // The sound's distance from the playhead, averaged over about half a second (frames).
+    private double _error;
+    private readonly TimeProvider _time;
 
-    private ScrubAudioSource(SdlAudioFormat format, float[] pcm)
+    private ScrubAudioSource(SdlAudioFormat format, float[] pcm, TimeProvider? time = null)
     {
         Format = format;
         _pcm = pcm;
         _channels = format.Channels;
         _frames = pcm.Length / _channels;
+        _time = time ?? TimeProvider.System;
     }
+
+    /// <summary>A song already decoded: interleaved <paramref name="pcm"/> in <paramref name="format"/>.</summary>
+    public static ScrubAudioSource FromPcm(SdlAudioFormat format, float[] pcm, TimeProvider? time = null) => new(format, pcm, time);
 
     public SdlAudioFormat Format { get; }
 
@@ -67,7 +74,7 @@ public sealed class ScrubAudioSource : IAudioStreamSource
         {
             _targetFrame = position.TotalSeconds * Format.SampleRate;
             _rate = double.IsFinite(rate) ? Math.Clamp(rate, -64, 64) : 0;
-            _targetAt = Stopwatch.GetTimestamp();
+            _targetAt = _time.GetTimestamp();
         }
     }
 
@@ -77,15 +84,26 @@ public sealed class ScrubAudioSource : IAudioStreamSource
         lock (_gate)
         {
             // Where the playhead is by now, carried on from the last frame's report.
-            target = _targetFrame + _rate * Stopwatch.GetElapsedTime(_targetAt).TotalSeconds * Format.SampleRate;
+            target = _targetFrame + _rate * _time.GetElapsedTime(_targetAt).TotalSeconds * Format.SampleRate;
             rate = _rate;
         }
         var frames = interleavedDestination.Length / _channels;
         if (double.IsNaN(_cursor) || Math.Abs(_cursor - target) > Snap * Format.SampleRate)
+        {
             _cursor = target;
-        // Lean towards the playhead over about a tenth of a second.
-        var correction = (target + rate * frames / 2 - _cursor) / (Format.SampleRate * 0.1);
-        var step = rate + Math.Clamp(correction, -0.5, 0.5);
+            _error = 0;
+        }
+        // Play at exactly the playhead's rate: any steering towards it is heard as wow (the mixer renders in bursts, a
+        // whole queue refill at once, so each block alone strays by a queue's length and back). Only when the distance,
+        // averaged over half a second, passes Drift does the sound jump to the playhead, fading in over 5 ms.
+        _error += (target + rate * frames / 2 - _cursor - _error) * Math.Min(1, frames / (Format.SampleRate * 0.5));
+        if (Math.Abs(_error) > Drift * Format.SampleRate)
+        {
+            _cursor += _error;
+            _error = 0;
+            _gain = 0;
+        }
+        var step = rate;
         var audible = Gain(rate);
         var ramp = 1f / (Format.SampleRate * 0.005f); // 5 ms
         for (var frame = 0; frame < frames; frame++)
