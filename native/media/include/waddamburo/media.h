@@ -202,6 +202,32 @@ waddamburo_media_transcode_opus(
     uint32_t bit_rate,
     waddamburo_media_error *error);
 
+/* Time-stretcher (Bungee): plays a song held in memory at another speed, keeping its pitch. Only in libraries built
+   with WADDAMBURO_MEDIA_STRETCH (release packages); callers check for the symbols, the ABI version is unchanged. */
+typedef struct waddamburo_media_stretch waddamburo_media_stretch;
+
+/* NULL when it cannot be made. */
+WADDAMBURO_MEDIA_API waddamburo_media_stretch *WADDAMBURO_MEDIA_CALL
+waddamburo_media_stretch_create(int32_t sample_rate, int32_t channels);
+
+WADDAMBURO_MEDIA_API void WADDAMBURO_MEDIA_CALL
+waddamburo_media_stretch_destroy(waddamburo_media_stretch *stretch);
+
+/* Renders frame_count interleaved frames of the song pcm (pcm_frame_count frames, interleaved, silence outside it) at
+   speed (song frames per output frame). restart != 0 starts afresh at *position (a song frame); otherwise it plays on
+   from where the last call stopped. *position becomes the song frame after the last one rendered. Returns the frames
+   rendered: frame_count, or 0 on failure. */
+WADDAMBURO_MEDIA_API int32_t WADDAMBURO_MEDIA_CALL
+waddamburo_media_stretch_render(
+    waddamburo_media_stretch *stretch,
+    const float *pcm,
+    int64_t pcm_frame_count,
+    double speed,
+    int32_t restart,
+    double *position,
+    float *output,
+    int32_t frame_count);
+
 #ifdef __cplusplus
 }
 #endif

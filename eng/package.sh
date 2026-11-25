@@ -93,7 +93,8 @@ licenses() { # native-build-dir out-dir [project]: collect Waddamburo's and thir
     cp src/Waddamburo.App/Upscale/Real-ESRGAN.LICENSE.txt "$dir/"
     cp src/Waddamburo.Game/Gameplay/Data/soul-gauge-rates.LICENSE.txt "$dir/"
     cp native/texture/third_party/bc7enc/LICENSE "$dir/bc7enc.LICENSE.txt"
-    cp -r "$1"/ffmpeg/prefix/licenses/* "$1"/vgmstream/licenses/* "$1"/freetype/prefix/licenses/* "$1"/bgfx/prefix/licenses/* "$dir/"
+    cp -r "$1"/ffmpeg/prefix/licenses/* "$1"/vgmstream/licenses/* "$1"/freetype/prefix/licenses/* "$1"/bgfx/prefix/licenses/* \
+        "$1"/bungee/licenses/* "$dir/"
     local dotnet_root
     dotnet_root=$(dirname "$(readlink -f "$(command -v dotnet)")")
     mkdir -p "$dir/dotnet" && cp "$dotnet_root/LICENSE.txt" "$dotnet_root/ThirdPartyNotices.txt" "$dir/dotnet/"

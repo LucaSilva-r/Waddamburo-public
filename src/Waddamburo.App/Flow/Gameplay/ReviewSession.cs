@@ -209,7 +209,8 @@ internal sealed class ReviewSession : IDisposable
             _audio = decoded.Result;
             _voice = audio.Mixer.PlayStream(_audio, AudioBus.Bgm, _volume is { IsCompletedSuccessfully: true } volume ? volume.Result : 1f);
         }
-        _audio?.Follow(Clock.Position - _songStart, rate);
+        // Played at a steady speed (training mode's slowed song) the music keeps its pitch; scrubbing bends it.
+        _audio?.Follow(Clock.Position - _songStart, rate, keepPitch: !Clock.Scrubbing);
     }
 
     public void Dispose()

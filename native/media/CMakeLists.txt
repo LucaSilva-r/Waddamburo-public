@@ -49,6 +49,12 @@ if(WADDAMBURO_MEDIA_FFMPEG)
   target_compile_definitions(waddamburo_media PRIVATE WADDAMBURO_MEDIA_HAS_FFMPEG=1)
 endif()
 
+if(WADDAMBURO_MEDIA_STRETCH)
+  target_sources(waddamburo_media PRIVATE src/stretch.cpp)
+  target_link_libraries(waddamburo_media PRIVATE waddamburo_bungee)
+  set_target_properties(waddamburo_media PROPERTIES CXX_VISIBILITY_PRESET hidden)
+endif()
+
 if(WADDAMBURO_MEDIA_VGMSTREAM)
   if(NOT WADDAMBURO_MEDIA_FFMPEG)
     message(FATAL_ERROR "The vgmstream backend currently requires the FFmpeg backend for output conversion")

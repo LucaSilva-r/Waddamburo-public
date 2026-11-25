@@ -170,4 +170,18 @@ internal static partial class NativeMediaMethods
     [LibraryImport(LibraryName, EntryPoint = "waddamburo_media_video_limit_height")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial MediaResult VideoLimitHeight(nint video, uint height, out uint width, out uint newHeight);
+
+    // The time-stretcher (release libraries only; older or developer builds lack the symbols).
+    [LibraryImport(LibraryName, EntryPoint = "waddamburo_media_stretch_create")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial nint StretchCreate(int sampleRate, int channels);
+
+    [LibraryImport(LibraryName, EntryPoint = "waddamburo_media_stretch_destroy")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial void StretchDestroy(nint stretch);
+
+    [LibraryImport(LibraryName, EntryPoint = "waddamburo_media_stretch_render")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static unsafe partial int StretchRender(nint stretch, float* pcm, long pcmFrameCount, double speed, int restart,
+        ref double position, float* output, int frameCount);
 }

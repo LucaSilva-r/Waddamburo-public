@@ -114,7 +114,11 @@ app) app && devkit "$here/scripts/link.sh" ;;
 link) devkit "$here/scripts/link.sh" ;;
 all)
     deps
-    [[ -f $out/natives/prefix/lib/libwaddamburo_media.a ]] || devkit "$here/scripts/natives.sh" all
+    if [[ -f $out/natives/prefix/lib/libwaddamburo_media.a ]]; then
+        devkit "$here/scripts/natives.sh" waddamburo # our own few files: always current
+    else
+        devkit "$here/scripts/natives.sh" all
+    fi
     [[ -f $out/bgfx/prefix/lib/libbgfx.a ]] || devkit "$here/scripts/bgfx.sh"
     app
     devkit "$here/scripts/link.sh"

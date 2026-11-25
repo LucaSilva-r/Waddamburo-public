@@ -62,7 +62,10 @@ if [ $WHAT = waddamburo -o $WHAT = all ]; then
     -I$N/media/include -I$P/include -I$OUT/natives/vgmstream-src/src -c $N/media/src/video.c -o $O/video.o
   aarch64-none-elf-gcc -I$P/include $CF -std=gnu11 -DWADDAMBURO_MEDIA_BUILDING_LIBRARY=1 -DWADDAMBURO_MEDIA_HAS_FFMPEG=1 -DWADDAMBURO_MEDIA_HAS_VGMSTREAM=1 \
     -I$N/media/include -I$P/include -I$OUT/natives/vgmstream-src/src -c $N/media/src/transcode.c -o $O/transcode.o
-  aarch64-none-elf-ar rcs $P/lib/libwaddamburo_media.a $O/media.o $O/video.o $O/transcode.o
+  # ponytail: no Bungee on the Switch yet (training mode resamples there); the stub keeps the static link whole.
+  aarch64-none-elf-gcc $CF -std=gnu11 -DWADDAMBURO_MEDIA_BUILDING_LIBRARY=1 -I$N/media/include \
+    -c $N/media/src/stretch_none.c -o $O/stretch_none.o
+  aarch64-none-elf-ar rcs $P/lib/libwaddamburo_media.a $O/media.o $O/video.o $O/transcode.o $O/stretch_none.o
   aarch64-none-elf-gcc $CF -std=gnu11 -DWADDAMBURO_TEXT_BUILDING_LIBRARY=1 -I$N/text/include -I$DEVKITPRO/portlibs/switch/include/freetype2 \
     -c $N/text/src/text.c -o $O/text.o
   aarch64-none-elf-ar rcs $P/lib/libwaddamburo_text.a $O/text.o
