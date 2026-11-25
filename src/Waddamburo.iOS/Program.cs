@@ -13,9 +13,7 @@ public static unsafe class Program
 {
     public static int Main(string[] args)
     {
-        // SDL ships as a framework (Frameworks/SDL3.framework/SDL3), which the runtime's library lookup doesn't search.
-        NativeLibrary.SetDllImportResolver(typeof(SDL.SDL3).Assembly, static (name, assembly, path) =>
-            name == "SDL3" ? NativeLibrary.Load("@rpath/SDL3.framework/SDL3", assembly, path) : IntPtr.Zero);
+        Platform.Sdl.IosFrameworks.Register();
         return SDL_RunApp(0, null, &run, IntPtr.Zero);
     }
 
