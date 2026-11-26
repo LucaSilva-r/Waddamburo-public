@@ -93,46 +93,12 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
         return null;
     }
 
-    // A course's results for a results movie of ours: the course's totals under the player's drum, its outcome, the
-    // requirements where the course ended, and each song's row.
+    // A course's results for a results movie of ours.
     private void publishDanResult(Waddamburo.Game.Dan.DanCourseResult dan, IEnumerable<LumenPlayer> movies)
     {
-        var drum = Shell.Credit.PlayerSide + 1;
-        var total = dan.Total;
-        static LumenHostValue n(double value) => LumenHostValue.FromNumber(value);
-        foreach (var movie in movies.Where(static movie => movie.UsesProvider))
-        {
-            movie.Publish("dan.name", LumenHostValue.FromString(dan.Course.Name));
-            movie.Publish("dan.passed", LumenHostValue.FromString(dan.Level switch { 2 => "gold", 1 => "red", _ => "failed" }));
-            movie.Publish("dan.songsPlayed", n(dan.SongsPlayed));
-            movie.Publish("result.score", n(total.Score), drum);
-            movie.Publish("result.good", n(total.Goods), drum);
-            movie.Publish("result.ok", n(total.Oks), drum);
-            movie.Publish("result.bad", n(total.Bads), drum);
-            movie.Publish("result.maxCombo", n(total.MaxCombo), drum);
-            movie.Publish("result.rolls", n(total.Rolls), drum);
-            movie.Publish("result.gauge", n(total.GaugePercent), drum);
-            movie.Publish("result.cleared", LumenHostValue.FromBoolean(dan.Level > 0), drum);
-            var requirements = dan.Course.Requirements;
-            movie.Publish("dan.exam.count", n(requirements.Count));
-            for (var index = 0; index < requirements.Count; index++)
-            {
-                var requirement = requirements[index];
-                movie.PublishItem("dan.exam.type", index, LumenHostValue.FromString(requirement.Type));
-                movie.PublishItem("dan.exam.target", index, requirement.Red is [var red, ..] ? n(red) : LumenHostValue.Undefined);
-                movie.PublishItem("dan.exam.gold", index, n(requirement.Gold is [var gold, ..] ? gold : 0));
-                movie.PublishItem("dan.exam.value", index, n(Waddamburo.Game.Dan.DanExams.ValueOf(requirement.Type, total)));
-            }
-            for (var index = 0; index < dan.Songs.Count; index++)
-            {
-                var counts = dan.Songs[index].Counts;
-                var title = index < gameplay.CourseSongs.Count ? gameplay.CourseSongs[index].Descriptor.Title : null;
-                movie.PublishItem("dan.songTitle", index, title is null ? LumenHostValue.Undefined : LumenHostValue.FromString(title.English ?? title.Primary));
-                movie.PublishItem("dan.songGood", index, index < dan.SongsPlayed ? n(counts.Goods) : LumenHostValue.Undefined);
-                movie.PublishItem("dan.songOk", index, index < dan.SongsPlayed ? n(counts.Oks) : LumenHostValue.Undefined);
-                movie.PublishItem("dan.songBad", index, index < dan.SongsPlayed ? n(counts.Bads) : LumenHostValue.Undefined);
-            }
-        }
+        string?[] titles = [.. gameplay.CourseSongs.Select(static song => song.Descriptor.Title.English ?? song.Descriptor.Title.Primary)];
+        foreach (var movie in movies)
+            ResultNames.PublishDan(movie, dan, Shell.Credit.PlayerSide + 1, titles);
     }
 
     // Don-chan's 成績発表 (VO_RESULT 0, played as the song ends) is heard in silence; the music follows.

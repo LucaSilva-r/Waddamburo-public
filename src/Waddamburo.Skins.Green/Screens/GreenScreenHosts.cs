@@ -500,29 +500,8 @@ public sealed class GreenScreenHosts(
         });
     }
 
-    // The provider's result.* for a results movie of ours, each play under its drum's number.
-    private void publishResults(LumenPlayer player, IReadOnlyList<TaikoPlayResult> plays)
-    {
-        if (!player.UsesProvider)
-            return;
-        for (var index = 0; index < plays.Count; index++)
-        {
-            var play = plays[index];
-            var drum = (plays.Count == 2 ? index : Credit.PlayerSide) + 1;
-            void tell(string name, LumenHostValue value) => player.Publish(name, value, drum);
-            tell("result.course", LumenHostValue.FromString(play.Course.ToString().ToLowerInvariant()));
-            tell("result.score", LumenHostValue.FromNumber(play.Score));
-            tell("result.best", Credit.Best(index) is { } best ? LumenHostValue.FromNumber(best) : LumenHostValue.Undefined);
-            tell("result.good", LumenHostValue.FromNumber(play.Great));
-            tell("result.ok", LumenHostValue.FromNumber(play.Good));
-            tell("result.bad", LumenHostValue.FromNumber(play.Miss));
-            tell("result.maxCombo", LumenHostValue.FromNumber(play.MaxCombo));
-            tell("result.rolls", LumenHostValue.FromNumber(play.Rolls + play.BalloonHits));
-            tell("result.gauge", LumenHostValue.FromNumber((double)play.GaugeSegments / TaikoSoulGauge.Segments));
-            tell("result.cleared", LumenHostValue.FromBoolean(play.Cleared));
-            tell("result.fullCombo", LumenHostValue.FromBoolean(play.FullCombo));
-        }
-    }
+    // The provider's result.* for a results movie of ours (free_movies on Green's frontend).
+    private void publishResults(LumenPlayer player, IReadOnlyList<TaikoPlayResult> plays) => ResultNames.Publish(player, plays, Credit);
 
     /// <summary>The dan results on stage, while they are.</summary>
     public DaniResultHostBinding? DaniResult { get; private set; }

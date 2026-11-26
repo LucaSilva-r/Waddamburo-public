@@ -882,6 +882,7 @@ internal sealed partial class GameShell : IDisposable
             EnsoLayout = GameplaySceneComposition.LoadLayout(assetRoot);
 
             (var diagnosticResult, _diagnosticWaiwai) = diagnosticResults(options.StartScene);
+            _diagnosticResult = diagnosticResult;
 
             // A Green from before the update that added AI battle (the web archive's): the mode select leaves it out.
             AiBattle.Installed = Cli.GreenData.HasAiBattle(Path.GetDirectoryName(dataRoot)!);
@@ -958,7 +959,9 @@ internal sealed partial class GameShell : IDisposable
             var entry = new EntryFlow(this);
             var ending = new CreditEndFlow(this, _gameplay);
             var songSelect = SongSelectFlow = new SongSelectFlow(this, _gameplay, calibration);
-            _scenes = flowTable(_attract, entry, songSelect, _gameplay, calibration, benchmarkSong, ending);
+            _scenes = Arcade.WaddamburoFrontend
+                ? waddamburoFlows(entry, songSelect, _gameplay, calibration, benchmarkSong)
+                : flowTable(_attract, entry, songSelect, _gameplay, calibration, benchmarkSong, ending);
             if (options.FlowSmoke != FlowSmokeMode.Off)
             {
                 Random = new Random(20261118); // the same demo songs and scene parts every run
@@ -1035,6 +1038,15 @@ internal sealed partial class GameShell : IDisposable
         };
 
     // The movies' hosts (the game side of every Lumen movie): what they ask the game and what it answers.
+    private TaikoPlayResult? _diagnosticResult;
+
+    /// <summary>The last song's plays for its results (an online partner's beside this player's; a diagnostic start's).</summary>
+    public IReadOnlyList<TaikoPlayResult> PlayResults() => Gameplay.Results is { Count: > 0 } results ? Match.WithPartnerResult(results)
+        // ponytail: WADDAMBURO_RESULT_PLAYERS=2 shows the diagnostic result for both players.
+        : _diagnosticResult is { } diagnostic
+            ? DiagnosticSwitches.ResultPlayers == "2" ? [diagnostic, diagnostic] : [diagnostic]
+            : [];
+
     // The frontend's screen hosts: Green's (the game's movies, traced) or Waddamburo's (ours, on the provider).
     private IScreenHosts createHosts(GameFlowSession flow, SongCatalogSnapshot snapshot, TaikoPlayResult? diagnosticResult,
         Func<SongDescriptor, int[]> supportCounts)
@@ -1057,11 +1069,7 @@ internal sealed partial class GameShell : IDisposable
             Don,
             Previews is null ? TracePreviewController.Instance : Previews,
             Options.Countdown,
-            () => Gameplay.Results is { Count: > 0 } results ? Match.WithPartnerResult(results)
-                // ponytail: WADDAMBURO_RESULT_PLAYERS=2 shows the diagnostic result for both players.
-                : diagnosticResult is { } diagnostic
-                    ? DiagnosticSwitches.ResultPlayers == "2" ? [diagnostic, diagnostic] : [diagnostic]
-                    : [],
+            PlayResults,
             () => Arcade,
             Coins)
         {
@@ -1136,6 +1144,21 @@ internal sealed partial class GameShell : IDisposable
         });
         return sounds;
     }
+
+    // Waddamburo's frontend: its own boot and results; the entry, Song Select and gameplay are the engine's.
+    private Dictionary<SceneId, FlowScene> waddamburoFlows(EntryFlow entry, SongSelectFlow songSelect, GameplayFlow gameplay,
+        CalibrationFlow calibration, BenchmarkFlow benchmark) => new()
+    {
+        [FlowScenes.Boot] = new Frontends.WaddamburoBootFlow(this),
+        [FlowScenes.Entry] = entry,
+        [FlowScenes.SongSelect] = songSelect,
+        [FlowScenes.Tutorial] = songSelect,
+        [FlowScenes.DaniSelect] = songSelect,
+        [FlowScenes.Gameplay] = gameplay,
+        [FlowScenes.Calibration] = calibration,
+        [FlowScenes.Benchmark] = benchmark,
+        [FlowScenes.Result] = new Frontends.WaddamburoResultFlow(this, gameplay),
+    };
 
     // Which flow runs each scene.
     private static Dictionary<SceneId, FlowScene> flowTable(AttractFlow attract, EntryFlow entry, SongSelectFlow songSelect,
