@@ -1,3 +1,4 @@
+using Waddamburo.Features.Rewards;
 using Waddamburo.Features.Shop;
 using Waddamburo.Skins.Green.Art;
 using Waddamburo.Skins.Green.Screens;
@@ -22,6 +23,7 @@ namespace Waddamburo.Skins.Green;
 public sealed class GreenScreenHosts(
     CreditState credit,
     ShopModule shop,
+    RewardsModule medals,
     Func<bool, SongSelectSession> createSelectSession,
     GameFlowSession flow,
     SongCatalogSnapshot catalog,
@@ -212,8 +214,6 @@ public sealed class GreenScreenHosts(
     /// <summary>Whether Green's AI battle movies are installed (the entry's mode select offers it only then).</summary>
     public bool AiBattleInstalled { get; init; } = true;
 
-    /// <summary>The carded player whose Don Medals the credit's end shows (reward_shop over the game over); null: none.</summary>
-    public Func<RewardShopPlayer?>? RewardPlayer { get; init; }
 
     /// <summary>The reward shop on stage (the medal screen or a shopping visit).</summary>
     public RewardShopHostBinding? RewardShop { get; set; }
@@ -570,14 +570,14 @@ public sealed class GreenScreenHosts(
     private LumenLayerHost gameOverHost()
     {
         var binding = GameOver = new GameOverHostBinding(sounds?.GameOver, Credit.PlayerSide, Credit.TwoPlayers,
-            RewardPlayer?.Invoke() is null ? null : () => RewardShop?.Ended ?? false,
+            medals.Showing is null ? null : () => RewardShop?.Ended ?? false,
             static side => TaikoGuest.Profiles[side] is { Baid: > 0 });
         return new LumenLayerHost(binding, binding.Attach);
     }
 
     private LumenLayerHost rewardShopHost()
     {
-        var player = RewardPlayer?.Invoke() ?? throw new InvalidOperationException("reward_shop without a carded player.");
+        var player = medals.Showing ?? throw new InvalidOperationException("reward_shop without a carded player.");
         var (season, telop) = Waddamburo.Game.Scores.DonMedals.Season(DateOnly.FromDateTime(DateTime.Now));
         var binding = RewardShop = new RewardShopHostBinding(season, telop, player, sounds?.RewardShop, parts: _parts);
         var layer = rewardShopLayer(binding, season);

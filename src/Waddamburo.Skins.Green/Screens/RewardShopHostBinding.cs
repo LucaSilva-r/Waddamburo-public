@@ -1,3 +1,4 @@
+using Waddamburo.Features.Rewards;
 using Waddamburo.Game.Scores;
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
@@ -26,16 +27,6 @@ public interface IRewardShopSoundController
 
     void StopMusic() { }
 }
-
-/// <summary>
-/// A carded player at the credit's end: their drum, medals before this credit and what it paid, and the rewards to hand
-/// over (the movie's TYPE_SONG 1 / SUIT 3 / BODY 4 / HEAD 5; traced PushReward after SetPlayerMedal).
-/// </summary>
-/// <paramref name="Alone"/>: no game over with it (home's "New rewards").
-public sealed record RewardShopPlayer(int Side, int MedalsBefore, MedalCredit Credit, IReadOnlyList<RewardItem>? Rewards = null, bool Alone = false);
-
-/// <summary>A reward to hand over: the movie's type and id (songs by uniqueId, with their musicid for the title).</summary>
-public sealed record RewardItem(int Type, int Id, string? MusicId = null);
 
 /// <summary>A goods slot as the movie takes it: owned per side (1P, 2P); songs add their genre (1-8) and the four courses' stars.</summary>
 public sealed record RewardShopGoods(ShopGoods Goods, bool[] Owned, int Genre = 0, int[]? Stars = null);
@@ -66,7 +57,7 @@ public sealed record RewardShopVisit(
 /// scene 21, after a card entry): the season's goods for 100 s, bought with medals, then Song Select. One of
 /// <paramref name="player"/> (medal mode) and <paramref name="visit"/> (shopping) is given.
 /// </summary>
-public sealed class RewardShopHostBinding(int season, string telop, RewardShopPlayer? player, IRewardShopSoundController? sounds = null,
+public sealed class RewardShopHostBinding(int season, string telop, MedalScreen? player, IRewardShopSoundController? sounds = null,
     RewardShopVisit? visit = null, Waddamburo.Game.Don.IDonPresentationController? don = null, IndicatorParts? parts = null)
     : ILumenHostBinding
 {

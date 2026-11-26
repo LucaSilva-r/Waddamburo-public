@@ -62,12 +62,6 @@ public class CreditState
     /// <summary>A new credit began (<see cref="SongsPlayed"/> went back to 0): what the features keep per credit goes.</summary>
     public event Action? Started;
 
-    /// <summary>
-    /// An arcade credit's last results ask TaikOnline for the rewards its titles gave (a carded drum's): Green's medal
-    /// screen shows them if the answer is in by then. Null: none asked.
-    /// </summary>
-    public Task<(int Side, List<PendingReward> Rewards)>? EndRewards { get; set; }
-
     /// <summary>The tutorial was watched this credit: Song Select drops its folder (one flag per song select).</summary>
     public bool TutorialSeen { get; set; }
     public bool WaiwaiTutorialSeen { get; set; }

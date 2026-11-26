@@ -267,10 +267,13 @@ internal sealed partial class GameShell : IDisposable
     public PlayerSession Players { get; }
 
     /// <summary>The credit's mode, players and what a play hands its results (see <see cref="CreditSession"/>).</summary>
-    public CreditSession Credit { get; } = new();
+    public CreditState Credit { get; } = new();
 
     /// <summary>The reward shop: each drum's card's goods and medals for the credit.</summary>
     public Waddamburo.Features.Shop.ShopModule Shop => field ??= new(Credit);
+
+    /// <summary>Don Medals and rewards: the credit end's medal screen, home's "New rewards".</summary>
+    public Waddamburo.Features.Rewards.RewardsModule Rewards => field ??= new(Credit, Sync.ServerFor, () => Sync.Scores);
 
     /// <summary>What the next Song Select lists and where it starts.</summary>
     public SongSelectSetup Select { get; private set; } = null!;
@@ -1025,6 +1028,7 @@ internal sealed partial class GameShell : IDisposable
         return new(
             Credit,
             Shop,
+            Rewards,
             select.CreateSession,
             flow,
             snapshot,
@@ -1067,7 +1071,6 @@ internal sealed partial class GameShell : IDisposable
             PlayerLook = side => TaikoGuest.Profiles[side]?.Look,
             ServerOnline = () => Sync.Health?.State == Waddamburo.App.Online.LinkState.Online,
             AiBattleInstalled = _aiBattleInstalled,
-            RewardPlayer = () => Credit.RewardPlayer,
             // Home boards show the account's public name (or Guest), drawn by the entry overlay.
             PlayerName = side => Arcade.Home ? TaikoGuest.Profiles[side]?.DisplayName ?? Strings.T("setup.guest") : TaikoGuest.Profiles[side]?.DisplayName,
             LayerLoading = host =>
@@ -1191,71 +1194,14 @@ internal sealed partial class GameShell : IDisposable
         });
     }
 
-    /// <summary>The first joined drum whose player has rewards to show (Song Select's "New rewards"); null: none.</summary>
-    public int? PendingRewardsSide() => Players.JoinedSides.Cast<int?>()
-        .FirstOrDefault(side => TaikoGuest.Profiles[side!.Value] is { PendingRewards.Count: > 0 } profile && Sync.ServerFor(profile) is not null);
-
-    /// <summary>
-    /// An arcade credit's end, asked for its rewards in the background (CreditSession.EndRewards): the first carded drum
-    /// on a server uploads its songs, then TaikOnline checks the credit's titles. Null: nobody to ask.
-    /// </summary>
-    public Task<(int Side, List<Waddamburo.Game.Scores.PendingReward> Rewards)>? AskCreditEndRewards()
-    {
-        var creditId = Credit.CreditId;
-        foreach (var side in Players.JoinedSides)
-        {
-            if (TaikoGuest.Profiles[side] is not { Baid: > 0 } profile || Sync.ServerFor(profile) is not var (client, baid)
-                || Sync.Scores is not { } store)
-                continue;
-            return Task.Run(async () =>
-            {
-                try
-                {
-                    return (side, await client.CreditEndAsync(store, baid, creditId).ConfigureAwait(false));
-                }
-                catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
-                {
-                    Console.Error.WriteLine($"Warning REWARDS: the credit's rewards did not come ({exception.Message}).");
-                    return (side, new List<Waddamburo.Game.Scores.PendingReward>());
-                }
-            });
-        }
-        return null;
-    }
-
-    /// <summary>Tells the server the reward animation was shown (set by <see cref="ShowRewards"/>, run as it ends).</summary>
-    public Action? RewardsShown { get; set; }
-
     /// <summary>
     /// Song Select's "New rewards": reward_shop's medal screen hands the player's pending rewards over (no medals paid),
-    /// then Song Select comes back; the server hears they were shown once it ends.
-    /// ponytail: one player's rewards per visit; a second player's wait for the next.
+    /// then Song Select comes back.
     /// </summary>
     public void ShowRewards()
     {
-        if (PendingRewardsSide() is not { } side || TaikoGuest.Profiles[side] is not { PendingRewards: { } rewards } profile
-            || Sync.ServerFor(profile) is not var (client, baid))
+        if (!Rewards.ShowPending(Players.JoinedSides))
             return;
-        Credit.RewardPlayer = new Waddamburo.Skins.Green.RewardShopPlayer(side, profile.Medals ?? 0,
-            new Waddamburo.Game.Scores.MedalCredit(0, false, false, false),
-            [.. rewards.Select(static reward => new Waddamburo.Skins.Green.RewardItem(reward.Type, reward.Id, reward.MusicId))], Alone: true);
-        // Once the animation is over (CreditEndFlow leaving it): they were shown.
-        RewardsShown = () =>
-        {
-            if (TaikoGuest.Profiles[side] is { } shown && shown.Baid == profile.Baid)
-                TaikoGuest.Profiles[side] = shown with { PendingRewards = null };
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    await client.RewardsSeenAsync(rewards, baid).ConfigureAwait(false);
-                }
-                catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
-                {
-                    Console.Error.WriteLine($"Warning REWARDS: the server did not hear the rewards were shown ({exception.Message}).");
-                }
-            });
-        };
         Catalog.Replace(FlowScenes.HomeRewards);
         Scenes.FadeTo(FlowScenes.RewardShop);
     }
@@ -1295,8 +1241,8 @@ internal sealed partial class GameShell : IDisposable
         {
             // A first credit ever: 900 medals before it, every bonus.
             // Traced session-rewards-6's two kigurumi (43, 44), plus a head and a song.
-            Credit.RewardPlayer = new Waddamburo.Skins.Green.RewardShopPlayer(0, 900,
-                Waddamburo.Game.Scores.DonMedals.ForCredit(null, DateOnly.FromDateTime(DateTime.Now)), [new(3, 43), new(3, 44), new(5, 119), new(1, 819, "csmclr")]);
+            Rewards.Show(new(0, 900, Waddamburo.Game.Scores.DonMedals.ForCredit(null, DateOnly.FromDateTime(DateTime.Now)),
+                [new(3, 43, null), new(3, 44, null), new(5, 119, null), new(1, 819, "csmclr")]));
             Catalog.Replace(FlowScenes.RewardGameOver);
         }
         if (Options.StartScene is StartScene.RewardShop or StartScene.RewardShop2P)

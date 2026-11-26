@@ -1,4 +1,3 @@
-using Waddamburo.App.Flow.Credit;
 using Waddamburo.Game.Flow;
 
 namespace Waddamburo.App.Tests;
@@ -8,7 +7,7 @@ public sealed class CreditSessionTests
     [Fact]
     public void ModeFlagsNeverBothHold()
     {
-        var credit = new CreditSession { Waiwai = true };
+        var credit = new CreditState { Waiwai = true };
         Assert.Equal(CreditMode.Waiwai, credit.Mode);
         credit.AiBattle = true;
         Assert.True(credit.AiBattle);
@@ -23,7 +22,7 @@ public sealed class CreditSessionTests
     [Fact]
     public void ANewCreditOffersTheTutorialsAgain()
     {
-        var credit = new CreditSession { TutorialSeen = true, WaiwaiTutorialSeen = true, AiTutorialSeen = true, SongsPlayed = 2 };
+        var credit = new CreditState { TutorialSeen = true, WaiwaiTutorialSeen = true, AiTutorialSeen = true, SongsPlayed = 2 };
         credit.SongsPlayed = 3;
         Assert.True(credit.TutorialSeen && credit.WaiwaiTutorialSeen && credit.AiTutorialSeen);
         credit.SongsPlayed = 0;
