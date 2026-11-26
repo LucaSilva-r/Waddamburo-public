@@ -29,6 +29,9 @@ public sealed class CostumeIconTextures(SdlApplication application, NutData nutD
 
     public RenderTextureId? Resolve(LumenNativeSurfaceKey key)
     {
+        // Every native surface asks (titles too, every frame): the prefix first, the split only for ours.
+        if (!key.Value.StartsWith("costume-icon:", StringComparison.Ordinal))
+            return null;
         var parts = key.Value.Split(':');
         if (parts.Length != 3 || parts[0] != "costume-icon" || !int.TryParse(parts[1], out var type)
             || (uint)type >= (uint)SetNames.Length || !int.TryParse(parts[2], out var id) || id < 0)

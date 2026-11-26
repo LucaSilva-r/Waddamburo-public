@@ -65,15 +65,15 @@ public sealed class SongSelectVoiceTests
     private static LmbMovieDefinition movie(params (string Name, int[] Arguments)[] calls)
     {
         var names = HostNames.Concat(calls.Select(static call => call.Name)).Distinct().ToArray();
-        Avm1Instruction op(byte code, Avm1Operand? operand = null) => new(code, 0, 1, [], operand, null, null);
+        Avm1Instruction op(byte code, Avm1Operand? operand = null) => new(code, 0, 1, operand, null, null);
         Avm1Instruction push(params Avm1PushValue[] values) => op(0x96, new Avm1PushOperand([.. values]));
-        Avm1PushStringValue name(string value) => new(8, (ushort)Array.IndexOf(names, value));
+        Avm1PushValue name(string value) => Avm1PushValue.FromString(8, (ushort)Array.IndexOf(names, value));
         var actions = calls.Select((call, index) =>
         {
             var instructions = new[]
             {
-                push([.. call.Arguments.Reverse().Select(static value => new Avm1PushIntegerValue(value))]),
-                push(new Avm1PushIntegerValue(call.Arguments.Length), name("Lumen")), op(0x1C),
+                push([.. call.Arguments.Reverse().Select(static value => Avm1PushValue.FromInteger(value))]),
+                push(Avm1PushValue.FromInteger(call.Arguments.Length), name("Lumen")), op(0x1C),
                 push(name(call.Name)), op(0x52), op(0x17), op(0),
             };
             return new LmbAction(index, [], 0)
@@ -81,14 +81,14 @@ public sealed class SongSelectVoiceTests
                 Code = new Avm1CodeBlock(0, instructions.Length, [.. instructions.Select((instruction, offset) => instruction with { Offset = offset })]),
             };
         }).ToImmutableArray();
-        var frames = new List<LmbTimelineCommand> { new LmbShowFrameCommand(0, 0, [], null!) };
+        var frames = new List<LmbTimelineCommand> { LmbTimelineCommand.ShowFrame(0, 0, default) };
         for (var index = 0; index < calls.Length; index++)
         {
-            frames.Add(new LmbShowFrameCommand((uint)index + 1, 1, [], null!));
-            frames.Add(new LmbDoActionCommand((uint)index, 0, [], null!));
+            frames.Add(LmbTimelineCommand.ShowFrame((uint)index + 1, 1, default));
+            frames.Add(LmbTimelineCommand.DoAction((uint)index, 0, default));
         }
         return new LmbMovieDefinition(null!, null, [.. names.Select((value, index) => new LmbString(index, value, 0))],
-            [], [], [], [], [], actions, [], [new LmbSpriteDefinition(1, 0, (uint)calls.Length + 1, 0, 0, [], [.. frames], null!)], []);
+            [], [], [], [], [], actions, [], [new LmbSpriteDefinition(1, 0, (uint)calls.Length + 1, 0, 0, [], [.. frames], default)], []);
     }
 
     private sealed class Sounds : ISongSelectSoundController

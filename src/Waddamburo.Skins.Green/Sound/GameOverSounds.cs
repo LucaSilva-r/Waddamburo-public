@@ -12,9 +12,14 @@ public sealed class GameOverSounds(GreenSounds bank) : IGameOverSoundController
 
     public void StartGameOverOutro() => start("JINGLE_GOVER", loop: false);
 
-    public void StopGameOverMusic()
+    /// <summary>ごほうびタイム's music, in the same slot: the outro replaces it (traced).</summary>
+    public void StartMedalMusic() => start("JINGLE_SOGO2", loop: true);
+
+    public void StopGameOverMusic() => StopGameOverMusic(null);
+
+    public void StopGameOverMusic(TimeSpan? fade)
     {
-        bank.Stop(_music);
+        bank.Stop(_music, fade);
         _music = null;
         _musicName = null;
     }

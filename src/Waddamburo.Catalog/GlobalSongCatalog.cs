@@ -27,6 +27,14 @@ public sealed class SongCatalogSnapshot
 
     public long Revision { get; }
 
+    /// <summary>This catalogue without <paramref name="hidden"/> (a player's locked songs): gone from the songs and their categories.</summary>
+    public SongCatalogSnapshot Without(IReadOnlySet<SongKey> hidden) => hidden.Count == 0 ? this : new(
+        Revision,
+        Songs.RemoveRange(hidden),
+        [.. Categories.Select(category => category with { Songs = [.. category.Songs.Where(key => !hidden.Contains(key))] })],
+        Providers,
+        Diagnostics);
+
     public ImmutableDictionary<SongKey, SongDescriptor> Songs { get; }
 
     public ImmutableArray<SongCategoryDescriptor> Categories { get; }

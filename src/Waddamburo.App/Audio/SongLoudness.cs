@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
-using Waddamburo.App.Gameplay;
 using Waddamburo.Catalog;
 using Waddamburo.Formats.Audio;
 using Waddamburo.Platform.Sdl.Media;
@@ -26,12 +25,15 @@ internal static class SongLoudness
     private static readonly Lazy<ConcurrentDictionary<string, double>> Measured = new(load);
     private static readonly object SaveGate = new();
 
+    // The reveal asks again, on the main thread: it must not open the bank there.
+    private static readonly ConcurrentDictionary<string, float> StockGains = new();
+
     /// <summary>The volume to play <paramref name="asset"/> at; measures it first when it never was (blocking).</summary>
     public static float Volume(CatalogAssetRouter assets, CatalogAssetKey asset, SdlAudioFormat format,
         CancellationToken cancellationToken = default)
     {
         if (asset.Provider.Value == "stock")
-            return stockGain(assets, asset, cancellationToken);
+            return StockGains.GetOrAdd(asset.StableId, _ => stockGain(assets, asset, cancellationToken));
         // ponytail: keyed by the provider's id, so a TJA whose audio file is swapped keeps its old level; clear the cache then.
         var key = $"{asset.Provider.Value}/{asset.StableId}";
         if (!Measured.Value.TryGetValue(key, out var lufs))
@@ -75,7 +77,7 @@ internal static class SongLoudness
     {
         var watch = Stopwatch.StartNew();
         using var input = assets.OpenReadAsync(asset, cancellationToken).AsTask().GetAwaiter().GetResult();
-        using var decoder = new NativeAudioDecoder(input, checked((uint)format.SampleRate), checked((uint)format.Channels));
+        using var decoder = NativeAudioDecoder.Open(input, checked((uint)format.SampleRate), checked((uint)format.Channels));
         var meter = new LoudnessMeter(format.SampleRate, format.Channels);
         var block = new float[16384 * format.Channels];
         int read;

@@ -33,6 +33,20 @@ public sealed class GlobalSongCatalogTests
     }
 
     [Fact]
+    public async Task WithoutDropsHiddenSongsFromSongsAndCategories()
+    {
+        using var catalog = new GlobalSongCatalog([provider("stock", SongSourceKind.Stock, "locked"), provider("tja", SongSourceKind.Tja, "free")]);
+        var snapshot = await catalog.RefreshAsync();
+        var locked = new SongKey(SongSourceKind.Stock, "locked");
+
+        var shown = snapshot.Without(new HashSet<SongKey> { locked });
+
+        Assert.Equal([new SongKey(SongSourceKind.Tja, "free")], shown.Songs.Keys);
+        Assert.DoesNotContain(shown.Categories, category => category.Songs.Contains(locked));
+        Assert.Same(snapshot, snapshot.Without(new HashSet<SongKey>()));
+    }
+
+    [Fact]
     public async Task FailedProviderDoesNotDiscardHealthyContributions()
     {
         var good = provider("stock", SongSourceKind.Stock, "song");

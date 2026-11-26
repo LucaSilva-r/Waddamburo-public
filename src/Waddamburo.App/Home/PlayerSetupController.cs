@@ -4,7 +4,6 @@ using Waddamburo.Game.Scenes;
 using Waddamburo.Game.Scores;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Rendering;
-using Waddamburo.App.Flow;
 
 namespace Waddamburo.App.Home;
 
@@ -18,12 +17,17 @@ internal sealed class PlayerSetupController : IDisposable
     private readonly GameShell shell;
     private readonly PlayerSetupFlow _flow;
     private readonly EntrySetupOverlay _overlay;
+    private readonly OverlayMenu _signIn;
 
-    public PlayerSetupController(GameShell shell, AccountBook accounts, string fontPath, string? scoresPath)
+    public PlayerSetupController(GameShell shell, AccountBook accounts, string fontPath, string menuFontPath, string? scoresPath)
     {
         this.shell = shell;
         _overlay = new EntrySetupOverlay(shell.Application, fontPath, shell.ResolveSurface);
-        _flow = new PlayerSetupFlow(accounts, shell.Arcade.Server, shell.Arcade.ServerInsecure, shell.Sync.ClientFor,
+        _signIn = new OverlayMenu(shell.Application, menuFontPath)
+        {
+            Sound = don => shell.Sounds?.Menu(don),
+        };
+        _flow = new PlayerSetupFlow(accounts, Online.UpdateGate.Server(shell.Arcade), shell.Arcade.ServerInsecure, shell.Sync.ClientFor,
             Path.Combine(Path.GetDirectoryName(scoresPath) ?? ".", "avatars"));
         _flow.Confirmed += joinSetupPlayers;
         _flow.Refused += () => shell.Sounds?.Play("player.refused");
@@ -33,6 +37,9 @@ internal sealed class PlayerSetupController : IDisposable
             shell.ReturnToAttract();
         };
     }
+
+    /// <summary>The player setup is showing (it takes the controls).</summary>
+    public bool IsOpen => _flow.IsOpen;
 
     /// <summary>
     /// One tick, before the scene: Tab in the entry reopens the setup with the current players (true:
@@ -48,14 +55,24 @@ internal sealed class PlayerSetupController : IDisposable
             {
                 if (_flow.IsOpen || shell.Active.Id != FlowScenes.Entry)
                     return;
-                beginSetup();
+                beginSetup(joined.Length > 0 ? joined[0] : 0);
                 _flow.Reopen(profiles, joined);
             });
             return true;
         }
         var open = _flow.IsOpen;
+        // Sign in waiting for the website: its overlay takes the keys (Escape cancels it, not the setup).
+        if (open && _flow.SignIn is { } signIn)
+        {
+            if (!_signIn.IsOpen)
+                openSignIn(signIn);
+            _signIn.Tick(keys, keys, keys.IsDown(SdlKeyboardKey.Escape));
+            keys = SdlKeyboardSnapshot.Empty;
+        }
+        else if (_signIn.IsOpen)
+            _signIn.Close();
         _flow.Tick(open ? keys : SdlKeyboardSnapshot.Empty);
-        if (open && _flow.IsOpen && shell.Active.Id == FlowScenes.Entry && shell.Hosts.Entry is { SetupMode: true } entry)
+        if (open && _flow.IsOpen && shell.Active.Id == FlowScenes.Entry && shell.Loaded.Entry is { SetupMode: true } entry)
         {
             applySetup(entry, _flow.Columns());
             setupArrows().Advance();
@@ -65,8 +82,8 @@ internal sealed class PlayerSetupController : IDisposable
                 _setupShownTicks++;
             _flow.InputEnabled = _setupShownTicks >= SetupIntroTicks;
         }
-        if (open && shell.Tick % 10 == 0 && Environment.GetEnvironmentVariable("WADDAMBURO_SETUP_TRACE") == "1")
-            Console.WriteLine("[setup] " + shell.Tick + " entry=" + (shell.Hosts.Entry?.Ticks ?? -1) + ": " + string.Join(" | ", _flow.Columns().Select(c => c.Choice.Kind + " " + c.Choice.Label + " ready=" + c.Ready)));
+        if (open && shell.Tick % 10 == 0 && DiagnosticSwitches.SetupTrace)
+            Console.WriteLine("[setup] " + shell.Tick + " entry=" + (shell.Loaded.Entry?.Ticks ?? -1) + ": " + string.Join(" | ", _flow.Columns().Select(c => c.Choice.Kind + " " + c.Choice.Label + " ready=" + c.Ready)));
         if (open)
             keys = SdlKeyboardSnapshot.Empty;
         return false;
@@ -85,6 +102,7 @@ internal sealed class PlayerSetupController : IDisposable
     {
         _flow.Dispose();
         _overlay.Dispose();
+        _signIn.Dispose();
     }
 
     /// <summary>A drum hit in the attract loop opens the player setup (that drum starts on the default account).</summary>
@@ -94,14 +112,14 @@ internal sealed class PlayerSetupController : IDisposable
         shell.Sounds?.StopAll();
         // Diagnostic: WADDAMBURO_SETUP_BOTH=1 skips the screen with both drums joined (the DON_BOTH entry
         // start): the first two stored accounts, a guest where there is none.
-        if (Environment.GetEnvironmentVariable("WADDAMBURO_SETUP_BOTH") == "1")
+        if (DiagnosticSwitches.SetupBoth)
         {
             var stored = shell.Accounts?.Accounts ?? [];
             startWithPlayers([.. Enumerable.Range(0, 2).Select(index => index < stored.Count ? stored[index].Profile : null)], [true, true]);
             return;
         }
         shell.Sounds?.StopAll();
-        beginSetup();
+        beginSetup(side);
         setup.Open(side);
     }
 
@@ -110,18 +128,25 @@ internal sealed class PlayerSetupController : IDisposable
     private const int SetupIntroTicks = 90; // 1.5 s: the Don's entry motion (traced 0.85 s) and the boards
     private int _setupShownTicks;
 
-    private void beginSetup()
+    // The entry starts with the opening drum joined (DON_1P/_2P: the movie greets it, once); the host
+    // joins the other stand right after, the movie's way for a drum press (no greeting).
+    private void beginSetup(int side)
     {
         _setupShownTicks = 0;
         shell.Players.Reset();
-        shell.Players.SongsPlayed = 0;
+        shell.Credit.SongsPlayed = 0;
         Array.Clear(_shownChoice);
         Array.Fill(_swapAt, -1);
         Array.Fill(_revealAt, -1);
         shell.Credit.EntrySetup = true;
-        shell.Credit.EntryTrigger = 2;
+        shell.Credit.EntryTrigger = side;
         shell.ResetIndicatorScene();
-        shell.Scenes.Show(FlowScenes.Entry);
+        // From the attract loop: a fade. Tab in the entry (Tick) is already black under its menu fade, and an entry to
+        // entry fade never switched (the screen stayed black).
+        if (shell.Active.Id == FlowScenes.Entry)
+            shell.Scenes.Show(FlowScenes.Entry);
+        else
+            shell.Scenes.FadeTo(FlowScenes.Entry);
     }
 
     // Each side's choice on its stand: its Don in the chosen look (options show as text instead) and
@@ -166,7 +191,7 @@ internal sealed class PlayerSetupController : IDisposable
         _shownChoice[side] = choice;
         if (choice.HasDon)
             shell.Don?.SetLook(side, choice.Look);
-        shell.Hosts.Entry?.SetSetupProfile(side, choice.Profile);
+        shell.Loaded.Entry?.SetSetupProfile(side, choice.Profile);
     }
 
     // Two choices look the same on the stand: the same Don look, or the same option text.
@@ -191,6 +216,29 @@ internal sealed class PlayerSetupController : IDisposable
         }
         return _setupArrows;
     }
+
+    // The settings menu's modal look: what to do in the browser, the code for another device, the browser again.
+    private void openSignIn(PendingSignIn signIn)
+    {
+        var page = $"{signIn.Url.Host}{signIn.Url.AbsolutePath}";
+        var code = $"{signIn.Code[..3]}-{signIn.Code[3..]}";
+        _signIn.Open(new OverlayPage(() => Strings.T("signin.title"), () =>
+            [new(Strings.T("signin.open_browser"), Enter: () => SdlApplication.OpenUrl(signIn.Url)),
+                new(Strings.T("signin.cancel"), Enter: _flow.CancelSignIn)],
+            Centred: true, Modal: true, Back: _flow.CancelSignIn, Body: () =>
+            [(Strings.T(signIn.BrowserOpened ? "signin.browser_opened" : "signin.no_browser"), OverlayMenu.White),
+                (Strings.T("signin.approve"), OverlayMenu.White),
+                ("", OverlayMenu.White),
+                (Strings.T("signin.other_device", page), OverlayMenu.White),
+                (code, OverlayMenu.Yellow),
+                (Strings.T("signin.expires", Math.Max(0, (int)(signIn.Deadline - DateTime.UtcNow).TotalSeconds)), OverlayMenu.White)]),
+            home: true);
+    }
+
+    /// <summary>The sign-in overlay is open: the shell frosts everything under it, as under the settings.</summary>
+    public bool SignInOpen => _signIn.IsOpen;
+
+    public IEnumerable<RenderQuad> SignInQuads() => shell.Unsqueezed(_signIn.Quads(), centred: true);
 
     /// <summary>Home players' names over the entry's boards, and the setup's arrows and option text.</summary>
     public IEnumerable<RenderQuad> Quads(float interpolation)
@@ -247,14 +295,18 @@ internal sealed class PlayerSetupController : IDisposable
         shell.Credit.EntrySetup = false;
         shell.ResetIndicatorScene(); // the entry reloads under the same id: its indicators start over
         shell.Players.Reset();
-        shell.Players.SongsPlayed = 0;
+        shell.Credit.SongsPlayed = 0;
         for (var side = 0; side < 2; side++)
         {
             if (!playing[side])
                 continue;
             TaikoGuest.Profiles[side] = profiles[side];
             if (profiles[side] is { } profile)
+            {
                 shell.Sync.RefreshBests(profile); // a visitor's first, a stored account's again
+                shell.FetchShop(side, profile);
+                shell.RefreshPlayer(side);
+            }
             shell.Don?.SetLook(side, profiles[side]?.Look);
             shell.Players.Join(side);
         }
@@ -267,7 +319,7 @@ internal sealed class PlayerSetupController : IDisposable
     // The setup's players join the entry already on screen (its music and Don motions carry on).
     private void joinSetupPlayers(ScoreProfile?[] profiles, bool[] playing)
     {
-        if (shell.Hosts.Entry is not { SetupMode: true } entry || shell.Active.Id != FlowScenes.Entry)
+        if (shell.Loaded.Entry is not { SetupMode: true } entry || shell.Active.Id != FlowScenes.Entry)
         {
             startWithPlayers(profiles, playing);
             return;
@@ -279,7 +331,11 @@ internal sealed class PlayerSetupController : IDisposable
                 continue;
             TaikoGuest.Profiles[side] = profiles[side];
             if (profiles[side] is { } profile)
+            {
                 shell.Sync.RefreshBests(profile);
+                shell.FetchShop(side, profile);
+                shell.RefreshPlayer(side);
+            }
             shell.Don?.SetLook(side, profiles[side]?.Look);
         }
         entry.FinishSetup(playing); // PlayerJoined -> JoinPlayer per side

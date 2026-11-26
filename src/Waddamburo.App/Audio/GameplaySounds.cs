@@ -1,4 +1,3 @@
-using Waddamburo.App.Gameplay;
 using Waddamburo.Game.Sound;
 
 namespace Waddamburo.App.Audio;
@@ -51,6 +50,10 @@ internal sealed class GameplaySounds(SoundBank bank, ISoundSet set)
             bank.Play(cue);
     }
 
+    // AI battle: the player is the only one heard, so they sound as one player (centred, one-player cues),
+    // not as the left side of a two-player game.
+    private int? solo(int? lane) => AiBattle ? null : lane;
+
     public void PrepareDrums(bool twoPlayers = false)
     {
         // Both sets for two players: panning may be switched in the pause menu.
@@ -66,7 +69,7 @@ internal sealed class GameplaySounds(SoundBank bank, ISoundSet set)
     public void PlayDrum(int? lane, bool don)
     {
         if (!Muted && !(AiBattle && lane == 1))
-            play(request(don ? "drum.don" : "drum.ka", lane));
+            play(request(don ? "drum.don" : "drum.ka", solo(lane)));
     }
 
     /// <summary><paramref name="lane"/> is null for one player; two players: 0 left, 1 right.</summary>
@@ -74,6 +77,7 @@ internal sealed class GameplaySounds(SoundBank bank, ISoundSet set)
     {
         // AI battle: AI-don's lane (1) is silent, drums included (PlayDrum).
         if (Muted || AiBattle && lane == 1) return;
+        lane = solo(lane);
         var name = sound switch
         {
             GameplaySoundEvent.LongNoteStarted => RollVoicesOff.ElementAtOrDefault(lane ?? 0) ? null : "roll.voice",

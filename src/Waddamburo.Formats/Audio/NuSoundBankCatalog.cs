@@ -9,7 +9,6 @@ public sealed class NuSoundBankCatalog
 {
     private const int HeaderSize = 16;
     private const int EntrySize = 48;
-    private const int NameOffsetInEntry = 16;
     private const int NameCapacity = 32;
 
     private NuSoundBankCatalog(ImmutableArray<string> banks) => Banks = banks;

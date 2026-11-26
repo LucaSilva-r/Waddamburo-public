@@ -58,7 +58,12 @@ public static class VgmstreamCli
     private static bool _reportedMissing;
 
     /// <summary>The decoded WAV for <paramref name="path"/>, or null when vgmstream-cli is missing or fails.</summary>
-    public static string? TryDecode(string path, uint sourceStreamIndex)
+    public static string? TryDecode(string path, uint sourceStreamIndex) => decode(path, sourceStreamIndex, requireOpus: false);
+
+    /// <summary>Returns a persistent, cached Opus file suitable for transfer, or null on conversion failure.</summary>
+    public static string? TryPrepareOpus(string path) => decode(path, 0, requireOpus: true);
+
+    private static string? decode(string path, uint sourceStreamIndex, bool requireOpus)
     {
         var source = new FileInfo(path);
         if (!source.Exists)
@@ -78,8 +83,7 @@ public static class VgmstreamCli
         }
         if (File.Exists(wav))
         {
-            compressLater(wav, opus);
-            return wav;
+            return output(wav, opus, requireOpus);
         }
 
         Directory.CreateDirectory(cache);
@@ -123,8 +127,7 @@ public static class VgmstreamCli
             {
                 File.Delete(partial); // a parallel decode finished first (and its file may be open)
             }
-            compressLater(wav, opus);
-            return wav;
+            return output(wav, opus, requireOpus);
         }
         catch (System.ComponentModel.Win32Exception)
         {
@@ -139,40 +142,47 @@ public static class VgmstreamCli
         }
     }
 
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> Compressing = new();
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Lazy<Task<bool>>> Compressing = new();
 
-    // The WAV re-encoded as Opus off the audio path; the WAV goes once the Opus file is in place.
-    private static void compressLater(string wav, string opus)
+    private static string? output(string wav, string opus, bool requireOpus)
     {
-        if (!Compressing.TryAdd(opus, 0))
-            return;
-        _ = Task.Run(() =>
+        if (File.Exists(opus))
+            return opus;
+        var operation = Compressing.GetOrAdd(opus, _ => new Lazy<Task<bool>>(() => Task.Run(() => compress(wav, opus))));
+        var task = operation.Value;
+        _ = task.ContinueWith(_ => Compressing.TryRemove(new KeyValuePair<string, Lazy<Task<bool>>>(opus, operation)),
+            CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        return requireOpus ? task.GetAwaiter().GetResult() ? opus : null : File.Exists(opus) ? opus : wav;
+    }
+
+    // The WAV is kept if compression fails and can still be used for desktop playback.
+    private static bool compress(string wav, string opus)
+    {
+        if (File.Exists(opus))
+            return true;
+        var partial = $"{opus}.{Guid.NewGuid():N}.part";
+        try
         {
-            var partial = $"{opus}.{Guid.NewGuid():N}.part";
-            try
+            var error = new MediaError { StructSize = (uint)System.Runtime.CompilerServices.Unsafe.SizeOf<MediaError>() };
+            var result = NativeMediaMethods.TranscodeOpus(wav, partial, 160_000, ref error);
+            if (result != MediaResult.Ok)
             {
-                var error = new MediaError { StructSize = (uint)System.Runtime.CompilerServices.Unsafe.SizeOf<MediaError>() };
-                var result = NativeMediaMethods.TranscodeOpus(wav, partial, 160_000, ref error);
-                if (result != MediaResult.Ok)
-                {
-                    Console.Error.WriteLine($"Could not compress the decoded audio {wav}: {result} {error.Text}.");
-                    tryDelete(partial);
-                    return;
-                }
-                File.Move(partial, opus, overwrite: true);
-                tryDelete(wav);
+                Console.Error.WriteLine($"Could not compress the decoded audio {wav}: {result} {error.Text}.");
+                return false;
             }
-            catch (Exception exception)
-            {
-                // A background task: anything failing is reported here or nowhere (the WAV stays usable).
-                Console.Error.WriteLine($"Could not compress the decoded audio {wav}: {exception.Message}");
-                tryDelete(partial);
-            }
-            finally
-            {
-                Compressing.TryRemove(opus, out _);
-            }
-        });
+            File.Move(partial, opus, overwrite: true);
+            tryDelete(wav);
+            return true;
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine($"Could not compress the decoded audio {wav}: {exception.Message}");
+            return false;
+        }
+        finally
+        {
+            tryDelete(partial);
+        }
     }
 
     // Windows refuses while the file is open (still playing): the next lookup retries.

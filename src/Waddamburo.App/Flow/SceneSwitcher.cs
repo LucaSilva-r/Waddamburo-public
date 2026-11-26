@@ -17,24 +17,27 @@ internal sealed class SceneSwitcher(
     GameShell shell,
     ScenePresenter presenter,
     Func<SceneId, FlowScene> flowOf,
-    Func<bool> covering,
     Func<RenderFrame> loadingFrame)
 {
     private SceneId? _fadeTarget;
     private int _fadeStartTick;
-    private long _liveAfterCollect;
 
     /// <summary>The scene on screen.</summary>
     public LumenGameSceneInstance Active { get; private set; } = null!;
 
     /// <summary>A gameplay lane is on screen (a song, the audio calibration, the benchmark): drums drive it, not the movies' controls.</summary>
-    public bool OnLane => Active.Id == FlowScenes.Gameplay || Active.Id == FlowScenes.Calibration || Active.Id == FlowScenes.Benchmark;
+    // Also read off the main thread (device presence), before the first scene: none yet, not on a lane.
+    public bool OnLane => Active is { } active
+        && (active.Id == FlowScenes.Gameplay || active.Id == FlowScenes.Calibration || active.Id == FlowScenes.Benchmark);
 
     /// <summary>Starts decoding a scene's movies in the background; their textures go up between frames.</summary>
     public void Prefetch(SceneDefinition scene) => presenter.Prefetch(scene);
 
     /// <summary>The scene being prefetched, until one takes it.</summary>
     public SceneId? Prefetched => presenter.Prefetched;
+
+    /// <summary>Every screen one switch away is loaded (see <see cref="ScreenGraph"/>).</summary>
+    public bool WarmReady => presenter.WarmReady;
 
     /// <summary>The prefetched scene is decoded and uploaded (its switch will not stall).</summary>
     public bool PrefetchReady => presenter.PrefetchReady;
@@ -66,6 +69,10 @@ internal sealed class SceneSwitcher(
         shell.Application.SetWindowTitle($"{Waddamburo.App.Hosting.SelfUpdate.WindowTitle} — {Active.Id}");
         presenter.Activate(Active);
         flowOf(Active.Id).Enter(Active.Id);
+        // Every screen there is room for (the texture budget decides); with upscaled textures only the next screens
+        // (an upscale is 9x the bytes: the whole graph would fill a GPU's memory).
+        // ponytail: no setting; add one (off/on/auto by device memory) if a device runs short.
+        presenter.Want(ScreenGraph.Reachable(Active.Id, shell, shell.Arcade.UpscaleTextures && shell.Application.ShowUpscaled ? 1 : int.MaxValue));
     }
 
     /// <summary>Fades to black (the intermission fade's "in", 1 s), then shows <paramref name="scene"/>.</summary>
@@ -89,6 +96,13 @@ internal sealed class SceneSwitcher(
     {
         if (_fadeTarget is not { } target) return false;
         if (shell.Tick - _fadeStartTick < 60) return true;
+        // Black on screen first: the switch (loading, the clean-up) draws nothing, so the screen kept the fade's last
+        // frame, not quite black.
+        if (!presenter.HoldShown)
+        {
+            presenter.Hold(shell.Tick, black: true, loadingFrame);
+            return true;
+        }
         _fadeTarget = null;
         Show(target);
         shell.Overlay.Clear();
@@ -105,14 +119,14 @@ internal sealed class SceneSwitcher(
 
     private void switchScene(Action transition)
     {
-        var profile = Environment.GetEnvironmentVariable("WADDAMBURO_PROFILE") == "1";
+        var profile = DiagnosticSwitches.Profile;
         var from = Active.Id;
         var start = Stopwatch.GetTimestamp();
         var allocated = GC.GetTotalAllocatedBytes();
         int gen0 = GC.CollectionCount(0), gen1 = GC.CollectionCount(1), gen2 = GC.CollectionCount(2);
         presenter.Hold(shell.Tick, black: shell.Overlay.IsShown || Active.Id == FlowScenes.Movie, loadingFrame);
         flowOf(Active.Id).Exit(Active.Id);
-        presenter.ReleaseScene(Active.Id == FlowScenes.SongSelect || Active.Id == FlowScenes.Gameplay ? Active : null);
+        presenter.ReleaseScene(Active.Id != FlowScenes.Boot ? Active : null);
         var released = Stopwatch.GetTimestamp();
         presenter.Switching = true;
         try
@@ -148,29 +162,35 @@ internal sealed class SceneSwitcher(
         }
     }
 
-    // The old scene's archives and decoded pixels are large-object garbage the GC neither compacts
-    // nor returns on its own, so the heap only grew across songs. The loading frame is still up.
-    // Only when there is much to give back: a collection costs 50-90 ms and most switches now free little.
-    // Into a lane (songs, replays, training, calibration) only under a restart's black: the rainbow
-    // keeps moving over a normal start, so the next switch out collects instead. On a lane the GC also
-    // avoids blocking full collections of its own.
-    // ponytail: 128 MiB grown since the last clean-up (garbage and all); tune if RSS creeps.
+    // What the mix queues ahead of a collection: what the last ones took (500 ms on a Switch, 75 ms on a PC), so the sound
+    // plays through. The first one is a guess.
+    private TimeSpan _collectCover = TimeSpan.FromMilliseconds(150);
+
+    private void cover(TimeSpan collected) =>
+        _collectCover = TimeSpan.FromMilliseconds(Math.Clamp(Math.Max(collected.TotalMilliseconds * 1.2, _collectCover.TotalMilliseconds * 0.8), 150, 700));
+
+    /// <summary>
+    /// A full, compacting collection now: the old scene's archives and decoded pixels are large-object garbage the GC
+    /// neither compacts nor returns on its own.
+    /// </summary>
+    private static void collect()
+    {
+        System.Runtime.GCSettings.LargeObjectHeapCompactionMode = System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+    }
+
     private void tidyMemory()
     {
         System.Runtime.GCSettings.LatencyMode = OnLane
             ? System.Runtime.GCLatencyMode.SustainedLowLatency
             : System.Runtime.GCLatencyMode.Interactive;
-        if ((!OnLane || covering()) && GC.GetTotalMemory(false) - _liveAfterCollect > 128L << 20)
-        {
-            System.Runtime.GCSettings.LargeObjectHeapCompactionMode = System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
-            // The collection stops the audio mix thread too: queue past it (it took up to 75 ms traced).
-            shell.Audio?.FillAhead(TimeSpan.FromMilliseconds(150));
-            GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
-            _liveAfterCollect = GC.GetTotalMemory(false);
-        }
-        // Into a lane under the rainbow: a background collection instead (a few ms of pauses), which frees
-        // Song Select's leftovers (the gameplay prefetch's decoded pixels) early in the song.
-        else if (OnLane)
-            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false);
+        // Every switch, a song's start included (under the standing rainbow), cleans up in full, whatever it costs: the
+        // screens ahead load in the background, and their garbage otherwise came due inside the next screen or song (a
+        // Switch: 100-500 ms collections, the heap growing 650 -> 1000 MiB a session). Pausing in a switch is fine; the
+        // mixer plays on (it is native), and the mix queues past it where it is not.
+        var started = Stopwatch.GetTimestamp();
+        shell.Audio?.FillAhead(_collectCover);
+        collect();
+        cover(Stopwatch.GetElapsedTime(started));
     }
 }

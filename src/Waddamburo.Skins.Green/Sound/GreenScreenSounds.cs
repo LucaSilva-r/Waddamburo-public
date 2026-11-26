@@ -10,4 +10,6 @@ public sealed class GreenScreenSounds(GreenSounds green, Action stopAll)
     public WaiwaiResultSounds WaiwaiResults { get; } = new(green);
     public RetrySounds Retry { get; } = new(green, stopAll);
     public GameOverSounds GameOver { get; } = new(green);
+    public RewardShopSounds RewardShop => _rewardShop ??= new(Green, GameOver);
+    private RewardShopSounds? _rewardShop;
 }

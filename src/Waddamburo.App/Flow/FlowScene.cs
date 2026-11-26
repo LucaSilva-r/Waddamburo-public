@@ -54,5 +54,5 @@ internal abstract class FlowScene(GameShell shell)
     }
 
     public virtual LumenRenderSnapshot CreateSnapshot(float interpolation) =>
-        Shell.Active.Player.CreateRenderSnapshot(interpolation);
+        Shell.Active.Player.CreateRenderSnapshot(interpolation, buffer: Shell.SceneQuads);
 }

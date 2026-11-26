@@ -127,6 +127,20 @@ public sealed class StageEffects
         return matrix;
     }
 
+    /// <summary>
+    /// The camera's stage-to-screen transform at <paramref name="time"/> (the chart's, then the player's layout's) and the
+    /// colour around the moved stage (camera.borderred/green/blue, 0-255; TJA #BORDERCOLOR); null unless the chart moves
+    /// the camera (a layout's camera alone frames the stage as it likes, art past its edges included).
+    /// </summary>
+    public (LumenMatrix Matrix, float Red, float Green, float Blue)? Camera(TimeSpan time)
+    {
+        var own = Element("camera", time, (640, 360))?.Matrix;
+        var frame = _layout is null ? null : Element(_layout, "camera", time, (640, 360))?.Matrix;
+        if (own is null) return null;
+        float part(string property) => (float)Math.Clamp(_mods.Value("camera", property, time) / 255, 0, 1);
+        return (own.Value.Then(frame ?? LumenMatrix.Identity), part("borderred"), part("bordergreen"), part("borderblue"));
+    }
+
     /// <summary>An element's transform about <paramref name="pivot"/> and its opacity at <paramref name="time"/>; null when it is untouched.</summary>
     public (LumenMatrix Matrix, float Alpha)? Element(string target, TimeSpan time, (float X, float Y) pivot) =>
         Element(_mods, target, time, pivot);
@@ -160,6 +174,13 @@ public sealed class StageEffects
         foreach (var layer in layers)
             _ = pivotOf(layer);
     }
+
+    /// <summary>
+    /// <paramref name="part"/> turns and scales about <paramref name="whole"/>'s pivot (the gauge's fire about the
+    /// gauge: about its own centre, a flipped gauge left it where the gauge had been).
+    /// </summary>
+    public static void SharePivot(LumenSceneLayer whole, LumenSceneLayer part) =>
+        Pivots.GetValue(part.Player, static _ => new()).Value = pivotOf(whole);
 
     // The centre of what a movie draws on the stage, found the first time it draws something.
     private static (float X, float Y) pivotOf(LumenSceneLayer layer)

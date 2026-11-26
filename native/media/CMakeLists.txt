@@ -49,6 +49,12 @@ if(WADDAMBURO_MEDIA_FFMPEG)
   target_compile_definitions(waddamburo_media PRIVATE WADDAMBURO_MEDIA_HAS_FFMPEG=1)
 endif()
 
+if(WADDAMBURO_MEDIA_STRETCH)
+  target_sources(waddamburo_media PRIVATE src/stretch.cpp)
+  target_link_libraries(waddamburo_media PRIVATE waddamburo_bungee)
+  set_target_properties(waddamburo_media PROPERTIES CXX_VISIBILITY_PRESET hidden)
+endif()
+
 if(WADDAMBURO_MEDIA_VGMSTREAM)
   if(NOT WADDAMBURO_MEDIA_FFMPEG)
     message(FATAL_ERROR "The vgmstream backend currently requires the FFmpeg backend for output conversion")
@@ -56,7 +62,9 @@ if(WADDAMBURO_MEDIA_VGMSTREAM)
   target_include_directories(waddamburo_media SYSTEM PRIVATE "${WADDAMBURO_VGMSTREAM_INCLUDE_DIR}")
   # vgmstream first: static archives resolve left to right.
   target_link_libraries(waddamburo_media PRIVATE "${WADDAMBURO_VGMSTREAM_LIBRARY}")
-  add_dependencies(waddamburo_media waddamburo_vgmstream_build)
+  if(TARGET waddamburo_vgmstream_build)
+    add_dependencies(waddamburo_media waddamburo_vgmstream_build)
+  endif()
   target_compile_definitions(waddamburo_media PRIVATE WADDAMBURO_MEDIA_HAS_VGMSTREAM=1)
 endif()
 if(WADDAMBURO_PACKAGE)
@@ -66,12 +74,39 @@ if(WADDAMBURO_PACKAGE)
   elseif(UNIX)
     find_package(Threads REQUIRED)
     target_link_libraries(waddamburo_media PRIVATE m Threads::Threads)
-    target_link_options(waddamburo_media PRIVATE -Wl,--exclude-libs,ALL)
+    # ponytail: Apple's linker has no --exclude-libs; FFmpeg's symbols stay exported from the dylib (harmless).
+    if(NOT APPLE)
+      target_link_options(waddamburo_media PRIVATE -Wl,--exclude-libs,ALL)
+    endif()
   endif()
 endif()
 set_target_properties(waddamburo_media PROPERTIES
   C_VISIBILITY_PRESET hidden
   VISIBILITY_INLINES_HIDDEN true)
+
+if(WADDAMBURO_PACKAGE AND NOT WADDAMBURO_FFMPEG_SOURCE_DIR AND TARGET waddamburo_vgmstream_build)
+  set(_relink_dir "${CMAKE_BINARY_DIR}/ffmpeg-relink")
+  # Apple's strip spells --strip-debug as -S.
+  set(_strip_debug --strip-debug)
+  if(APPLE)
+    set(_strip_debug -S)
+  endif()
+  add_custom_target(waddamburo_ffmpeg_relink
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${_relink_dir}/vgmstream"
+    COMMAND ${CMAKE_COMMAND} -E copy
+      "${WADDAMBURO_VGMSTREAM_LIBRARY}"
+      "${WADDAMBURO_VGMSTREAM_INCLUDE_DIR}/libvgmstream.h"
+      "${WADDAMBURO_VGMSTREAM_INCLUDE_DIR}/libvgmstream_streamfile.h"
+      "${CMAKE_BINARY_DIR}/vgmstream/licenses/vgmstream/COPYING"
+      "${_relink_dir}/vgmstream/"
+    COMMAND "${CMAKE_STRIP}" ${_strip_debug} "${_relink_dir}/vgmstream/libvgmstream.a"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+      "${CMAKE_BINARY_DIR}/ffmpeg/prefix/licenses/FFmpeg" "${_relink_dir}/FFmpeg"
+    COMMAND ${CMAKE_COMMAND} -E copy
+      "${CMAKE_BINARY_DIR}/ffmpeg/prefix/licenses/opus/COPYING" "${_relink_dir}/FFmpeg/OPUS-COPYING"
+    DEPENDS waddamburo_media waddamburo_ffmpeg_audit
+    VERBATIM)
+endif()
 
 if(BUILD_TESTING)
   add_executable(waddamburo_media_abi_test tests/media_abi_test.c)

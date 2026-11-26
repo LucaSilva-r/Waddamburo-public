@@ -2,7 +2,6 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using Waddamburo.Catalog;
 using Waddamburo.Game.Flow;
-using Waddamburo.Game.Scores;
 
 namespace Waddamburo.App.Online;
 
@@ -33,6 +32,11 @@ internal sealed class ChartHashes(ScoreStore? store,
         store?.SaveChartHashes([(chart.Key.ToString(), hash)]);
         return _known[chart.Key] = hash;
     }
+
+    /// <summary>The library's chart keys (as strings) known to have that hash.</summary>
+    public IReadOnlyList<string> KeysOf(string sha256) =>
+        [.. _known.Where(entry => entry.Value == sha256).Select(static entry => entry.Key.ToString())
+            .Union(store?.ChartKeysWithHash(sha256) ?? [])];
 
     /// <summary>Running: the library is being hashed again (<see cref="Rehash"/>).</summary>
     public bool Rehashing { get; private set; }

@@ -44,6 +44,8 @@ public sealed class GreenSkin : ISkin
                 made(pixels);
             return;
         }
+        // Right-ka presses on a song with Oni and Ura switch to Ura (see SongSelectHostBinding's course restrictions).
+        Patching.SongSelectCoursePatch.Apply(content);
         // The layout check comes first: upscales change the texture sizes it matches by.
         var patching = SongSelectGenrePatch.AppliesTo(content);
         applyUpscales();

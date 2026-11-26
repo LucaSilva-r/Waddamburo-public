@@ -28,7 +28,7 @@ public static class MovieReference
         foreach (var sprite in movie.Sprites)
             if (sprite.ExportStringIndex is { } export && text(export) is { Length: > 0 } exported)
                 hints[sprite.CharacterId] = exported.Split('.')[^1];
-        foreach (var place in movie.Sprites.SelectMany(static sprite => sprite.Timeline).OfType<LmbPlaceObjectCommand>())
+        foreach (var place in movie.Sprites.SelectMany(static sprite => sprite.Timeline).OfKind(LmbCommandKind.PlaceObject))
             if (place.NameStringIndex != 0 && text(place.NameStringIndex) is { Length: > 0 } instance)
                 hints.TryAdd(place.CharacterId, instance);
         var names = new Dictionary<uint, string>();
@@ -123,40 +123,40 @@ public static class MovieReference
         int? frame = null;
         foreach (var command in sprite.Timeline)
         {
-            switch (command)
+            switch (command.Kind)
             {
-                case LmbShowFrameCommand show:
-                    frame = (int)show.Frame;
+                case LmbCommandKind.ShowFrame:
+                    frame = (int)command.Frame;
                     break;
-                case LmbFrameKeyCommand:
+                case LmbCommandKind.FrameKey:
                     frame = null; // A seek snapshot: the same display list again, not part of the playing timeline.
                     break;
-                case LmbFrameLabelCommand label when text(label.StringIndex) is { Length: > 0 } labelName:
-                    labels[labelName] = (int)label.Frame;
+                case LmbCommandKind.FrameLabel when text(command.StringIndex) is { Length: > 0 } labelName:
+                    labels[labelName] = (int)command.Frame;
                     break;
-                case LmbDoActionCommand action when frame is { } at:
-                    (scripts.TryGetValue(at, out var list) ? list : scripts[at] = []).Add(action.ActionIndex);
+                case LmbCommandKind.DoAction when frame is { } at:
+                    (scripts.TryGetValue(at, out var list) ? list : scripts[at] = []).Add(command.ActionIndex);
                     break;
-                case LmbRemoveObjectCommand remove when frame is { } at:
-                    if (live.Remove(remove.Depth, out var removed))
+                case LmbCommandKind.RemoveObject when frame is { } at:
+                    if (live.Remove(command.Depth, out var removed))
                         removed.Until = at;
                     break;
-                case LmbPlaceObjectCommand place when frame is { } at:
+                case LmbCommandKind.PlaceObject when frame is { } at:
                     {
-                        live.TryGetValue(place.Depth, out var layer);
-                        if (place.Mode == 1 || (place.Mode == 3 && layer is not null && layer.Character != place.CharacterId))
+                        live.TryGetValue(command.Depth, out var layer);
+                        if (command.Mode == 1 || (command.Mode == 3 && layer is not null && layer.Character != command.CharacterId))
                         {
-                            var inherited = place.Mode == 3 ? layer!.State : State.Start;
+                            var inherited = command.Mode == 3 ? layer!.State : State.Start;
                             if (layer is not null)
                                 layer.Until = at;
-                            layers.Add(layer = live[place.Depth] = new Layer(place.CharacterId, place.Depth, inherited));
+                            layers.Add(layer = live[command.Depth] = new Layer(command.CharacterId, command.Depth, inherited));
                         }
                         if (layer is null)
                             break;
                         var state = layer.State;
-                        if (place.PositionKind == 0 && place.PositionIndex < movie.Matrices.Length)
+                        if (command.PositionKind == 0 && command.PositionIndex < movie.Matrices.Length)
                         {
-                            var m = movie.Matrices[place.PositionIndex];
+                            var m = movie.Matrices[command.PositionIndex];
                             var scaleX = MathF.Sqrt(m.M11 * m.M11 + m.M12 * m.M12);
                             state = state with
                             {
@@ -165,20 +165,20 @@ public static class MovieReference
                                 Rotation = MathF.Atan2(m.M12, m.M11) * 180 / MathF.PI,
                             };
                         }
-                        else if (place.PositionKind == 0x8000 && place.PositionIndex < movie.Translations.Length)
+                        else if (command.PositionKind == 0x8000 && command.PositionIndex < movie.Translations.Length)
                         {
-                            var t = movie.Translations[place.PositionIndex];
+                            var t = movie.Translations[command.PositionIndex];
                             state = state with { X = t.X, Y = t.Y, ScaleX = 1, ScaleY = 1, Rotation = 0 };
                         }
-                        if (place.ColorMultiplyIndex < movie.ColorTransforms.Length)
+                        if (command.ColorMultiplyIndex < movie.ColorTransforms.Length)
                         {
-                            var c = movie.ColorTransforms[(int)place.ColorMultiplyIndex];
+                            var c = movie.ColorTransforms[(int)command.ColorMultiplyIndex];
                             state = state with { Red = c.Red / 256f, Green = c.Green / 256f, Blue = c.Blue / 256f, Alpha = c.Alpha / 256f };
                         }
-                        if (place.NameStringIndex != 0 && text(place.NameStringIndex) is { Length: > 0 } instance)
+                        if (command.NameStringIndex != 0 && text(command.NameStringIndex) is { Length: > 0 } instance)
                             layer.Name = instance;
-                        if (place.BlendMode != 0)
-                            layer.Blend = place.BlendMode;
+                        if (command.BlendMode != 0)
+                            layer.Blend = command.BlendMode;
                         layer.State = state;
                         if (layer.Keys.Count > 0 && layer.Keys[^1].Frame == at)
                             layer.Keys[^1] = (at, state);

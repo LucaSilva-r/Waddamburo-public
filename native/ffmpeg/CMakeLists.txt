@@ -6,14 +6,60 @@ set(WADDAMBURO_FFMPEG_URL
   "https://ffmpeg.org/releases/${WADDAMBURO_FFMPEG_ARCHIVE}")
 set(WADDAMBURO_FFMPEG_SHA256
   "464beb5e7bf0c311e68b45ae2f04e9cc2af88851abb4082231742a74d97b524c")
+set(WADDAMBURO_FFMPEG_SOURCE_DIR "" CACHE PATH "Use an unpacked FFmpeg source tree for local relinking")
+if(WADDAMBURO_FFMPEG_SOURCE_DIR)
+  if(NOT EXISTS "${WADDAMBURO_FFMPEG_SOURCE_DIR}/configure")
+    message(FATAL_ERROR "WADDAMBURO_FFMPEG_SOURCE_DIR must contain FFmpeg's configure script")
+  endif()
+  set(_ffmpeg_source_args SOURCE_DIR "${WADDAMBURO_FFMPEG_SOURCE_DIR}" DOWNLOAD_COMMAND "" BUILD_ALWAYS TRUE)
+else()
+  set(_ffmpeg_source_args
+    URL "${WADDAMBURO_FFMPEG_URL}"
+    URL_HASH "SHA256=${WADDAMBURO_FFMPEG_SHA256}"
+    DOWNLOAD_NAME "${WADDAMBURO_FFMPEG_ARCHIVE}"
+    DOWNLOAD_DIR "${CMAKE_SOURCE_DIR}/../out/downloads"
+    SOURCE_DIR "${CMAKE_SOURCE_DIR}/../out/source/ffmpeg-${WADDAMBURO_FFMPEG_VERSION}"
+    DOWNLOAD_EXTRACT_TIMESTAMP true)
+endif()
 
 find_program(WADDAMBURO_MAKE_EXECUTABLE NAMES gmake make REQUIRED)
 cmake_host_system_information(RESULT _ffmpeg_jobs QUERY NUMBER_OF_LOGICAL_CORES)
 
-set(_ffmpeg_platform_options --arch=x86_64 --disable-x86asm)
+# x86 SIMD (nasm): H.264 and the scaler several times faster, which background videos need. arm64 has NEON built in.
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
+  set(_ffmpeg_platform_options --arch=aarch64)
+else()
+  set(_ffmpeg_platform_options --arch=x86_64 --x86asmexe=nasm)
+endif()
 set(_ffmpeg_configure_command <SOURCE_DIR>/configure)
 
-if(MINGW AND CMAKE_CROSSCOMPILING)
+if(ANDROID)
+  # NDK clang wrappers carry the target and API level.
+  set(_ndk_bin "${ANDROID_TOOLCHAIN_ROOT}/bin")
+  if(ANDROID_ABI STREQUAL "arm64-v8a")
+    set(_ffmpeg_arch_options --arch=aarch64)
+    set(_ffmpeg_android_triple aarch64-linux-android)
+  elseif(ANDROID_ABI STREQUAL "x86_64")
+    # ponytail: no x86 SIMD on Android x86_64 (Chromebooks): FFmpeg's x86 assembly needs text relocations there.
+    set(_ffmpeg_arch_options --arch=x86_64 --disable-x86asm)
+    set(_ffmpeg_android_triple x86_64-linux-android)
+  else()
+    message(FATAL_ERROR "Unsupported Android ABI for FFmpeg: ${ANDROID_ABI}")
+  endif()
+  set(_ffmpeg_platform_options
+    --enable-cross-compile
+    --target-os=android
+    ${_ffmpeg_arch_options}
+    --cc=${_ndk_bin}/${_ffmpeg_android_triple}${ANDROID_NATIVE_API_LEVEL}-clang
+    --cxx=${_ndk_bin}/${_ffmpeg_android_triple}${ANDROID_NATIVE_API_LEVEL}-clang++
+    --ar=${_ndk_bin}/llvm-ar
+    --nm=${_ndk_bin}/llvm-nm
+    --ranlib=${_ndk_bin}/llvm-ranlib
+    --strip=${_ndk_bin}/llvm-strip
+    --enable-pthreads
+    --enable-pic
+    --pkg-config=pkg-config)
+elseif(MINGW AND CMAKE_CROSSCOMPILING)
   if(CMAKE_HOST_WIN32)
     # MSYS2: Windows cannot run the configure script itself.
     find_program(WADDAMBURO_BASH_EXECUTABLE NAMES bash REQUIRED)
@@ -33,6 +79,25 @@ elseif(WIN32)
     --toolchain=msvc
     --target-os=win64
     --enable-w32threads)
+elseif(IOS)
+  # Cross: the iPhone SDK's clang and sysroot (CMake resolved CMAKE_OSX_SYSROOT to its path).
+  list(APPEND _ffmpeg_platform_options
+    --enable-cross-compile
+    --target-os=darwin
+    --cc=${CMAKE_C_COMPILER}
+    --sysroot=${CMAKE_OSX_SYSROOT}
+    "--extra-cflags=-arch arm64 -miphoneos-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}"
+    "--extra-ldflags=-arch arm64 -miphoneos-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}"
+    --enable-pthreads
+    --enable-pic)
+elseif(APPLE)
+  list(APPEND _ffmpeg_platform_options
+    --target-os=darwin
+    --cc=clang
+    --extra-cflags=-mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}
+    --extra-ldflags=-mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}
+    --enable-pthreads
+    --enable-pic)
 else()
   list(APPEND _ffmpeg_platform_options
     --target-os=linux
@@ -59,6 +124,11 @@ if(CMAKE_TOOLCHAIN_FILE)
 endif()
 if(DEFINED WADDAMBURO_CROSS_PREFIX)
   list(APPEND _opus_cmake_options -DWADDAMBURO_CROSS_PREFIX=${WADDAMBURO_CROSS_PREFIX})
+endif()
+if(WIN32 AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
+  # ponytail: Opus detects ARM CPUs on Windows only under MSVC (__try), and its NEON code needs that detection, so
+  # llvm-mingw builds it in plain C; it only encodes the decoded-audio cache, in the background.
+  list(APPEND _opus_cmake_options -DOPUS_DISABLE_INTRINSICS=ON)
 endif()
 ExternalProject_Add(waddamburo_opus
   URL "https://downloads.xiph.org/releases/opus/opus-${WADDAMBURO_OPUS_VERSION}.tar.gz"
@@ -90,13 +160,16 @@ set(_ffmpeg_common_options
   --disable-avfilter
   --enable-swscale
   --enable-decoder=atrac3p,h264,mp3,mp3float,vorbis,flac,opus,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le,pcm_u8
-  --enable-demuxer=wav,mp3,ogg,flac,mpegps,h264
+  # Background videos: every codec osu! beatmaps ship (a 1,881-video lazer library: H.264 82%, MPEG-4 Part 2
+  # 14%, Sorenson/FLV1 3%, then VP6, MS-MPEG4, WMV3, MPEG-1/2, MJPEG).
+  --enable-decoder=mpeg4,flv,vp6f,msmpeg4v1,msmpeg4v2,msmpeg4v3,wmv3,mpeg1video,mpeg2video,mjpeg
+  --enable-demuxer=wav,mp3,ogg,flac,mpegps,h264,mov,avi,flv,matroska,asf,mpegvideo
   # The decoded-audio cache (vgmstream-cli output) is re-encoded as Opus in Ogg.
   --enable-libopus
   --pkg-config-flags=--static
   --enable-encoder=libopus
   --enable-muxer=ogg
-  --enable-parser=mpegaudio,vorbis,flac,opus,h264
+  --enable-parser=mpegaudio,vorbis,flac,opus,h264,mpeg4video,mpegvideo,vc1,mjpeg
   --enable-protocol=file
   --disable-network
   --disable-programs
@@ -123,28 +196,29 @@ string(JOIN "\n" _ffmpeg_configure_manifest
   ${_ffmpeg_platform_options})
 string(REPLACE "${_ffmpeg_prefix}" "<INSTALL_PREFIX>"
   _ffmpeg_configure_manifest "${_ffmpeg_configure_manifest}")
+if(ANDROID)
+  string(REPLACE "${_ndk_bin}" "<NDK_BIN>"
+    _ffmpeg_configure_manifest "${_ffmpeg_configure_manifest}")
+endif()
 file(GENERATE
   OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/configure-options.txt"
   CONTENT "${_ffmpeg_configure_manifest}\n")
 
 ExternalProject_Add(waddamburo_ffmpeg
-  URL "${WADDAMBURO_FFMPEG_URL}"
-  URL_HASH "SHA256=${WADDAMBURO_FFMPEG_SHA256}"
-  DOWNLOAD_NAME "${WADDAMBURO_FFMPEG_ARCHIVE}"
-  DOWNLOAD_DIR "${CMAKE_SOURCE_DIR}/../out/downloads"
-  SOURCE_DIR "${CMAKE_SOURCE_DIR}/../out/source/ffmpeg-${WADDAMBURO_FFMPEG_VERSION}"
+  ${_ffmpeg_source_args}
   BINARY_DIR "${_ffmpeg_build_dir}"
-  DOWNLOAD_EXTRACT_TIMESTAMP true
   DEPENDS waddamburo_opus
   CONFIGURE_COMMAND
     ${CMAKE_COMMAND} -E env "PKG_CONFIG_LIBDIR=${_ffmpeg_prefix}/lib/pkgconfig"
     ${_ffmpeg_configure_command}
     ${_ffmpeg_common_options}
     ${_ffmpeg_platform_options}
+  # The build step owns the installed archives listed in BUILD_BYPRODUCTS.
+  # Ninja must see their new timestamps before deciding whether to relink.
   BUILD_COMMAND ${WADDAMBURO_MAKE_EXECUTABLE} -j${_ffmpeg_jobs}
+    COMMAND ${WADDAMBURO_MAKE_EXECUTABLE} install
   INSTALL_COMMAND
-    ${WADDAMBURO_MAKE_EXECUTABLE} install
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${_ffmpeg_prefix}/licenses/FFmpeg"
+    ${CMAKE_COMMAND} -E make_directory "${_ffmpeg_prefix}/licenses/FFmpeg"
     COMMAND ${CMAKE_COMMAND} -E copy <SOURCE_DIR>/COPYING.LGPLv2.1
             "${_ffmpeg_prefix}/licenses/FFmpeg/COPYING.LGPLv2.1"
     COMMAND ${CMAKE_COMMAND} -E copy <SOURCE_DIR>/LICENSE.md
@@ -171,3 +245,8 @@ add_custom_target(waddamburo_ffmpeg_audit
     -P "${CMAKE_CURRENT_SOURCE_DIR}/audit.cmake"
   DEPENDS waddamburo_ffmpeg
   VERBATIM)
+
+if(WADDAMBURO_PACKAGE AND NOT WADDAMBURO_FFMPEG_SOURCE_DIR)
+  file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/ffmpeg-source-archives.txt"
+    CONTENT "${WADDAMBURO_FFMPEG_SHA256}  ${WADDAMBURO_FFMPEG_ARCHIVE}\n${WADDAMBURO_OPUS_SHA256}  opus-${WADDAMBURO_OPUS_VERSION}.tar.gz\n")
+endif()

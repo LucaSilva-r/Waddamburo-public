@@ -1,17 +1,12 @@
-using Waddamburo.Skins.Green.Art;
 using System.Collections.Concurrent;
 using System.Globalization;
 using System.Diagnostics;
-using Waddamburo.App.Audio;
 using Waddamburo.App.Cli;
-using Waddamburo.App.Gameplay;
 using Waddamburo.App.Hosting;
 using Waddamburo.App.Presentation;
 using Waddamburo.App.Tools;
 using Waddamburo.Catalog;
-using Waddamburo.Editor;
 using Waddamburo.Formats.Layout;
-using Waddamburo.Game.Online;
 using Waddamburo.Game.Dan;
 using Waddamburo.Game.Don;
 using Waddamburo.Game.Flow;
@@ -28,6 +23,7 @@ using Waddamburo.Platform.Sdl.Media;
 using Waddamburo.Platform.Sdl.Rendering;
 using Waddamburo.App.Home;
 using Waddamburo.App.Online;
+using Waddamburo.Skins.Green.Art;
 using Waddamburo.Skins.Green.Screens;
 using Waddamburo.Skins.Green.Sound;
 
@@ -58,6 +54,8 @@ internal sealed record GameOptions(
     string? ServiceFontPath = null,
     bool RecordPerformance = false,
     BenchmarkMode Benchmark = BenchmarkMode.Off,
+    FlowSmokeMode FlowSmoke = FlowSmokeMode.Off,
+    string? FlowSmokeSong = null,
     DirectPlay? Play = null);
 
 /// <summary>
@@ -75,64 +73,22 @@ internal enum BenchmarkMode { Off, Quit, Restart, Paced }
 /// over it (intermission, system indicators), the cabinet's coins and the credit's players, and hands
 /// each tick to the active scene's <see cref="FlowScene"/>.
 /// </summary>
-internal sealed class GameShell : IDisposable
+internal sealed partial class GameShell : IDisposable
 {
     public GameOptions Options { get; }
     /// <summary>The settings (the home menu changes them while the game runs).</summary>
     public ArcadeSettings Arcade { get; set; }
 
     public SdlApplication Application { get; }
-    private EffectsEditorSession? _effectsEditor;
 
-    public bool EffectsEditorOpen => _effectsEditor is not null;
+    /// <summary>The effects and layout editors over the song on screen.</summary>
+    public EffectsEditorHost Editor { get; private set; } = null!;
 
-    /// <summary>The layout editor shows the parts that only appear now and then (combo announcement, resume timer).</summary>
-    public bool ShowHiddenElements => _effectsEditor?.ShowHidden == true;
+    /// <summary>The audio output the settings ask for, with its fallbacks and live switch.</summary>
+    public AudioOutputHost AudioOutput { get; }
 
-    /// <summary>The effects editor's toggle: the scene's movies don't advance while it's open.</summary>
-    public bool FreezeAnimations { get; set; }
-
-    /// <summary>The effects editor on the playing chart, or (<paramref name="layout"/>) on the player's gameplay layout.</summary>
-    public void OpenEffectsEditor(bool layout = false)
-    {
-        if (_effectsEditor is null && (layout ? _gameplay.CanEditLayout : _gameplay.CanEditEffects) && _home.CloseForEffectsEditor())
-        {
-            _gameplay.BeginEffectsEditing(autoplay: layout);
-            _effectsEditor = layout
-                ? new EffectsEditorSession(Application, _gameplay.LayoutEditorChart, _gameplay.Training!, _gameplay.LayoutFiles(),
-                    _gameplay.ReplaceEditorEffects, _gameplay.LayoutElements, layout: true, layoutName: _gameplay.ActiveLayout, renameLayout: renameLayout,
-                    twoPlayers: _gameplay.TwoPlayerLayouts)
-                : new EffectsEditorSession(Application, stockLayout(), _gameplay.Training!, _gameplay.EditorFiles(),
-                    _gameplay.ReplaceEditorEffects, _gameplay.EditorElements, _gameplay.LoadEditorTja, _gameplay.EditorTjaPath());
-        }
-    }
-
-    // The modchart editor works on the stock screen: the song drops the player's layout (and its 4:3) as it opens.
-    private Waddamburo.Catalog.PlayableChart stockLayout()
-    {
-        var chart = _gameplay.EditorChartWithoutLayout;
-        _gameplay.ReplaceEditorEffects(chart.Effects);
-        return chart;
-    }
-
-    // The layout editor's name field: the active layout's file renamed, the settings following it.
-    private EffectEditorFiles? renameLayout(string name)
-    {
-        if (_gameplay.ActiveLayout is not { } from) return null;
-        try
-        {
-            if (Waddamburo.App.Gameplay.PlayerLayouts.Rename(_gameplay.LayoutFolder, from, name) is not { } renamed) return null;
-            Arcade = _gameplay.WithActiveLayout(Arcade, renamed);
-            if (Options.ArcadePath is { } config) ArcadeSettings.SaveMenuSettings(config, Arcade);
-            return _gameplay.LayoutFiles();
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            Console.Error.WriteLine($"Layout not renamed: {exception.Message}");
-            return null;
-        }
-    }
-
+    private Rumble _rumble = null!;
+    private PresenceReporter _presence = null!;
     // The screenshot button (#27): the frame as presented, a PNG in screenshots/ beside config.cfg, encoded off the
     // render thread.
     private void saveScreenshot(RenderCapture capture)
@@ -171,13 +127,6 @@ internal sealed class GameShell : IDisposable
         }
     }
 
-    private void closeEffectsEditor()
-    {
-        _effectsEditor?.Dispose();
-        _effectsEditor = null;
-        FreezeAnimations = false;
-    }
-
     public SdlDonRenderer? DonRenderer { get; }
     public DonPresentationController? Don { get; }
     public AudioEngine? Audio { get; }
@@ -187,16 +136,12 @@ internal sealed class GameShell : IDisposable
     public Waddamburo.Game.ISkin Skin { get; } = new Waddamburo.Skins.Green.GreenSkin();
 
     /// <summary>The game's screens' sound controllers (its movies ask for bank cues); null without audio.</summary>
-    public Waddamburo.Skins.Green.Sound.GreenScreenSounds? GreenSounds { get; private set; }
+    public GreenScreenSounds? GreenSounds { get; private set; }
     public SongPreviewController? Previews { get; }
     public SongTitleTextureCache Titles { get; }
     public CoinBank? Coins { get; internal set; } // the cabinet controls replace it as the service menu closes
 
-    /// <summary>Per lane, the best before the last saved play on its chart, or that play's score when it is the first (for results).</summary>
-    public long?[] Bests { get; } = new long?[2];
 
-    /// <summary>Each lane's place on the chart's online top three after its play (null: not known).</summary>
-    public RankingPlacement?[] Placements { get; } = new RankingPlacement?[2];
 
     /// <summary>Chart key -> hash, stored with the scores (matches server bests to the library).</summary>
     public ChartHashes ChartHashes { get; }
@@ -205,6 +150,7 @@ internal sealed class GameShell : IDisposable
     public void RehashLibrary() => ChartHashes.Rehash(_libraries.Snapshot.Songs.Values, _danCourses.Rematch);
 
     private readonly DanCourses _danCourses;
+    private readonly CurrentEvent _event;
 
     /// <summary>The score database and the server side (uploads, bests, rankings, cabinet pairing).</summary>
     public ScoreSync Sync { get; }
@@ -214,7 +160,8 @@ internal sealed class GameShell : IDisposable
     /// <summary>The active scene and its mode, for the log: "gameplay (AI battle, dev autoplay)".</summary>
     public string DescribeScene()
     {
-        if (Active is not { } active)
+        // The audio thread asks during boot too, before there is a switcher.
+        if (Scenes?.Active is not { } active)
             return "starting";
         var gameplay = active.Id == FlowScenes.Gameplay && _scenes.TryGetValue(active.Id, out var flow) ? flow as GameplayFlow : null;
         string[] modes =
@@ -230,103 +177,6 @@ internal sealed class GameShell : IDisposable
     }
 
     public bool HideArcadeHud => Arcade.Home && !Arcade.ArcadeHud;
-
-    // #35: the controllers bound to the lane's player (lane null: the one player) rumble, by the VIBRATION setting: big
-    // notes, rolls/balloons/kusudama and their pops; every note hit; or every drum hit. A don rumbles the low (heavy)
-    // motor, longer and boomy, a ka the high one, short and dry (SDL maps the two to distinct frequencies on HD-rumble and
-    // voice-coil controllers); a big note both, harder. Not in a replay or autoplay. ponytail: strengths by feel, untraced.
-    private void rumble(int? lane, TaikoInputAction hit)
-    {
-        if (Arcade.ControllerVibration == Waddamburo.Game.Flow.ControllerVibration.EveryHit)
-            rumble(lane, hit is TaikoInputAction.LeftDon or TaikoInputAction.RightDon ? DonFeel : KaFeel);
-    }
-
-    private static readonly (float, float, int) DonFeel = (0.55f, 0f, 70), KaFeel = (0f, 0.45f, 25), BigFeel = (0.9f, 0.5f, 110);
-
-    private void rumble(int? lane, GameplaySoundEvent sound)
-    {
-        var level = Arcade.ControllerVibration;
-        switch (sound)
-        {
-            case GameplaySoundEvent.BigHit:
-                rumble(lane, BigFeel);
-                break;
-            // Rolls, balloons and kusudama from Big notes up (a big roll as a big note).
-            case GameplaySoundEvent.LongDonHit or GameplaySoundEvent.LongKaHit:
-                rumble(lane, sound == GameplaySoundEvent.LongDonHit ? DonFeel : KaFeel);
-                break;
-            case GameplaySoundEvent.BigLongHit:
-                rumble(lane, BigFeel);
-                break;
-            // All notes: only presses that hit a note (Every hit feels each drum press instead).
-            case GameplaySoundEvent.DonHit or GameplaySoundEvent.KaHit when level == Waddamburo.Game.Flow.ControllerVibration.AllNotes:
-                rumble(lane, sound == GameplaySoundEvent.DonHit ? DonFeel : KaFeel);
-                break;
-            // A balloon pops: a sharp crack (light motor) over a thump (heavy one) that dies at once.
-            case GameplaySoundEvent.BalloonPopped:
-                rumbleShape(lane, 0.2, static t => (0.8f * MathF.Pow(1 - t, 3), t < 0.2f ? 1f : 0f));
-                break;
-            // A kusudama bursts: a hard hit, then a fluttering rumble that fades out (the confetti).
-            case GameplaySoundEvent.KusudamaPopped:
-                rumbleShape(lane, 0.7, static t => (1f * (1 - t) * (1 - t),
-                    t < 0.08f ? 1f : 0.6f * (1 - t) * (0.6f + 0.4f * MathF.Sin(t * 70))));
-                break;
-        }
-    }
-
-    // Per side: until when (Environment.TickCount64) the last rumble plays, and how strong. A weaker one doesn't cut a
-    // stronger one short (a big note's rumble isn't replaced by the drum press's small one right after it).
-    private readonly long[] _rumbleUntil = new long[2];
-    private readonly float[] _rumbleStrength = new float[2];
-
-    private void rumble(int? lane, (float Low, float High, int Ms) rumble)
-    {
-        var side = lane ?? Credit.PlayerSide;
-        if (rumblePads(side) is not { Length: > 0 } pads)
-            return;
-        var strength = Math.Max(rumble.Low, rumble.High);
-        if (Environment.TickCount64 < _rumbleUntil[side] && strength < _rumbleStrength[side])
-            return;
-        (_rumbleUntil[side], _rumbleStrength[side]) = (Environment.TickCount64 + rumble.Ms, strength);
-        Application.Rumble(pads, rumble.Low, rumble.High, TimeSpan.FromMilliseconds(rumble.Ms));
-    }
-
-    // The controllers to rumble for a side's player; none when vibration is off, in a replay or in autoplay.
-    private int[]? rumblePads(int side)
-    {
-        if (Arcade.ControllerVibration == Waddamburo.Game.Flow.ControllerVibration.Off || Autoplay || _gameplay.Reviewing
-            || (uint)side > 1)
-            return null;
-        return [.. Enumerable.Range(side * 4, 4).SelectMany(pad => Home.ControlBindings.Inputs(Arcade.Controls[pad]))
-            .Select(static token => SdlInput.TryParse(token, out var input) && input.Kind is SdlInputKind.PadButton or SdlInputKind.PadTrigger ? input.Device : 0)
-            .Where(static device => device > 0).Distinct()];
-    }
-
-    // Rumbles that change over time (a pop): each tick sets the motors to the shape at that point (t 0-1 over its length).
-    private readonly List<(int Side, int[] Pads, long Start, double Seconds, Func<float, (float Low, float High)> Shape)> _rumbles = [];
-
-    private void rumbleShape(int? lane, double seconds, Func<float, (float Low, float High)> shape)
-    {
-        var side = lane ?? Credit.PlayerSide;
-        if (rumblePads(side) is { Length: > 0 } pads)
-            _rumbles.Add((side, pads, System.Diagnostics.Stopwatch.GetTimestamp(), seconds, shape));
-    }
-
-    private void updateRumbles()
-    {
-        for (var index = _rumbles.Count - 1; index >= 0; index--)
-        {
-            var (side, pads, start, seconds, shape) = _rumbles[index];
-            var t = (float)(System.Diagnostics.Stopwatch.GetElapsedTime(start).TotalSeconds / seconds);
-            var (low, high) = t >= 1 ? (0f, 0f) : shape(t);
-            // Held a little past the next tick, so a late tick doesn't leave a gap; as strong as it is now (hits
-            // weaker than the pop don't break it up).
-            Application.Rumble(pads, low, high, TimeSpan.FromMilliseconds(t >= 1 ? 1 : 50));
-            (_rumbleUntil[side], _rumbleStrength[side]) = (Environment.TickCount64 + (t >= 1 ? 0 : 50), Math.Max(low, high));
-            if (t >= 1)
-                _rumbles.RemoveAt(index);
-        }
-    }
 
     /// <summary>Development builds: the player's lane is drummed live by the bot (Settings > Developer).</summary>
     public bool DevAutoplay => BuildInfo.Dev && Arcade.DevAutoplay;
@@ -347,6 +197,7 @@ internal sealed class GameShell : IDisposable
 
     private readonly PairingPill _pill;
     private readonly PerformanceOverlay _performance;
+    private bool _performanceSetting;
     // Home only: a cabinet's notices are for its operator (their view comes later).
     private readonly NoticeOverlay? _notices;
     private readonly TimingMarkOverlay _timingMarks;
@@ -388,6 +239,10 @@ internal sealed class GameShell : IDisposable
     public SceneCatalog Catalog { get; }
     public IScreenHosts Hosts { get; }
 
+    /// <summary>The game's hosts of the movies on stage, as Green's screens (master's features reach them directly).</summary>
+    // ponytail: App code that still names Green's hosts; each moves behind IScreenHosts as its screen goes skin-neutral.
+    public Waddamburo.Skins.Green.GreenScreenHosts Loaded { get; }
+
     /// <summary>Song Select's score windows from the server (null offline).</summary>
     public SongRankings? Rankings { get; private set; }
 
@@ -395,12 +250,6 @@ internal sealed class GameShell : IDisposable
     public IReadOnlyDictionary<string, TaikoCrown>? Crowns(int side) => Sync.Scores is not { } scores ? null
         : TaikoGuest.Profiles[side] is { } profile ? scores.Crowns(profile.Baid)
         : Arcade.Home ? scores.Crowns(ScoreProfile.LocalGuestBaid) : null;
-
-    /// <summary>The credit's state (who plays where, the mode, the results to show).</summary>
-    public CreditState Credit { get; } = new();
-
-    /// <summary>What the next Song Select lists and where it starts.</summary>
-    public SongSelectSetup Select { get; private set; } = null!;
 
     /// <summary>Whether the active screen's movies are done with it (the skin answers).</summary>
     public bool ScreenEnded => Hosts.Ended(Active.Id, [.. Active.Player.Layers.Select(static layer => layer.Player)]);
@@ -413,34 +262,36 @@ internal sealed class GameShell : IDisposable
     public int Tick { get; private set; }
     public LumenGameSceneInstance Active => Scenes.Active;
 
-    /// <summary>The song being played and its stage (1-8) in the credit.</summary>
-    public TaikoSongInfo SongInfo { get; set; } = new(0, 1);
 
     /// <summary>Who is playing this credit (joined drums, songs played, a replay's player, online two-player).</summary>
     public PlayerSession Players { get; }
 
+    /// <summary>The credit's mode, players and what a play hands its results (see <see cref="CreditSession"/>).</summary>
+    public CreditSession Credit { get; } = new();
+
+    /// <summary>What the next Song Select lists and where it starts.</summary>
+    public SongSelectSetup Select { get; private set; } = null!;
+
+    /// <summary>Where the next Song Select starts.</summary>
+    public SongSelectMemory SelectMemory => Select.Memory;
+
     private readonly SongLibraries _libraries;
-    private readonly IAudioOutput? _audioDevice;
     private readonly LumenGameSceneLoader _loader;
-    private readonly CostumeIconTextures _costumeIcons;
-    private readonly DanChallengeArt _danArt;
-    private readonly CopyrightArt _copyright;
-    private readonly WaiwaiResultTextures _waiwaiResultTextures;
-    private readonly TextFieldTextures _textFields;
-    private readonly NameTextTextures _nameTexts;
-    private readonly NutData _nutData;
 
     /// <summary>AI battle's AI-don levels (ghosttuning.xml; empty when the data has none).</summary>
     public IReadOnlyList<Waddamburo.Game.Gameplay.GhostLevel> GhostLevels { get; } = [];
 
     /// <summary>The AI battle player's standing (the playing drum's player; at home a guest is this PC's).</summary>
-    public Waddamburo.Game.Scores.AiProgress AiStanding() =>
+    public Waddamburo.Services.Scores.AiProgress AiStanding() =>
         (TaikoGuest.Profiles[Credit.PlayerSide] ?? (Arcade.Home ? Waddamburo.Game.Scores.ScoreProfile.LocalGuest : null)) is { } profile
-            && Sync.Scores is { } scores ? scores.AiProgress(profile.Baid) : Waddamburo.Game.Scores.AiProgress.None;
+            && Sync.Scores is { } scores ? scores.AiProgress(profile.Baid) : Waddamburo.Services.Scores.AiProgress.None;
+
+    private bool _aiBattleInstalled = true;
 
     /// <summary>AI battle's rank ladder (the installation's ghostinfo.xml).</summary>
     public Waddamburo.Game.Gameplay.AiBattleRanks AiRanks { get; } = Waddamburo.Game.Gameplay.AiBattleRanks.Green;
-    private readonly ToneArt _toneArt;
+    // The game's own art and text in the movies' native fills.
+    private readonly NativeArt _art;
     private readonly AttractFlow _attract;
     private readonly GameplayFlow _gameplay;
     private readonly HomeControls _home;
@@ -448,6 +299,9 @@ internal sealed class GameShell : IDisposable
     private readonly ScoreListOverlay _scores;
     // Overlays that take the keyboard (topmost last) and the painter Waddamburo's own overlays draw with.
     public CustomUploadPrompt CustomUploadPrompt { get; }
+
+    /// <summary>Settings › Send to device / Receive from device.</summary>
+    public DeviceTransfer DeviceTransfer { get; }
     private readonly IInputOverlay[] _inputOverlays;
 
     /// <summary>Song Select's flow (an online host's cover is cancelled through it).</summary>
@@ -469,8 +323,6 @@ internal sealed class GameShell : IDisposable
     private SystemIndicators? _indicators;
     private RenderTextureId[] _indicatorTextures = [];
     private SceneId? _indicatorScene;
-    private static readonly HashSet<SceneId> _attractScenes =
-        [FlowScenes.Logo, FlowScenes.Title, FlowScenes.Caution, FlowScenes.Movie];
     private readonly InputLatches _input = new();
     private bool _returnToAttract; // the entry gave up (applied on the next tick, outside its callbacks)
     // Arcade: the service menu (Escape, the test switch), the coin switches and the cabinet's running totals.
@@ -482,9 +334,9 @@ internal sealed class GameShell : IDisposable
 
     /// <summary>The cabinet's bookkeeping (the service menu's counts).</summary>
     public Bookkeeping Book { get; }
-    private readonly bool _traceInput = Environment.GetEnvironmentVariable("WADDAMBURO_INPUT_TRACE") == "1";
+    private readonly bool _traceInput = DiagnosticSwitches.InputTrace;
     private readonly int _dumpTreeTick =
-        int.TryParse(Environment.GetEnvironmentVariable("WADDAMBURO_DUMP_TREE"), out var dumpAt) ? dumpAt : -1;
+        int.TryParse(DiagnosticSwitches.DumpTree, out var dumpAt) ? dumpAt : -1;
 
     /// <summary>The game closed to start again (the caller relaunches it once everything is released).</summary>
     public static bool RestartRequested { get; private set; }
@@ -496,6 +348,7 @@ internal sealed class GameShell : IDisposable
     public Random Random { get; private set; } = Random.Shared;
 
     private readonly BenchmarkRun? _benchmark;
+    private readonly FlowSmokeRun? _flowSmoke;
 
     /// <summary>Settings > Run Benchmark: the game starts again into the benchmark, then again as usual.</summary>
     public void RequestBenchmark()
@@ -558,7 +411,7 @@ internal sealed class GameShell : IDisposable
         var timer = number(Active.Id == FlowScenes.Entry ? Hosts.Entry?.Session?.TimeLeft
             : Active.Id == FlowScenes.SongSelect ? Hosts.SongSelect?.Session.TimeLeft : null);
         // Song select's tab: which song of the credit comes next (the game has art for 1 to 4; home shows none).
-        var stage = Active.Id == FlowScenes.SongSelect && !Arcade.Home ? Players.SongsPlayed + 1 : (int?)null;
+        var stage = Active.Id == FlowScenes.SongSelect && !Arcade.Home ? Credit.SongsPlayed + 1 : (int?)null;
         var card = Sync.Pairing?.Shown();
         var names = new LumenHostValue[2];
         for (var side = 0; side < 2; side++)
@@ -673,7 +526,10 @@ internal sealed class GameShell : IDisposable
     /// </summary>
     public void ApplyRecording()
     {
-        var wanted = (Options.RecordPerformance || Options.Benchmark != BenchmarkMode.Off || Arcade.RecordPerformance) && !Headless;
+        // ponytail: not on iOS, where .NET can't read the process's CPU time or memory (the report and the scene
+        // switch's profile line need them); add a mach task_info reader if iOS reports matter.
+        var wanted = (Options.RecordPerformance || Options.Benchmark != BenchmarkMode.Off || Arcade.RecordPerformance) && !Headless
+            && !OperatingSystem.IsIOS();
         if (wanted && Application.Recorder is null)
         {
             var version = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(typeof(GameShell).Assembly)?.InformationalVersion ?? "?";
@@ -685,7 +541,12 @@ internal sealed class GameShell : IDisposable
                     + $"{(Arcade.Fullscreen ? Arcade.ExclusiveFullscreen ? " (exclusive)" : " (borderless)" : "")}, "
                     + $"textures {(MovieContent.KeepCompressed ? "BC1/BC3 kept" : "decoded to RGBA")}, "
                     + $"refresh {Arcade.RefreshRate}, mode {(Arcade.Home ? "home" : "arcade")}, skin {Arcade.GameplaySkin}, "
-                    + $"audio buffer {Arcade.AudioBufferFrames}{(Arcade.AudioExclusive ? " exclusive" : "")}",
+                    + $"audio {Arcade.AudioOutput switch
+                    {
+                        AudioOutputMode.Exclusive => $"exclusive period {Arcade.AudioExclusivePeriod}, device {Arcade.AudioDevice ?? "default"}",
+                        AudioOutputMode.Asio => $"asio {Arcade.AsioDriver ?? "first driver"} buffer {Arcade.AsioBufferFrames}",
+                        _ => $"buffer {Arcade.AudioBufferFrames}, device {Arcade.AudioDevice ?? "default"}",
+                    }}",
                     // Upscaled textures are 9x the pixels (BC7 on the GPU when it has it, else RGBA): they change memory and load times most.
                     $"upscaled textures\t{(Upscale is not { } upscale ? "unavailable (no model)"
                         : !Arcade.UpscaleTextures ? "off" : $"on, shown {Application.ShowUpscaled}, scale {upscale.Scale.ToString("0.#", CultureInfo.InvariantCulture)}x, "
@@ -699,8 +560,47 @@ internal sealed class GameShell : IDisposable
         }
     }
 
+    // osu! libraries are read only once chosen (#46): the first start finding an install not set yet offers it, off
+    // until the player turns it on. Escape asks again next start.
+    // The screens' movies decoded and up, their jingles decoded, before the game starts: no file is read where a screen
+    // changes (a Switch's SD card took 0.3-1.2 s there).
+    private void askOsuLibraries(BootChecks boot)
+    {
+        var lazer = string.IsNullOrEmpty(Arcade.OsuFolder) ? Waddamburo.Providers.OsuLazer.OsuLazerCatalogProvider.FindDataFolder(null) : null;
+        var stable = string.IsNullOrEmpty(Arcade.OsuStableFolder) ? Waddamburo.Providers.OsuLazer.OsuLazerCatalogProvider.FindStableFolder(null) : null;
+        if (lazer is null && stable is null)
+            return;
+        bool useLazer = false, useStable = false;
+        // Settings' own option rows: Enter picks one, the arrows switch it, green at its default (off).
+        OverlayRow option(string name, string path, Func<bool> on, Action flip) =>
+            new(OverlayMenu.upper(Strings.T(name)), 400, () => $"{{{Strings.T(on() ? "service.on" : "service.off")}}}", 640,
+                Step: _ => flip(), IsDefault: () => !on(), Hint: OverlayMenu.upper(Strings.T("osu_found.hint", path)));
+        boot.Ask(close => new OverlayPage(() => OverlayMenu.upper(Strings.T("osu_found.title")), () =>
+        [
+            .. lazer is null ? (OverlayRow[])[] : [option("osu_found.lazer", lazer, () => useLazer, () => useLazer = !useLazer)],
+            .. stable is null ? (OverlayRow[])[] : [option("osu_found.stable", stable, () => useStable, () => useStable = !useStable)],
+            new(Strings.T("service.ok"), 400, Gap: true, Enter: () =>
+            {
+                SaveArcade(Arcade with
+                {
+                    OsuFolder = useLazer ? lazer : Arcade.OsuFolder,
+                    OsuStableFolder = useStable ? stable : Arcade.OsuStableFolder,
+                    OsuLibrariesAsked = true,
+                });
+                close();
+            }),
+        ], Defaults: true));
+    }
+
     public void ApplyDisplay()
     {
+        // The setting shows or hides it when it changes; F5 (or a phone's development build) in between is left alone.
+        if (Arcade.PerformanceOverlay != _performanceSetting)
+        {
+            _performanceSetting = Arcade.PerformanceOverlay;
+            if (_performance.Visible != _performanceSetting)
+                _performance.Toggle();
+        }
         if (Headless)
             return;
         // Exclusive fullscreen on Windows only: Linux compositors only emulate it.
@@ -719,6 +619,9 @@ internal sealed class GameShell : IDisposable
 
     public static int Run(GameOptions options)
     {
+        // Mobile starts a new shell in the same process after an explicit restart.
+        RestartRequested = false;
+        RestartArguments = [];
         GameShell? shell = null;
         try
         {
@@ -755,7 +658,7 @@ internal sealed class GameShell : IDisposable
         CrashScreen.Show(Application, Options.ServiceFontPath ?? Options.FontPath, "99-1", BootChecks.Shown("GAME"), exception, log);
     }
 
-    private readonly int _crashAt = int.TryParse(Environment.GetEnvironmentVariable("WADDAMBURO_CRASH_AT"), out var crashAt) ? crashAt : -1;
+    private readonly int _crashAt = int.TryParse(DiagnosticSwitches.CrashAt, out var crashAt) ? crashAt : -1;
 
     // The startup's check screen, until the attract (or the scene asked for) shows.
     private BootChecks? _boot;
@@ -764,7 +667,10 @@ internal sealed class GameShell : IDisposable
     {
         Options = options;
         Players = new PlayerSession(this);
+        AudioOutput = new AudioOutputHost(this);
         Arcade = options.Arcade ?? new ArcadeSettings();
+        if (options.FlowSmoke != FlowSmokeMode.Off)
+            Arcade = FlowSmokeRun.Configure(Arcade, options.FlowSmoke);
         // Home: a PC plays free, without countdowns (the endless credit is the host factory's).
         if (Arcade.Home)
         {
@@ -814,11 +720,37 @@ internal sealed class GameShell : IDisposable
                         _ => "Cabinet token refused",
                     });
             }
-            _libraries = _boot.Background("SONG LIBRARY", () => SongLibraries.Load(dataRoot, Arcade, options.TjaRoot, _boot.Progress));
+            // Not in scripted runs (benchmark, flow smoke, tick or frame limits): nobody is there to answer.
+            if (Arcade.Home && !PlatformInfo.IsMobile && !Arcade.OsuLibrariesAsked && Interactive
+                && Options.Benchmark == BenchmarkMode.Off && Options.FlowSmoke == FlowSmokeMode.Off)
+                askOsuLibraries(_boot);
+            _libraries = _boot.Background("SONG LIBRARY", () => SongLibraries.Load(dataRoot, Arcade, options.TjaRoot, _boot.Progress,
+                () => _boot.Note(Strings.T("boot.building_cache"))));
             // Not fatal: the libraries that load are listed (the settings say what's wrong with the others).
             if (_libraries.Problems is { Count: > 0 } problems)
+            {
+                // A toast too: the boot's NG flashes by, and the library's other songs still list as if nothing were wrong.
+                foreach (var (folder, why) in problems)
+                    Sync.Notices.AddLocal(Strings.T("library.left_out", Path.GetFileName(Path.TrimEndingDirectorySeparator(folder)), why), NoticeSeverity.Critical);
                 _boot.Warn(problems.Count == 1 ? "1 library left out" : $"{problems.Count} libraries left out",
                     problems.Select(static problem => $"{problem.Folder}: {problem.Why}"));
+            }
+            // The installations' folders are checked in the background after the start: the notices menu shows how far.
+            if (_libraries.MetadataCache is { } metadataCache)
+            {
+                Waddamburo.Game.Flow.JobBoard.Job? checking = null;
+                var jobs = Sync.Jobs;
+                metadataCache.CheckProgress = (done, total) =>
+                {
+                    lock (jobs)
+                    {
+                        checking ??= jobs.Start(Strings.T("job.check_libraries"), total, quiet: true);
+                        checking.Report(done);
+                        if (done >= total)
+                            checking.Complete();
+                    }
+                };
+            }
             _boot.Begin("SONG CATALOG");
             var snapshot = _libraries.Snapshot;
             Assets = new CatalogAssetRouter([.. _libraries.Providers, ReceivedSongs]);
@@ -840,7 +772,9 @@ internal sealed class GameShell : IDisposable
             if (Sync.Online)
                 ChartHashes.HashLibraryInBackground(snapshot.Songs.Values);
             _danCourses = new DanCourses(snapshot, ChartHashes, options.ScoresPath is { } scores
-                ? Path.Combine(Path.GetDirectoryName(scores)!, "dan-courses.json") : null, Arcade.Server, Arcade.ServerInsecure);
+                ? Path.Combine(Path.GetDirectoryName(scores)!, "dan-courses.json") : null, Online.UpdateGate.Server(Arcade), Arcade.ServerInsecure,
+                Arcade.TjaFolder ?? options.TjaRoot, Assets.LoadChartAsync);
+            _event = new CurrentEvent(Online.UpdateGate.Server(Arcade), Arcade.ServerInsecure);
 
             _boot.Begin("I/O");
             if (ApplyControls(warn: true) is { Count: > 0 } controls)
@@ -849,28 +783,28 @@ internal sealed class GameShell : IDisposable
             DonRenderer = options.DonRoot is null ? null : Application.CreateDonRenderer(options.DonRoot);
             Don = DonRenderer is null ? null : new DonPresentationController(DonRenderer);
             // Diagnostic: WADDAMBURO_DON_COSTUME=head,body,paint (or a single whole-costume id) dresses P1 at start.
-            if (Don is not null && Environment.GetEnvironmentVariable("WADDAMBURO_DON_COSTUME") is { } costumeSetting)
+            if (Don is not null && DiagnosticSwitches.DonCostume is { } costumeSetting)
             {
                 var ids = costumeSetting.Split(',').Select(int.Parse).ToArray();
                 Don.SetCostume(0, ids.Length == 1 ? DonCostume.FromWhole(ids[0]) : new DonCostume(null, ids[0], ids[1], ids.ElementAtOrDefault(2)));
             }
             // Diagnostic: WADDAMBURO_TITLE=plate:text and/or WADDAMBURO_NAME=name give P1 a guest profile with them.
-            var diagnosticName = Environment.GetEnvironmentVariable("WADDAMBURO_NAME");
-            if (Environment.GetEnvironmentVariable("WADDAMBURO_TITLE") is [var plate, ':', .. var titleText])
+            var diagnosticName = DiagnosticSwitches.Name;
+            if (DiagnosticSwitches.Title is [var plate, ':', .. var titleText])
                 TaikoGuest.Profiles[0] = ScoreProfile.LocalGuest with { Title = titleText, TitlePlate = plate - '0', AccountName = diagnosticName };
             else if (diagnosticName is { Length: > 0 })
                 TaikoGuest.Profiles[0] = ScoreProfile.LocalGuest with { AccountName = diagnosticName };
             // Diagnostic: WADDAMBURO_DON_PUCHI=id puts that puchi chara beside P1 at start.
-            if (Don is not null && int.TryParse(Environment.GetEnvironmentVariable("WADDAMBURO_DON_PUCHI"), out var puchiSetting))
+            if (Don is not null && int.TryParse(DiagnosticSwitches.DonPuchi, out var puchiSetting))
                 Don.SetAccessory(0, puchiSetting);
             _boot.Begin("AUDIO DEVICE");
             var needsAudio = !Headless || options.JinglePath is not null || options.SoundRoot is not null;
-            _audioDevice = needsAudio ? openAudio() : null;
-            if (Environment.GetEnvironmentVariable("WADDAMBURO_PROFILE") == "1" && _audioDevice is not null)
-                Console.Error.WriteLine($"Profile audio: {_audioDevice.Driver}, "
-                    + $"{_audioDevice.HardwareFormat.SampleRate} Hz, "
-                    + $"{_audioDevice.HardwareBufferFrames} hardware frames.");
-            Audio = _audioDevice is null ? null : new AudioEngine(_audioDevice) { TraceContext = () => $"{DescribeScene()} at tick {Tick}" };
+            var audioDevice = AudioOutput.Start(needsAudio);
+            if (DiagnosticSwitches.Profile && audioDevice is not null)
+                Console.Error.WriteLine($"Profile audio: {audioDevice.Driver}, "
+                    + $"{audioDevice.HardwareFormat.SampleRate} Hz, "
+                    + $"{audioDevice.HardwareBufferFrames} hardware frames.");
+            Audio = audioDevice is null ? null : new AudioEngine(audioDevice) { TraceContext = () => $"{DescribeScene()} at tick {Tick}" };
             Previews = Audio is null
                 ? null
                 : new SongPreviewController(Audio, Assets, FindJingle("JINGLE_GENRE.nub"), FindJingle("JINGLE_WAIGENRE.nub"),
@@ -881,17 +815,18 @@ internal sealed class GameShell : IDisposable
             Titles = new SongTitleTextureCache(Application, options.FontPath, asynchronous: !Headless, english: Arcade.EnglishTitles,
                 squash: () => Arcade.SquashTitles, assetRoot: assetRoot);
             _pill = new PairingPill(Application, options.FontPath);
-            _textFields = new TextFieldTextures(Application, options.FontPath);
-            _nameTexts = new NameTextTextures(Application, options.FontPath);
-            _toneArt = new ToneArt(_nutData = new NutData(texture => SceneTextures.UploadOne(Application, texture), dataRoot));
+            _art = new NativeArt(Application, options.FontPath, dataRoot);
             GhostLevels = Waddamburo.Game.Gameplay.GhostTuning.Load(dataRoot);
             AiRanks = Waddamburo.Game.Gameplay.AiBattleRanks.Load(dataRoot);
             var support = Waddamburo.Game.Gameplay.SupportInfo.Load(dataRoot);
             _performance = new PerformanceOverlay(Application, () => Audio)
             {
-                Online = () => Room?.Session?.Link is { State: Waddamburo.Game.Online.PeerLinkState.Direct or Waddamburo.Game.Online.PeerLinkState.Relayed } link
-                    ? (link.State == Waddamburo.Game.Online.PeerLinkState.Relayed, link.RoundTrip) : null,
+                Online = () => Room?.Session?.Link is { State: Waddamburo.Services.Online.PeerLinkState.Direct or Waddamburo.Services.Online.PeerLinkState.Relayed } link
+                    ? (link.State == Waddamburo.Services.Online.PeerLinkState.Relayed, link.RoundTrip) : null,
             };
+            // ponytail: phones have no F5 yet; development builds start with the performance overlay on there.
+            if (PlatformInfo.IsMobile && BuildInfo.Dev)
+                _performance.Toggle();
             _timingMarks = new TimingMarkOverlay(Application);
             Painter = new OverlayPainter(Application, options.FontPath, asynchronous: !Headless);
             Book = Bookkeeping.Load(options.ArcadePath is { } settingsPath
@@ -919,18 +854,14 @@ internal sealed class GameShell : IDisposable
                 // 音なし (reported on Discord): the hits are silent in songs only, the menus keep their drum.
                 if (Arcade.DrumSoundInSongs)
                     Sounds?.Gameplay.PlayDrum(lane, action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon);
-                rumble(lane, action);
+                _rumble.Hit(lane, action);
             },
                 Don, (lane, sound, combo) =>
                 {
                     Sounds?.Gameplay.Play(lane, sound, combo);
-                    rumble(lane, sound);
+                    _rumble.Sound(lane, sound);
                 },
                 () => TimeSpan.FromMilliseconds(Arcade.DrumDebounceMs));
-            _costumeIcons = new CostumeIconTextures(Application, _nutData, dataRoot);
-            _danArt = new DanChallengeArt(_nutData);
-            _copyright = new CopyrightArt(_nutData);
-            _waiwaiResultTextures = new WaiwaiResultTextures(_nutData);
             // Other releases' installs (home's stock folders) name skins for the songs Green lacks.
             Skins = new GameplaySkinResolver(Path.GetFullPath(assetRoot), GameplaySkinResolver.MusicInfos(
                 [dataRoot, .. Arcade.Home ? ArcadeSettings.Folders(Arcade.StockFolders).Select(Waddamburo.Providers.Stock.StockCatalogProvider.FindDataRoot).OfType<string>() : []]));
@@ -938,19 +869,27 @@ internal sealed class GameShell : IDisposable
 
             (var diagnosticResult, _diagnosticWaiwai) = diagnosticResults(options.StartScene);
 
+            // A Green from before the update that added AI battle (the web archive's): the mode select leaves it out.
+            _aiBattleInstalled = Cli.GreenData.HasAiBattle(Path.GetDirectoryName(dataRoot)!);
+            if (!_aiBattleInstalled)
+            {
+                _boot.Begin("AI BATTLE");
+                _boot.Warn(Strings.T("boot.ai_battle_missing"));
+            }
+
             _boot.Begin("MOVIES");
             var flow = new GameFlowSession();
             Catalog = createSceneCatalog(options.StartScene);
             Credit.WaiwaiOutcome = () => Gameplay.WaiwaiOutcome ?? _diagnosticWaiwai;
-            Credit.DanResult = Options.StartScene is StartScene.DaniResultFail or StartScene.DaniResultClear
-                ? diagnosticDan(Options.StartScene == StartScene.DaniResultClear) : null;
+            if (Options.StartScene is StartScene.DaniResultFail or StartScene.DaniResultClear)
+                Credit.DanResult = diagnosticDan(Options.StartScene == StartScene.DaniResultClear);
             // Stock songs as supportinfo.xml lists them; any other song three steps below each course it has.
             // ponytail: three everywhere for custom songs, whether or not simplifying changes their charts.
-            Hosts = createHosts(flow, snapshot, diagnosticResult, song => song.Key.Source == SongSourceKind.Stock
+            Hosts = Loaded = createHosts(flow, snapshot, diagnosticResult, song => song.Key.Source == SongSourceKind.Stock
                 ? support.GetValueOrDefault(song.Key.StableId) ?? [0, 0, 0, 0]
                 : [.. Enumerable.Range(0, 4).Select(course => course > 0 && song.Charts.Any(chart => chart.Course == (TaikoCourse)course) ? 3 : 0)]);
             if (Arcade.Home && Options.Accounts is { } setupBook)
-                _playerSetup = new PlayerSetupController(this, setupBook, options.FontPath, options.ScoresPath);
+                _playerSetup = new PlayerSetupController(this, setupBook, options.FontPath, options.ServiceFontPath ?? options.FontPath, options.ScoresPath);
             // The settings file sits in USRDIR/waddamburo, the caches under it unless cache_folder moves them.
             var cacheRoot = options.ArcadePath is { } settings
                 ? ArcadeSettings.CacheRoot(Path.GetDirectoryName(Path.GetFullPath(settings))!, Arcade.CacheFolder) : null;
@@ -960,8 +899,8 @@ internal sealed class GameShell : IDisposable
             MovieContent.DecodeImage = GameMovieContent.DecodeImage;
             MovieContent.BundledRoot = Path.Combine(AppContext.BaseDirectory, "movies");
             MovieContent.PreferBundled = () => Arcade.FreeMovies;
-            _presenter = new ScenePresenter(Application, MovieContent);
-            Scenes = new SceneSwitcher(this, _presenter, flowOf, () => _home?.Covering == true, blackLoadingFrame);
+            _presenter = new ScenePresenter(Application, MovieContent, () => Arcade.UpscaleTextures && Application.ShowUpscaled);
+            Scenes = new SceneSwitcher(this, _presenter, flowOf, blackLoadingFrame);
             MovieContent.Reuse = _presenter.Reuse;
             ApplyDisplay();
             _loader = new LumenGameSceneLoader(MovieContent, Hosts);
@@ -970,8 +909,11 @@ internal sealed class GameShell : IDisposable
             // The intermissions are loaded once, up front: the rainbow must never stall a song's start.
             foreach (var intermission in new[] { FlowScenes.Rainbow, FlowScenes.Shutter, FlowScenes.Fade, FlowScenes.DanCover, FlowScenes.DanExitCover, FlowScenes.DanShutter })
                 Overlay.Preload(intermission);
+            Sounds?.PreloadMusic();
 
             _gameplay = new GameplayFlow(this);
+            _rumble = new Rumble(this, _gameplay);
+            _presence = new PresenceReporter(this, _gameplay);
             _attract = new AttractFlow(this, _gameplay, AttractMovie.Discover(Path.Combine(dataRoot, "movie")),
                 AttractMovie.Opening(Path.Combine(dataRoot, "movie"), Path.Combine(assetRoot, "attract", "title", "packeddata.ddp")));
             var calibration = new CalibrationFlow(this);
@@ -983,18 +925,25 @@ internal sealed class GameShell : IDisposable
                 benchmarkSong.Play = options.Play;
                 _benchmark = new BenchmarkRun(this, benchmarkSong, options.Benchmark == BenchmarkMode.Restart, options.Play);
             }
-            _home = new HomeControls(this, _gameplay, calibration, options.FontPath, assetRoot);
+            _home = new HomeControls(this, _gameplay, calibration, assetRoot);
+            Editor = new EffectsEditorHost(this, _gameplay, () => _home.CloseForEffectsEditor());
             _search = new SongSearch(this, _libraries.Snapshot);
             _scores = new ScoreListOverlay(this, Painter, new OptionIcons(Application, options.AssetRoot));
             Room = new RoomOverlay(this, Painter);
             Match = new OnlineMatch(this);
             CustomUploadPrompt = new CustomUploadPrompt(this, options.ServiceFontPath ?? options.FontPath);
+            DeviceTransfer = new DeviceTransfer(this, _libraries.SyncLibraries(dataRoot));
             _inputOverlays = [_search, _scores, Room, CustomUploadPrompt];
             Reload = new SongSelectReload(this);
             var entry = new EntryFlow(this);
             var ending = new CreditEndFlow(this, _gameplay);
             var songSelect = SongSelectFlow = new SongSelectFlow(this, _gameplay, calibration);
             _scenes = flowTable(_attract, entry, songSelect, _gameplay, calibration, benchmarkSong, ending);
+            if (options.FlowSmoke != FlowSmokeMode.Off)
+            {
+                Random = new Random(20261118); // the same demo songs and scene parts every run
+                _flowSmoke = new FlowSmokeRun(this, _gameplay, songSelect, options.FlowSmoke, options.FlowSmokeSong);
+            }
         }
         catch (Exception exception) when (exception is not BootClosedException)
         {
@@ -1002,18 +951,19 @@ internal sealed class GameShell : IDisposable
         }
     }
 
-    // --start-scene=result-fail/-clear show these results; --start-scene=waiwai-result shows Waiwai's
+    // --start-scene=result-fail/-almost/-clear show these results; --start-scene=waiwai-result shows Waiwai's
     // (WADDAMBURO_WAIWAI_RESULT=segments,duet%,rare hits, e.g. 30,70,10).
     private static (TaikoPlayResult? Result, WaiwaiOutcome? Waiwai) diagnosticResults(StartScene start)
     {
         TaikoPlayResult? result = start switch
         {
             StartScene.ResultFail => new TaikoPlayResult(TaikoCourse.Normal, 0, 0, 0, 100, 0, 0, 0, false),
+            StartScene.ResultAlmost => new TaikoPlayResult(TaikoCourse.Normal, 250_000, 60, 20, 40, 30, 0, 20, false),
             StartScene.ResultClear => new TaikoPlayResult(TaikoCourse.Normal, 500_000, 90, 7, 3, 80, 0, 45, true),
             _ => null,
         };
         WaiwaiOutcome? waiwai = start == StartScene.WaiwaiResult
-            ? Environment.GetEnvironmentVariable("WADDAMBURO_WAIWAI_RESULT")?.Split(',') is [var segments, var duet, .. var rest]
+            ? DiagnosticSwitches.WaiwaiResult?.Split(',') is [var segments, var duet, .. var rest]
                 ? new(int.Parse(segments, CultureInfo.InvariantCulture), int.Parse(duet, CultureInfo.InvariantCulture), [.. string.Concat(rest).Select(static hit => hit == '1')])
                 : new(50, 90, [true])
             : null;
@@ -1036,12 +986,13 @@ internal sealed class GameShell : IDisposable
                 new SceneTransitionRoute(FlowScenes.Entry, new LumenSceneRequest(1, 0, 0), FlowScenes.SongSelect),
                 // Mode select's AI battle (traced SetNextScene(10, 0, 0)): its own song select (Players.ChooseMode).
                 new SceneTransitionRoute(FlowScenes.Entry, new LumenSceneRequest(10, 0, 0), FlowScenes.SongSelect),
+                // Mode select's ごほうびショップ (traced SetNextScene(3, 0, 0)): the reward shop, then Song Select.
+                new SceneTransitionRoute(FlowScenes.Entry, new LumenSceneRequest(3, 0, 0), FlowScenes.RewardShop),
                 // The entry gives up (a card declined, or its dialog timed out, with nobody joined and no
                 // credits: TerminateEntry -> SetNextScene(0)): back to the attract loop.
                 new SceneTransitionRoute(FlowScenes.Entry, new LumenSceneRequest(0, 0, 0), FlowScenes.Logo),
             ]);
 
-    // The movies' hosts (the game side of every Lumen movie): what they ask the game and what it answers.
     private SongSelectSetup createSelect(SongCatalogSnapshot snapshot) =>
         new(Credit, snapshot, Titles, Previews is null ? TracePreviewController.Instance : Previews, PlayRequests, () => Arcade)
         {
@@ -1053,6 +1004,8 @@ internal sealed class GameShell : IDisposable
                 : TaikoGuest.Profiles[side] is { } profile ? scores.RecentCharts(profile.Baid)
                 : Arcade.Home ? scores.RecentCharts(ScoreProfile.LocalGuestBaid) : null,
             Dan = _danCourses,
+            // Art this Green lacks: the folder's name is drawn instead (a missing art's fill would be unresolvable).
+            Event = () => _event.Current is { Art: { } art } running && !_art.HasFeatureBoard(art) ? running with { Art = null } : _event.Current,
             OnlineAvailable = () => Room.Available,
             InOnlineRoom = () => Room.Session is not null,
             Received = ReceivedSongs.Find,
@@ -1060,6 +1013,7 @@ internal sealed class GameShell : IDisposable
             HomeTutorialSeen = () => Arcade.Home && Arcade.TutorialSeen,
         };
 
+    // The movies' hosts (the game side of every Lumen movie): what they ask the game and what it answers.
     private Waddamburo.Skins.Green.GreenScreenHosts createHosts(GameFlowSession flow, SongCatalogSnapshot snapshot, TaikoPlayResult? diagnosticResult,
         Func<SongDescriptor, int[]> supportCounts)
     {
@@ -1073,10 +1027,13 @@ internal sealed class GameShell : IDisposable
             Titles,
             GreenSounds,
             Don,
-            () => SongInfo,
+            Previews is null ? TracePreviewController.Instance : Previews,
             Options.Countdown,
             () => Gameplay.Results is { Count: > 0 } results ? Match.WithPartnerResult(results)
-                : diagnosticResult is { } diagnostic ? [diagnostic] : [],
+                // ponytail: WADDAMBURO_RESULT_PLAYERS=2 shows the diagnostic result for both players.
+                : diagnosticResult is { } diagnostic
+                    ? DiagnosticSwitches.ResultPlayers == "2" ? [diagnostic, diagnostic] : [diagnostic]
+                    : [],
             () => Arcade,
             Coins)
         {
@@ -1088,24 +1045,25 @@ internal sealed class GameShell : IDisposable
             SupportCounts = supportCounts,
             DanBests = () => TaikoGuest.Profiles[Credit.PlayerSide] is { } player && Sync.Scores is { } scores
                 ? scores.DanBests(player.Baid) : new Dictionary<string, int>(),
-            SongsStarted = () => Players.SongsPlayed,
             AiPanels = () => AiStanding() is var (points, wins, _)
                 ? new(AiRanks.RankOf(points), AiRanks.PointsToNextRank(points), wins, Waddamburo.Game.Gameplay.AiBattleRanks.WinsToNextReward(wins), Waddamburo.Skins.Green.AiBattlePanels.NewPlayer.Tension)
                 : Waddamburo.Skins.Green.AiBattlePanels.NewPlayer,
             ShowOni = () => Arcade.ShowOni,
             HideArcadeHud = () => HideArcadeHud,
             TimerFreeze = () => Arcade.TimerFreeze,
-            CopyrightPages = _copyright.Pages,
-            Best = index => (uint)index < (uint)Bests.Length ? Bests[index] : null,
-            Placement = index => (uint)index < (uint)Placements.Length ? Placements[index] : null,
+            CopyrightPages = _art.CopyrightPages,
             Crowns = Crowns,
             CardClaimed = (side, card) =>
             {
                 TaikoGuest.Profiles[side] = card;
                 Sync.RefreshBests(card);
+                FetchShop(side, card);
             },
             // A card given to the drum, or the account chosen for it in the home player setup.
             PlayerLook = side => TaikoGuest.Profiles[side]?.Look,
+            ServerOnline = () => Sync.Health?.State == Waddamburo.App.Online.LinkState.Online,
+            AiBattleInstalled = _aiBattleInstalled,
+            RewardPlayer = () => Credit.RewardPlayer,
             // Home boards show the account's public name (or Guest), drawn by the entry overlay.
             PlayerName = side => Arcade.Home ? TaikoGuest.Profiles[side]?.DisplayName ?? Strings.T("setup.guest") : TaikoGuest.Profiles[side]?.DisplayName,
             LayerLoading = host =>
@@ -1130,30 +1088,6 @@ internal sealed class GameShell : IDisposable
             },
         };
     }
-
-    // Which flow runs each scene.
-    private static Dictionary<SceneId, FlowScene> flowTable(AttractFlow attract, EntryFlow entry, SongSelectFlow songSelect,
-        GameplayFlow gameplay, CalibrationFlow calibration, BenchmarkFlow benchmark, CreditEndFlow ending) => new()
-    {
-        [FlowScenes.Boot] = attract,
-        [FlowScenes.Logo] = attract,
-        [FlowScenes.Title] = attract,
-        [FlowScenes.Caution] = attract,
-        [FlowScenes.Movie] = attract,
-        [FlowScenes.Entry] = entry,
-        [FlowScenes.SongSelect] = songSelect,
-        [FlowScenes.Tutorial] = songSelect,
-        [FlowScenes.WaiwaiTutorial] = songSelect,
-        [FlowScenes.AiTutorial] = songSelect,
-        [FlowScenes.DaniSelect] = songSelect,
-        [FlowScenes.Gameplay] = gameplay,
-        [FlowScenes.Calibration] = calibration,
-        [FlowScenes.Benchmark] = benchmark,
-        [FlowScenes.Result] = ending,
-        [FlowScenes.Retry] = ending,
-        [FlowScenes.GameOver] = ending,
-        [FlowScenes.AiRemind] = ending,
-    };
 
     // The sounds the engine's names play, the first that has one: the user's pack (USRDIR/waddamburo/sounds), ours
     // (sounds/ beside the executable) when free_movies is on or there is no game sound data, then the game's.
@@ -1181,6 +1115,31 @@ internal sealed class GameShell : IDisposable
         return sounds;
     }
 
+    // Which flow runs each scene.
+    private static Dictionary<SceneId, FlowScene> flowTable(AttractFlow attract, EntryFlow entry, SongSelectFlow songSelect,
+        GameplayFlow gameplay, CalibrationFlow calibration, BenchmarkFlow benchmark, CreditEndFlow ending) => new()
+    {
+        [FlowScenes.Boot] = attract,
+        [FlowScenes.Logo] = attract,
+        [FlowScenes.Title] = attract,
+        [FlowScenes.Caution] = attract,
+        [FlowScenes.Movie] = attract,
+        [FlowScenes.Entry] = entry,
+        [FlowScenes.SongSelect] = songSelect,
+        [FlowScenes.Tutorial] = songSelect,
+        [FlowScenes.WaiwaiTutorial] = songSelect,
+        [FlowScenes.AiTutorial] = songSelect,
+        [FlowScenes.DaniSelect] = songSelect,
+        [FlowScenes.Gameplay] = gameplay,
+        [FlowScenes.Calibration] = calibration,
+        [FlowScenes.Benchmark] = benchmark,
+        [FlowScenes.Result] = ending,
+        [FlowScenes.Retry] = ending,
+        [FlowScenes.GameOver] = ending,
+        [FlowScenes.AiRemind] = ending,
+        [FlowScenes.RewardShop] = ending,
+    };
+
     public string? FindJingle(string fileName)
     {
         if (Options.SoundRoot is null)
@@ -1189,26 +1148,129 @@ internal sealed class GameShell : IDisposable
         return File.Exists(path) ? path : null;
     }
 
-    private IAudioOutput openAudio()
+    /// <summary>
+    /// The audio output's settings changed: the game stops everything, goes back to the attract and opens the new output
+    /// in place (no restart, no library scan). False when it can't (no audio, or the new output runs at another sample
+    /// rate than the mix): the caller restarts.
+    /// </summary>
+    public bool SwitchAudioOutput()
     {
-        if (Arcade.AudioExclusive && OperatingSystem.IsWindows())
-        {
-            try
-            {
-                var exclusive = new WasapiExclusiveOutput();
-                Console.WriteLine($"Audio: WASAPI exclusive, {exclusive.HardwareBufferFrames} frames "
-                    + $"({1000.0 * exclusive.HardwareBufferFrames / exclusive.Format.SampleRate:0.##} ms), {exclusive.Driver}.");
-                return exclusive;
-            }
-            catch (InvalidOperationException exception)
-            {
-                Console.Error.WriteLine($"Audio: exclusive output unavailable, using shared. {exception.Message}");
-            }
-        }
-        return new SdlAudioDevice(requestedBufferFrames: Arcade.AudioBufferFrames);
+        if (Audio is null)
+            return false;
+        resetForService();
+        return AudioOutput.Switch(Audio);
     }
 
     private FlowScene flowOf(SceneId scene) => _scenes[scene];
+
+    /// <summary>
+    /// A home account's live fields (Don Medals, locks, rewards to show) from the server, in the background: the stored
+    /// account keeps only its name and looks. At the player setup and each time Song Select comes back.
+    /// </summary>
+    public void RefreshPlayer(int side)
+    {
+        // A cabinet's cards come with their profile; only an account's token reads /me.
+        if (TaikoGuest.Profiles[side] is not { Token: not null } player || Sync.ServerFor(player) is not var (client, baid) || baid is not null)
+            return;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                if (await client.MeAsync().ConfigureAwait(false) is { } current && TaikoGuest.Profiles[side] is { } joined && joined.Baid == current.Baid)
+                    TaikoGuest.Profiles[side] = joined with { Medals = current.Medals, LastMedalDay = current.LastMedalDay,
+                        Locked = current.Locked, PendingRewards = current.PendingRewards };
+            }
+            catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+            {
+                Console.Error.WriteLine($"Warning ACCOUNT: player {side + 1}'s profile not refreshed ({exception.Message}).");
+            }
+        });
+    }
+
+    /// <summary>The first joined drum whose player has rewards to show (Song Select's "New rewards"); null: none.</summary>
+    public int? PendingRewardsSide() => Players.JoinedSides.Cast<int?>()
+        .FirstOrDefault(side => TaikoGuest.Profiles[side!.Value] is { PendingRewards.Count: > 0 } profile && Sync.ServerFor(profile) is not null);
+
+    /// <summary>
+    /// An arcade credit's end, asked for its rewards in the background (CreditSession.EndRewards): the first carded drum
+    /// on a server uploads its songs, then TaikOnline checks the credit's titles. Null: nobody to ask.
+    /// </summary>
+    public Task<(int Side, List<Waddamburo.Game.Scores.PendingReward> Rewards)>? AskCreditEndRewards()
+    {
+        var creditId = Credit.CreditId;
+        foreach (var side in Players.JoinedSides)
+        {
+            if (TaikoGuest.Profiles[side] is not { Baid: > 0 } profile || Sync.ServerFor(profile) is not var (client, baid)
+                || Sync.Scores is not { } store)
+                continue;
+            return Task.Run(async () =>
+            {
+                try
+                {
+                    return (side, await client.CreditEndAsync(store, baid, creditId).ConfigureAwait(false));
+                }
+                catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+                {
+                    Console.Error.WriteLine($"Warning REWARDS: the credit's rewards did not come ({exception.Message}).");
+                    return (side, new List<Waddamburo.Game.Scores.PendingReward>());
+                }
+            });
+        }
+        return null;
+    }
+
+    /// <summary>Tells the server the reward animation was shown (set by <see cref="ShowRewards"/>, run as it ends).</summary>
+    public Action? RewardsShown { get; set; }
+
+    /// <summary>
+    /// Song Select's "New rewards": reward_shop's medal screen hands the player's pending rewards over (no medals paid),
+    /// then Song Select comes back; the server hears they were shown once it ends.
+    /// ponytail: one player's rewards per visit; a second player's wait for the next.
+    /// </summary>
+    public void ShowRewards()
+    {
+        if (PendingRewardsSide() is not { } side || TaikoGuest.Profiles[side] is not { PendingRewards: { } rewards } profile
+            || Sync.ServerFor(profile) is not var (client, baid))
+            return;
+        Credit.RewardPlayer = new Waddamburo.Skins.Green.RewardShopPlayer(side, profile.Medals ?? 0,
+            new Waddamburo.Game.Scores.MedalCredit(0, false, false, false),
+            [.. rewards.Select(static reward => new Waddamburo.Skins.Green.RewardItem(reward.Type, reward.Id, reward.MusicId))], Alone: true);
+        // Once the animation is over (CreditEndFlow leaving it): they were shown.
+        RewardsShown = () =>
+        {
+            if (TaikoGuest.Profiles[side] is { } shown && shown.Baid == profile.Baid)
+                TaikoGuest.Profiles[side] = shown with { PendingRewards = null };
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await client.RewardsSeenAsync(rewards, baid).ConfigureAwait(false);
+                }
+                catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
+                {
+                    Console.Error.WriteLine($"Warning REWARDS: the server did not hear the rewards were shown ({exception.Message}).");
+                }
+            });
+        };
+        Catalog.Replace(FlowScenes.HomeRewards);
+        Scenes.FadeTo(FlowScenes.RewardShop);
+    }
+
+    /// <summary>
+    /// The entry offers the reward shop once its goods are in: a card read (arcade) or an account chosen in the home player
+    /// setup, on a server.
+    /// </summary>
+    public void FetchShop(int side, ScoreProfile player)
+    {
+        // A server without the shop answers 404: the fetch fails and the entry offers no shop.
+        if (Sync.ServerFor(player) is not var (client, baid))
+            return;
+        var goods = Task.Run(() => client.ShopAsync(baid));
+        _ = goods.ContinueWith(task => Console.WriteLine(task.IsCompletedSuccessfully
+            ? $"Reward shop for side {side}: {task.Result.Goods.Count} goods."
+            : $"Reward shop for side {side} unavailable: {task.Exception?.GetBaseException().Message}"), TaskScheduler.Default);
+        Credit.Shops[side] = new(goods, no => client.PurchaseAsync(no, baid, goods.Result.Goods.FirstOrDefault(item => item.No == no)));
+    }
 
     private int run()
     {
@@ -1219,17 +1281,49 @@ internal sealed class GameShell : IDisposable
             StartScene.Entry => FlowScenes.Entry,
             StartScene.SongSelect or StartScene.AiSongSelect => FlowScenes.SongSelect,
             StartScene.DaniSelect => FlowScenes.DaniSelect,
-            StartScene.ResultFail or StartScene.ResultClear or StartScene.WaiwaiResult
+            StartScene.ResultFail or StartScene.ResultAlmost or StartScene.ResultClear or StartScene.WaiwaiResult
                 or StartScene.DaniResultFail or StartScene.DaniResultClear => FlowScenes.Result,
             StartScene.Retry => FlowScenes.Retry,
-            StartScene.GameOver or StartScene.DaniGameOver => FlowScenes.GameOver,
+            StartScene.GameOver or StartScene.DaniGameOver or StartScene.RewardGameOver => FlowScenes.GameOver,
             StartScene.AiRemind => FlowScenes.AiRemind,
+            StartScene.RewardShop or StartScene.RewardShop2P => FlowScenes.RewardShop,
             StartScene.WaiwaiTutorial => FlowScenes.WaiwaiTutorial,
             StartScene.AiTutorial => FlowScenes.AiTutorial,
             _ => throw new ArgumentOutOfRangeException(nameof(Options.StartScene)),
         };
         if (Options.StartScene == StartScene.DaniGameOver)
             Catalog.Replace(FlowScenes.DaniGameOver);
+        if (Options.StartScene == StartScene.RewardGameOver)
+        {
+            // A first credit ever: 900 medals before it, every bonus.
+            // Traced session-rewards-6's two kigurumi (43, 44), plus a head and a song.
+            Credit.RewardPlayer = new Waddamburo.Skins.Green.RewardShopPlayer(0, 900,
+                Waddamburo.Game.Scores.DonMedals.ForCredit(null, DateOnly.FromDateTime(DateTime.Now)), [new(3, 43), new(3, 44), new(5, 119), new(1, 819, "csmclr")]);
+            Catalog.Replace(FlowScenes.RewardGameOver);
+        }
+        if (Options.StartScene is StartScene.RewardShop or StartScene.RewardShop2P)
+        {
+            // Green's Winter shop (traced session-rewards-1); purchases succeed locally. 1P: 4950 medals, the first body owned;
+            // 2P (reward-shop-2p): 600 medals, the first head owned.
+            Waddamburo.Game.Flow.CreditShop shop(int medals, int ownedNo)
+            {
+                List<Waddamburo.Game.Scores.ShopGoods> goods =
+                [
+                    new(1, 5, 117, 500, false), new(2, 4, 117, 500, false), new(3, 5, 135, 500, false), new(4, 4, 146, 500, false),
+                    new(5, 1, 865, 1300, false, "589him"), new(6, 1, 864, 1300, false, "tecdrv"),
+                    new(7, 1, 858, 1500, false, "kooryu"), new(8, 1, 866, 1500, false, "kooryu"),
+                ];
+                goods[ownedNo - 1] = goods[ownedNo - 1] with { Owned = true };
+                return new(Task.FromResult(new Waddamburo.Game.Scores.ShopState(4, "Winter reward shop", medals, goods)),
+                    no => Task.FromResult(new Waddamburo.Game.Scores.ShopPurchase("ok", medals -= goods[no - 1].Price)));
+            }
+            Credit.Shops[0] = shop(4950, 2);
+            if (Options.StartScene == StartScene.RewardShop2P)
+            {
+                Credit.Shops[1] = shop(600, 1);
+                Credit.TwoPlayers = true;
+            }
+        }
         if (Options.StartScene == StartScene.WaiwaiTutorial) Credit.Waiwai = true;
         if (Options.StartScene is StartScene.AiSongSelect or StartScene.AiTutorial)
             Players.ChooseMode(aiBattle: true);
@@ -1259,7 +1353,7 @@ internal sealed class GameShell : IDisposable
 
             ApplyRecording();
             var result = Application.Run(
-                interpolation => onTop(createFrame(interpolation)),
+                interpolation => countFrame(interpolation),
                 tick,
                 Options.FrameLimit,
                 Options.TickLimit,
@@ -1270,30 +1364,23 @@ internal sealed class GameShell : IDisposable
                     if (_traceInput)
                         foreach (var press in keyboard.Presses)
                             Console.WriteLine($"[input] {press.Key}@{Tick + 1}");
-                    if (_effectsEditor is { } editor)
-                    {
-                        if (keyboard.Presses.Any(static press => press.Key == SdlKeyboardKey.Escape))
-                        {
-                            editor.RequestClose();
-                            keyboard = SdlKeyboardSnapshot.Empty;
-                        }
-                        if (editor.CloseRequested || !_gameplay.CanEditLayout)
-                        {
-                            closeEffectsEditor();
-                            keyboard = SdlKeyboardSnapshot.Empty;
-                        }
-                    }
+                    keyboard = Editor.Frame(keyboard);
                     _input.Frame(keyboard);
                     if (_gameplay.Reviewing && !keyboard.Presses.IsEmpty && !GameActions.Pressed(keyboard, GameAction.Screenshot))
                         _reviewBar.Poke();
                     if (GameActions.Pressed(keyboard, GameAction.Screenshot))
                         Application.CaptureNextFrame = saveScreenshot;
                     if (!keyboard.Presses.IsEmpty)
-                        _sinceInput.Restart();
+                        _presence.Pressed();
                     // The notice sidebar (live presses only reach this callback; not over a lane, nor while the
-                    // search field takes the letters).
-                    if (_notices is not null && !Scenes.OnLane && !_search.IsOpen && !Room.Typing && GameActions.Pressed(keyboard, GameAction.Notices))
+                    // search field takes the letters). The attract's demo play is not a song being played.
+                    if (_notices is not null && (!Scenes.OnLane || _gameplay.Demo) && !_search.IsOpen && !Room.Typing && GameActions.Pressed(keyboard, GameAction.Notices))
                         _notices.Toggle();
+                    // Arcade: a card shortcut's button inserts its card (card_1p / card_2p) as if read.
+                    if (Sync.Pairing is { } cards)
+                        foreach (var (button, code) in (ReadOnlySpan<(SdlKeyboardKey, string?)>)[(SdlKeyboardKey.CardP1, Arcade.Card1P), (SdlKeyboardKey.CardP2, Arcade.Card2P)])
+                            if (code is not null && keyboard.Presses.Any(press => press.Key == button) && !cards.Insert(code))
+                                Console.WriteLine("Card shortcut: no card is taken now (or one is waiting already).");
                     if (Arcade.Home || _service?.IsOpen != true)
                         flowOf(Active.Id).UpdateFrame(keyboard);
                 },
@@ -1308,7 +1395,7 @@ internal sealed class GameShell : IDisposable
             Console.WriteLine($"Active scene: {Active.Id}");
             _gameplay.ReportFinal(Active.Id);
             ReportDiagnostics();
-            if (Environment.GetEnvironmentVariable("WADDAMBURO_PROFILE") == "1")
+            if (DiagnosticSwitches.Profile)
             {
                 GC.Collect();
                 GC.WaitForPendingFinalizers();
@@ -1333,222 +1420,10 @@ internal sealed class GameShell : IDisposable
             _service?.Dispose();
             _search?.Dispose();
             Book.Save();
+            Book.Flush();
             _indicators?.Scene.DisposeAsync().AsTask().GetAwaiter().GetResult();
             Coordinator.StopAsync().AsTask().GetAwaiter().GetResult();
         }
-    }
-
-    // No key or drum for this long at home, outside a song, shows the player as away.
-    private static readonly TimeSpan AfkAfter = TimeSpan.FromMinutes(5);
-    private readonly System.Diagnostics.Stopwatch _sinceInput = System.Diagnostics.Stopwatch.StartNew();
-
-    // Discord's status: home mode only (a cabinet has no player's Discord), never in a headless run.
-    private DiscordPresence? _discord;
-
-    private void reportPresence()
-    {
-        if (!Arcade.Home || Headless)
-            return;
-        _discord ??= new DiscordPresence();
-        var partner = Room.Session?.Partner?.DisplayName;
-        var versus = partner is { Length: > 0 } ? $"Online vs {partner}" : Players.JoinedSides.Count > 1 ? "Two players" : null;
-        var activity = _gameplay.Presence is { } playing ? new PresenceActivity(playing.What, versus ?? "Solo", playing.Since)
-            : Active.Id == FlowScenes.SongSelect ? new PresenceActivity("Choosing a song", versus)
-            : Active.Id == FlowScenes.DaniSelect ? new PresenceActivity("Choosing a dan course")
-            : Active.Id == FlowScenes.Result ? new PresenceActivity("Looking at the results", versus)
-            : Room.Session is not null ? new PresenceActivity("In an online room", versus)
-            : new PresenceActivity("In the menus");
-        _discord.Set(activity, Arcade.DiscordPresence);
-    }
-
-    private void reportStatus()
-    {
-        reportPresence();
-        if (!Arcade.Home)
-            return;
-        // A song counts as activity, so leaving one is never AFK. Key presses are noted per frame (ticks only see held keys).
-        if (_gameplay.Playing)
-            _sinceInput.Restart();
-        // The room, once the other player is there: the website names them (the server checks both are in it).
-        var status = _gameplay.Playing ? PlayerStatus.Playing(_gameplay.PlayingChart)
-            : _sinceInput.Elapsed >= AfkAfter ? PlayerStatus.Afk : PlayerStatus.Online;
-        Sync.ReportStatus(Room.Session is { Partner: not null, Room: { } room } ? status with { Room = room.Code } : status);
-    }
-
-    // One 60 Hz tick: the input first (back to the attract loop, coins, the home controls, the player
-    // setup, the quick restart), then the active scene, the overlays, and a pending scene switch.
-    private void tick(SdlKeyboardSnapshot keyboard)
-    {
-        Tick++;
-        updateRumbles();
-        Sounds?.Bank.Pump();
-        // Diagnostic: WADDAMBURO_CRASH_AT=<tick> crashes the game there, to see its error screen.
-        if (_crashAt == Tick)
-            throw new InvalidOperationException($"WADDAMBURO_CRASH_AT asked the game to crash at tick {Tick}.");
-        var keys = Options.InputTimeline.Apply(Tick, keyboard);
-        _benchmark?.Tick();
-        Book.PowerOnTicks++;
-        if (_gameplay.Playing)
-            Book.PlayTicks++;
-        if (Tick % 3600 == 0)
-            Book.Save();
-        if (_cabinet.TickServiceMenu(keys))
-            return;
-        var presses = _input.Take(keys);
-        reportStatus();
-        Match.Tick();
-        // F1 (back to the attract loop) is a home shortcut; a cabinet only gets there through its movies.
-        if (backToAttract(Arcade.Home && presses.Attract))
-            return;
-        _cabinet.TakeCoins(_input.TakeCoins(keys));
-        // Diagnostic: WADDAMBURO_INPUT_TRACE=1 prints presses in --press format (KEY@tick).
-        if (_traceInput)
-            foreach (var press in keys.Presses)
-                Console.WriteLine($"[input] {press.Key}@{Tick}");
-        var scene = flowOf(Active.Id);
-        // A reviewed play takes the mouse wheel (seeking) like a menu does.
-        Application.MenuInput = !Scenes.OnLane || _home.MenuOpen || _gameplay.Reviewing && !_gameplay.Attempting;
-        var held = keys;
-        keys = scene.MapKeys(_input.Pulses(keys));
-        // Home: Backspace is Escape too (a Tatacon's B button), except while it edits text or is being bound.
-        var escape = _input.EscapePressed(keys, menuKey: Arcade.Home && !_search.IsOpen && !Room.Typing && !_home.CapturingBinding ? GameActions.Key(GameAction.Menu) : null);
-        // Focus is followed whichever overlay takes the keys (the mute in background).
-        _home.FollowFocus();
-        // Song Select's search field takes the keyboard while open (its Escape closes it, not the menu).
-        if (Reload.Tick() || !_home.MenuOpen && overlaysTake(keys, escape))
-        {
-            advance(scene, SdlKeyboardSnapshot.Empty);
-            return;
-        }
-        if (_home.Tick(keys, held, escape))
-        {
-            // Online, the menu doesn't stop the song: its movies keep moving and it ends as it would. The attract
-            // and its demo play go on too (muted).
-            if (Match.InSong && Active.Id == FlowScenes.Gameplay || _home.AttractUnderMenu)
-            {
-                advance(scene, SdlKeyboardSnapshot.Empty);
-                scene.Tick(new FlowInput(SdlKeyboardSnapshot.Empty, null, false, false));
-            }
-            return;
-        }
-        if (!Scenes.OnLane)
-            keys = menuKeys(keys);
-        // Home: the player setup runs inside the entry and takes the drums; the movie only animates.
-        if (_playerSetup is not null && _playerSetup.Tick(ref keys))
-            return;
-        if (_home.QuickRestart(held))
-            return;
-        if (!Scenes.OnLane)
-            menuDrumHits(keys);
-        publishAppState(scene);
-        advance(scene, keys);
-        var switching = Coordinator.Flow.State == GameFlowState.TransitionPending;
-        if (_home.HoldsResults(held, switching))
-            return;
-        if (!switching)
-        {
-            scene.Tick(new FlowInput(keys, presses.DrumSide, presses.Skip, escape));
-            return;
-        }
-        // A movie asked for the next scene (entry -> song select); its last voice finishes first.
-        if (Sounds?.Bank.IsVoicePlaying == true)
-            return;
-        if (Active.Id == FlowScenes.Entry && Coordinator.Flow.PendingTransition is { } request)
-            Players.ChooseMode(aiBattle: request.SceneNumber == 10);
-        // The entry and Song Select fade to black first, as the menu's Restart, Song Select and Title do;
-        // not under an intermission (the rainbow into a song covers its own switch).
-        if (!Overlay.IsShown && PlayRequests.Pending is null && (Active.Id == FlowScenes.Entry || Active.Id == FlowScenes.SongSelect))
-        {
-            _home.FadeThen(() =>
-            {
-                if (Coordinator.Flow.State == GameFlowState.TransitionPending)
-                    Scenes.ApplyPending();
-            });
-            return;
-        }
-        Scenes.ApplyPending();
-    }
-
-    // An open overlay takes the tick's input; with none open, each may open on its own key (Tab, R).
-    private bool overlaysTake(SdlKeyboardSnapshot keys, bool escape) =>
-        _inputOverlays.LastOrDefault(static overlay => overlay.IsOpen) is { } open
-            ? open.Tick(keys, escape) || true
-            : _inputOverlays.Any(overlay => overlay.Tick(keys, escape));
-
-    // F1 (testing convenience, not cabinet behaviour) or an entry that gave up: drop the credit and
-    // return to the attract loop from any menu scene (not mid-song, whose music the gameplay flow owns).
-    private bool backToAttract(bool f1)
-    {
-        var toAttract = f1 || _returnToAttract;
-        _returnToAttract = false;
-        if (!toAttract || Scenes.OnLane || Active.Id == FlowScenes.Boot)
-            return false;
-        // Fade out first; the switch below then runs under the black (Covering).
-        if (!_home.Covering)
-        {
-            _home.FadeThen(() => GoToAttract());
-            return false;
-        }
-        Sounds?.StopAll();
-        SongSelectFlow.AbandonCover();
-        Don?.SetDialogDon(false);
-        Players.Reset();
-        Players.SongsPlayed = 0; // a new credit starts at the first song
-        Scenes.Show(FlowScenes.Logo);
-        return true;
-    }
-
-    // The scene's movies and the overlays drawn with it advance one tick.
-    private void advance(FlowScene scene, SdlKeyboardSnapshot keys)
-    {
-        scene.Advance(LumenInputAdapter.CreateSnapshot(keys,
-            Scenes.OnLane ? LumenInputMode.PresentationOnly : LumenInputMode.AuthoredControls));
-        Overlay.Advance();
-        // Diagnostic: WADDAMBURO_DUMP_TREE=<tick> prints the active scene's display lists.
-        if (_dumpTreeTick == Tick)
-            foreach (var (layer, index) in Active.Layers.Select((layer, index) => (layer, index)))
-            {
-                Console.WriteLine($"== layer {index} {layer.Definition.MovieId}");
-                foreach (var line in Active.Player.Layers[index].Player.DescribeDisplayList())
-                    Console.WriteLine(line);
-            }
-        if (_indicators is null)
-            return;
-        if (_indicatorScene != Active.Id)
-        {
-            _indicatorScene = Active.Id;
-            // The new screen's own flow: a switch made inside another flow's tick (the entry's dan dojo) is not its.
-            _indicators.SetScene(_scenes.GetValueOrDefault(Active.Id, scene).ScreenFor(Active.Id));
-        }
-        _indicators.Advance();
-    }
-
-    // Everything the game is doing stops and its state goes: sounds, fades, menus, the song (dropped unsaved), a
-    // pending scene switch or play, the room, the credit's players; the active flow cleans up as it leaves for the
-    // attract's logo, which waits (not ticked) under the service menu.
-    private void resetForService()
-    {
-        Audio?.Mixer.StopAll();
-        Sounds?.StopAll();
-        Scenes.CancelFade();
-        _home.Reset();
-        _search.Close();
-        ClosePlayerSetup();
-        if (Room.Session is not null)
-            Room.Leave();
-        if (Active.Id == FlowScenes.Gameplay)
-            _gameplay.Discard();
-        Coordinator.Flow.CancelPendingTransition();
-        PlayRequests.CancelPending();
-        Overlay.Clear();
-        Don?.SetDialogDon(false);
-        Players.Reset();
-        Players.SongsPlayed = 0;
-        _returnToAttract = false;
-        Coins?.Clear();
-        Scenes.Show(FlowScenes.Logo);
-        Audio?.Mixer.StopAll(); // anything the switch started
-        Console.WriteLine($"Service menu: game reset at tick {Tick}.");
     }
 
     /// <summary>Songs another player sent this session, in memory only.</summary>
@@ -1605,210 +1480,6 @@ internal sealed class GameShell : IDisposable
                     + $"at character {diagnostic.CharacterId} frame {diagnostic.Frame}: {diagnostic.Message}");
     }
 
-    private LumenRenderSnapshot? _inspected;
-
-    // Inspect mode: every scene quad under the click, topmost first (the stage is assumed to fill the window).
-    private void inspectAt(float x, float y)
-    {
-        if (!LumenPlayer.Inspect || _inspected is not { } scene)
-            return;
-        float px = x * scene.StageWidth, py = y * scene.StageHeight;
-        static float cross(LumenRenderVertex a, LumenRenderVertex b, float px, float py) =>
-            (b.X - a.X) * (py - a.Y) - (b.Y - a.Y) * (px - a.X);
-        var hits = scene.Quads.Where(quad => quad.MaskOperation == LumenRenderMaskOperation.Draw).Where(quad =>
-        {
-            var edges = new[]
-            {
-                cross(quad.TopLeft, quad.TopRight, px, py), cross(quad.TopRight, quad.BottomRight, px, py),
-                cross(quad.BottomRight, quad.BottomLeft, px, py), cross(quad.BottomLeft, quad.TopLeft, px, py),
-            };
-            return edges.All(static edge => edge >= 0) || edges.All(static edge => edge <= 0);
-        }).Reverse().ToArray();
-        Console.WriteLine($"Inspect at stage ({px:0}, {py:0}): {hits.Length} quads, topmost first.");
-        foreach (var quad in hits)
-            Console.WriteLine($"  {quad.Source ?? "?"}{(quad.NativeSurface is { } surface ? $" -> surface {surface.Value}" : $" (scene texture {quad.TextureIndex})")}");
-    }
-
-    // A decoded movie: cached upscales, then its Lumen patch. The layout check comes first (upscales change
-    // texture sizes); a patched movie keeps its upscales as RGBA (the patch derives textures from them) and
-    // its derived textures are not upscaled again (a split layer upscaled alone gets sharpened edges).
-    public RenderTextureId? ResolveSurface(LumenNativeSurfaceKey surface) =>
-        _attract.Movie?.Resolve(surface) ?? Don?.Resolve(surface)
-        ?? _danArt.Resolve(surface) ?? _copyright.Resolve(surface) ?? _costumeIcons.Resolve(surface) ?? _waiwaiResultTextures.Resolve(surface) ?? _textFields.Resolve(surface) ?? _nameTexts.Resolve(surface) ?? _toneArt.Resolve(surface)
-        ?? Titles.Resolve(surface);
-
-    // One displayed frame. Depth order (traced): scene, msg_coins (-950), intermission (-2000),
-    // network/card (-3000); then Waddamburo's own overlays and the home menu over everything.
-    private readonly List<RenderQuad> _frameQuads = [];
-
-    // The scene's Don-chans (their native surfaces) and its name board layers, on their own.
-    private System.Collections.Immutable.ImmutableArray<RenderQuad> players(LumenRenderSnapshot scene, float interpolation)
-    {
-        var dons = scene.Quads.Where(quad => quad.NativeSurface is { } surface && Don?.Resolve(surface) is not null);
-        var boards = Active.Layers.Select((layer, index) => (layer, index))
-            .Where(entry => Path.GetFileNameWithoutExtension(entry.layer.Definition.MovieId) == "player_name")
-            .Select(entry => Active.Player.Layers[entry.index]);
-        var boardQuads = new LumenScenePlayer(scene.StageWidth, scene.StageHeight, boards).CreateRenderSnapshot(interpolation).Quads;
-        return SceneTextures.Compose(new LumenRenderSnapshot(scene.StageWidth, scene.StageHeight, [.. dons, .. boardQuads]),
-            _presenter.Textures, "Players", ResolveSurface).Quads;
-    }
-
-    private RenderFrame createFrame(double interpolationFraction)
-    {
-        if (_service is { IsOpen: true } service && !Arcade.Home)
-        {
-            // The menu's frame is the one shown: the switch under it lets go of its held frame, and the switch out
-            // of it (EXIT) holds this one, not the scene from before the menu.
-            _presenter.Held(Tick);
-            var menu = service.Frame();
-            _presenter.Presented(menu, withIntermission: false);
-            return menu;
-        }
-        // Freeze animations (the editors): everything stands on one tick, Don and the overlays too.
-        var interpolation = FreezeAnimations && EffectsEditorOpen ? 1 : _home.Interpolation(interpolationFraction);
-        if (_presenter.Held(Tick) is { } held)
-        {
-            _home.HoldBlack();
-            // The rainbow stays up across its scene switch (only a fade is cleared with it).
-            return _home.Draw(held.Black && Overlay.IsShown
-                ? new RenderFrame(held.Frame.ClearColor,
-                    [.. Overlay.Quads(interpolation, ResolveSurface), .. held.Frame.Quads], held.Frame.ContentAspectRatio)
-                : held.Frame);
-        }
-        Titles.UploadCompleted();
-        _presenter.UploadAhead();
-        if (SceneTextures.Upscaler is { } upscaler)
-        {
-            upscaler.Paused = Scenes.OnLane || Bake?.Running == true;
-            upscaler.Apply(Application);
-        }
-        if (DonRenderer is not null)
-            DonRenderer.Interpolation = interpolation;
-        var scene = flowOf(Active.Id).CreateSnapshot(interpolation);
-        if (LumenPlayer.Inspect)
-            _inspected = scene;
-        // The scene's quads go straight into the reused frame list (no frame of their own).
-        var quads = _frameQuads;
-        quads.Clear();
-        SceneTextures.ComposeInto(scene, quads, _presenter.Textures, "Scene", ResolveSurface);
-        IEnumerable<RenderQuad> indicatorQuads(bool overIntermission) => _indicators is null ? []
-            : Unsqueezed(SceneTextures.Compose(_indicators.CreateSnapshot(overIntermission, interpolation), _indicatorTextures,
-                "Indicator", ResolveSurface).Quads);
-        if (Active.Id == FlowScenes.Gameplay)
-            quads.AddRange(_timingMarks.Quads(Gameplay.TimingMarks, Arcade.TimingIndicator));
-        if (!EffectsEditorOpen && _gameplay.Reviewing && _gameplay.Review is { } review)
-            quads.AddRange(_reviewBar.Quads(review, _gameplay.Training, _gameplay.AutoplayReview && _gameplay.Training is null));
-        if (_playerSetup is not null)
-            quads.AddRange(_playerSetup.Quads(interpolation));
-        quads.AddRange(indicatorQuads(false));
-        quads.AddRange(Overlay.Quads(interpolation, ResolveSurface));
-        // The online lobby shades (frosts) Song Select, all but its Don-chans and name boards: those come again over it.
-        var frosted = 0;
-        if (Room.ShadesScene && Active.Id == FlowScenes.SongSelect)
-        {
-            frosted = quads.Count;
-            quads.AddRange(Room.Shade());
-            quads.AddRange(players(scene, interpolation));
-        }
-        foreach (var overlay in _inputOverlays)
-            if (overlay != _search)
-                quads.AddRange(overlay.Quads());
-        quads.AddRange(indicatorQuads(true));
-        quads.AddRange(pill());
-        if (_notices is not null)
-            // A replay being watched shows its toasts (a report's answer, a sanction); a song being played holds them.
-            quads.AddRange(_notices.Quads(Scenes.OnLane && !(_gameplay.Reviewing && !_gameplay.Attempting)));
-        // Song search is a menu page: everything under it frosted, as the settings are.
-        if (_search.IsOpen)
-        {
-            frosted = quads.Count;
-            quads.AddRange(_search.Quads());
-        }
-        // The frame reads the reused list without a copy: valid until the next one (the presenter detaches what it holds).
-        var result = RenderFrame.Shared(RenderColor.Black, quads, (double)scene.StageWidth / scene.StageHeight,
-            blurredQuads: frosted, backdropBrightness: HomeControls.BackdropBrightness);
-        _presenter.Presented(result, Overlay.IsShown);
-        Painter.EndFrame();
-        return _home.Draw(result);
-    }
-
-    /// <summary>
-    /// A 4:3 layout squeezes the stage to 3/4 of its width: what isn't part of the layout is widened back by 4/3 to keep
-    /// its shape, from its side's edge (the corner indicators: network, coins) or about the centre (the menus).
-    /// </summary>
-    public IEnumerable<RenderQuad> Unsqueezed(IEnumerable<RenderQuad> quads, bool centred = false)
-    {
-        if (!Application.Squeeze43)
-            return quads;
-        RenderVertex v(RenderVertex vertex) => vertex with
-        {
-            X = centred ? .5f + (vertex.X - .5f) * 4 / 3 : vertex.X >= .5f ? 1 - (1 - vertex.X) * 4 / 3 : vertex.X * 4 / 3,
-        };
-        return quads.Select(quad => quad with
-            { TopLeft = v(quad.TopLeft), TopRight = v(quad.TopRight), BottomRight = v(quad.BottomRight), BottomLeft = v(quad.BottomLeft) });
-    }
-
-    // Drawn last over every frame (the pause menu, the service menu, a held frame), never frosted with it.
-    private RenderFrame onTop(RenderFrame frame)
-    {
-        var top = new List<RenderQuad>();
-        if (BuildInfo.Nightly)
-        {
-            // A song too: a nightly's plays never reach TaikOnline (ScoreClient.IsDevVersion).
-            top.Add(Painter.Rect(400, 0, 480, 26, new RenderColor(0.55f, 0.12f, 0.1f, 0.85f)));
-            top.Add(Painter.Text(Strings.T("nightly.banner"), 640, 13, 468, 22));
-        }
-        if (uploadBanner() is { } uploadMessage)
-        {
-            var y = BuildInfo.Nightly ? 28 : 0;
-            top.Add(Painter.Rect(380, y, 520, 26, new RenderColor(0.55f, 0.12f, 0.1f, 0.85f)));
-            top.Add(Painter.Text(Strings.T(uploadMessage), 640, y + 13, 508, 22));
-        }
-        top.AddRange(_performance.Quads());
-        if (top.Count == 0)
-            return frame;
-        return new RenderFrame(frame.ClearColor, frame.Quads.AddRange(top), frame.ContentAspectRatio)
-        {
-            BlurredQuads = frame.BlurredQuads,
-            BackdropBrightness = frame.BackdropBrightness,
-        };
-    }
-
-    private string? _uploadBanner;
-    private string? _uploadBannerContext;
-    private int _uploadBannerTick = -60;
-
-    private string? uploadBanner()
-    {
-        var song = Active.Id == FlowScenes.SongSelect
-            ? Hosts.SongSelect?.Session.CourseSelectSong ?? Hosts.SongSelect?.SongUnderCursor : null;
-        var request = Active.Id == FlowScenes.Gameplay || Active.Id == FlowScenes.Result ? _gameplay.CurrentRequest : null;
-        var auto = (Autoplay || DevAutoplay) && (Active.Id == FlowScenes.SongSelect || Active.Id == FlowScenes.Gameplay || Active.Id == FlowScenes.Result);
-        var context = $"{Active.Id}:{song?.Descriptor.Key}:{request?.Song}:{Arcade.UploadCustomSongs}:{Arcade.UploadBanner}:{auto}:{_gameplay.Demo}";
-        // Marker checks touch the filesystem; refresh once a second and immediately when the context changes.
-        if (_uploadBannerContext == context && Tick - _uploadBannerTick < 60) return _uploadBanner;
-        (_uploadBannerContext, _uploadBannerTick) = (context, Tick);
-        // The attract's demo play uploads nothing and says nothing about it.
-        if (!Arcade.UploadBanner || _gameplay.Demo) return _uploadBanner = null;
-        if (auto) return _uploadBanner = "custom_upload.banner_auto";
-        var source = song?.Descriptor.Key.Source ?? request?.Song.Source
-            ?? (Active.Id == FlowScenes.SongSelect ? Select.Library : (SongSourceKind?)null);
-        if (source is not (SongSourceKind.Tja or SongSourceKind.OsuLazer or SongSourceKind.OsuStable))
-            return _uploadBanner = null;
-        if (!Arcade.UploadCustomSongs) return _uploadBanner = "custom_upload.banner_all";
-        var blocked = request is not null ? _gameplay.UploadBlocked
-            : song?.Descriptor.Charts.Any(chart => Assets.UploadBlocked(chart.ChartAsset)) == true;
-        return _uploadBanner = blocked ? "custom_upload.banner_chart" : null;
-    }
-
-    private RenderFrame blackLoadingFrame()
-    {
-        var network = _indicators is null ? []
-            : SceneTextures.Compose(_indicators.CreateNetworkSnapshot(1), _indicatorTextures,
-                "Network", ResolveSurface).Quads;
-        return new RenderFrame(RenderColor.Black, network, 1280d / 720d);
-    }
-
     /// <summary>Home: a drum hit in the attract loop opens the player setup (that drum starts on the default account).</summary>
     public bool OpenPlayerSetup(int side)
     {
@@ -1853,45 +1524,32 @@ internal sealed class GameShell : IDisposable
         return replay.Dequeue().Card ?? ScoreProfile.LocalGuest;
     }
 
-    private IEnumerable<RenderQuad> pill()
+    // Frames built and the time spent building them (scene snapshots, quads; not the GPU): one line at exit, the
+    // number to compare when optimizing.
+    private long _framesBuilt, _frameBuildTicks, _firstFrameAt;
+
+    private RenderFrame countFrame(double interpolation)
     {
-        var pairing = Sync.Pairing;
-        if (pairing is null && _cardReplay is null)
-            return _pill.Quads(); // home: the account picker shows and hides it
-        // The game takes cards in the attract loop (its demo play too) and in entry (not from song select on), one at
-        // a time.
-        var entry = flowOf(Active.Id) is EntryFlow;
-        if (pairing is not null)
-            pairing.Accepting = Active.Id != FlowScenes.Boot && flowOf(Active.Id) is AttractFlow or GameplayFlow { Demo: true }
-                || entry && !Hosts.EntryCardPending;
-        if (entry && TakeCardFailure())
-            Hosts.RejectEntryCard();
-        if (entry && TakeCard() is { } card)
-        {
-            // A card already on a drum: the game reads it and refuses it (このデータはすでに読みこんでいます).
-            if (TaikoGuest.Profiles.Any(profile => profile?.Baid == card.Baid))
-            {
-                Console.WriteLine($"Pairing: {card.Name} (baid {card.Baid}) is already playing; the card was refused.");
-                Hosts.RefuseEntryCard();
-            }
-            else if (!Hosts.InsertEntryCard(card))
-                Console.WriteLine("Pairing: the entry is busy with another card; this one was dropped.");
-        }
-        if (pairing is null)
-            return _pill.Quads();
-        // A card prompt of ours shows the code and the paired player itself.
-        if (_indicators?.Scene.Player.Layers[1].Player.UsesProvider == true)
-            return [];
-        pairing.UpdatePill(_pill);
-        return _pill.Quads();
+        var start = System.Diagnostics.Stopwatch.GetTimestamp();
+        if (_firstFrameAt == 0)
+            _firstFrameAt = start;
+        var frame = onTop(createFrame(interpolation));
+        _frameBuildTicks += System.Diagnostics.Stopwatch.GetTimestamp() - start;
+        _framesBuilt++;
+        return frame;
     }
 
     public void Dispose()
     {
-        closeEffectsEditor();
+        if (_framesBuilt > 0)
+        {
+            var seconds = System.Diagnostics.Stopwatch.GetElapsedTime(_firstFrameAt).TotalSeconds;
+            Console.WriteLine(System.FormattableString.Invariant(
+                $"Frames: {_framesBuilt} in {seconds:F1} s ({_framesBuilt / seconds:F0} fps), building {System.Diagnostics.Stopwatch.GetElapsedTime(0, _frameBuildTicks).TotalMilliseconds / _framesBuilt:F3} ms a frame."));
+        }
+        Editor?.Close();
         _playerSetup?.Dispose();
-        _textFields.Dispose();
-        _nameTexts.Dispose();
+        _art?.Dispose();
         Painter.Dispose();
         Rankings?.Dispose();
         _pill.Dispose();
@@ -1901,16 +1559,17 @@ internal sealed class GameShell : IDisposable
         Titles.Dispose();
         Previews?.Dispose();
         Audio?.Dispose();
-        _audioDevice?.Dispose();
+        AudioOutput.Dispose();
         DonRenderer?.Dispose();
         Bake?.Stop(); // it upscales through the tool disposed next
         SceneTextures.Upscaler?.Dispose();
-        CustomUploadPrompt.Dispose(); // both own an OverlayMenu, whose textures go through Application
+        CustomUploadPrompt.Dispose();
+        DeviceTransfer.Dispose(); // both own an OverlayMenu, whose textures go through Application
         Room.Dispose();
         Application.Dispose();
         _libraries.Dispose();
         Sync.Dispose();
-        _discord?.Dispose();
+        _presence?.Dispose();
     }
 }
 

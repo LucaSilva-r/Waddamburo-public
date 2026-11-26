@@ -1,7 +1,6 @@
 using System.Net;
 using System.Text;
 using Waddamburo.Game.Gameplay;
-using Waddamburo.Game.Scores;
 using Waddamburo.Catalog;
 
 namespace Waddamburo.Game.Tests;

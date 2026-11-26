@@ -4,9 +4,12 @@ $input v_texcoord0, v_color0, v_color1
 
 SAMPLER2D(s_texture, 0);
 
-// Straight-alpha colour transform in, premultiplied alpha out.
+// Straight-alpha colour transform in, premultiplied alpha out. A multiply alpha below 0 (stored as -1 - alpha) marks an
+// additive quad: its alpha is written as 0, so the normal blend (s + d(1 - sa)) adds it (s + d) and the two batch together.
 void main()
 {
-    vec4 straightColor = clamp(texture2D(s_texture, v_texcoord0) * v_color0 + v_color1, 0.0, 1.0);
-    gl_FragColor = vec4(straightColor.rgb * straightColor.a, straightColor.a);
+    float additive = step(v_color0.a, -0.5);
+    vec4 multiply = vec4(v_color0.rgb, mix(v_color0.a, -1.0 - v_color0.a, additive));
+    vec4 straightColor = clamp(texture2D(s_texture, v_texcoord0) * multiply + v_color1, 0.0, 1.0);
+    gl_FragColor = vec4(straightColor.rgb * straightColor.a, straightColor.a * (1.0 - additive));
 }

@@ -93,6 +93,48 @@ internal sealed class CabinetPairing : IDisposable
 
     public void Dispose() => _stop.Cancel();
 
+    /// <summary>
+    /// A card shortcut's button (card_1p / card_2p): the card is read as if paired from the website, while cards are
+    /// taken (the attract, the entry) and none is waiting. False when it isn't taken now.
+    /// </summary>
+    public bool Insert(string accessCode)
+    {
+        lock (_sync)
+            if (!_accepting || _card is not null && DateTime.UtcNow < _cardDeadline)
+                return false;
+        _ = Task.Run(() => read(accessCode));
+        return true;
+    }
+
+    // A card's access code looked up on TaikOnline: its player waits for the next credit, or the red band shows.
+    private async Task read(string accessCode)
+    {
+        ScoreProfile? profile = null;
+        try
+        {
+            // Diagnostic: WADDAMBURO_REJECT_CARDS=1 treats every card as unregistered (the red band).
+            profile = DiagnosticSwitches.RejectCards || !System.Text.RegularExpressions.Regex.IsMatch(accessCode, @"\A[0-9]{20}\z") ? null
+                : await _client.ResolveCardAsync(accessCode, _stop.Token).ConfigureAwait(false);
+        }
+        catch (HttpRequestException exception)
+        {
+            Console.Error.WriteLine($"Warning PAIRING: the card could not be looked up ({exception.Message}).");
+        }
+        catch (TaskCanceledException)
+        {
+            return;
+        }
+        Console.WriteLine(profile is null ? "Pairing: the card was rejected (no TaikOnline player)."
+            : $"Pairing: {profile.Name} (baid {profile.Baid}) is ready for the next credit.");
+        lock (_sync)
+        {
+            _code = null;
+            _card = profile;
+            _cardFailed = profile is null;
+            _cardDeadline = DateTime.UtcNow + CardLifetime;
+        }
+    }
+
     private async Task loop()
     {
         while (!_stop.IsCancellationRequested)
@@ -138,26 +180,7 @@ internal sealed class CabinetPairing : IDisposable
                 }
                 break;
             case PairingState.Claimed claimed:
-                ScoreProfile? profile = null;
-                try
-                {
-                    // Diagnostic: WADDAMBURO_REJECT_CARDS=1 treats every card as unregistered (the red band).
-                    profile = Environment.GetEnvironmentVariable("WADDAMBURO_REJECT_CARDS") == "1" ? null
-                        : await _client.ResolveCardAsync(claimed.AccessCode, _stop.Token).ConfigureAwait(false);
-                }
-                catch (HttpRequestException exception)
-                {
-                    Console.Error.WriteLine($"Warning PAIRING: the card could not be looked up ({exception.Message}).");
-                }
-                Console.WriteLine(profile is null ? "Pairing: the card was rejected (no TaikOnline player)."
-                    : $"Pairing: {profile.Name} (baid {profile.Baid}) is ready for the next credit.");
-                lock (_sync)
-                {
-                    _code = null;
-                    _card = profile;
-                    _cardFailed = profile is null;
-                    _cardDeadline = DateTime.UtcNow + CardLifetime;
-                }
+                await read(claimed.AccessCode).ConfigureAwait(false);
                 break;
             default:
                 lock (_sync)

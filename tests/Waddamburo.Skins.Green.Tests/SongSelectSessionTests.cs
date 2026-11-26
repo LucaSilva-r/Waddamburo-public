@@ -84,7 +84,7 @@ public sealed class SongSelectSessionTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void MissingCoursesRestrictSelectionUnlessTheSongHasUra(bool hasUra)
+    public void MissingCoursesRestrictSelectionAndOniShowsBeforeUra(bool hasUra)
     {
         var key = new SongKey(SongSourceKind.Tja, "course-projection");
         var descriptor = new SongDescriptor(
@@ -112,9 +112,8 @@ public sealed class SongSelectSessionTests
 
         var presentation = SongSelectCoursePresentation.FromSong(song);
 
-        // Restricted mode would show Ura in Oni's place, so a song with Ura keeps the game's board.
-        Assert.Equal(hasUra ? AuthoredSongCourseBits.None : AuthoredSongCourseBits.All & ~AuthoredSongCourseBits.Oni,
-            presentation.SelectionRestrictions);
+        // Ura stays marked invalid so the restricted board shows Oni; its stars let right-ka switch to it.
+        Assert.Equal(AuthoredSongCourseBits.All & ~AuthoredSongCourseBits.Oni, presentation.SelectionRestrictions);
         Assert.Equal(8, presentation.OniStars);
         Assert.Equal(hasUra ? 10 : 0, presentation.HiddenOniStars); // a custom 12 shows as the board's 10
         Assert.Equal(0, presentation.EasyStars);
@@ -143,6 +142,27 @@ public sealed class SongSelectSessionTests
         Assert.Equal(2, song.Level(TaikoCourse.Easy));
         Assert.Equal(8, song.Level(TaikoCourse.Oni));
         Assert.False(song.HasCourse(TaikoCourse.Hard));
+    }
+
+    [Fact]
+    public async Task EventFolderListsTheEventsStockSongsFirstAndIsLeftOutWithoutThem()
+    {
+        using var catalog = new GlobalSongCatalog([new SyntheticProvider(source: SongSourceKind.Stock)]);
+        var snapshot = await catalog.RefreshAsync();
+        var event_ = new SongSelectEvent("touhou", "東方Project×太鼓の達人", DateTimeOffset.Now, DateTimeOffset.Now.AddDays(14), ["synthetic"]);
+
+        var view = new SongSelectCatalogView(snapshot, eventFolder: event_);
+        Assert.Equal(SongSelectCatalogView.EventKey, view.Categories[0].Key);
+        Assert.Equal("東方Project×太鼓の達人", view.Categories[0].Name);
+        Assert.Equal(SongSelectCatalogView.FeatureLabel, view.Categories[0].AuthoredLabel);
+        Assert.Equal("synthetic", Assert.Single(view.Categories[0].Songs).Descriptor.Key.StableId);
+
+        // None of its songs here (or not a stock song of that id): no folder.
+        Assert.DoesNotContain(new SongSelectCatalogView(snapshot, eventFolder: event_ with { MusicIds = ["other"] }).Categories,
+            category => category.Key == SongSelectCatalogView.EventKey);
+        using var tja = new GlobalSongCatalog([new SyntheticProvider()]);
+        Assert.DoesNotContain(new SongSelectCatalogView(await tja.RefreshAsync(), eventFolder: event_).Categories,
+            category => category.Key == SongSelectCatalogView.EventKey);
     }
 
     [Fact]
@@ -304,7 +324,7 @@ public sealed class SongSelectSessionTests
     }
 
     [Fact]
-    public async Task UnrestrictedSongCanLaunchBothOniAndUraAndAMissingCourseFallsBackToTheNearest()
+    public async Task SongMissingACourseCanLaunchBothOniAndUraAndAMissingCourseFallsBackToTheNearest()
     {
         using var catalog = new GlobalSongCatalog([new SyntheticProvider(includeUra: true)]);
         var snapshot = await catalog.RefreshAsync();
@@ -314,7 +334,7 @@ public sealed class SongSelectSessionTests
             new RecordingPreviewController(), pending);
         Assert.True(view.TryGetSong(0, 0, out var song));
         var presentation = SongSelectCoursePresentation.FromSong(song);
-        Assert.Equal(AuthoredSongCourseBits.None, presentation.SelectionRestrictions);
+        Assert.True(presentation.SelectionRestrictions.HasFlag(AuthoredSongCourseBits.HiddenOni));
         Assert.Equal(8, presentation.OniStars);
         Assert.Equal(9, presentation.HiddenOniStars);
         foreach (var authoredCourse in new[] { 3, 7 })
@@ -398,11 +418,11 @@ public sealed class SongSelectSessionTests
         }
     }
 
-    private sealed class SyntheticProvider(bool includeUra = false) : ISongCatalogProvider
+    private sealed class SyntheticProvider(bool includeUra = false, SongSourceKind source = SongSourceKind.Tja) : ISongCatalogProvider
     {
         public CatalogProviderId Id { get; } = new("synthetic");
 
-        public SongSourceKind Source => SongSourceKind.Tja;
+        public SongSourceKind Source => source;
 
         public ValueTask<SongCatalogContribution> ScanAsync(
             IProgress<CatalogScanProgress>? progress,

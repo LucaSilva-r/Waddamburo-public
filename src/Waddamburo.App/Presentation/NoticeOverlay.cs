@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using System.Globalization;
 using Waddamburo.Game.Flow;
-using Waddamburo.Game.Online;
 using Waddamburo.Platform.Sdl.Rendering;
 using static Waddamburo.App.Strings;
 
@@ -76,6 +75,12 @@ internal sealed class NoticeOverlay : IDisposable
             while (_toasts.Count < MaxToasts && _arrived.TryDequeue(out var notice))
                 _toasts.Add((notice, now));
             var y = ToastTop;
+            // Running jobs stay up as small cards above the toasts (a sync's progress, an upload).
+            foreach (var job in _jobs.Visible.Where(static job => !job.Quiet))
+            {
+                quads.Add(_painter.Rect(Stage - Margin - CardWidth, y, CardWidth, 44, new RenderColor(0.07f, 0.07f, 0.09f, 0.9f)));
+                y = jobBar(quads, job, Stage - Margin - CardWidth + 10, y + 4, CardWidth - 20) + Gap;
+            }
             foreach (var (notice, since) in _toasts)
             {
                 var left = now - since;
@@ -99,19 +104,7 @@ internal sealed class NoticeOverlay : IDisposable
         var y = 70f;
 
         foreach (var job in _jobs.Visible)
-        {
-            var title = job.Failure is { } failure ? T("job.failed", job.Title, failure) : job.Title;
-            quads.Add(_painter.Text(title, x + Margin, y + 9, CardWidth, 18, anchor: 0));
-            y += 18 + 4;
-            quads.Add(_painter.Rect(x + Margin, y, CardWidth, 6, new RenderColor(1, 1, 1, 0.15f)));
-            var colour = job.Failure is not null ? new RenderColor(0.9f, 0.3f, 0.25f, 1) : new RenderColor(0.35f, 0.7f, 1, 1);
-            // No count: a block sweeping across the bar.
-            var (from, width) = job.Fraction is { } fraction
-                ? (0f, (float)fraction * CardWidth)
-                : ((float)(DateTimeOffset.UtcNow - job.StartedAt).TotalSeconds % 1.5f / 1.5f * (CardWidth - 80), 80f);
-            quads.Add(_painter.Rect(x + Margin + from, y, job.EndedAt is null || job.Failure is not null ? width : CardWidth, 6, colour));
-            y += 6 + Gap * 1.5f;
-        }
+            y = jobBar(quads, job, x + Margin, y, CardWidth) + Gap * 0.5f;
 
         var notices = _notices.Current;
         if (notices.Count == 0)
@@ -129,6 +122,24 @@ internal sealed class NoticeOverlay : IDisposable
             y += height + Gap;
         }
         report(shown);
+    }
+
+    // A job's title and bar from y; returns where it ends.
+    private float jobBar(List<RenderQuad> quads, JobBoard.Job job, float x, float y, float width)
+    {
+        var title = job.Failure is { } failure ? T("job.failed", job.Title, failure) : job.Title;
+        quads.Add(_painter.Text(title, x, y + 9, width, 18, anchor: 0));
+        y += 18 + 4;
+        quads.Add(_painter.Rect(x, y, width, 6, new RenderColor(1, 1, 1, 0.15f)));
+        var colour = job.Failure is not null ? new RenderColor(0.9f, 0.3f, 0.25f, 1) : new RenderColor(0.35f, 0.7f, 1, 1);
+        // No count: a block sweeping across the bar.
+        var (from, filled) = job.Fraction is { } fraction
+            ? (0f, (float)fraction * width)
+            : ((float)(DateTimeOffset.UtcNow - job.StartedAt).TotalSeconds % 1.5f / 1.5f * (width - 80), 80f);
+        if (job.EndedAt is not null && job.Failure is null)
+            (from, filled) = (0f, width); // done: the whole bar, not the sweep's offset plus a full width
+        quads.Add(_painter.Rect(x + from, y, filled, 6, colour));
+        return y + 6 + Gap;
     }
 
     // Tells the owner once per notice that it was on screen.

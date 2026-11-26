@@ -24,7 +24,12 @@ public sealed class AudioPlaybackClock
                 _lastProgress = timestamp;
             var elapsed = timestamp > previous ? timestamp - previous : TimeSpan.Zero;
             var stallTimeout = TimeSpan.FromSeconds(Math.Max(0.1, hardwareLatency.TotalSeconds * 4));
-            if (consumed > TimeSpan.Zero && timestamp - _lastProgress <= stallTimeout)
+            // The caller itself stalled (the app suspended by the Switch's HOME menu, a long hitch): the wall time that
+            // passed says nothing about the audio, which may have stopped with it. Back onto the audio at once; slewing
+            // at 5% from a wall-clock guess left the chart 1.1 s ahead of the music for many seconds.
+            if (elapsed > stallTimeout && consumed > TimeSpan.Zero)
+                _position = earliest;
+            else if (consumed > TimeSpan.Zero && timestamp - _lastProgress <= stallTimeout)
             {
                 var predicted = _position + elapsed;
                 var error = predicted < earliest ? earliest - predicted

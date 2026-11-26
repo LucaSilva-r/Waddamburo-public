@@ -80,6 +80,7 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
     public float Interpolation { get; set; } = 1;
     private readonly Target[] _targets = new Target[3];
     private readonly float[] _poseUniforms = new float[16 * (PaletteSize + 1)];
+    private Matrix4x4[]? _animatedWorld; // reused each frame (EvaluateWorld into it)
     private readonly bgfx.ProgramHandle _modelProgram;
     private readonly bgfx.ProgramHandle _postProgram;
     private readonly bgfx.VertexBufferHandle _postTriangle;
@@ -268,11 +269,17 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
             _accessoryTicks[index] += frames;
     }
 
+    /// <summary>
+    /// Don-chan's render targets as a share of the window's scale (config.cfg don_resolution): his two passes fill a
+    /// full target each per player, a weak phone GPU's largest cost in menus; he is small on screen.
+    /// </summary>
+    public static float ResolutionScale { get; set; } = 1;
+
     void IGpuRenderPrepass.Record(uint width, uint height)
     {
         // At the window's own scale. Drawing at twice it (anti-aliased by the downscale) looked the same to the
         // user, and the kusudama and balloon camera's big target then took a Celeron's GPU from 16 to 25 ms a frame.
-        var scale = Math.Min(width / 1280f, height / 720f);
+        var scale = Math.Min(width / 1280f, height / 720f) * ResolutionScale;
         uint pixels(float units) => (uint)Math.Clamp(MathF.Round(units * scale / 8) * 8, 64, 4096);
         for (var index = 0; index < _players.Length; index++)
         {
@@ -305,7 +312,8 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         var target = _targets[playerIndex];
         player.Sample(Interpolation, _pose, _skeleton.ExpressionOffset);
         ReadOnlySpan<float> frame = _pose;
-        var animatedWorld = _skeleton.EvaluateWorld(frame);
+        var animatedWorld = _animatedWorld ??= new Matrix4x4[_skeleton.Channels.Length];
+        _skeleton.EvaluateWorld(frame, animatedWorld);
         var matrices = MemoryMarshal.Cast<float, Matrix4x4>(_poseUniforms.AsSpan());
         var targetSize = _targetSizes[playerIndex];
         var camera = _layouts[playerIndex] switch
@@ -341,7 +349,18 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         }
 
         var accessory = _accessories[playerIndex];
-        var accessoryMeshes = accessory?.Pose(_accessoryTicks[playerIndex], matrices[1], matrices[0],
+        // The puchi is drawn straight into the post target, one render-target pass fewer than Don: where
+        // targets start at the bottom left (GL: Android, Switch) that pass's flip does not cancel, so flip it here.
+        var flipAccessory = bgfx.get_caps()->originBottomLeft != 0;
+        var accessoryCamera = camera;
+        if (flipAccessory)
+        {
+            accessoryCamera.M12 = -accessoryCamera.M12;
+            accessoryCamera.M22 = -accessoryCamera.M22;
+            accessoryCamera.M32 = -accessoryCamera.M32;
+            accessoryCamera.M42 = -accessoryCamera.M42;
+        }
+        var accessoryMeshes = accessory?.Pose(_accessoryTicks[playerIndex], matrices[1], accessoryCamera,
             MemoryMarshal.Cast<float, Matrix4x4>(_accessoryUniforms.AsSpan()));
 
         var modelView = (ushort)(playerIndex * 2);
@@ -412,10 +431,11 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
                         bgfx.set_uniform(_replaceBlueUniform, &blue, 1);
                         // CCW-front culling; reflecting the 2P camera reverses projected winding, so
                         // swap the culled side to keep the authored visible side.
+                        var mirrored = reflectedCamera ^ (overlay && flipAccessory); // the puchi's flip reverses it too
                         var cull = material.CullMode switch
                         {
-                            0x405 => reflectedCamera ? bgfx.StateFlags.CullCcw : bgfx.StateFlags.CullCw,
-                            0x404 => reflectedCamera ? bgfx.StateFlags.CullCw : bgfx.StateFlags.CullCcw,
+                            0x405 => mirrored ? bgfx.StateFlags.CullCcw : bgfx.StateFlags.CullCw,
+                            0x404 => mirrored ? bgfx.StateFlags.CullCw : bgfx.StateFlags.CullCcw,
                             _ => bgfx.StateFlags.None,
                         };
                         // Blended decals (face disc, costume prints) are tested against the opaque body so the
@@ -455,6 +475,13 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(playerIndex, _players.Length);
         var meshes = new List<GpuMesh>();
         string face;
+        // A costume this install lacks (a later update's, worn on a profile synced from a newer copy): the default.
+        if (whole is { } wanted && !assetExists($"full/cos/cos_{wanted:000}{variant:000}.nud"))
+            (whole, head, body) = (null, 0, 0);
+        if (!HasCostume(4, body))
+            body = 0;
+        if (!HasCostume(5, head))
+            head = 0;
         if (whole is { } costume)
         {
             meshes.AddRange(model($"full/cos/cos_{costume:000}{variant:000}.nud"));
@@ -466,6 +493,9 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
             meshes.AddRange(model($"parts/body/body_{body:000}000.nud"));
             meshes.AddRange(model($"parts/head/head_{head:000}000.nud"));
             face = $"parts/paint/paint_{paint:000}000.nut";
+            // A make this install lacks (bad id, later update's): the plain face.
+            if (paint < 0 || !assetExists(face))
+                face = "parts/paint/paint_000000.nut";
         }
         var mirrored = Path.ChangeExtension(face, null) + "r.nut";
         var playerTwoVariant = playerIndex == 1 && assetExists(mirrored);
@@ -482,7 +512,7 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentOutOfRangeException.ThrowIfNegative(playerIndex);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(playerIndex, _players.Length);
-        if (puchi <= 0)
+        if (puchi <= 0 || !HasCostume(7, puchi)) // none, or one this install lacks (a later update's)
         {
             _accessories[playerIndex] = null;
             return;
@@ -510,7 +540,20 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
         return new Accessory(frames, skeleton, inverseBind, loop);
     }
 
-    private bool assetExists(string relativePath) => File.Exists(Path.Combine(_assetRoot, relativePath));
+    /// <summary>Whether the data has a shop costume's model: kigurumi 3, body 4, head 5, puchi 7.</summary>
+    public bool HasCostume(int type, int id) => assetExists(type switch
+    {
+        3 => $"full/cos/cos_{id:000}000.nud",
+        4 => $"parts/body/body_{id:000}000.nud",
+        7 => $"parts/acc/acc_{id:000}000.nud",
+        _ => $"parts/head/head_{id:000}000.nud",
+    });
+
+    // The install does not change while the game runs: one look at the disk per file.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> _assetExists = new(StringComparer.Ordinal);
+
+    private bool assetExists(string relativePath) =>
+        _assetExists.GetOrAdd(relativePath, static (path, root) => File.Exists(Path.Combine(root, path)), _assetRoot);
 
     private List<GpuMesh> model(string relativePath)
     {
@@ -792,7 +835,8 @@ public sealed unsafe class SdlDonRenderer : IDisposable, IGpuRenderPrepass
             var weight = (float)(position - index);
             for (var i = 0; i < frame.Length; i++)
                 frame[i] = current[i] + (next[i] - current[i]) * weight;
-            var world = Skeleton.EvaluateWorld(frame);
+            Span<Matrix4x4> world = stackalloc Matrix4x4[Skeleton.Channels.Length];
+            Skeleton.EvaluateWorld(frame, world);
             uniforms[0] = camera;
             for (var bone = 0; bone < PaletteSize; bone++)
                 uniforms[bone + 1] = bone < world.Length ? InverseBind[bone] * world[bone] * donPlacement : Matrix4x4.Identity;

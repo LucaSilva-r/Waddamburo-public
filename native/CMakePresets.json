@@ -112,6 +112,12 @@
       }
     },
     {
+      "name": "linux-arm64-package",
+      "displayName": "Linux arm64 self-contained release libraries (on an arm64 host)",
+      "inherits": "linux-package",
+      "binaryDir": "${sourceDir}/../out/build/native/linux-arm64/linux-package"
+    },
+    {
       "name": "windows-package",
       "displayName": "Windows x64 self-contained release libraries (mingw-w64: cross build on Linux, or an MSYS2 MINGW64 shell)",
       "inherits": "base",
@@ -122,6 +128,61 @@
         "CMAKE_BUILD_TYPE": "Release",
         "WADDAMBURO_PACKAGE": true
       }
+    },
+    {
+      "name": "macos-package",
+      "displayName": "macOS arm64 self-contained release libraries (on a Mac with the Command Line Tools)",
+      "inherits": "base",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      },
+      "binaryDir": "${sourceDir}/../out/build/native/osx-arm64/macos-package",
+      "cacheVariables": {
+        "BUILD_TESTING": false,
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_OSX_ARCHITECTURES": "arm64",
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "14.0",
+        "WADDAMBURO_PACKAGE": true
+      }
+    },
+    {
+      "name": "ios-package",
+      "displayName": "iOS arm64 device release libraries (on a Mac with Xcode)",
+      "inherits": "macos-package",
+      "binaryDir": "${sourceDir}/../out/build/native/ios-arm64/ios-package",
+      "toolchainFile": "${sourceDir}/cmake/ios.cmake",
+      "cacheVariables": {
+        "CMAKE_OSX_ARCHITECTURES": "arm64",
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "15.0"
+      }
+    },
+    {
+      "name": "windows-arm64-package",
+      "displayName": "Windows arm64 self-contained release libraries (llvm-mingw cross build on Linux)",
+      "inherits": "windows-package",
+      "binaryDir": "${sourceDir}/../out/build/native/win-arm64/windows-package",
+      "toolchainFile": "${sourceDir}/cmake/mingw-w64-arm64.cmake"
+    },
+    {
+      "name": "android-package",
+      "displayName": "Android arm64 release libraries (NDK cross build on Linux)",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/../out/build/native/android-arm64/${presetName}",
+      "toolchainFile": "${sourceDir}/cmake/android-arm64.cmake",
+      "cacheVariables": {
+        "BUILD_TESTING": false,
+        "CMAKE_BUILD_TYPE": "Release",
+        "WADDAMBURO_PACKAGE": true
+      }
+    },
+    {
+      "name": "android-x64-package",
+      "displayName": "Android x86_64 release libraries (NDK cross build on Linux)",
+      "inherits": "android-package",
+      "binaryDir": "${sourceDir}/../out/build/native/android-x64/${presetName}",
+      "toolchainFile": "${sourceDir}/cmake/android-x64.cmake"
     },
     {
       "name": "windows-debug",
@@ -181,7 +242,13 @@
     },
     { "name": "linux-audio-complete", "configurePreset": "linux-audio-complete" },
     { "name": "linux-package", "configurePreset": "linux-package" },
+    { "name": "linux-arm64-package", "configurePreset": "linux-arm64-package" },
     { "name": "windows-package", "configurePreset": "windows-package" },
+    { "name": "macos-package", "configurePreset": "macos-package" },
+    { "name": "ios-package", "configurePreset": "ios-package" },
+    { "name": "windows-arm64-package", "configurePreset": "windows-arm64-package" },
+    { "name": "android-package", "configurePreset": "android-package" },
+    { "name": "android-x64-package", "configurePreset": "android-x64-package" },
     { "name": "windows-debug", "configurePreset": "windows-debug" },
     { "name": "windows-release", "configurePreset": "windows-release" },
     { "name": "windows-sanitize", "configurePreset": "windows-sanitize" },

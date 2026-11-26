@@ -7,6 +7,9 @@ using Waddamburo.Platform.Sdl.Text;
 
 namespace Waddamburo.App.Home;
 
+/// <summary>A device login waiting for approval: its code, the approval page, and whether a browser opened on it.</summary>
+internal sealed record PendingSignIn(string Code, Uri Url, DateTime Deadline, bool BrowserOpened);
+
 internal enum SetupChoiceKind { Guest, Account, Friend, AddAccount }
 
 /// <summary>One column's current choice (an account's avatar once it has downloaded).</summary>
@@ -79,6 +82,12 @@ internal sealed class PlayerSetupFlow : IDisposable
     }
 
     public bool IsOpen { get; private set; }
+
+    /// <summary>A Sign in waiting for the website's approval (the sign-in overlay shows it); null otherwise.</summary>
+    public PendingSignIn? SignIn { get; private set; }
+
+    /// <summary>The sign-in overlay's Cancel: stops waiting for the approval.</summary>
+    public void CancelSignIn() => cancelWork();
 
     /// <summary>The players chosen (null: the setup is still open or was left).</summary>
     public event Action<ScoreProfile?[], bool[]>? Confirmed;
@@ -202,7 +211,7 @@ internal sealed class PlayerSetupFlow : IDisposable
             {
                 if (_workSide == index)
                     cancelWork();
-                var choices = choicesFor(index);
+                var choices = this.choices();
                 var next = (position(index, choices) + (right ? 1 : choices.Count - 1)) % choices.Count;
                 select(side, choices[next].Kind, choices[next].Baid);
                 side.Message = null;
@@ -262,7 +271,7 @@ internal sealed class PlayerSetupFlow : IDisposable
     private bool sameAccount() => current(0) is { HasDon: true, Baid: not 0 } left && left.Baid == current(1).Baid;
 
     // Guest, the stored accounts, Join with code (a friend), Sign in (add an account).
-    private List<SetupChoice> choicesFor(int index)
+    private List<SetupChoice> choices()
     {
         var online = _server is not null;
         return
@@ -295,7 +304,7 @@ internal sealed class PlayerSetupFlow : IDisposable
 
     private SetupChoice current(int index)
     {
-        var choices = choicesFor(index);
+        var choices = this.choices();
         var side = _sides[index];
         var choice = choices[position(index, choices)];
         return choice.Kind == SetupChoiceKind.Friend && side.Visitor is { } visitor
@@ -328,6 +337,7 @@ internal sealed class PlayerSetupFlow : IDisposable
 
     private void cancelWork()
     {
+        SignIn = null;
         _work?.Cancel();
         _work = null;
         if (_workSide >= 0)
@@ -354,6 +364,7 @@ internal sealed class PlayerSetupFlow : IDisposable
             return;
         _work = null;
         _workSide = -1;
+        SignIn = null;
         _sides[index].Code = null;
         _sides[index].Message = message;
     }
@@ -373,12 +384,11 @@ internal sealed class PlayerSetupFlow : IDisposable
                 {
                     if (work.IsCancellationRequested)
                         return;
-                    _sides[index].Code = login.UserCode;
-                    _sides[index].CodeDeadline = DateTime.UtcNow.AddSeconds(login.ExpiresIn);
+                    // The approval page opens in the browser (the website's login first if needed); the sign-in
+                    // overlay shows the code and where to enter it for another device, and reopens the browser.
+                    var url = new Uri($"{login.VerificationUrl}?code={login.UserCode}");
                     _sides[index].Message = null;
-                    // Scanned from the stand, the approval page opens on the phone of whoever signs in,
-                    // already logged in to the account they want.
-                    _sides[index].QrUrl = $"{login.VerificationUrl}?code={login.UserCode}";
+                    SignIn = new PendingSignIn(login.UserCode, url, DateTime.UtcNow.AddSeconds(login.ExpiresIn), SdlApplication.OpenUrl(url));
                 });
                 while (!work.IsCancellationRequested)
                 {
@@ -440,7 +450,7 @@ internal sealed class PlayerSetupFlow : IDisposable
                                 // The friend scans it and confirms on their own account's Play page.
                                 _sides[index].QrUrl = $"{_server}waddamburo/play?code={active.Code}"; // ponytail: the site's default scope
                                 _sides[index].CodeDeadline = DateTime.UtcNow + active.ExpiresIn;
-                                _sides[index].Message = null;
+                                _sides[index].Message = Strings.T("setup.friend_scan");
                                 break;
                             case PairingState.Visitor visitor:
                                 finishWork(work, index, null);

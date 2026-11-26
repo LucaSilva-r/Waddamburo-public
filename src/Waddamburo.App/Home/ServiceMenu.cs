@@ -1,5 +1,4 @@
 using System.Globalization;
-using Waddamburo.App.Flow;
 using Waddamburo.App.Hosting;
 using Waddamburo.Game.Flow;
 using Waddamburo.Platform.Sdl;
@@ -21,7 +20,10 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
     private readonly OverlayMenu _menu = new(application, fontPath);
 
     // Section: one of the settings page's sections (its title in the page's section).
-    private enum Page { Main, Coin, Game, Sound, Io, Bookkeeping, Others, Section, Drums, Libraries, Network }
+    private enum Page { Main, Coin, Game, Sound, Io, Bookkeeping, Others, Section, Drums, Libraries, Network, Releases, WiiReleases, NijiiroInstalls, Lyrics }
+
+    /// <summary>The settings to preview the lyrics with while the LYRICS page is open, else null.</summary>
+    public ArcadeSettings? LyricsPreview => _menu.IsOpen && _menu.Page?.Tag is Page.Lyrics ? _settings : null;
 
     /// <summary>The server check behind NETWORK OPTIONS (null: no server set).</summary>
     public Online.ServerHealth? Health { get; set; }
@@ -50,13 +52,14 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
     // Home mode: the settings (no coins, credits, stages or bookkeeping).
     private bool _home;
     private Action<HomeMenuAction>? _command;
+    private Action? _openDevices;
     private bool _canCalibrate;
     private static readonly string TimingSection = Strings.T("section.timing");
     private static readonly string[] Devices = [S("service.device.keyboard"), S("service.device.controller"), S("service.device.midi")];
 
     // The settings page's sections, by title (the language one goes in OTHERS, the volume and sound ones in SOUND).
     private static readonly string LanguageSection = Strings.T("section.language"), VolumeSection = Strings.T("section.volume"),
-        SoundSection = Strings.T("section.sound"),
+        SoundSection = Strings.T("section.sound"), AdvancedAudioSection = Strings.T("section.audio_advanced"),
         SongsSection = Strings.T("section.songs"), DisplaySection = Strings.T("section.display"),
         GraphicsSection = Strings.T("section.graphics");
 
@@ -89,11 +92,17 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
     /// bake), the menu closing first.</remarks>
     public void Open(ArcadeSettings settings, int credits, Action<bool> drum, Action<ArcadeSettings> exit,
         Action<ArcadeSettings> apply, Action rehash, string defaultTja, Action<HomeMenuAction>? command = null,
-        bool canCalibrate = false)
+        bool canCalibrate = false, Action? openDevices = null)
     {
         _canCalibrate = canCalibrate;
+        // Read again each time: a device plugged in since shows (the output switches without a restart).
+        HomeMenu.AudioDevices = Waddamburo.Platform.Sdl.Media.SdlAudioDevice.PlaybackDeviceNames();
+        if (OperatingSystem.IsLinux())
+            HomeMenu.AlsaDevices = Waddamburo.Platform.Sdl.Media.AlsaOutput.PlaybackDevices();
+        HomeMenu.AsioDrivers = OperatingSystem.IsWindows() ? Waddamburo.Platform.Sdl.Media.AsioOutput.DriverNames() : [];
         (_settings, _credits, _drum, _exit, _apply, _rehash, _defaultTja) = (settings, credits, drum, exit, apply, rehash, defaultTja);
         (_home, _command) = (settings.Home, command);
+        _openDevices = openDevices;
         (_listening, _picking) = (false, null);
         Array.Clear(_hits);
         // Home: the menus' ka and don as the cursor moves and picks.
@@ -125,6 +134,17 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
             listening();
             return;
         }
+        if (_touchEditing)
+        {
+            if (escape || pulses.IsDown(SdlKeyboardKey.Escape))
+                TouchDrum.Editing = false;
+            if (!TouchDrum.Editing)
+            {
+                _touchEditing = false;
+                set(s => s with { TouchDonLeft = TouchDrum.Dons[0], TouchDonRight = TouchDrum.Dons[1] });
+            }
+            return;
+        }
         // The tests sound each hit; at home SOUND TEST's hits are the menu's own ka and don already.
         var testing = _menu.Page?.Tag is Page.Io || _menu.Page?.Tag is Page.Sound && !_home;
         for (var pad = 0; pad < 8; pad++)
@@ -139,7 +159,7 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
             _down[pad] = down;
         }
         // Backspace there clears instead of going back (it may be the BACK button too).
-        if (clearSelected(pulses))
+        if (clearSelected(pulses) || clearLibrary(pulses))
             return;
         _menu.Tick(pulses, held, escape && _home);
     }
@@ -147,7 +167,19 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
     public RenderFrame Frame() => _menu.Frame();
 
     /// <summary>The menu's quads (home mode: over the game, which the renderer frosts).</summary>
-    public List<RenderQuad> Quads() => _menu.Quads();
+    public List<RenderQuad> Quads() => _touchEditing ? [] : _menu.Quads();
+
+    // Edit Touch Drums: the menu steps aside and touches (or the mouse) move the split circles; back saves them.
+    private void editTouchDrum()
+    {
+        TouchDrum.Dons = [_settings.TouchDonLeft, _settings.TouchDonRight];
+        TouchDrum.Editing = _touchEditing = true;
+    }
+
+    private bool _touchEditing;
+
+    /// <summary>The split touch drum's circles are being moved (GameShell draws them instead of the menu).</summary>
+    public bool EditingTouchDrum => _touchEditing;
 
     private void open(Page page, string section = "") => _menu.Push(this.page(page, section));
 
@@ -240,9 +272,9 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
 
     // The buttons on DRUM CONTROLS (indexes in ArcadeSettings.Buttons): a cabinet's coin and service switches; at home
     // the buttons beside the drum.
-    private int[] buttons => _home ? [.. Enumerable.Range(0, CoinButton), ScreenshotButton] : [CoinButton, CoinButton + 1, ScreenshotButton];
+    private int[] buttons => _home ? [.. Enumerable.Range(0, CoinButton), ScreenshotButton] : [CoinButton, CoinButton + 1, ScreenshotButton, ScreenshotButton + 1, ScreenshotButton + 2];
 
-    private string[] buttonNames => _home ? [.. HomeMenu.ButtonLabels.Select(static name => upper(Strings.T(name.Label)))] : [S("service.button.coin"), S("service.button.service"), S("service.button.screenshot")];
+    private string[] buttonNames => _home ? [.. HomeMenu.ButtonLabels.Select(static name => upper(Strings.T(name.Label)))] : [S("service.button.coin"), S("service.button.service"), S("service.button.screenshot"), S("service.button.card_1p"), S("service.button.card_2p")];
 
     // A pad's (0-3) or a button's (4 on, see buttons) inputs on the shown device, by name.
     // line: a drum pad's second line, its inputs after the first four.
@@ -274,17 +306,38 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
     }
 
     // An osu! library's row: the folder set, or (green, its path as the hint) the install found without one.
-    private Row osuRow(string label, string library, string? folder, Func<string?, string?> find)
+    private Row osuRow(string label, string library, string? folder, Func<string?, string?> find) =>
+        new(label, 400, () => folderName(folder), 640, Enter: () => pick(library, folder ?? find(null)),
+            Hint: problemOf(folder) ?? S(folder is null ? "service.folder.hint" : "service.folder.clear_hint"), Colour: folderColour(folder));
+
+    // LIBRARIES: Delete on an osu! library clears its folder (the library is off).
+    private bool clearLibrary(SdlKeyboardSnapshot pulses)
     {
-        var found = folder is null ? find(null) : null;
-        return new(label, 400, () => folderName(folder ?? found), 640, Enter: () => pick(library, folder ?? found),
-            Hint: problemOf(folder) ?? (found is null ? S("service.folder.hint") : S("service.folder.found", found)),
-            Colour: found is null ? folderColour(folder) : static () => OverlayMenu.Green);
+        if (_menu.Page?.Tag is not Page.Libraries || _menu.Selection is not (1 or 2) || !pulses.IsDown(SdlKeyboardKey.Delete))
+            return false;
+        set(s => _menu.Selection == 1 ? s with { OsuFolder = null } : s with { OsuStableFolder = null });
+        return true;
     }
+
+    // A group of official libraries: how many, red when one of them was left out at startup.
+    private Row groupRow(string label, Page page, IReadOnlyList<string> folders) =>
+        new(label, 400, () => $"{folders.Count}", 640, Enter: () => open(page),
+            Colour: folders.Any(folder => problemOf(folder) is not null) ? static () => OverlayMenu.Red : null);
+
+    private IReadOnlyList<string> arcadeFolders() => [.. ArcadeSettings.Folders(_settings.StockFolders).Where(folder => !isWii(folder))];
+
+    private IReadOnlyList<string> wiiFolders() => [.. ArcadeSettings.Folders(_settings.StockFolders).Where(isWii)];
+
+    // A Wii or Wii U disc among the releases; remembered, as the rows are built every frame.
+    private readonly Dictionary<string, bool> _wii = new(StringComparer.Ordinal);
+
+    private bool isWii(string folder) => _wii.TryGetValue(folder, out var wii) ? wii
+        : _wii[folder] = Providers.Stock.WiiCatalogProvider.FindRoot(folder) is not null || Providers.Stock.WiiUCatalogProvider.FindRoot(folder) is not null;
 
     private static string folderName(string? path) =>
         path is null ? S("service.not_set") : upper(Path.GetFileName(Path.TrimEndingDirectorySeparator(path)));
-    private static int wrap(int value, int step, int min, int max) => value + step > max ? min : value + step < min ? max : value + step;
+    private static int wrap(int value, int step, int min, int max) =>
+        value + Math.Sign(step) > max ? min : value + Math.Sign(step) < min ? max : value + Math.Sign(step);
 
     private Row[] rowsFor(Page page, string section) => page switch
     {
@@ -297,10 +350,12 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
             new(upper(SoundSection), Enter: () => open(Page.Sound)),
             // The rest of Waddamburo's settings, a page per section of the home settings.
             .. HomeMenu.Sections.Where(static section => section.Title != LanguageSection && section.Title != VolumeSection
-                    && section.Title != SoundSection && section.Title != SongsSection && section.Title != GraphicsSection)
+                    && section.Title != SoundSection && section.Title != AdvancedAudioSection && section.Title != SongsSection && section.Title != GraphicsSection)
                 .Select(section => new Row(upper(section.Title), Enter: () => open(Page.Section, section.Title))),
             new(S("service.drum_controls"), Enter: () => open(Page.Drums)),
-            new(S("service.song_libraries"), Enter: () => open(Page.Libraries)),
+            // A phone's libraries are its folders (Custom Songs, Arcade, Wii, Wii U): no folders to pick here.
+            .. PlatformInfo.IsMobile ? (Row[])[] : [new(S("service.song_libraries"), Enter: () => open(Page.Libraries))],
+            .. _home && _openDevices is { } openDevices ? [new Row(S("sync.devices"), Enter: openDevices)] : (Row[])[],
             .. _home ? (Row[])[] : [new(S("service.bookkeeping"), Enter: () => open(Page.Bookkeeping))],
             new(S("service.others"), Enter: () => open(Page.Others), Cyan: true), // the language is there // the language is there
             new(S("service.exit"), Gap: true, Enter: close),
@@ -340,12 +395,47 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
                     Step: _ => set(s => s with { TimerFreeze = !s.TimerFreeze }), IsDefault: () => _settings.TimerFreeze == Defaults.TimerFreeze),
             ],
             .. shared(SongsSection),
+            new(S("service.lyrics"), 400, Enter: () => open(Page.Lyrics), Hint: S("service.lyrics.hint")),
+            new(S("service.background_video"), 400, () => $"{{{S(_settings.BackgroundVideo switch
+                {
+                    BackgroundVideoMode.Off => "service.off",
+                    BackgroundVideoMode.UnderLane => "service.background_video.under_lane",
+                    _ => "service.on",
+                })}}}", 800,
+                Step: step => set(s => s with { BackgroundVideo = (BackgroundVideoMode)wrap((int)s.BackgroundVideo, step, 0, 2) }),
+                IsDefault: () => _settings.BackgroundVideo == Defaults.BackgroundVideo, Hint: S("service.background_video.hint")),
+            new(S("service.background_video_dim"), 400, () => $"{_settings.BackgroundVideoDim}%", 800,
+                Step: step => set(s => s with { BackgroundVideoDim = Math.Clamp(s.BackgroundVideoDim + 10 * step, 0, 90) }),
+                IsDefault: () => _settings.BackgroundVideoDim == Defaults.BackgroundVideoDim, Hint: S("service.background_video_dim.hint")),
+            new(S("service.background_video_fps"), 400, () => $"{_settings.BackgroundVideoFps}", 800,
+                Step: _ => set(s => s with { BackgroundVideoFps = s.BackgroundVideoFps >= 60 ? 30 : 60 }),
+                IsDefault: () => _settings.BackgroundVideoFps == Defaults.BackgroundVideoFps, Hint: S("service.background_video_fps.hint")),
+            new(S("service.exit"), 400, Gap: true, Enter: _menu.Pop),
+        ],
+        // A song's lyrics (#45): on/off and their look, previewed over the menu while this page is open.
+        Page.Lyrics =>
+        [
+            new(S("service.lyrics"), 400, () => $"{{{S(_settings.Lyrics ? "service.on" : "service.off")}}}", 800,
+                Step: _ => set(s => s with { Lyrics = !s.Lyrics }), IsDefault: () => _settings.Lyrics == Defaults.Lyrics,
+                Hint: S("service.lyrics.hint")),
+            lyricsNumber("service.lyrics_x", static s => s.LyricsX, static (s, v) => s with { LyricsX = v }, -640, 640),
+            lyricsNumber("service.lyrics_y", static s => s.LyricsY, static (s, v) => s with { LyricsY = v }, -700, 0),
+            lyricsNumber("service.lyrics_scale", static s => s.LyricsScale, static (s, v) => s with { LyricsScale = v }, 50, 200, "%"),
+            lyricsNumber("service.lyrics_red", static s => s.LyricsOutline >> 16 & 0xFF,
+                static (s, v) => s with { LyricsOutline = s.LyricsOutline & 0x00FFFF | v << 16 }, 0, 255),
+            lyricsNumber("service.lyrics_green", static s => s.LyricsOutline >> 8 & 0xFF,
+                static (s, v) => s with { LyricsOutline = s.LyricsOutline & 0xFF00FF | v << 8 }, 0, 255),
+            lyricsNumber("service.lyrics_blue", static s => s.LyricsOutline & 0xFF,
+                static (s, v) => s with { LyricsOutline = s.LyricsOutline & 0xFFFF00 | v }, 0, 255),
+            lyricsNumber("service.lyrics_background", static s => s.LyricsBackground, static (s, v) => s with { LyricsBackground = v }, 0, 100, "%"),
             new(S("service.exit"), 400, Gap: true, Enter: _menu.Pop),
         ],
         Page.Sound =>
         [
             .. shared(VolumeSection),
             .. shared(SoundSection),
+            new(upper(AdvancedAudioSection), 400, Gap: true, Enter: () => open(Page.Section, AdvancedAudioSection),
+                Hint: Strings.T("section.audio_advanced.hint")),
             new(S("service.exit"), 400, Gap: true, Enter: _menu.Pop),
             new(S("service.sound_test.note"), 400),
         ],
@@ -372,9 +462,15 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
         Page.Others =>
         [
             new(S("service.version"), 400, () => SelfUpdate.WindowTitle, 560, Cyan: true),
+            // A phone build behind a release: the release page, where the new APK is (no updates in place there).
+            .. Online.UpdateGate.Newer is not { } newer ? (Row[])[] :
+            [
+                new(S("service.download_update"), 400, () => $"{{{newer.Tag}}}", 560, Colour: static () => OverlayMenu.Yellow,
+                    Enter: () => SdlApplication.OpenUrl(newer.Page), Hint: S("service.download_update.hint")),
+            ],
             new(S("service.clock"), 400, () => DateTime.Now.ToString("yyyy/MM/dd ddd HH:mm:ss", CultureInfo.InvariantCulture).ToUpperInvariant(), 560, Cyan: true),
             .. shared(LanguageSection),
-            .. SwitchMode is null ? (Row[])[] :
+            .. SwitchMode is null || PlatformInfo.IsMobile ? (Row[])[] :
             [
                 new(S("service.game_mode"), 400, () => $"{{{S(_home ? "service.game_mode.home" : "service.game_mode.arcade")}}}", 560, Enter: confirmMode, Colour: static () => OverlayMenu.Green,
                     Hint: S("service.game_mode.hint")),
@@ -383,6 +479,18 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
             [
                 new(S("service.desktop_entry"), 400, () => $"{{{S(Hosting.DesktopEntry.Installed ? "service.desktop_entry.added" : "service.desktop_entry.not_added")}}}", 560,
                     Enter: () => Hosting.DesktopEntry.Install(), Colour: static () => OverlayMenu.Green, Hint: S("service.desktop_entry.hint")),
+            ],
+            .. !PlatformInfo.IsSwitch ? (Row[])[] :
+            [
+                new(S("service.forwarder"), 400, () => $"{{{S(SwitchForwarder.Last switch
+                    {
+                        SwitchForwarder.Result.Made => "service.forwarder.made",
+                        SwitchForwarder.Result.NoKeys => "service.forwarder.no_keys",
+                        SwitchForwarder.Result.KeysIncomplete => "service.forwarder.keys_incomplete",
+                        SwitchForwarder.Result.NroUnreadable => "service.forwarder.no_nro",
+                        SwitchForwarder.Result.WriteFailed => "service.forwarder.write_failed",
+                        _ => File.Exists(SwitchForwarder.NspPath) ? "service.forwarder.made" : "service.forwarder.not_made",
+                    })}}}", 560, Enter: () => SwitchForwarder.Make(), Colour: static () => OverlayMenu.Green, Hint: S("service.forwarder.hint")),
             ],
             new(S("service.exit"), 400, Gap: true, Enter: _menu.Pop),
         ],
@@ -394,7 +502,7 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
             .. _home && _canCalibrate && section == TimingSection
                 ? [new Row(upper(Strings.T("settings.calibrate")), 400, Gap: true, Enter: () => run(HomeMenuAction.Calibrate),
                     Hint: Strings.T("settings.calibrate.hint"))] : (Row[])[],
-            .. _home && section == DisplaySection
+            .. _home && section == DisplaySection && !PlatformInfo.IsMobile
                 ? [new Row(upper(Strings.T("settings.bake")), 400, Gap: true, Enter: () => run(HomeMenuAction.BakeTextures),
                     Hint: Strings.T("settings.bake.hint")),
                     new Row(upper(Strings.T("settings.benchmark")), 400, Enter: () => run(HomeMenuAction.RunBenchmark),
@@ -421,7 +529,7 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
         Page.Drums =>
         [
             new(S("service.player"), 400, () => $"{{{_player + 1}P}}", 640, _ => _player = 1 - _player, () => true),
-            new(S("service.device"), 400, () => $"{{{Devices[_device]}}}", 640, step => _device = wrap(_device, step, 0, 2), () => true),
+            new(S("service.device"), 400, () => $"{{{Devices[_device]}}}", 640, step => _device = wrap(_device, step, 0, PlatformInfo.IsMobile ? 1 : 2), () => true),
             // A drum pad takes up to eight keys: four on its row, the rest on the line under it (kept even when empty,
             // so the page doesn't move as keys come and go).
             .. PadNames.Concat(buttonNames).SelectMany((name, pad) => (Row[])[new Row(name, 400,
@@ -441,6 +549,36 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
                 })}}}", 640,
                 Step: step => set(s => s with { ControllerVibration = (ControllerVibration)wrap((int)s.ControllerVibration, step, 0, 3) }),
                 IsDefault: () => _settings.ControllerVibration == Defaults.ControllerVibration, Gap: true, Hint: S("service.vibration.hint")),
+            // Touch screens: the on-screen drum (and the menus' touch buttons); Auto hides it while a controller plays.
+            .. !PlatformInfo.IsMobile ? (Row[])[] :
+            [
+                new(S("settings.touch_drum"), 400, () => $"{{{S(_settings.TouchDrum switch
+                    {
+                        TouchDrumMode.On => "service.on",
+                        TouchDrumMode.Off => "service.off",
+                        _ => "service.auto",
+                    })}}}", 640,
+                    Step: step => set(s => s with { TouchDrum = (TouchDrumMode)wrap((int)s.TouchDrum, step, 0, 2) }),
+                    IsDefault: () => _settings.TouchDrum == Defaults.TouchDrum, Hint: S("settings.touch_drum.hint")),
+                new(S("settings.touch_drum_layout"), 400, () => $"{{{S(_settings.TouchDrumLayout == TouchDrumLayout.Split
+                        ? "settings.touch_drum_layout.split" : "settings.touch_drum_layout.single")}}}", 640,
+                    Step: step => set(s => s with { TouchDrumLayout = (TouchDrumLayout)wrap((int)s.TouchDrumLayout, step, 0, 1) }),
+                    IsDefault: () => _settings.TouchDrumLayout == Defaults.TouchDrumLayout, Hint: S("settings.touch_drum_layout.hint")),
+                .. _settings.TouchDrumLayout == TouchDrumLayout.Whole ? (Row[])
+                [
+                    new(S("settings.touch_drum_size"), 400, () => $"{_settings.TouchDrumSize}%", 640,
+                        Step: step => set(s => s with { TouchDrumSize = Math.Clamp(s.TouchDrumSize + 10 * step, 50, 150) }),
+                        IsDefault: () => _settings.TouchDrumSize == Defaults.TouchDrumSize, Hint: S("settings.touch_drum_size.hint")),
+                ] :
+                [
+                    new(S("settings.touch_drum_edit"), 400, Enter: editTouchDrum, Hint: S("settings.touch_drum_edit.hint")),
+                    new(S("settings.touch_drum_reset"), 400, Enter: () => set(s => s with
+                    {
+                        TouchDonLeft = Defaults.TouchDonLeft,
+                        TouchDonRight = Defaults.TouchDonRight,
+                    }), Hint: S("settings.touch_drum_reset.hint")),
+                ],
+            ],
             new(S("service.io_test"), 400, Enter: () => open(Page.Io)),
             new(S("service.exit"), 400, Gap: true, Enter: _menu.Pop),
         ],
@@ -449,19 +587,34 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
             new(S("service.tja_songs"), 400, () => folderName(_settings.TjaFolder ?? _defaultTja), 640,
                 Enter: () => pick("tja", _settings.TjaFolder ?? _defaultTja),
                 Hint: problemOf(_settings.TjaFolder ?? _defaultTja) ?? S("service.folder.hint"), Colour: folderColour(_settings.TjaFolder ?? _defaultTja)),
+            // Rows 1 and 2: clearLibrary.
             osuRow(S("service.osu_songs"), "osu", _settings.OsuFolder, Providers.OsuLazer.OsuLazerCatalogProvider.FindDataFolder),
             osuRow(S("service.osu_stable_songs"), "osu-stable", _settings.OsuStableFolder, Providers.OsuLazer.OsuLazerCatalogProvider.FindStableFolder),
+            // The official libraries, each on its own page (a list of every release no longer fits one).
             new(S("service.official_songs"), 400, Gap: true),
-            .. ArcadeSettings.Folders(_settings.StockFolders).Select(folder => new Row(S("service.release"), 400, () => folderName(folder), 640,
-                Enter: () => set(s => s with { StockFolders = ArcadeSettings.JoinFolders(ArcadeSettings.Folders(s.StockFolders).Where(f => f != folder)) }),
-                Hint: problemOf(folder) ?? S("service.remove.hint"), Colour: folderColour(folder))),
-            .. ArcadeSettings.Folders(_settings.NijiiroFolder).Select(folder => new Row(S("service.nijiiro"), 400, () => folderName(folder), 640,
-                Enter: () => set(s => s with { NijiiroFolder = ArcadeSettings.JoinFolders(ArcadeSettings.Folders(s.NijiiroFolder).Where(f => f != folder)) }),
-                Hint: problemOf(folder) ?? S("service.remove.hint"), Colour: folderColour(folder))),
+            groupRow(S("service.arcade_releases"), Page.Releases, arcadeFolders()),
+            groupRow(S("service.wii_releases"), Page.WiiReleases, wiiFolders()),
+            groupRow(S("service.nijiiro_installs"), Page.NijiiroInstalls, ArcadeSettings.Folders(_settings.NijiiroFolder)),
             new(S("service.add_official"), 400, Enter: () => pick("official", null),
                 Hint: S("service.add_official.hint")),
             new(S("service.rehash"), 400, Gap: true, Enter: () => _rehash?.Invoke(),
                 Hint: S("service.rehash.hint")),
+            new(S("service.exit"), 400, Gap: true, Enter: _menu.Pop),
+        ],
+        Page.Releases or Page.WiiReleases =>
+        [
+            .. (page == Page.Releases ? arcadeFolders() : wiiFolders()).Select(folder => new Row(S("service.release").Trim(), 400, () => folderName(folder), 640,
+                Enter: () => set(s => s with { StockFolders = ArcadeSettings.JoinFolders(ArcadeSettings.Folders(s.StockFolders).Where(f => f != folder)) }),
+                Hint: problemOf(folder) ?? S("service.remove.hint"), Colour: folderColour(folder))),
+            new(S("service.add_official"), 400, Gap: true, Enter: () => pick("official", null), Hint: S("service.add_official.hint")),
+            new(S("service.exit"), 400, Gap: true, Enter: _menu.Pop),
+        ],
+        Page.NijiiroInstalls =>
+        [
+            .. ArcadeSettings.Folders(_settings.NijiiroFolder).Select(folder => new Row(S("service.nijiiro").Trim(), 400, () => folderName(folder), 640,
+                Enter: () => set(s => s with { NijiiroFolder = ArcadeSettings.JoinFolders(ArcadeSettings.Folders(s.NijiiroFolder).Where(f => f != folder)) }),
+                Hint: problemOf(folder) ?? S("service.remove.hint"), Colour: folderColour(folder))),
+            new(S("service.add_official"), 400, Gap: true, Enter: () => pick("official", null), Hint: S("service.add_official.hint")),
             new(S("service.exit"), 400, Gap: true, Enter: _menu.Pop),
         ],
         _ => [],
@@ -487,6 +640,13 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
         Online.LinkState.NoToken => S("service.link.no_token"),
         _ => S("service.link.unauthorized"),
     };
+
+    // A LYRICS number: the arrows step it within its range, green at its default.
+    private Row lyricsNumber(string key, Func<ArcadeSettings, int> get, Func<ArcadeSettings, int, ArcadeSettings> with,
+        int minimum, int maximum, string unit = "") =>
+        new(S(key), 400, () => $"{{{get(_settings).ToString(CultureInfo.InvariantCulture)}{unit}}}", 800,
+            Step: step => set(s => with(s, Math.Clamp(get(s) + step, minimum, maximum))),
+            IsDefault: () => get(_settings) == get(Defaults), Hint: S(key + ".hint"));
 
     private RenderColor linkColour() => Health?.IconType switch { 0 => OverlayMenu.Green, 2 => OverlayMenu.Red, _ => OverlayMenu.Yellow };
 
@@ -519,8 +679,12 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
         Page.Bookkeeping => S("service.bookkeeping"),
         Page.Others => S("service.others"),
         Page.Network => S("service.network_options"),
+        Page.Lyrics => S("service.lyrics"),
         Page.Drums => S("service.drum_controls"),
         Page.Libraries => S("service.song_libraries"),
+        Page.Releases => S("service.arcade_releases"),
+        Page.WiiReleases => S("service.wii_releases"),
+        Page.NijiiroInstalls => S("service.nijiiro_installs"),
         _ => "",
     };
 

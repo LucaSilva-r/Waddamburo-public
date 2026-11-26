@@ -1,11 +1,10 @@
-# Lumen display-list slice
+# Lumen runtime
 
-`Waddamburo.Lumen.Runtime.LumenPlayer` is the first renderer-independent runtime
-slice. It consumes the immutable semantic LMB definition, resolves the candidate
+`Waddamburo.Lumen.Runtime.LumenPlayer` is the renderer-independent movie runtime. It consumes the immutable semantic LMB definition, resolves the candidate
 root sprite (or an explicit caller override), compiles ordinary timeline records
 into frame groups, and owns mutable display instances privately.
 
-The implemented transaction is intentionally small:
+One tick:
 
 - initialization enters ordinary frame zero;
 - place, move, replace, and remove commands mutate depth-ordered children;

@@ -214,10 +214,7 @@ public sealed class TaikoDonPresentation : ILaneCharacter
             ? quad => quad with { AddColor = FullGaugeGlow }
             : _missStreak >= LongMissStreak ? quad => quad with { MultiplyColor = MissDarken }
             : null;
-        return filter is null ? scene
-            : new(scene.StageWidth, scene.StageHeight, scene.Quads.Select(quad => quad.NativeSurface == _surface
-                ? filter(quad)
-                : quad));
+        return filter is null ? scene : scene.Map(quad => quad.NativeSurface == _surface ? filter(quad) : quad);
     }
 
     /// <summary>The character marker to draw, or null while a long-note overlay owns Don.</summary>

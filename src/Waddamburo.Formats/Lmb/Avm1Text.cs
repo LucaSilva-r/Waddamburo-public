@@ -46,16 +46,16 @@ public static class Avm1Text
     private static string member(string target, string key) =>
         key.Length > 2 && key[0] == '"' && identifier(key[1..^1]) ? $"{target}.{key[1..^1]}" : $"{target}[{key}]";
 
-    private static string literal(Avm1PushValue value, Func<uint, string> text) => value switch
+    private static string literal(Avm1PushValue value, Func<uint, string> text) => value.Type switch
     {
-        Avm1PushStringValue s => quote(text(s.StringIndex)),
-        Avm1PushFloatValue f => f.Value.ToString("R", CultureInfo.InvariantCulture),
-        Avm1PushDoubleValue d => d.Value.ToString("R", CultureInfo.InvariantCulture),
-        Avm1PushIntegerValue i => i.Value.ToString(CultureInfo.InvariantCulture),
-        Avm1PushBooleanValue b => b.Value ? "true" : "false",
-        Avm1PushNullValue => "null",
-        Avm1PushUndefinedValue => "undefined",
-        Avm1PushRegisterValue r => $"r{r.Register}",
+        0 or 8 or 9 => quote(text(value.StringIndex)),
+        1 => ((float)value.Number).ToString("R", CultureInfo.InvariantCulture),
+        6 => value.Number.ToString("R", CultureInfo.InvariantCulture),
+        7 => ((int)value.Number).ToString(CultureInfo.InvariantCulture),
+        5 => value.Boolean ? "true" : "false",
+        2 => "null",
+        3 => "undefined",
+        4 => $"r{value.Register}",
         _ => throw new NotSupportedException(),
     };
 

@@ -7,6 +7,8 @@ public enum IndicatorPartsScene
 {
     Entry,
     SongSelect,
+    /// <summary>The reward shop: only the counter, hidden until the shop starts it (traced session-rewards-1 scene 21).</summary>
+    RewardShop,
 }
 
 /// <summary>
@@ -60,6 +62,8 @@ public sealed class IndicatorParts(IndicatorPartsScene scene, bool countdown)
     public void StartCountdown(double seconds)
     {
         if (_counter is not { } counter) return;
+        if (scene == IndicatorPartsScene.RewardShop)
+            call(counter, "Tween_FadeIn"); // the shop's counter fades in as it starts (traced)
         if (Countdown)
             call(counter, "Start", number(seconds), LumenHostValue.FromBoolean(true));
         else
@@ -116,6 +120,18 @@ public sealed class IndicatorParts(IndicatorPartsScene scene, bool countdown)
         call(overMessage, "SetType", number((int)band));
         if (band != CardBand.ReadOk) // green replaces the reading band in place; the others appear
             call(overMessage, "TweenVisible", LumenHostValue.FromBoolean(true), number(15), number(0));
+    }
+
+    /// <summary>
+    /// over_msg showing message <paramref name="type"/> (its LABEL table): the shop's purchase shows 0 (connecting) then 27
+    /// (traced session-rewards-1), hidden by <see cref="HideCardBand"/>.
+    /// </summary>
+    public void ShowMessage(int type)
+    {
+        if (_overMessage is not { } overMessage)
+            return;
+        call(overMessage, "TweenVisible", LumenHostValue.FromBoolean(true), number(15), number(0));
+        call(overMessage, "SetType", number(type));
     }
 
     public void HideCardBand()
@@ -190,6 +206,17 @@ public sealed class IndicatorParts(IndicatorPartsScene scene, bool countdown)
         }
     }
 
+    /// <summary>The reward shop: board n is drum n's (left, right); a joined player's fades in (traced Fadein), the others stay hidden.</summary>
+    public void ShowShopNames(IReadOnlyList<int> sides)
+    {
+        for (var side = 0; side < Math.Min(2, _nameBoards.Count); side++)
+            if (sides.Contains(side))
+            {
+                GuestNameBoard.Show(_nameBoards[side], side, visible: false);
+                call(_nameBoards[side], "Fadein");
+            }
+    }
+
     /// <summary>Song Select: a name board fades out under its player's option board, and back (traced Fadeout / Fadein).</summary>
     public void FadeSongSelectName(int board, bool visible)
     {
@@ -224,7 +251,9 @@ public sealed class IndicatorParts(IndicatorPartsScene scene, bool countdown)
                 _counter = player;
                 call(player, "SetMusicNum", number(0));
                 call(player, "SetTime", number(entry ? 50 : 100));
-                if (entry)
+                if (scene == IndicatorPartsScene.RewardShop)
+                    call(player, "SetVisible", LumenHostValue.FromBoolean(false));
+                else if (entry)
                     call(player, "SetShadow", LumenHostValue.FromBoolean(true));
                 else
                 {

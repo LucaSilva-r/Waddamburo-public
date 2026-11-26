@@ -31,6 +31,8 @@ public readonly record struct PlayableHitObject
         InRun = InRun,
         IsKo = IsKo,
         IsRare = IsRare,
+        IsGiant = IsGiant,
+        IsSparkle = IsSparkle,
         Branch = Branch,
         ScrollFrom = ScrollFrom + (startTime - StartTime),
     };
@@ -67,6 +69,18 @@ public readonly record struct PlayableHitObject
 
     /// <summary>A Waiwai rare (heart) note: played as its note, drawn with the collabo's rare art.</summary>
     public bool IsRare { get; init; }
+
+    /// <summary>
+    /// 太鼓の達人Wii's giant note (types 14/15): played as its big note, drawn much bigger and rolling down the lane.
+    /// Presentation only: not part of the chart hash.
+    /// </summary>
+    public bool IsGiant { get; init; }
+
+    /// <summary>
+    /// 太鼓の達人Wii's sparkling note (types 16-25, items in medleys): played as its note, drawn glowing (Waiwai's synchro
+    /// note art). Presentation only: not part of the chart hash.
+    /// </summary>
+    public bool IsSparkle { get; init; }
 
     /// <summary>The 譜面分岐 route this note belongs to; null: played on every route.</summary>
     public ChartBranch? Branch { get; init; }
@@ -262,6 +276,9 @@ public readonly record struct ChartBarLine
 /// <summary>One song of a chart made of several (a dan course): its own rates apply from <paramref name="Start"/>.</summary>
 public sealed record ChartSegment(TimeSpan Start, TaikoCourse Course, PlayableChart Source);
 
+/// <summary>A lyrics line shown from <paramref name="Time"/> (chart time) until the next one; empty text clears it.</summary>
+public sealed record ChartLyric(TimeSpan Time, string Text);
+
 public sealed record PlayableChart
 {
     public PlayableChart(
@@ -335,6 +352,12 @@ public sealed record PlayableChart
     /// only, so not in <see cref="ChartHash"/>. <see cref="ChartEffects.None"/> for almost every chart.
     /// </summary>
     public ChartEffects Effects { get; init; } = ChartEffects.None;
+
+    /// <summary>The song's lyrics in chart time, in order (TJA #LYRIC, or its LYRICS .lrc file); none for most charts.</summary>
+    public ImmutableArray<ChartLyric> Lyrics { get; init; } = [];
+
+    /// <summary>The background video the chart names (TJA BGMOVIE, an osu! beatmap's Video event), when its file exists.</summary>
+    public ChartVideo? Video { get; init; }
 
     /// <summary>The tempo at <paramref name="time"/>: every note asks on every frame, so this does not walk the list.</summary>
     public double BeatsPerMinuteAt(TimeSpan time, ChartBranch? route = null)
@@ -447,6 +470,7 @@ public sealed record PlayableChart
             ScoreDiff = ScoreDiff,
             ShinuchiBase = ShinuchiBase,
             Effects = Effects,
+            Lyrics = Lyrics,
         };
 
     /// <summary>The same chart with these notes (drawing-only fields changed, e.g. their forced labels); checked as the constructor checks.</summary>
@@ -494,4 +518,29 @@ public interface IPlayableChartProvider
         ChartKey chart,
         CatalogAssetKey asset,
         CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// A chart's background video: its file, and when it starts after the song's audio (TJA MOVIEOFFSET in seconds,
+/// osu!'s Video event in milliseconds; negative: before it).
+/// </summary>
+public sealed record ChartVideo(string Path, TimeSpan Offset)
+{
+    /// <summary>Added onto the backdrops (light on black: hologram videos), which then stay; the dancers go.</summary>
+    public bool Additive { get; init; }
+
+    /// <summary>
+    /// Brightness is opacity (a luma key, for light on black: hologram videos): alpha = 1 - (1 - brightness)^curve,
+    /// the colour divided back so it matches the video over black. Null: off; a bigger curve keeps dark parts more solid.
+    /// </summary>
+    public float? LumaCurve { get; init; }
+
+    /// <summary>A colour (0xRRGGBB) drawn transparent, a green screen's; null: none.</summary>
+    public int? KeyColor { get; init; }
+
+    /// <summary>How far from <see cref="KeyColor"/> (RGB distance, 0-441) a pixel still counts as it.</summary>
+    public int KeyTolerance { get; init; } = 60;
+
+    /// <summary>The box the chart puts the video in (1280x720 stage pixels; it fills it), over the player's choice of area.</summary>
+    public (float X, float Y, float Width, float Height)? Area { get; init; }
 }

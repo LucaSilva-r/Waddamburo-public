@@ -67,6 +67,9 @@ internal sealed class AttractFlow(GameShell shell, GameplayFlow gameplay, string
 
     public override void Tick(FlowInput input)
     {
+        // Into the entry: under the fade (its black is where the switch loads and cleans up).
+        if (Shell.Scenes.FinishFade())
+            return;
         prefetchDemo();
         if (Shell.Active.Id == FlowScenes.Boot)
         {
@@ -183,7 +186,7 @@ internal sealed class AttractFlow(GameShell shell, GameplayFlow gameplay, string
             Shell.Credit.EntryTrigger = 3;
             Shell.Players.Reset();
             Shell.Credit.EntryCardRejected = true;
-            Shell.Scenes.Show(FlowScenes.Entry);
+            Shell.Scenes.FadeTo(FlowScenes.Entry);
         }
         else if (Shell.TakeCard() is { } card)
         {
@@ -191,7 +194,7 @@ internal sealed class AttractFlow(GameShell shell, GameplayFlow gameplay, string
             Shell.Credit.EntryTrigger = 4;
             Shell.Players.Reset();
             Shell.Credit.EntryCard = card;
-            Shell.Scenes.Show(FlowScenes.Entry);
+            Shell.Scenes.FadeTo(FlowScenes.Entry);
         }
         // Home: the drum opens the player setup, which starts the entry itself.
         else if (input.DrumSide is { } setupSide && Shell.OpenPlayerSetup(setupSide))
@@ -209,7 +212,7 @@ internal sealed class AttractFlow(GameShell shell, GameplayFlow gameplay, string
             Shell.Players.Reset();
             if (!coinStart)
                 Shell.Players.Join(input.DrumSide ?? 0);
-            Shell.Scenes.Show(FlowScenes.Entry);
+            Shell.Scenes.FadeTo(FlowScenes.Entry);
         }
         else
             return false;
@@ -220,6 +223,9 @@ internal sealed class AttractFlow(GameShell shell, GameplayFlow gameplay, string
 
     // The CM opened ahead (at the caution screen) and its path, or null.
     private (string Path, Task<AttractMovie.Prepared> Movie)? _preparedMovie;
+
+    /// <summary>A CM is being opened ahead: it reads its whole file for the audio (the screens ahead wait, a Switch's SD card is slow).</summary>
+    public bool PreparingMovie => _preparedMovie is { Movie.IsCompleted: false };
 
     // The next CM in the shuffled queue (refilled, never the same twice in a row across refills).
     private string nextMoviePath()

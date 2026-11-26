@@ -141,8 +141,8 @@ public interface ISongSelectScreen
     /// <summary>Song Select comes back on the song the player is on.</summary>
     void RememberCurrentSong();
 
-    /// <summary>The song under the cursor joins or leaves the favourites; false: no song there.</summary>
-    bool ToggleFavourite();
+    /// <summary>The song under the cursor (or in course select) joins or leaves the favourites; null: no song there.</summary>
+    (SongSelectSong Song, bool Added)? ToggleFavourite();
 }
 
 /// <summary>A fast scroll over Song Select's list: it takes the input around the movie's tick.</summary>

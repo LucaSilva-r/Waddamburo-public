@@ -1,6 +1,5 @@
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Gameplay;
-using Waddamburo.Game.Online;
 using Waddamburo.Game.Scores;
 
 namespace Waddamburo.App.Online;
@@ -37,10 +36,10 @@ internal sealed class ScoreSync : IDisposable
         _accounts = accounts;
         var cabinet = !arcade.Home && arcade is { Server: not null, CabinetToken: not null };
         // A cabinet's indicator also says whether the server takes its token.
-        Health = arcade.Server is { } healthServer
+        Health = UpdateGate.Server(arcade) is { } healthServer
             ? new ServerHealth(ScoreClient.CreateHttp(healthServer, arcade.ServerInsecure, arcade.Home ? null : arcade.CabinetToken), cabinet: !arcade.Home)
             : null;
-        // ponytail: printed until the notice sidebar draws them.
+        // In the log as well as the notice sidebar.
         Notices.Added += static notice => Console.WriteLine($"Notice [{notice.Severity}] {notice.Message}");
         // A sanction changes the name board (RESTRICTED while banned): show it now, not at the next credit.
         Notices.Added += notice =>
@@ -49,11 +48,11 @@ internal sealed class ScoreSync : IDisposable
                 RefreshProfiles();
         };
         SetOnlineAccount(accounts?.Default?.Token);
-        if (arcade.Server is { } realtimeServer)
+        if (UpdateGate.Server(arcade) is { } realtimeServer)
             startRealtime(realtimeServer);
         Scores = (arcade.Home || cabinet) && scoresPath is not null ? new ScoreStore(scoresPath) : null;
         rescoreInBackground();
-        if (Scores is null || arcade.Server is not { } server)
+        if (Scores is null || UpdateGate.Server(arcade) is not { } server)
             return;
         _server = server;
         if (cabinet)
@@ -218,6 +217,16 @@ internal sealed class ScoreSync : IDisposable
         }
     }
 
+    /// <summary>The server speaking for a carded profile (cabinet: its token plus the card's baid); null: a guest or offline.</summary>
+    public (ScoreClient Client, long? Baid)? ServerFor(ScoreProfile profile)
+    {
+        if (profile.Baid == ScoreProfile.LocalGuestBaid)
+            return null;
+        if (CabinetServer is { } cabinet)
+            return (cabinet, profile.Baid);
+        return profile.Token is { } token && ClientFor(token) is { } client ? (client, null) : null;
+    }
+
     /// <summary>
     /// Downloads a player's server bests (crowns from every machine) into the store in the background;
     /// song select reads them when it loads. Guests have none.
@@ -255,7 +264,10 @@ internal sealed class ScoreSync : IDisposable
         lock (_clients)
         {
             if (!_clients.TryGetValue(token, out var client))
+            {
                 _clients[token] = client = new ScoreClient(ScoreClient.CreateHttp(server, _arcade.ServerInsecure, token));
+                client.MedalsPaid += announceMedals;
+            }
             return client;
         }
     }
@@ -386,6 +398,22 @@ internal sealed class ScoreSync : IDisposable
         });
     }
 
+    // ponytail: a notice until the reward_shop medal screen plays (rewards plan, home flow).
+    private void announceMedals(IReadOnlyList<MedalCredit> credits, int wallet)
+    {
+        foreach (var credit in credits)
+        {
+            var bonuses = string.Join(" ", new[]
+            {
+                credit.Daily ? Strings.T("notices.medal_daily") : null,
+                credit.Weekly ? Strings.T("notices.medal_weekly") : null,
+                credit.Monthly ? Strings.T("notices.medal_monthly") : null,
+            }.OfType<string>());
+            Notices.Add(new Notice($"{NoticeSource.Local}:medals:{Guid.NewGuid()}", NoticeSource.Local, NoticeSeverity.Info,
+                Strings.T("notices.medals_paid", credit.Medals, bonuses, wallet), DateTimeOffset.UtcNow) { Kind = "medals" });
+        }
+    }
+
     /// <summary>A pushed profile: the stored account and any joined player with that baid take it (keeping their token).</summary>
     private void applyProfile(long baid, System.Text.Json.JsonElement data)
     {
@@ -411,7 +439,9 @@ internal sealed class ScoreSync : IDisposable
             if (TaikoGuest.Profiles[side] is { } joined && joined.Baid == baid)
                 TaikoGuest.Profiles[side] = joined with { Name = current.Name, Look = current.Look, Avatar = current.Avatar,
                     AccountName = current.AccountName, Title = current.Title, TitlePlate = current.TitlePlate,
-                    DanRank = current.DanRank, DanGold = current.DanGold };
+                    DanRank = current.DanRank, DanGold = current.DanGold, Medals = current.Medals ?? joined.Medals,
+                    LastMedalDay = current.LastMedalDay ?? joined.LastMedalDay, Locked = current.Locked ?? joined.Locked,
+                    PendingRewards = current.PendingRewards ?? joined.PendingRewards };
     }
 
     /// <summary>
@@ -419,7 +449,7 @@ internal sealed class ScoreSync : IDisposable
     /// </summary>
     public void SetOnlineAccount(string? token)
     {
-        if (_arcade.Server is not { } server)
+        if (UpdateGate.Server(_arcade) is not { } server)
             return;
         NoticeClient? previous;
         lock (_onlineLock)

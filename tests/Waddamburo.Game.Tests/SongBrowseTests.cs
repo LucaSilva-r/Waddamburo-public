@@ -6,9 +6,10 @@ namespace Waddamburo.Game.Tests;
 public sealed class SongBrowseTests
 {
     private static SongDescriptor song(string title, string artist = "Artist", int[]? levels = null, double bpm = 120,
-        int daysAgo = 0)
+        int daysAgo = 0, string? stockId = null)
     {
-        var key = new SongKey(SongSourceKind.OsuLazer, title + Guid.NewGuid().ToString("N"));
+        var key = stockId is not null ? new SongKey(SongSourceKind.Stock, stockId)
+            : new SongKey(SongSourceKind.OsuLazer, title + Guid.NewGuid().ToString("N"));
         var charts = (levels ?? [5]).Select((level, index) => new SongChartDescriptor(new ChartKey(key, $"c{index}"), $"D{index}",
             new CatalogAssetKey(new CatalogProviderId("osu"), $"c{index}"), (TaikoCourse)index, level));
         return new SongDescriptor(key, new SongTitle(title), artist, charts)
@@ -64,6 +65,16 @@ public sealed class SongBrowseTests
         Assert.True(SongBrowse.Matches(target, "MAPPER"));
         Assert.False(SongBrowse.Matches(target, "senbon other"));
         Assert.False(SongBrowse.Matches(target, "   "));
+    }
+
+    [Fact]
+    public void SearchFindsAGameSongByItsMusicId()
+    {
+        var stock = song("天体観測", stockId: "10tai");
+        Assert.True(SongBrowse.Matches(stock, "10TAI"));
+        // A custom song's id is a path or hash: not searched.
+        var custom = song("Other");
+        Assert.False(SongBrowse.Matches(custom, custom.Key.StableId));
     }
 
     [Fact]

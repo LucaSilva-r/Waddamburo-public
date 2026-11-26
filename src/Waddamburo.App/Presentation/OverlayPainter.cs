@@ -1,3 +1,4 @@
+using Waddamburo.Platform.Sdl.Text;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Rendering;
 

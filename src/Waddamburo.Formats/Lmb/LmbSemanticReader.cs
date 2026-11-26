@@ -52,7 +52,7 @@ public static class LmbSemanticReader
                             EvidenceStatus.Candidate,
                             "Movie properties appear more than once; the last record is retained."));
                     }
-                    properties = new LmbMovieProperties(readWords(record, 0), record);
+                    properties = new LmbMovieProperties(readWords(record, 0), record.Info);
                     break;
                 case LmbTags.StringPool:
                     reportDuplicatePool(record, diagnostics);
@@ -117,14 +117,13 @@ public static class LmbSemanticReader
                             vertices.MoveToImmutable(),
                             words[16],
                             words[17],
-                            words[18..],
-                            record));
+                            record.Info));
                         break;
                     }
                 case LmbTags.DefineText:
                     {
                         var words = readWords(record, 16);
-                        texts.Add(new LmbTextDefinition(words[0], words[2], words[5], toSingle(words[11]), words, record));
+                        texts.Add(new LmbTextDefinition(words[0], words[2], words[5], toSingle(words[11]), words, record.Info));
                         break;
                     }
                 case LmbTags.DefineSprite:
@@ -146,7 +145,7 @@ public static class LmbSemanticReader
                         var words = readWords(record, 2);
                         addTimelineCommand(
                             currentSprite,
-                            new LmbShowFrameCommand(words[0], words[1], words[2..], record),
+                            LmbTimelineCommand.ShowFrame(words[0], words[1], record.Info),
                             record,
                             diagnostics,
                             uninterpreted);
@@ -157,7 +156,7 @@ public static class LmbSemanticReader
                         var words = readWords(record, 2);
                         addTimelineCommand(
                             currentSprite,
-                            new LmbFrameKeyCommand(words[0], words[1], words[2..], record),
+                            LmbTimelineCommand.FrameKey(words[0], words[1], record.Info),
                             record,
                             diagnostics,
                             uninterpreted);
@@ -168,7 +167,7 @@ public static class LmbSemanticReader
                         var words = readWords(record, 3);
                         addTimelineCommand(
                             currentSprite,
-                            new LmbFrameLabelCommand(words[0], words[1], words[2], words[3..], record),
+                            LmbTimelineCommand.FrameLabel(words[0], words[1], words[2], record.Info),
                             record,
                             diagnostics,
                             uninterpreted);
@@ -179,7 +178,7 @@ public static class LmbSemanticReader
                         var words = readWords(record, 12);
                         addTimelineCommand(
                             currentSprite,
-                            new LmbPlaceObjectCommand(
+                            LmbTimelineCommand.PlaceObject(
                                 words[0],
                                 words[1],
                                 words[3],
@@ -191,8 +190,7 @@ public static class LmbSemanticReader
                                 low(words[7]),
                                 words[8],
                                 words[9],
-                                ImmutableArray.Create(words[2], words[10], words[11]).AddRange(words[12..]),
-                                record) { ClipDepth = low(words[5]) },
+                                record.Info) with { ClipDepth = low(words[5]) },
                             record,
                             diagnostics,
                             uninterpreted);
@@ -203,7 +201,7 @@ public static class LmbSemanticReader
                         var words = readWords(record, 2);
                         addTimelineCommand(
                             currentSprite,
-                            new LmbRemoveObjectCommand(words[0], words[1], words[2..], record),
+                            LmbTimelineCommand.RemoveObject(words[0], words[1], record.Info),
                             record,
                             diagnostics,
                             uninterpreted);
@@ -214,7 +212,7 @@ public static class LmbSemanticReader
                         var words = readWords(record, 2);
                         addTimelineCommand(
                             currentSprite,
-                            new LmbDoActionCommand(words[0], words[1], words[2..], record),
+                            LmbTimelineCommand.DoAction(words[0], words[1], record.Info),
                             record,
                             diagnostics,
                             uninterpreted);
@@ -481,7 +479,7 @@ public static class LmbSemanticReader
             declaredGeometryCount,
             uninterpretedHeaderWords,
             Geometry.ToImmutableArray(),
-            rawRecord);
+            rawRecord.Info);
     }
 
     private sealed class SpriteBuilder(
@@ -503,6 +501,6 @@ public static class LmbSemanticReader
             flags,
             uninterpretedHeaderWords,
             Timeline.ToImmutableArray(),
-            rawRecord);
+            rawRecord.Info);
     }
 }

@@ -132,3 +132,59 @@ Select scene. Audio/scene-loading failures are outside that recovery boundary.
 Synthetic regressions cover subdivision timing, branch state isolation, quotas,
 long-note spans, note limits, repeated hits, popping, expiry, and presentation callback lifecycles.
 No user-library corpus or asset-backed visual compatibility claim is implied.
+
+## Custom dan dojo
+
+`Dani/` in the TJA library (created when missing; the game rewrites `Example.json.txt` and the player-facing
+`README.txt` every start, `CustomDans.Example`/`Readme`) holds the player's own dan dojo series:
+each `*.json` file is one series, listed in the Dan Dojo folder after the official ones (`Online/CustomDans.cs`,
+read by `DanCourses`). JSON comments and trailing commas are allowed.
+
+```json
+{
+  "name": "My Dojo",
+  "courses": [
+    {
+      "name": "五段",
+      "songs": [
+        { "path": "Vocaloid/Senbonzakura/Senbonzakura.tja", "course": "oni" },
+        { "hash": "<chart sha256>", "title": "optional, shown while the chart is missing" }
+      ],
+      "requirements": [
+        { "type": "soul_gauge", "red": 98, "gold": 100 },
+        { "type": "goods", "red": [600, 700], "gold": [700, 800] }
+      ],
+      "rules": "nijiiro"
+    }
+  ]
+}
+```
+
+- A song is a TJA `path` relative to the TJA library with its `course` (easy, normal, hard, oni, ura; default oni),
+  or a chart `hash` (`ChartHash`, any library: official, TJA, osu!, Wii). Song Select's **H** copies the song under
+  the cursor as one `{ "hash": ... }` line per course. A hash the store does not know yet hashes the library once.
+- A course named after a dan rank (五段, 十段, 達人...) uses that rank's board; any other name is a challenge board.
+- Requirements are the official courses' types (`soul_gauge`, `goods`, `oks`, `bads`, `combo`, `hits`, `score`,
+  `rolls`); `red`/`gold` are one value or one per song. `rules: "nijiiro"` uses Nijiiro's gauge.
+- Unranked: course hashes are `custom:` + a hash of the course's JSON and its charts (an edit starts its bests over).
+  Plays are saved and their bests show on the boards, but they are never uploaded nor counted for Don Medals
+  (`ScoreStore.PendingDanPlays`, `PendingMedalSongs`).
+
+## Background videos
+
+`BGMOVIE:file` (TJAPlayer3, OpenTaiko) plays a video from the chart's folder behind the lane; `MOVIEOFFSET:seconds`
+starts it that long after the song's audio (negative: before). osu! beatmaps' `Video,<ms>,"file"` event is read the
+same way (`OsuTaikoChartReader.Video`). The chart carries it as `PlayableChart.Video` (`ChartVideo`), resolved when
+the chart loads; gameplay draws it over the backdrops, or below 1P's lane (`background_video`, `background_video_dim`).
+
+Black bars are drawn as they are (guessing them clipped figures rising into rows not shown yet and left gaps under
+osu! videos). Waddamburo's own headers:
+
+| Header | Effect |
+|---|---|
+| `BGMOVIEBLEND:add` | The video is added onto the backdrops (light on black); the dancers are hidden. Washes out over bright backdrops (Go-Go, a full gauge): keying holds up better. |
+| `BGMOVIEBLEND:luma[,curve]` | A luma key, for videos of light on black (holograms): brightness is opacity, alpha = 1 - (1 - brightness)^curve (8 by default; bigger keeps dark parts more solid), the colour divided back so it matches the video over black. Black goes, lit parts are solid, dark parts partly see-through (no holes). Drawn by the renderer (`fs_luma`, `RenderQuad.LumaKey`): no CPU work. The dancers are hidden. |
+| `BGMOVIEKEY:RRGGBB[,tolerance]` | A matte for that colour (green screens; on black videos the luma key holds up better): pixels within the tolerance (RGB distance, 60 by default) are background where they join the frame's edge, or anywhere within a third of it; darker detail inside the figure stays. Softened edge; the dancers are hidden. |
+| `BGMOVIERECT:x,y,width,height` | The whole video in that box (1280x720 stage pixels), over the player's area setting (off still hides it). Below 1P's lane, 16:9: `309,348,662,372`. |
+
+Not read: OpenTaiko's `BGA<nn>:` videos switched by `#BGAON`/`#BGAOFF`, and `BGIMAGE:`.

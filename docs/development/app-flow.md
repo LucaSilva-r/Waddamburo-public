@@ -1,14 +1,20 @@
 # App layout and scene flow
 
 `src/Waddamburo.App` is the executable: it wires the engine libraries to SDL and drives the
-front end scene by scene. Namespaces follow the folders (`Waddamburo.App.Flow`, ...).
+front end scene by scene. Namespaces follow the folders (`Waddamburo.App.Flow`, `Waddamburo.App.Flow.Gameplay`, ...);
+`GlobalUsings.cs` imports them all in every file.
 
 | Folder | Contents |
 |---|---|
 | `Cli/` | Command-line parsing (`--start-scene`, `--press`, `--invoke`, game data layout). |
-| `Flow/` | `GameShell` and one `FlowScene` per scene group (see below); `InputLatches` (presses between ticks, key pulses). Drum bindings: [input](input.md). |
+| `Flow/` | `GameShell` (`.Frame.cs` frame composition, `.Tick.cs` the tick and its input order), the `FlowScene`s for attract, entry, results and calibration, `SceneSwitcher`; `InputLatches` (presses between ticks, key pulses). Drum bindings: [input](input.md). |
+| `Flow/Gameplay/` | `GameplayFlow` and its play modes (`GameplayFlow.<Mode>.cs`, see [app refactor](app-refactor.md)), `ReviewSession`, `TrainingSession`, `EffectsEditorHost`. |
+| `Flow/SongSelect/` | `SongSelectFlow`, `SongSelectMemory` (where it starts), the reload, song search, the score list, the custom upload prompt. |
+| `Flow/Credit/` | `CreditSession` (the credit's mode, players and results hand-off), `PlayerSession` (joining, guests, replays watched). |
+| `Flow/Cabinet/` | the cabinet's coins and service menu (`CabinetControls`), `Bookkeeping`. |
+| `Flow/Diagnostics/` | `--benchmark` (`BenchmarkFlow`, `BenchmarkRun`) and `--flow-smoke` (`FlowSmokeRun`). |
 | `Home/` | Home mode: `HomeControls` (Escape menu, pause and resume countdown, quick restart, folder picker), `HomeMenu`, `MenuAudio`, `QuickRestart`, the player setup (`PlayerSetupController`, `PlayerSetupFlow`); arcade mode's service menu (`ServiceMenu`, the test switch: it resets the game, holds the settings, and EXIT starts the attract) and `ControlBindings`. |
-| `Online/` | `ScoreSync` (score database, uploads, server bests, rankings), cabinet pairing, server health, chart hashes. |
+| `Online/` | `OnlineMatch` and `RoomOverlay` (online play), `PresenceReporter` (Discord and website status), `ScoreSync` (score database, uploads, server bests, rankings), cabinet pairing, server health, chart hashes. |
 | `Scenes/` | Scene ids and traced compositions (`FlowScenes`), gameplay layout, intermission, system indicators. |
 | `Hosting/` | `LayerHostFactory` (a Lumen host per layer, by host id) and the console fallbacks for services. |
 | `Gameplay/` | Gameplay presentation (rules: `scoring.md`) (notes, judgement, Don slots), Waiwai's shared stage, skins, the song libraries (`SongLibraries`) and catalog asset routing. |
@@ -41,6 +47,11 @@ use black throughout the app.
 
 ## Checking a flow change
 
-`eng/flow-smoke.sh <game-root> <out>` walks every start scene and a scripted song headless and
-writes `transitions.txt` (scene changes with their ticks). Run it before and after a change and
-diff the two: a refactor should not move a tick.
+`eng/flow-smoke.sh <game-root> <out>` walks every start scene and a scripted song headless, then plays
+once per mode (`--flow-smoke=normal|two-players|waiwai|ai-battle|dan|review|training|demo`, plus an
+online echo), and writes `transitions.txt` (scene changes with their ticks, and each play's
+`Play results:` line). Run it before and after a change and compare the two with
+`eng/flow-smoke-compare.py before/transitions.txt after/transitions.txt`: a refactor should not
+change a scene or a score. Ticks may move by one or two (the loop drops ticks while a scene loads),
+so the compare allows ±3; review and training follow the real frame clock, so their ticks are left
+out. Runs go four at a time (about 10 minutes).

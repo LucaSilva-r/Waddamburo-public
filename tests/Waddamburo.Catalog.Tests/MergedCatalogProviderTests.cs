@@ -24,6 +24,22 @@ public sealed class MergedCatalogProviderTests
     }
 
     [Fact]
+    public async Task AnOlderInstallWithTheMusicWinsOverANewerOneWithout()
+    {
+        var green = new Install("green", ("pop", ["withdrawn", "kept"])) { Silent = ["withdrawn"] };
+        var blue = new Install("blue", ("anime", ["withdrawn", "kept"]));
+        var merged = new MergedCatalogProvider([green, blue]);
+
+        var contribution = await merged.ScanAsync(null, CancellationToken.None);
+
+        Assert.Equal(["blue", "green"], contribution.Songs.Select(static song => song.Title.Primary));
+        Assert.Equal("blue", await read(merged, "audio:withdrawn"));
+        Assert.Equal("green", await read(merged, "audio:kept"));
+        // It stays in the newest install's folder.
+        Assert.Equal(["withdrawn", "kept"], contribution.Categories[0].Songs.Select(static song => song.StableId));
+    }
+
+    [Fact]
     public async Task ProgressIncludesEveryInstallBeforeReportingCompletion()
     {
         var progress = new Reports();
@@ -48,6 +64,8 @@ public sealed class MergedCatalogProviderTests
     private sealed class Install(string name, params (string Genre, string[] Songs)[] folders)
         : ISongCatalogProvider, ICatalogAssetResolver, IPlayableChartProvider
     {
+        public string[] Silent { get; init; } = []; // songs without music in this release
+
         public CatalogProviderId Id => Stock;
 
         public SongSourceKind Source => SongSourceKind.Stock;
@@ -61,7 +79,8 @@ public sealed class MergedCatalogProviderTests
             {
                 var key = new SongKey(SongSourceKind.Stock, id);
                 return new SongDescriptor(key, new SongTitle(name), null,
-                    [new SongChartDescriptor(new ChartKey(key, "oni"), "Oni", new CatalogAssetKey(Stock, $"chart:{id}"), TaikoCourse.Oni)]);
+                    [new SongChartDescriptor(new ChartKey(key, "oni"), "Oni", new CatalogAssetKey(Stock, $"chart:{id}"), TaikoCourse.Oni)],
+                    Silent.Contains(id) ? null : new CatalogAssetKey(Stock, $"audio:{id}"));
             });
             return ValueTask.FromResult(new SongCatalogContribution(Stock, SongSourceKind.Stock, songs,
                 folders.Select((folder, index) => new SongCategoryDescriptor(new CategoryKey(SongSourceKind.Stock, folder.Genre), folder.Genre,

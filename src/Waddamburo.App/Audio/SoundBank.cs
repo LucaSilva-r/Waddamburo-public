@@ -174,6 +174,13 @@ internal sealed class SoundBank : ISoundPlayer
         }
     }
 
+    /// <summary>Decodes a track in the background and keeps it: <see cref="PlayMusic"/> starts it at once.</summary>
+    public void PreloadMusic(SoundSource music)
+    {
+        if (File.Exists(music.Path))
+            _audio.Preload(music.Path);
+    }
+
     private AudioPlaybackHandle? _preparedMusic;
 
     public Action? PrepareMusic(SoundSource music, bool loop)
@@ -205,12 +212,12 @@ internal sealed class SoundBank : ISoundPlayer
                 _audio.Mixer.Stop(playing, TimeSpan.FromMilliseconds(20));
     }
 
-    public void Stop(SoundHandle? handle) => stop(SoundBank.handle(handle));
+    public void Stop(SoundHandle? handle, TimeSpan? fade = null) => stop(SoundBank.handle(handle), fade);
 
-    private void stop(AudioPlaybackHandle? handle)
+    private void stop(AudioPlaybackHandle? handle, TimeSpan? fade = null)
     {
         if (handle is { } value)
-            _audio.Mixer.Stop(value, TimeSpan.FromMilliseconds(20));
+            _audio.Mixer.Stop(value, fade ?? TimeSpan.FromMilliseconds(20));
     }
 
     /// <summary>Everything but the coin channel stops (leaving a scene that owns all its sounds).</summary>

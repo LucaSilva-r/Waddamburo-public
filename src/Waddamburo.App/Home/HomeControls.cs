@@ -1,3 +1,4 @@
+using Waddamburo.Platform.Sdl.Media;
 using Waddamburo.App.Presentation;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Scenes;
@@ -33,10 +34,11 @@ internal sealed class HomeControls : IDisposable
     private RenderTextureId[] _resumeTextures = [];
     private readonly string _assetRoot;
     private bool _focused = true;
+    private bool _focusBlip;
     private float _lastInterpolation;
     private float _pauseInterpolation;
 
-    public HomeControls(GameShell shell, GameplayFlow gameplay, CalibrationFlow calibration, string fontPath, string assetRoot)
+    public HomeControls(GameShell shell, GameplayFlow gameplay, CalibrationFlow calibration, string assetRoot)
     {
         _calibration = calibration;
         _shell = shell;
@@ -52,6 +54,11 @@ internal sealed class HomeControls : IDisposable
             shell.ApplyRecording();
         }, save, don => shell.Sounds?.Menu(don));
         HomeMenu.DisplayModes = shell.Headless ? [] : shell.Application.FullscreenModes();
+        HomeMenu.AudioDevices = shell.Headless ? [] : SdlAudioDevice.PlaybackDeviceNames();
+        if (OperatingSystem.IsLinux())
+            HomeMenu.AlsaDevices = AlsaOutput.PlaybackDevices();
+        HomeMenu.AsioDrivers = OperatingSystem.IsWindows() ? AsioOutput.DriverNames() : [];
+        HomeMenu.RunningAudio = () => shell.AudioOutput.Running.AudioOutputSettings;
         HomeMenu.LayoutNames = () => PlayerLayouts.Names(gameplay.LayoutFolder);
         HomeMenu.ActiveLayout = () => gameplay.ActiveLayout;
         HomeMenu.TwoPlayerLayouts = () => gameplay.TwoPlayerLayouts;
@@ -150,7 +157,8 @@ internal sealed class HomeControls : IDisposable
         _settingsOverlay = true;
         settings.Health = _shell.Sync.Health;
         settings.Open(_shell.Arcade, 0, don => _shell.Sounds?.Menu(don),
-            _ => { }, applySettings, _shell.RehashLibrary, _shell.Options.TjaRoot, command, canCalibrate: _menu.CalibrationOffered);
+            _ => { }, applySettings, _shell.RehashLibrary, _shell.Options.TjaRoot, command, 
+            canCalibrate: _menu.CalibrationOffered, openDevices: _shell.DeviceTransfer.Open);
 
         void command(HomeMenuAction action)
         {
@@ -179,6 +187,13 @@ internal sealed class HomeControls : IDisposable
                     break;
             }
         }
+    }
+
+    // The audio output's settings changed: back to the attract on the new output (a restart when it can't).
+    private void switchAudio()
+    {
+        if (!_shell.SwitchAudioOutput())
+            _shell.RequestRestart();
     }
 
     private void applySettings(ArcadeSettings settings)
@@ -218,6 +233,7 @@ internal sealed class HomeControls : IDisposable
     /// </summary>
     public void Reset()
     {
+        _shell.DeviceTransfer.Close();
         _menu.Close();
         _restart.Reset();
         _resume?.Cancel();
@@ -303,7 +319,8 @@ internal sealed class HomeControls : IDisposable
                     _resumeTextures, "Resume", _shell.ResolveSurface).Quads
                 : [])
             .Concat(_shell.Unsqueezed(Enumerable.Empty<RenderQuad>()
-            .Concat(_settingsOverlay && _shell.Service is { } settings ? settings.Quads()
+            .Concat(_shell.DeviceTransfer.IsOpen ? _shell.DeviceTransfer.Quads()
+                : _settingsOverlay && _shell.Service is { } settings ? settings.Quads()
                 : pauseChoices ? pause().Quads() : [])
             .Concat(_overlay.Quads(_restart.Black,
                 _menu.IsOpen || active != FlowScenes.Calibration ? null : _calibration.Calibration)), centred: true))
@@ -337,6 +354,10 @@ internal sealed class HomeControls : IDisposable
         _audio.Scope(AttractScenes.Contains(active) || active == FlowScenes.Gameplay && _gameplay.Demo ? MenuVolumeScope.Attract
             : active == FlowScenes.Entry || active == FlowScenes.SongSelect || active == FlowScenes.DaniSelect
                 ? MenuVolumeScope.Menus : MenuVolumeScope.Song);
+        // Lost and back within one poll (the Switch's HOME menu suspends the game): the pause check still sees it
+        // (FollowFocus runs twice a tick, so this is a flag the check consumes, not _focused).
+        if (_shell.Application.TakeFocusLoss() && _shell.Application.Focused)
+            _focusBlip = true;
         if (_shell.Application.Focused == _focused)
             return;
         _focused = _shell.Application.Focused;
@@ -362,7 +383,7 @@ internal sealed class HomeControls : IDisposable
 
     private void previewHidden()
     {
-        var show = _shell.ShowHiddenElements;
+        var show = _shell.Editor.ShowHiddenElements;
         if (show) _shell.Gameplay.ShowHiddenElements();
         if (_resume is not { } countdown || !show && !_timerPreview) return;
         if (!show) { _timerPreview = false; countdown.Cancel(); return; }
@@ -394,11 +415,13 @@ internal sealed class HomeControls : IDisposable
     private bool openMenu(bool escape)
     {
         // The effects workspace owns its own exit/unsaved prompt; Space still controls practice playback.
-        if (_shell.EffectsEditorOpen) return false;
+        if (_shell.Editor.IsOpen) return false;
         // Online, the song goes on whatever this player does: leaving the window doesn't stop it.
         var online = _shell.Match.InSong && active == FlowScenes.Gameplay;
         var focusPause = !(BuildInfo.Dev && _shell.Arcade.DevNoFocusPause); // a developer option
-        if (_menu.IsOpen || !(escape || home && !online && !_focused && focusPause && active == FlowScenes.Gameplay && !_gameplay.ChartOver && !_gameplay.InCourse))
+        var unfocused = !_focused || _focusBlip;
+        _focusBlip = false;
+        if (_menu.IsOpen || !(escape || home && !online && unfocused && focusPause && active == FlowScenes.Gameplay && !_gameplay.ChartOver && !_gameplay.InCourse))
             return false;
         // The attract's demo play: like an online song, it goes on muted under the attract's menu.
         if (home && active == FlowScenes.Gameplay && _gameplay.Demo)
@@ -436,7 +459,8 @@ internal sealed class HomeControls : IDisposable
             return true;
         _pauseInterpolation = _lastInterpolation;
         _menu.Open(gameplay: false, attract: AttractScenes.Contains(active), songSelect: active == FlowScenes.SongSelect,
-            inRoom: active == FlowScenes.SongSelect && _shell.Room.Session is not null, quit: home);
+            inRoom: active == FlowScenes.SongSelect && _shell.Room.Session is not null, quit: home,
+            rewards: active == FlowScenes.SongSelect && _shell.PendingRewardsSide() is not null);
         // The attract goes on muted under the menu; the entry's and Song Select's music hold.
         if (AttractScenes.Contains(active))
             _audio.MuteAttract(true);
@@ -450,6 +474,11 @@ internal sealed class HomeControls : IDisposable
     {
         if (!_menu.IsOpen)
             return false;
+        if (_shell.DeviceTransfer.IsOpen)
+        {
+            _shell.DeviceTransfer.Tick(keys, held, escape);
+            return true;
+        }
         // The settings overlay takes the input; closed, the pause choices are back.
         if (_settingsOverlay && _shell.Service is { } settings)
         {
@@ -514,7 +543,7 @@ internal sealed class HomeControls : IDisposable
             // Song Select lays itself out again once the partner's gone (RoomOverlay.showPartner).
             case HomeMenuAction.LeaveRoom:
                 _shell.Room.Leave();
-                _shell.Select.ShowOnlineSong(null);
+                _shell.SelectMemory.ShowOnlineSong(null);
                 break;
             case HomeMenuAction.Title:
                 _shell.ClosePlayerSetup();
@@ -522,6 +551,9 @@ internal sealed class HomeControls : IDisposable
                 break;
             case HomeMenuAction.Calibrate:
                 _calibration.Requested = true;
+                break;
+            case HomeMenuAction.Rewards:
+                _shell.ShowRewards();
                 break;
             case HomeMenuAction.EndCalibration:
                 _calibration.Leave();
@@ -532,6 +564,10 @@ internal sealed class HomeControls : IDisposable
             case HomeMenuAction.RestartGame:
                 save();
                 _shell.RequestRestart();
+                break;
+            case HomeMenuAction.SwitchAudio:
+                save();
+                switchAudio();
                 break;
             // A bake already running is shown again rather than started twice.
             case HomeMenuAction.BakeTextures when _shell.Upscale is { } upscale:
@@ -565,7 +601,9 @@ internal sealed class HomeControls : IDisposable
     /// </summary>
     public static ArcadeSettings AddOfficialFolder(ArcadeSettings arcade, string folder, Action<string> warn)
     {
-        if (Waddamburo.Providers.Stock.StockCatalogProvider.FindDataRoot(folder) is not null)
+        if (Waddamburo.Providers.Stock.StockCatalogProvider.FindDataRoot(folder) is not null
+            || Waddamburo.Providers.Stock.WiiCatalogProvider.FindRoot(folder) is not null
+            || Waddamburo.Providers.Stock.WiiUCatalogProvider.FindRoot(folder) is not null)
             return arcade with { StockFolders = ArcadeSettings.JoinFolders([.. ArcadeSettings.Folders(arcade.StockFolders), folder]) };
         if (new Waddamburo.Providers.Stock.NijiiroCatalogProvider(folder,
             keys: Waddamburo.Providers.Stock.NijiiroKeys.Parse(arcade.NijiiroDatatableKey, arcade.NijiiroFumenKey)) is { Exists: true } installation)
@@ -604,7 +642,7 @@ internal sealed class HomeControls : IDisposable
         _gameplay.ReapplyLayout();
         resumeSong();
         if (action is HomeMenuAction.EditLayout or HomeMenuAction.NewLayout)
-            _shell.OpenEffectsEditor(layout: true);
+            _shell.Editor.Open(layout: true);
     }
 
     private void save()

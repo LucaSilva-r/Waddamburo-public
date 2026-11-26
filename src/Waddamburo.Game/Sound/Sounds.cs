@@ -87,7 +87,7 @@ public interface ISoundPlayer
     bool IsPlaying(SoundHandle? handle);
 
     /// <summary>Fades a sound or track out.</summary>
-    void Stop(SoundHandle? handle);
+    void Stop(SoundHandle? handle, TimeSpan? fade = null);
 
     /// <summary>Every sound of <paramref name="path"/> still sounding stops (all the cues of one bank).</summary>
     void StopFile(string path);

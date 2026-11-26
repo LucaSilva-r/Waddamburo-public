@@ -3,7 +3,7 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <!-- The Windows release starts without a console (config.cfg console = true opens one). -->
-    <OutputType Condition="'$(PublishSingleFile)' == 'true' and '$(RuntimeIdentifier)' == 'win-x64'">WinExe</OutputType>
+    <OutputType Condition="'$(PublishSingleFile)' == 'true' and $(RuntimeIdentifier.StartsWith('win-'))">WinExe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
@@ -13,7 +13,7 @@
   <!-- The self-contained native libraries from the linux-package / windows-package CMake presets
        run next to the executable (releases via eng/package.sh, developer builds via Directory.Build.props). -->
   <ItemGroup Condition="'$(WaddamburoNativeDir)' != ''">
-    <None Include="$(WaddamburoNativeDir)/waddamburo_*.dll;$(WaddamburoNativeDir)/libwaddamburo_*.so;$(WaddamburoNativeDir)/bgfx*.dll;$(WaddamburoNativeDir)/libbgfx*.so"
+    <None Include="$(WaddamburoNativeDir)/waddamburo_*.dll;$(WaddamburoNativeDir)/libwaddamburo_*.so;$(WaddamburoNativeDir)/bgfx*.dll;$(WaddamburoNativeDir)/libbgfx*.so;$(WaddamburoNativeDir)/libwaddamburo_*.dylib;$(WaddamburoNativeDir)/libbgfx*.dylib"
           CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
   </ItemGroup>
 
@@ -46,6 +46,11 @@
     <EmbeddedResource Include="Benchmark/stress.tja" LogicalName="Waddamburo.Benchmark.stress.tja" />
   </ItemGroup>
 
+  <!-- Green's data file names (eng/green-data-list.py): the phone setup checks a copy against it (GreenData.cs). -->
+  <ItemGroup>
+    <EmbeddedResource Include="Resources/green/green-data.txt.gz" LogicalName="Waddamburo.GreenData.txt.gz" />
+  </ItemGroup>
+
   <!-- UI text per language (Strings.cs). -->
   <ItemGroup>
     <EmbeddedResource Include="Languages/*.json" LogicalName="Waddamburo.Languages.%(Filename)%(Extension)" />
@@ -60,6 +65,7 @@
     <ProjectReference Include="../Waddamburo.Providers.Stock/Waddamburo.Providers.Stock.csproj" />
     <ProjectReference Include="../Waddamburo.Providers.Tja/Waddamburo.Providers.Tja.csproj" />
     <ProjectReference Include="../Waddamburo.Skins.Green/Waddamburo.Skins.Green.csproj" />
+    <ProjectReference Include="../Waddamburo.Services/Waddamburo.Services.csproj" />
     <ProjectReference Include="../Waddamburo.Upscale/Waddamburo.Upscale.csproj" />
   </ItemGroup>
 
@@ -69,16 +75,20 @@
     <!-- SVG textures of movie packages (MIT), drawn by Skia; the Linux library without fontconfig. -->
     <PackageReference Include="Svg.Skia" />
     <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" />
+    <PackageReference Include="SharpCompress" />
   </ItemGroup>
 
   <!-- NuGet runtime assets must enter the single-file bundle (not a loose cimgui.dll). -->
   <Target Name="VerifyImGuiBundle" BeforeTargets="GenerateSingleFileBundle"
           DependsOnTargets="PrepareForBundle"
-          Condition="'$(PublishSingleFile)' == 'true' and '$(RuntimeIdentifier)' == 'win-x64'">
+          Condition="'$(PublishSingleFile)' == 'true' and $(RuntimeIdentifier.StartsWith('win-'))">
     <ItemGroup>
       <_ImGuiBundle Include="@(FilesToBundle)" Condition="'%(Filename)%(Extension)' == 'cimgui.dll'" />
     </ItemGroup>
     <Error Condition="'@(_ImGuiBundle)' == ''" Text="The Windows bundle is missing the ImGui cimgui.dll runtime." />
     <Error Condition="'$(IncludeNativeLibrariesForSelfExtract)' != 'true'" Text="The Windows bundle must self-extract native libraries, including cimgui.dll." />
   </Target>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Waddamburo.App.Tests" />
+  </ItemGroup>
 </Project>

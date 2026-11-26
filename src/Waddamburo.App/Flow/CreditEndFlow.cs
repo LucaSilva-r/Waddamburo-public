@@ -4,6 +4,8 @@ using Waddamburo.Game.Flow;
 using Waddamburo.Lumen.Provider;
 using Waddamburo.Lumen.Runtime;
 using Waddamburo.Skins.Green;
+using Waddamburo.Game.Gameplay;
+using Waddamburo.Game.Scores;
 using Waddamburo.Platform.Sdl;
 
 namespace Waddamburo.App.Flow;
@@ -34,6 +36,8 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
         _remindStartTick = Shell.Tick;
         if (scene == FlowScenes.AiRemind)
             Shell.Sounds?.StartScreenMusic("music.remind");
+        if (scene == FlowScenes.RewardShop)
+            Shell.Scenes.Prefetch(FlowScenes.SongSelectScene([.. Shell.Players.JoinedSides]));
         // Screens of ours ask the engine (WdNames scopes retry and gameover); the game's end themselves.
         _revival = null;
         _ending = false;
@@ -49,6 +53,9 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
             return;
         _resultStartTick = Shell.Tick;
         _continued = false;
+        // An arcade credit ending after these results: the rewards its titles give are asked for now, for the medal screen.
+        if (!Shell.Arcade.Home && Shell.Credit.DanResult is null && Shell.Hosts.CreditNext == Waddamburo.Game.Flow.TaikoCreditNext.End)
+            Shell.Credit.EndRewards = Shell.AskCreditEndRewards();
         // The next song's Song Select loads in the background while the results play.
         if (Shell.Hosts.CreditNext == Waddamburo.Game.Flow.TaikoCreditNext.NextSong)
             Shell.Scenes.Prefetch(FlowScenes.SongSelectScene([.. Shell.Players.JoinedSides], Shell.Credit.Waiwai, Shell.Credit.AiBattle));
@@ -141,8 +148,81 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
             Shell.Sounds?.StopScreenMusic();
             Shell.Credit.DanResult = null;
         }
+        else if (scene == FlowScenes.RewardShop)
+        {
+            // The shop's music and previews stop; the Don wears the player's own look again.
+            Shell.GreenSounds?.RewardShop.StopMusic();
+            Shell.Previews?.Silence();
+            foreach (var side in Shell.Players.JoinedSides)
+                Shell.Don?.SetLook(side, TaikoGuest.Profiles[side]?.Look);
+            // Home's reward animation (Song Select's "New rewards") leaves the credit's shop alone.
+            if (Shell.Credit.RewardPlayer is not null)
+            {
+                Shell.GreenSounds?.GameOver.StopGameOverMusic();
+                Shell.RewardsShown?.Invoke();
+                Shell.RewardsShown = null;
+                Shell.Credit.RewardPlayer = null;
+                Shell.Catalog.Replace(FlowScenes.RewardShopVisit);
+            }
+            else
+                Array.Clear(Shell.Credit.Shops); // one visit a credit
+            Shell.Loaded.RewardShop = null;
+        }
         else if (scene == FlowScenes.GameOver)
+        {
+            Shell.GreenSounds?.GameOver.StopGameOverMusic();
+            Shell.RewardsShown?.Invoke();
+            Shell.RewardsShown = null;
             Shell.Catalog.Replace(FlowScenes.NormalGameOver);
+            Shell.Credit.RewardPlayer = null;
+            Shell.Loaded.RewardShop = null;
+        }
+    }
+
+    /// <summary>
+    /// The arcade credit's end: a carded player (a server with medals) first sees Green's ごほうびタイム, the credit's Don
+    /// Medals with its bonuses (reward_shop over the game over). The game shows them as Green did, from the last paid
+    /// day; TaikOnline pays the same from the songs.
+    /// </summary>
+    private SceneId gameOver()
+    {
+        if (Shell.Arcade.Home)
+            return FlowScenes.GameOver;
+        // The credit's rewards, if TaikOnline answered in time (a revival's end asks only now: they wait for the next).
+        var endRewards = Shell.Credit.EndRewards ?? Shell.AskCreditEndRewards();
+        Shell.Credit.EndRewards = null;
+        // ponytail: one carded player; a second card's medals are paid by the server but not shown.
+        foreach (var side in Shell.Players.JoinedSides)
+        {
+            if (TaikoGuest.Profiles[side] is not { Baid: > 0, Medals: { } medals } profile)
+                continue;
+            var today = DateOnly.FromDateTime(DateTime.Now);
+            var credit = DonMedals.ForCredit(DateOnly.TryParse(profile.LastMedalDay, System.Globalization.CultureInfo.InvariantCulture,
+                out var last) ? last : null, today);
+            var rewards = endRewards is { IsCompletedSuccessfully: true, Result: var (rewardSide, pending) } && rewardSide == side
+                ? pending : [];
+            Shell.Credit.RewardPlayer = new RewardShopPlayer(side, medals, credit,
+                [.. rewards.Select(static reward => new RewardItem(reward.Type, reward.Id, reward.MusicId))]);
+            if (rewards.Count > 0 && Shell.Sync.ServerFor(profile) is var (client, baid))
+                // Once the medal screen is over: they were shown.
+                Shell.RewardsShown = () => _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await client.RewardsSeenAsync(rewards, baid).ConfigureAwait(false);
+                    }
+                    catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
+                    {
+                        Console.Error.WriteLine($"Warning REWARDS: the server did not hear the rewards were shown ({exception.Message}).");
+                    }
+                });
+            // Until the next card read brings the server's: the next credit on this cabinet sees this one.
+            TaikoGuest.Profiles[side] = profile with { Medals = medals + credit.Medals, LastMedalDay = today.ToString("yyyy-MM-dd",
+                System.Globalization.CultureInfo.InvariantCulture) };
+            Shell.Catalog.Replace(FlowScenes.RewardGameOver);
+            break;
+        }
+        return FlowScenes.GameOver;
     }
 
     // The revival keeps the left player's movie setup (see RetryGameHostBinding), so a right-drum
@@ -213,7 +293,7 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
                     TaikoCreditNext.NextSong => FlowScenes.SongSelect,
                     // An AI battle credit says goodbye with the player's rank and progress first (traced remind).
                     _ when Shell.Credit.AiOutcome is not null && !Shell.Arcade.Home => FlowScenes.AiRemind,
-                    _ => FlowScenes.GameOver,
+                    _ => gameOver(),
                 });
         }
         else if (scene == FlowScenes.AiRemind)
@@ -224,7 +304,20 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
             if (Shell.Tick - _remindStartTick == RemindTimeoutTicks)
                 Shell.Hosts.TimeOut(scene);
             if (input.Escape || Shell.ScreenEnded)
-                Shell.Scenes.FadeTo(FlowScenes.GameOver);
+                Shell.Scenes.FadeTo(gameOver());
+        }
+        else if (scene == FlowScenes.RewardShop)
+        {
+            if (Shell.Scenes.FinishFade()) return;
+            Shell.Loaded.RewardShop?.Tick();
+            // NotifyEndSequence (exit, or the 100 s are up): Song Select (traced scene 22).
+            if (Shell.Loaded.RewardShop?.Ended == true)
+            {
+                // Home's reward animation: its medal music fades out with the picture (the fade takes a second).
+                if (Shell.Credit.RewardPlayer is not null)
+                    Shell.GreenSounds?.GameOver.StopGameOverMusic(TimeSpan.FromSeconds(1));
+                Shell.Scenes.FadeTo(FlowScenes.SongSelect);
+            }
         }
         else if (scene == FlowScenes.Retry)
         {
@@ -235,8 +328,10 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
                 return;
             }
             if (Shell.ScreenEnded)
-                Shell.Scenes.FadeTo(Shell.Hosts.RevivalSucceeded ? FlowScenes.SongSelect : FlowScenes.GameOver);
+                Shell.Scenes.FadeTo(Shell.Hosts.RevivalSucceeded ? FlowScenes.SongSelect : gameOver());
         }
+        else if (scene == FlowScenes.GameOver && !(_ending || Shell.ScreenEnded))
+            Shell.Loaded.RewardShop?.Tick();
         else if (_ending || Shell.ScreenEnded)
         {
             if (_gameOverEndTick < 0)
@@ -245,7 +340,7 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
             if (!_ending && Shell.Tick - _gameOverEndTick < GameOverHoldTicks)
                 return;
             // Traced: the credit's end returns to the attract loop at logo_namco.
-            Shell.Players.SongsPlayed = 0;
+            Shell.Credit.SongsPlayed = 0;
             Shell.Scenes.Show(FlowScenes.Logo);
         }
     }

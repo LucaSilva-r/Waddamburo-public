@@ -1,7 +1,7 @@
 # Diagnostics and developer runs
 
-Command-line options for probing single movies, scenes and flows from source, and the
-older notes on how the game flow is composed. Normal play needs none of this: see the
+Command-line options for probing single movies, scenes and flows from source. Normal play
+needs none of this: see the
 [README](../../README.md).
 
 Browse movies and audio from a user-supplied `USRDIR` (or any asset folder):
@@ -221,8 +221,10 @@ highest-priority override. All granular content options below are retained for
 diagnostic runs.
 
 To test a scene without playing through the preceding screens, use
-`--start-scene=attract` (skips the startup notice), `entry`, `song-select`, `result-fail`, `result-clear`, `retry`, or
-`gameover` with the normal game-data argument. For example, the Revival drum-roll
+`--start-scene=` with the normal game-data argument: `boot`, `attract` (skips the startup notice), `entry`,
+`song-select`, `ai-song-select`, `dani-select`, `result-fail`, `result-almost`, `result-clear`,
+`dani-result-fail`, `dani-result-clear`, `dani-gameover`, `retry`, `gameover`, `waiwai-result`, `ai-remind`,
+`waiwai-tutorial` or `ai-tutorial`. For example, the Revival drum-roll
 challenge starts directly with:
 
 ```sh
@@ -249,54 +251,64 @@ dotnet run --project src/Waddamburo.App -- \
   --screenshot=/tmp/entry-to-song-select.png
 ```
 
-This initializes Entry through its exported callbacks, receives its authored scene
-request, resolves that request in the app-owned scene catalog, loads a fresh Song
-Select movie and host, scans the read-only TJA provider, opens a category, scrolls
-away from and back to its return card, closes it, and scrolls the rebuilt category
-carousel. It also renders requested song titles with the user-supplied font. Build
-the optional native text adapter first;
-the font, TJA files, audio, Lumen archives, and framebuffer output are never copied
-into the repository. The relative archive/movie IDs and numeric request mapping are
-composition data; neither the AVM runtime nor generic scene loader contains
-Entry- or Song-Select-specific behavior.
-
-Normal boot loops the user-owned `data/sound/bgm/nub/JINGLE_ENTRY.nub` during
-Player Entry, then stops it and starts `JINGLE_GENRE.nub` when Song Select becomes
-active. `--play-jingle` can override the Entry sound with a one-shot for a
-diagnostic run. Jingles are decoded as bounded short clips; no referenced audio is
-copied into the repository.
-Interactive Song Select also resolves each TJA's opaque audio asset through the
-provider and plays a debounced, seeked preview through the shared mixer. Changing
-or selecting the song and unloading the scene cancel and release that stream.
-Completing a one-player course selection loads the exact catalog-pinned TJA chart,
-then runs the authored rainbow handoff: Song Select remains underneath `in_extra`,
-the composed gameplay scene loads only once the screen is covered, and chart/audio
-time starts with `out_extra`. The transition displays the selected song title in
-its native fill. Gameplay renders authored Don/Ka note movies above the lane and
-drives drum, judgement, combo, score, and Go-Go presentation. Chart offsets and pre-roll
-are explicit; interactive judgement follows an estimated audio output clock,
-independently of animation ticks. See [gameplay integration](gameplay-integration.md)
-for the timing contract, reference sources, and remaining limitations.
-`F`/`J` are the left and right Don inputs, and `D`/`K` are Ka. In home (PC) mode,
-Escape pauses a loaded song; rims or arrow keys select Resume, Restart Song, Settings,
-or Song Select, and centre or Enter confirms. In the entry and Song Select, Escape opens
-Resume, Settings, or Return to Title. Settings holds the master, music, drum, effects and
-Don-chan voice volumes, the audio and input offsets (applied from the next play or
-restart) and the audio buffer size (applied at start); centre edits a row and the rims
-change it (Left/Right also work) by 1, or by 5 then 10 when pressed rapidly, and leaving the page saves them to `config.cfg`. Settings also toggle stereo panning (off: two players share centred sounds) and muting while the window is in the background; losing focus mid-song pauses it (not once the chart's last note or roll is over). Resume counts 3-2-1 on the game's timer before the song goes on. The attract and player setup open the same menu with Escape. A sound cuts off its own previous play (Don stops Don, not Ka). Holding Q during gameplay or its
-results fades toward black; releasing early fades back, while reaching black after
-half a second restarts the same match and fades the new play in. Pause artwork
-is decoded from the user's game archives at runtime. In cabinet mode, Escape
-still abandons gameplay and returns to Song Select.
-TJA supports standard rolls, balloons, partner notes, mid-measure commands, and
-fixed-route branches; see the [compatibility matrix](custom-tja.md#gameplay-compatibility)
-for supported features and remaining limits. Invalid or unsupported chart loads
-return to Song Select with a console diagnostic.
-The initial gameplay composition deliberately rejects two-player launches until a
-two-lane presentation and input contract are implemented.
+This runs Entry, Song Select and a song from explicit content folders instead of a game
+folder: the archives, TJA library, font and jingle are the user's own and are never copied
+into the repository. How the scenes chain together is in [app flow](app-flow.md); timing and
+judgement references are in [gameplay integration](gameplay-integration.md).
 `--sound-root=/path/to/user-owned-sound-tree` additionally enables authored
 nuSound2 bank/cue effects and voices; unresolved system/player request shapes are
 logged rather than guessed.
+
+## Environment switches
+
+Every `WADDAMBURO_*` variable the game reads, from each project's `DiagnosticSwitches` class (read live, at the place
+that uses it). A switch is on with `1` unless its line says otherwise.
+
+| Variable | Does | Read in |
+|---|---|---|
+| `WADDAMBURO_AI_TRACE` | AI battle: each section's decisions and scores on the console. | App |
+| `WADDAMBURO_BENCHMARK_ATTRACT` | --benchmark: seconds of attract loop before the song (default 180). | App |
+| `WADDAMBURO_BOOT_FAIL` | Boot fails at the named check (BootChecks), to see its error screen. | App |
+| `WADDAMBURO_CRASH_AT` | The game throws at this tick, to see its crash screen. | App |
+| `WADDAMBURO_CUSTOM_TJA` | 1: the custom TJA library in arcade mode too. | App |
+| `WADDAMBURO_DECODE_TEXTURES` | 1: scene textures decoded to RGBA instead of kept compressed. | App |
+| `WADDAMBURO_DON_COSTUME` | Don-chan's costume at start (slot:id list). | App |
+| `WADDAMBURO_DON_PUCHI` | This puchi chara beside player 1 at start. | App |
+| `WADDAMBURO_DRUM_TRACE` | 1: every drum hit's judgement on the console. | App |
+| `WADDAMBURO_DUMP_TREE` | The active scene's display lists printed at this tick. | App |
+| `WADDAMBURO_FILL_PLACEHOLDERS` | Movie viewer: native fills shown as placeholders (name=index,...). | App |
+| `WADDAMBURO_GAMEPLAY_FRAME_PROFILE` | 1: per-frame timings of gameplay frames to a file. | Platform.Sdl |
+| `WADDAMBURO_HITCH_TRACE` | 1: why a slow frame was slow (input, update, render, GC, the chart clock's steps). | App, Platform.Sdl |
+| `WADDAMBURO_HOST_TRACE` | 1: every movie-to-game host call on the console. | Lumen |
+| `WADDAMBURO_ICON_GALLERY` | 1: Song Select shows every option icon on its boards. | Game |
+| `WADDAMBURO_INPUT_TRACE` | 1: presses printed in --press format (KEY@tick). | App |
+| `WADDAMBURO_NAME` | Player 1's name board shows this name. | App |
+| `WADDAMBURO_NO_ATLAS` | 1: every texture on its own, no atlas pages (comparisons; a GPU that misdraws the atlas). | Platform.Sdl |
+| `WADDAMBURO_NO_GENRE_PATCH` | 1: Song Select's movie runs without the genre patch. | Game |
+| `WADDAMBURO_ONLINE_ECHO` | Online play alone: your own hits come back as the partner's lane, this many ms later. | App |
+| `WADDAMBURO_ONLINE_LAN` | 1: LAN addresses offered to strangers too. | App |
+| `WADDAMBURO_ONLINE_RELAY_ONLY` | 1: online play through the server's relay only, no direct link. | App |
+| `WADDAMBURO_ONLINE_SERVER` | The online rooms' server instead of the settings' one. | App |
+| `WADDAMBURO_ONLINE_TOKEN` | The online rooms' login token instead of the player's. | App |
+| `WADDAMBURO_PRESENT_MODE` | immediate or mailbox: the swap chain's present mode. | Platform.Sdl |
+| `WADDAMBURO_PROFILE` | 1: load and boot timings, full exception traces. | App, Game, Platform.Sdl |
+| `WADDAMBURO_READ` | Movie viewer: a script value read and printed (path). | App |
+| `WADDAMBURO_REJECT_CARDS` | 1: every paired card is rejected (the red band). | App |
+| `WADDAMBURO_RENDERER` | The renderer (vulkan, gles, opengl, d3d11, metal); config.cfg's renderer sets it when unset. | App, Platform.Sdl |
+| `WADDAMBURO_RESULT_PLAYERS` | 2: --start-scene results show the diagnostic result for both players. | App |
+| `WADDAMBURO_SCROLL_TRACE` | 1: Song Select's scroll steps on the console. | Game |
+| `WADDAMBURO_SETUP_BOTH` | 1: the home player setup opens for both drums. | App |
+| `WADDAMBURO_SETUP_PAGE` | --setup-preview opens this first-setup page (steps, importing, pc). | App |
+| `WADDAMBURO_SETUP_TRACE` | 1: the home player setup's columns on the console. | App |
+| `WADDAMBURO_SOFTWARE_MIX` | 1: the old managed mix thread on SDL outputs instead of device voices (comparisons). | Platform.Sdl |
+| `WADDAMBURO_TICK_STATS` | 1: the game logic's average time and allocation per tick, every 600 ticks. | App |
+| `WADDAMBURO_TITLE` | Player 1's title plate (plate:text). | App |
+| `WADDAMBURO_TREE_EVERY` | Movie viewer: the display list printed every this many ticks. | App |
+| `WADDAMBURO_TREE_FILTER` | Movie viewer: only display-list lines with these parts (a|b). | App |
+| `WADDAMBURO_UPDATE_URL` | The release feed the self-update reads instead of GitHub's. | App |
+| `WADDAMBURO_UPSCALE_MODEL` | The upscaler's model folder. | App |
+| `WADDAMBURO_WAIWAI_RARE` | 1: every Waiwai song gets its rare note. | App |
+| `WADDAMBURO_WAIWAI_RESULT` | --start-scene=waiwai-result: segments,duet%,rare notes. | App |
 
 Native build policy and preset commands are documented in
 [docs/development/native-builds.md](native-builds.md).
@@ -304,13 +316,13 @@ The source-neutral song/category catalog and provider contract are documented in
 [docs/development/song-catalog.md](song-catalog.md).
 Binary parser limits and failure behavior are documented in
 [docs/development/parser-safety.md](parser-safety.md).
-The first format implementation, the Green-profile DDP archive index, is described
+The Green-profile DDP archive index is described
 in [docs/development/ddp-archives.md](ddp-archives.md).
 NTP3 texture-pack validation and reference BC decoding are described in
 [docs/development/nut-textures.md](nut-textures.md).
 The lossless LMB container boundary is documented in
 [docs/development/lmb-records.md](lmb-records.md).
-The initial display-list runtime is documented in
+The Lumen display-list runtime is documented in
 [docs/development/lumen-runtime.md](lumen-runtime.md).
 The SDL window and bgfx rendering lifecycle is documented in
 [docs/development/rendering.md](rendering.md).

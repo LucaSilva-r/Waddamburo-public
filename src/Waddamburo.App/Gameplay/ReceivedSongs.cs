@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using Waddamburo.Catalog;
-using Waddamburo.Game.Online;
 
 namespace Waddamburo.App.Gameplay;
 

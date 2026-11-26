@@ -28,6 +28,21 @@ public sealed class AudioPlaybackClockTests
         }
     }
 
+    // The Switch's HOME menu suspends the game: 1.5 s pass between two reads, the audio moved 0.3 s of it. The clock
+    // follows the audio, not the wall clock (it led the music by 1.1 s).
+    [Fact]
+    public void CallerStallFollowsTheAudioNotTheWallClock()
+    {
+        var clock = new AudioPlaybackClock();
+        var latency = TimeSpan.FromMilliseconds(5);
+        var now = TimeSpan.Zero;
+        for (var frame = 0; frame < 300; frame++, now += TimeSpan.FromMilliseconds(16))
+            clock.Update(now, latency, now);
+        var consumed = now + TimeSpan.FromMilliseconds(300);
+        var position = clock.Update(consumed, latency, now + TimeSpan.FromMilliseconds(1500));
+        Assert.InRange(position, consumed - latency * 2, consumed);
+    }
+
     [Fact]
     public void StalledAudioBoundsExtrapolationAndRecoveryNeverRewinds()
     {

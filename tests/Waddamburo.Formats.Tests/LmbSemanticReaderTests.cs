@@ -71,11 +71,11 @@ public sealed class LmbSemanticReaderTests
         Assert.Equal(7U, sprite.CharacterId);
         Assert.Collection(
             sprite.Timeline,
-            command => Assert.IsType<LmbFrameLabelCommand>(command),
-            command => Assert.IsType<LmbShowFrameCommand>(command),
+            command => Assert.IsType<LmbTimelineCommand>(command),
+            command => Assert.IsType<LmbTimelineCommand>(command),
             command =>
             {
-                var place = Assert.IsType<LmbPlaceObjectCommand>(command);
+                var place = Assert.IsType<LmbTimelineCommand>(command);
                 Assert.Equal(42U, place.CharacterId);
                 Assert.Equal(1, place.Mode);
                 Assert.Equal(2, place.BlendMode);
@@ -84,12 +84,11 @@ public sealed class LmbSemanticReaderTests
                 Assert.Equal(0x8000, place.PositionKind);
                 Assert.Equal(0, place.PositionIndex);
                 Assert.Equal(EvidenceStatus.CorpusValidatedInference, place.Evidence);
-                Assert.Equal(PlaceUnknownWords, place.UninterpretedWords);
             },
-            command => Assert.Equal((ushort)2, Assert.IsType<LmbRemoveObjectCommand>(command).Depth),
-            command => Assert.IsType<LmbDoActionCommand>(command),
-            command => Assert.IsType<LmbShowFrameCommand>(command),
-            command => Assert.IsType<LmbFrameKeyCommand>(command));
+            command => Assert.Equal((ushort)2, Assert.IsType<LmbTimelineCommand>(command).Depth),
+            command => Assert.IsType<LmbTimelineCommand>(command),
+            command => Assert.IsType<LmbTimelineCommand>(command),
+            command => Assert.IsType<LmbTimelineCommand>(command));
         Assert.Equal(0xDEADBEEFU, Assert.Single(movie.UninterpretedRecords).Tag);
         Assert.Same(file, movie.RawFile);
     }
@@ -135,7 +134,6 @@ public sealed class LmbSemanticReaderTests
         var branch = readSingleAction([0x06, 0x99, 0x02, 0x00, 0x01, 0x00, 0x07, 0x00]);
         Assert.Equal([0, 1, 6, 7], branch.Code.Instructions.Select(instruction => instruction.Offset));
         Assert.Equal(7, branch.Code.Instructions[1].BranchTarget);
-        Assert.Equal(new byte[] { 0x01, 0x00 }, branch.Code.Instructions[1].OperandBytes);
         Assert.Equal(new Avm1BranchOperand(1, 7), branch.Code.Instructions[1].Operand);
 
         var lexical = readSingleAction([
@@ -168,16 +166,16 @@ public sealed class LmbSemanticReaderTests
         ]).Code.Instructions[0].Operand);
         Assert.Collection(
             push.Values,
-            value => Assert.Equal(new Avm1PushStringValue(0, 0x1234), value),
-            value => Assert.Equal(new Avm1PushFloatValue(1.5f), value),
-            value => Assert.IsType<Avm1PushNullValue>(value),
-            value => Assert.IsType<Avm1PushUndefinedValue>(value),
-            value => Assert.Equal(new Avm1PushRegisterValue(7), value),
-            value => Assert.Equal(new Avm1PushBooleanValue(true), value),
-            value => Assert.Equal(new Avm1PushDoubleValue(2.5), value),
-            value => Assert.Equal(new Avm1PushIntegerValue(-2), value),
-            value => Assert.Equal(new Avm1PushStringValue(8, 0xAA), value),
-            value => Assert.Equal(new Avm1PushStringValue(9, 0x5678), value));
+            value => Assert.Equal(Avm1PushValue.FromString(0, 0x1234), value),
+            value => Assert.Equal(Avm1PushValue.FromFloat(1.5f), value),
+            value => Assert.Equal(Avm1PushValue.Null, value),
+            value => Assert.Equal(Avm1PushValue.Undefined, value),
+            value => Assert.Equal(Avm1PushValue.FromRegister(7), value),
+            value => Assert.Equal(Avm1PushValue.FromBoolean(true), value),
+            value => Assert.Equal(Avm1PushValue.FromDouble(2.5), value),
+            value => Assert.Equal(Avm1PushValue.FromInteger(-2), value),
+            value => Assert.Equal(Avm1PushValue.FromString(8, 0xAA), value),
+            value => Assert.Equal(Avm1PushValue.FromString(9, 0x5678), value));
 
         var functionInstruction = readSingleAction([
             0x8E, 0x0F, 0x00,
@@ -321,7 +319,7 @@ public sealed class LmbSemanticReaderTests
             result.Diagnostics.Where(diagnostic => diagnostic.Code.EndsWith("OUT_OF_RANGE", StringComparison.Ordinal)),
             diagnostic => Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity));
         Assert.Equal(5, result.Value.Sprites[0].Timeline.Length);
-        Assert.Same(file.Records[8], result.Value.Sprites[0].Timeline[0].RawRecord);
+        Assert.Equal(file.Records[8].Info, result.Value.Sprites[0].Timeline[0].RawRecord);
     }
 
     [Fact]

@@ -4,9 +4,9 @@
     "net10.0": {
       "Microsoft.NET.ILLink.Tasks": {
         "type": "Direct",
-        "requested": "[10.0.5, )",
-        "resolved": "10.0.5",
-        "contentHash": "A+5ZuQ0f449tM+MQrhf6R9ZX7lYpjk/ODEwLYKrnF6111rtARx8fVsm4YznUnQiKnnXfaXNBqgxmil6RW3L3SA=="
+        "requested": "[10.0.15, )",
+        "resolved": "10.0.15",
+        "contentHash": "u0WnRcZgBZYHlVFpbe/3Adpmb9rmNJ8/fmEwqc/xjB7fFppq+gfaLJd3Sdaw+J02zV0eP/T9dneQ3Dv5jWw6bw=="
       },
       "Realm": {
         "type": "Direct",
@@ -87,7 +87,61 @@
         }
       }
     },
+    "net10.0/linux-arm64": {
+      "Realm": {
+        "type": "Direct",
+        "requested": "[20.1.0, )",
+        "resolved": "20.1.0",
+        "contentHash": "jDwR8r8gDZq3Mrlzx1MYtg7FodPFD4Kpku9QMh5Q0Lzia0nfTZo9/Q9ZMFGhwuZSv7T78EvMAr3LPm8iwR7wnQ==",
+        "dependencies": {
+          "Fody": "6.9.1",
+          "MongoDB.Bson": "2.21.0",
+          "Remotion.Linq": "2.2.0"
+        }
+      },
+      "SQLitePCLRaw.lib.e_sqlite3": {
+        "type": "Transitive",
+        "resolved": "2.1.12",
+        "contentHash": "fWi8Dbknuhgg72fWinIdjXVaqO1hHL4YBBwVLnr7e1c9TAZwJ0QE38j9syW1hwx6HaqEVTwI+O07WPdZn8Rp0w=="
+      }
+    },
     "net10.0/linux-x64": {
+      "Realm": {
+        "type": "Direct",
+        "requested": "[20.1.0, )",
+        "resolved": "20.1.0",
+        "contentHash": "jDwR8r8gDZq3Mrlzx1MYtg7FodPFD4Kpku9QMh5Q0Lzia0nfTZo9/Q9ZMFGhwuZSv7T78EvMAr3LPm8iwR7wnQ==",
+        "dependencies": {
+          "Fody": "6.9.1",
+          "MongoDB.Bson": "2.21.0",
+          "Remotion.Linq": "2.2.0"
+        }
+      },
+      "SQLitePCLRaw.lib.e_sqlite3": {
+        "type": "Transitive",
+        "resolved": "2.1.12",
+        "contentHash": "fWi8Dbknuhgg72fWinIdjXVaqO1hHL4YBBwVLnr7e1c9TAZwJ0QE38j9syW1hwx6HaqEVTwI+O07WPdZn8Rp0w=="
+      }
+    },
+    "net10.0/osx-arm64": {
+      "Realm": {
+        "type": "Direct",
+        "requested": "[20.1.0, )",
+        "resolved": "20.1.0",
+        "contentHash": "jDwR8r8gDZq3Mrlzx1MYtg7FodPFD4Kpku9QMh5Q0Lzia0nfTZo9/Q9ZMFGhwuZSv7T78EvMAr3LPm8iwR7wnQ==",
+        "dependencies": {
+          "Fody": "6.9.1",
+          "MongoDB.Bson": "2.21.0",
+          "Remotion.Linq": "2.2.0"
+        }
+      },
+      "SQLitePCLRaw.lib.e_sqlite3": {
+        "type": "Transitive",
+        "resolved": "2.1.12",
+        "contentHash": "fWi8Dbknuhgg72fWinIdjXVaqO1hHL4YBBwVLnr7e1c9TAZwJ0QE38j9syW1hwx6HaqEVTwI+O07WPdZn8Rp0w=="
+      }
+    },
+    "net10.0/win-arm64": {
       "Realm": {
         "type": "Direct",
         "requested": "[20.1.0, )",

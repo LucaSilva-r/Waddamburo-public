@@ -26,7 +26,7 @@
     <WaddamburoBgfxDir Condition="'$(WaddamburoBgfxDir)' == ''">$(MSBuildThisFileDirectory)../../out/build/native/linux-x64/linux-debug/bgfx/prefix/lib</WaddamburoBgfxDir>
   </PropertyGroup>
   <ItemGroup Condition="'$(WaddamburoNativeDir)' == ''">
-    <None Include="$(WaddamburoBgfxDir)/bgfx*.dll;$(WaddamburoBgfxDir)/libbgfx*.so"
+    <None Include="$(WaddamburoBgfxDir)/bgfx*.dll;$(WaddamburoBgfxDir)/libbgfx*.so;$(WaddamburoBgfxDir)/libbgfx*.dylib"
           CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
   </ItemGroup>
 
@@ -37,7 +37,7 @@
     <WaddamburoTextureDir Condition="'$(WaddamburoTextureDir)' == ''">$(MSBuildThisFileDirectory)../../out/build/native/linux-x64/linux-debug/stage/Debug/lib</WaddamburoTextureDir>
   </PropertyGroup>
   <ItemGroup Condition="'$(WaddamburoNativeDir)' == ''">
-    <None Include="$(WaddamburoTextureDir)/waddamburo_texture*.dll;$(WaddamburoTextureDir)/libwaddamburo_texture*.so"
+    <None Include="$(WaddamburoTextureDir)/waddamburo_texture*.dll;$(WaddamburoTextureDir)/libwaddamburo_texture*.so;$(WaddamburoTextureDir)/libwaddamburo_texture*.dylib"
           CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
   </ItemGroup>
 

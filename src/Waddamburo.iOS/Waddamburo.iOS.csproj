@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-ios</TargetFramework>
+    <SupportedOSPlatformVersion>15.0</SupportedOSPlatformVersion>
+    <OutputType>Exe</OutputType>
+    <RuntimeIdentifier>ios-arm64</RuntimeIdentifier>
+    <!-- Not the desktop list Directory.Build.props sets for every project. -->
+    <RuntimeIdentifiers>ios-arm64</RuntimeIdentifiers>
+    <ApplicationId>org.waddamburo.game</ApplicationId>
+    <ApplicationTitle>Waddamburo</ApplicationTitle>
+    <ApplicationVersion>1</ApplicationVersion>
+    <ApplicationDisplayVersion>$(Version.Split('-')[0])</ApplicationDisplayVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- NativeAOT's trim/AOT notes on third-party assemblies (Realm, MongoDB.Bson, Remotion.Linq) stay warnings in
+         release builds, where warnings are errors: they are known and the game runs (tested on an iPhone 13). -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);IL2104;IL3053</WarningsNotAsErrors>
+    <!-- The game references the desktop executable project (Waddamburo.App) as a library. -->
+    <ValidateExecutableReferencesMatchSelfContained>false</ValidateExecutableReferencesMatchSelfContained>
+    <IsAotCompatible>false</IsAotCompatible>
+  </PropertyGroup>
+
+  <!-- NativeAOT (on publish): the CoreCLR runtime compiled ahead of time, as the Switch runs; iOS allows no JIT, and
+       Mono's full AOT is the slower runtime (on Android CoreCLR took song select from ~30 to ~50 fps). -->
+  <PropertyGroup>
+    <PublishAot>true</PublishAot>
+    <!-- partial: only the framework's assemblies are trimmed, the game's stay whole (Realm, JSON, SQLite reflect). -->
+    <TrimMode>partial</TrimMode>
+  </PropertyGroup>
+
+  <!-- Native libraries: SDL's framework from its NuGet package, ours from the ios-package CMake preset (below). -->
+  <PropertyGroup>
+    <WaddamburoIosNativeDir Condition="'$(WaddamburoIosNativeDir)' == ''">$(MSBuildThisFileDirectory)../../out/build/native/ios-arm64/ios-package/stage/Release/lib</WaddamburoIosNativeDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="ppy.SDL3-CS" GeneratePathProperty="true" />
+    <NativeReference Include="$(Pkgppy_SDL3-CS)/runtimes/ios/native/SDL3.xcframework" Kind="Framework" />
+  </ItemGroup>
+  <Target Name="WaddamburoRequireIosNatives" BeforeTargets="Build">
+    <Error Condition="!Exists('$(WaddamburoIosNativeDir)/libbgfx.dylib')"
+           Text="Build the native libraries first (on a Mac): cd native &amp;&amp; cmake --preset ios-package &amp;&amp; cmake --build --preset ios-package" />
+  </Target>
+
+  <ItemGroup>
+    <!-- Our libraries reach the app through Waddamburo.App's native copy (the iOS ones, not the build Mac's). -->
+    <ProjectReference Include="../Waddamburo.App/Waddamburo.App.csproj" AdditionalProperties="WaddamburoNativeDir=$(WaddamburoIosNativeDir)" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <uses-feature android:glEsVersion="0x00030000" android:required="true" />
+  <uses-feature android:name="android.hardware.touchscreen.multitouch.distinct" android:required="false" />
+  <!-- SDL's own controller drivers (a Steam Controller over USB). -->
+  <uses-feature android:name="android.hardware.usb.host" android:required="false" />
+  <uses-permission android:name="android.permission.INTERNET" />
+  <uses-permission android:name="android.permission.VIBRATE" />
+  <!-- Launcher icons: Resources/mipmap-* from eng/packaging/mobile_icons.py (adaptive on Android 8+). -->
+  <application android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round"
+               android:allowBackup="false" android:hardwareAccelerated="true"
+               android:hasFragileUserData="true"
+               android:appCategory="game" android:isGame="true" />
+</manifest>

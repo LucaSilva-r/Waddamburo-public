@@ -1,0 +1,537 @@
+using System.Net;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Text.Json;
+using Waddamburo.Catalog;
+
+namespace Waddamburo.Services.Scores;
+
+/// <summary>A home player stored on this PC: the server token and the Banapass profile it belongs to.</summary>
+public sealed record ScoreAccount(string Token, long Baid, string Name)
+{
+    /// <summary>The Don's look (refreshed from the server at startup).</summary>
+    public Waddamburo.Game.Don.DonLook? Look { get; init; }
+
+    /// <summary>The account's custom Don-chan picture URL.</summary>
+    public string? Avatar { get; init; }
+
+    /// <summary>The website account's display name.</summary>
+    public string? AccountName { get; init; }
+
+    /// <summary>The name board's title (empty: none) and its plate (player_name TITLE_LABEL: 0 normal, 1 rainbow, 2 gold, 3 platinum).</summary>
+    public string? Title { get; init; }
+
+    public int TitlePlate { get; init; }
+
+    /// <summary>The equipped nameplate rank (0 hidden, 1-25 Beginner through Tatsujin).</summary>
+    public int DanRank { get; init; }
+
+    public bool DanGold { get; init; }
+
+    public ScoreProfile Profile => new(Baid, Name)
+        { Look = Look, Avatar = Avatar, Token = Token, AccountName = AccountName, Title = Title, TitlePlate = TitlePlate,
+            DanRank = DanRank, DanGold = DanGold };
+}
+
+/// <summary>A device login in progress: the code to show and where to enter it.</summary>
+
+/// <summary>
+/// One play in a score list (snake_case JSON): its place (null in the player's own list), who played it
+/// and how (crown 0 none, 1 clear, 2 full combo, 3 all Great), and the offsets it was played with.
+/// </summary>
+public record ScoreRow
+{
+    public Guid PlayId { get; init; }
+    public int? Rank { get; init; }
+    public long Baid { get; init; }
+    public string Name { get; init; } = "";
+    public long Score { get; init; }
+    public int Great { get; init; }
+    public int Good { get; init; }
+    public int Miss { get; init; }
+    public int MaxCombo { get; init; }
+    public int Rolls { get; init; }
+    public int Gauge { get; init; }
+    public bool Cleared { get; init; }
+    public int Crown { get; init; }
+    public int Course { get; init; }
+    public DateTimeOffset? PlayedAt { get; init; }
+    public int? AudioOffsetMs { get; init; }
+    public int? InputOffsetMs { get; init; }
+
+    /// <summary>The play options (<see cref="TaikoPlayOptions.Bits"/>) and the random options' seed.</summary>
+    public int Options { get; init; }
+    public int? Seed { get; init; }
+
+    /// <summary>A failed play kept on this PC only (never uploaded); its replay is in the local store.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool LocalOnly { get; init; }
+}
+
+/// <summary>A downloaded replay: the play, its chart's hash, its inputs and who played it (name boards, Don's look).</summary>
+public sealed record ReplayDownload(ScoreRow Play, string ChartSha256, TaikoReplay Replay, ScoreProfile? Player);
+
+public sealed record DeviceLoginStart(string DeviceCode, string UserCode, int ExpiresIn, int Interval, string VerificationUrl);
+
+public sealed class TwoFactorRequiredException() : Exception("The account needs a two-factor code.");
+
+/// <summary>TaikOnline's Waddamburo API (api/wdb): login, and the play/chart upload outbox.</summary>
+// Its upload lock is a SemaphoreSlim whose wait handle is never asked for: there is nothing to dispose.
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA1001:Types that own disposable fields should be disposable",
+    Justification = "SemaphoreSlim without AvailableWaitHandle holds no unmanaged resource.")]
+public sealed class ScoreClient(HttpClient http)
+{
+    private const int BatchSize = 50;
+    private const int DanBatchSize = 10;
+    private const int MedalBatchSize = 100;
+
+    /// <summary>Don Medal credits the server paid during a sync (for one account; a cabinet gets none), and the wallet after them.</summary>
+    public event Action<IReadOnlyList<MedalCredit>, int>? MedalsPaid;
+
+    /// <summary>The API's JSON options (snake_case), backed by the generated <see cref="ScoreJson"/>.</summary>
+    public static JsonSerializerOptions Json => ScoreJson.Default.Options;
+
+    /// <summary>A profile as the server pushes it (api/wdb/me's shape) over the realtime channel.</summary>
+    public static ScoreProfile? ParseProfile(JsonElement data) => data.Deserialize(ScoreJson.Default.ScoreProfile);
+
+    private int _syncing;
+
+    /// <summary>The client's HTTP connection (its token), for other endpoints such as home pairing.</summary>
+    public HttpClient Http => http;
+
+    /// <summary>
+    /// A client for <paramref name="server"/>. <paramref name="insecure"/> skips certificate checks
+    /// (a local server's self-signed certificate); anyone on the network can then read the token.
+    /// </summary>
+    public static HttpClient CreateHttp(Uri server, bool insecure, string? token = null)
+    {
+        ArgumentNullException.ThrowIfNull(server);
+        // Each server address in turn with its own short timeout (a dead IPv6 route otherwise hung every request).
+        var http = new HttpClient(Online.ServerConnector.Handler(insecure)) { BaseAddress = server, Timeout = TimeSpan.FromSeconds(15) };
+        http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        if (token is not null)
+            http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        return http;
+    }
+
+    public async Task<ScoreAccount> LoginAsync(string login, string password, string? code, string device,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await http.PostAsJsonAsync("api/wdb/login",
+            new LoginRequest(login, password, code, device), ScoreJson.Default.LoginRequest, cancellationToken).ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.UnprocessableEntity)
+        {
+            var error = await response.Content.ReadFromJsonAsync(ScoreJson.Default.JsonElement, cancellationToken).ConfigureAwait(false);
+            if (error.TryGetProperty("two_factor", out _))
+                throw new TwoFactorRequiredException();
+            throw new InvalidOperationException(error.TryGetProperty("message", out var message)
+                ? message.GetString() : "Login failed.");
+        }
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync(ScoreJson.Default.ScoreAccount, cancellationToken).ConfigureAwait(false))!;
+    }
+
+    /// <summary>In-game login without a password, step 1: a code for the player to enter on the website.</summary>
+    public async Task<DeviceLoginStart> StartDeviceLoginAsync(string device, CancellationToken cancellationToken = default)
+    {
+        using var response = await http.PostAsJsonAsync("api/wdb/device", new DeviceRequest(device), ScoreJson.Default.DeviceRequest, cancellationToken)
+            .ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync(ScoreJson.Default.DeviceLoginStart, cancellationToken).ConfigureAwait(false))!;
+    }
+
+    /// <summary>Step 2 (polled every Interval seconds): the account once approved; null while pending.</summary>
+    /// <exception cref="InvalidOperationException">Denied or expired.</exception>
+    public async Task<ScoreAccount?> PollDeviceLoginAsync(string deviceCode, CancellationToken cancellationToken = default)
+    {
+        using var response = await http.PostAsJsonAsync("api/wdb/device/token", new DeviceTokenRequest(deviceCode), ScoreJson.Default.DeviceTokenRequest,
+            cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        var reply = await response.Content.ReadFromJsonAsync(ScoreJson.Default.JsonElement, cancellationToken).ConfigureAwait(false);
+        return reply.GetProperty("status").GetString() switch
+        {
+            "pending" => null,
+            "approved" => reply.Deserialize(ScoreJson.Default.ScoreAccount),
+            var status => throw new InvalidOperationException(status == "denied" ? "The login was refused." : "The code expired."),
+        };
+    }
+
+    /// <summary>The token's current profile (name, look, avatar); null when the token was revoked.</summary>
+    public async Task<ScoreProfile?> MeAsync(CancellationToken cancellationToken = default)
+    {
+        using var response = await http.GetAsync("api/wdb/me", cancellationToken).ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+            return null;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync(ScoreJson.Default.ScoreProfile, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>The top three players' bests per chart hash (song select's score windows).</summary>
+    public async Task<Dictionary<string, List<RankingEntry>>> RankingsAsync(IReadOnlyCollection<string> charts,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await http.PostAsJsonAsync("api/wdb/rankings", new RankingsRequest(charts), ScoreJson.Default.RankingsRequest, cancellationToken)
+            .ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync(ScoreJson.Default.RankingsResult, cancellationToken).ConfigureAwait(false))!
+            .Rankings;
+    }
+
+    /// <summary>This season's reward shop: goods with the player's owned flags, and their Don Medals (cabinet: <paramref name="baid"/>).</summary>
+    public async Task<ShopState> ShopAsync(long? baid = null, CancellationToken cancellationToken = default)
+    {
+        using var response = await http.GetAsync(baid is { } card ? $"api/wdb/shop?baid={card}" : "api/wdb/shop", cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync(ScoreJson.Default.ShopState, cancellationToken).ConfigureAwait(false))!;
+    }
+
+    /// <summary>
+    /// Buys goods <paramref name="no"/>: "ok", or "owned"/"short" (refused), with the medals left. With
+    /// <paramref name="goods"/>, the server refuses (404) when its goods <paramref name="no"/> changed (the day's goods).
+    /// </summary>
+    public async Task<ShopPurchase> PurchaseAsync(int no, long? baid = null, ShopGoods? goods = null, CancellationToken cancellationToken = default)
+    {
+        using var response = await http.PostAsJsonAsync("api/wdb/shop/purchase", new PurchaseRequest(no, baid, goods?.Type, goods?.Id),
+            ScoreJson.Default.PurchaseRequest,
+            cancellationToken).ConfigureAwait(false);
+        if (response.StatusCode != HttpStatusCode.Conflict)
+            response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync(ScoreJson.Default.ShopPurchase, cancellationToken).ConfigureAwait(false))!;
+    }
+
+    /// <summary>The game showed these rewards (Song Select's reward animation): they leave the profile's pending ones.</summary>
+    public async Task RewardsSeenAsync(IEnumerable<PendingReward> rewards, long? baid = null, CancellationToken cancellationToken = default)
+    {
+        using var response = await http.PostAsJsonAsync("api/wdb/rewards/seen",
+            new RewardsSeenRequest([.. rewards.Select(static reward => new[] { reward.Type, reward.Id })], baid), ScoreJson.Default.RewardsSeenRequest,
+            cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+    }
+
+    /// <summary>The dan dojo catalogue (public: no account needed).</summary>
+    public async Task<Waddamburo.Game.Dan.DanCatalogue> DanCatalogueAsync(CancellationToken cancellationToken = default)
+    {
+        using var response = await http.GetAsync("api/wdb/dan", cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync(ScoreJson.Default.DanCatalogue, cancellationToken).ConfigureAwait(false))!;
+    }
+
+    /// <summary>The running event (public: no account needed).</summary>
+    public async Task<Waddamburo.Game.SongSelect.SongSelectEvent> EventAsync(CancellationToken cancellationToken = default)
+    {
+        using var response = await http.GetAsync("api/wdb/event", cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync(ScoreJson.Default.SongSelectEvent, cancellationToken).ConfigureAwait(false))!;
+    }
+
+    /// <summary>A player's bests per chart hash (home: the token's player; cabinet: <paramref name="baid"/>).</summary>
+    /// <remarks>Also the player's AI battles (rank and wins derive from them).</remarks>
+    public async Task<(List<RemoteBest> Bests, List<RemotePlay> Recent, List<RemoteAiPlay> AiPlays)> BestsAsync(long? baid = null, CancellationToken cancellationToken = default)
+    {
+        var path = baid is { } cabinetBaid ? $"api/wdb/bests?baid={cabinetBaid}" : "api/wdb/bests";
+        using var response = await http.GetAsync(path, cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        var result = (await response.Content.ReadFromJsonAsync(ScoreJson.Default.BestsResult, cancellationToken).ConfigureAwait(false))!;
+        // An older server sends no recent plays or AI battles.
+        return (result.Bests, result.Recent ?? [], result.AiPlays ?? []);
+    }
+
+    public async Task<AiBattleSession> BeginAiBattleAsync(string chartSha256, string baseSha256, TaikoCourse course,
+        int options, int supportLevel, long? baid = null, CancellationToken cancellationToken = default)
+    {
+        using var response = await http.PostAsJsonAsync("api/wdb/ai/battles",
+            new AiBattleRequest(chartSha256, baseSha256, (int)course, options, supportLevel, AiBattleSimulation.Version, baid),
+            ScoreJson.Default.AiBattleRequest, cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        var session = await response.Content.ReadFromJsonAsync(ScoreJson.Default.AiBattleSession, cancellationToken).ConfigureAwait(false)
+            ?? throw new InvalidDataException("The server returned no battle setup.");
+        if (session.Id == Guid.Empty || session.Version != AiBattleSimulation.Version || session.ChartSha256 != chartSha256
+            || session.Course != (int)course || session.Options != options || session.SupportLevel != supportLevel
+            || session.Timing is { } timing && (!double.IsFinite(timing.Median) || !double.IsFinite(timing.Variance) || timing.Variance < 0))
+            throw new InvalidDataException("The server returned an incompatible battle setup.");
+        return session;
+    }
+
+    /// <summary>
+    /// A chart's leaderboard: each player's best play, best first, and the asking player's own best with
+    /// its place (null when they have none). A cabinet names the player with <paramref name="baid"/>.
+    /// </summary>
+    /// <remarks><paramref name="shinuchi"/>: the 真打 plays' board (their own scale) instead of the normal one.</remarks>
+    public async Task<(List<ScoreRow> Scores, ScoreRow? Mine)> LeaderboardAsync(string chartSha256, long? baid = null,
+        bool shinuchi = false, CancellationToken cancellationToken = default)
+    {
+        var url = $"api/wdb/charts/{chartSha256}/scores{query(baid)}";
+        if (shinuchi)
+            url += url.Contains('?', StringComparison.Ordinal) ? "&shinuchi=1" : "?shinuchi=1";
+        using var response = await http.GetAsync(url, cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        var result = (await response.Content.ReadFromJsonAsync(ScoreJson.Default.LeaderboardResult, cancellationToken).ConfigureAwait(false))!;
+        return (result.Scores, result.Mine);
+    }
+
+    /// <summary>The player's own plays on a chart, best first.</summary>
+    public async Task<List<ScoreRow>> MyScoresAsync(string chartSha256, long? baid = null, CancellationToken cancellationToken = default)
+    {
+        using var response = await http.GetAsync($"api/wdb/charts/{chartSha256}/scores/mine{query(baid)}", cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync(ScoreJson.Default.ScoresResult, cancellationToken).ConfigureAwait(false))!.Scores;
+    }
+
+    /// <summary>Any play's replay, with the play it belongs to.</summary>
+    public async Task<ReplayDownload> ReplayAsync(Guid playId, CancellationToken cancellationToken = default)
+    {
+        using var response = await http.GetAsync($"api/wdb/plays/{playId}/replay", cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        var result = (await response.Content.ReadFromJsonAsync(ScoreJson.Default.ReplayResult, cancellationToken).ConfigureAwait(false))!;
+        return new ReplayDownload(result, result.ChartSha256, TaikoReplay.Decode(Convert.FromBase64String(result.Replay)), result.Player);
+    }
+
+    /// <summary>
+    /// Reports another player's play (watched as a replay) to the moderators for <paramref name="reason"/>
+    /// (autoplay, macro, cheating); returns the server's answer
+    /// to show (sent, already reported, or why not: the reporter's own play, blocked from reporting, too many).
+    /// </summary>
+    public async Task<string> ReportAsync(Guid playId, string reason, CancellationToken cancellationToken = default)
+    {
+        using var response = await http.PostAsJsonAsync($"api/wdb/plays/{playId}/report", new ReportRequest(reason),
+            ScoreJson.Default.ReportRequest, cancellationToken).ConfigureAwait(false);
+        var result = await response.Content.ReadFromJsonAsync(ScoreJson.Default.MessageResult, cancellationToken).ConfigureAwait(false);
+        return result?.Message ?? response.ReasonPhrase ?? "";
+    }
+
+    private static string query(long? baid) => baid is { } value ? $"?baid={value}" : "";
+
+    public async Task LogoutAsync(CancellationToken cancellationToken = default)
+    {
+        using var response = await http.DeleteAsync("api/wdb/login", cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+    }
+
+    /// <summary>
+    /// Uploads the player's pending plays, then any charts the server asks for. Plays the server
+    /// answered for are marked uploaded (rejected ones too: retrying would not change the answer).
+    /// Returns the number of plays sent; throws on network/server errors, leaving the rest pending.
+    /// The custom-song upload setting is read before each batch; excluded plays remain stored and pending.
+    /// </summary>
+    public async Task<int> SyncAsync(ScoreStore store, long? baid, Func<bool>? uploadCustomSongs = null, Func<string, bool>? canUploadChart = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        // One upload at a time: a credit's end waits for the one the last song started.
+        await _syncLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await syncAsync(store, baid, uploadCustomSongs, canUploadChart, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _syncLock.Release();
+        }
+    }
+
+    private readonly SemaphoreSlim _syncLock = new(1, 1);
+
+    /// <summary>
+    /// An arcade credit's end: its songs uploaded (after any upload already running), then TaikOnline checks the credit's
+    /// condition titles and answers every reward the player has not seen (Green's medal screen shows them).
+    /// </summary>
+    public async Task<List<PendingReward>> CreditEndAsync(ScoreStore store, long? baid, Guid creditId, CancellationToken cancellationToken = default)
+    {
+        await SyncAsync(store, baid, cancellationToken: cancellationToken).ConfigureAwait(false);
+        using var response = await http.PostAsJsonAsync("api/wdb/medals/credit-end", new CreditEndRequest(creditId, baid),
+            ScoreJson.Default.CreditEndRequest, cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync(ScoreJson.Default.CreditEndResult, cancellationToken).ConfigureAwait(false))?.Rewards ?? [];
+    }
+
+    private async Task<int> syncAsync(ScoreStore store, long? baid, Func<bool>? uploadCustomSongs, Func<string, bool>? canUploadChart,
+        CancellationToken cancellationToken)
+    {
+        var sent = 0;
+        var devPlays = AcceptsDevPlays(http.BaseAddress);
+        while (store.PendingPlays(baid, BatchSize, uploadCustomSongs?.Invoke() ?? true, canUploadChart) is { Count: > 0 } pending)
+        {
+            var batch = devPlays ? pending : keep(pending, static play => (play.EngineVersion, play.Id), store.MarkUploaded);
+            if (batch.Count == 0)
+                continue;
+            using var response = await http.PostAsJsonAsync("api/wdb/plays", new PlaysRequest(batch), ScoreJson.Default.PlaysRequest, cancellationToken)
+                .ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+            var result = (await response.Content.ReadFromJsonAsync(ScoreJson.Default.PlaysResult, cancellationToken).ConfigureAwait(false))!;
+            foreach (var sha in result.MissingCharts)
+            {
+                if (store.Chart(sha) is not { } chart)
+                    continue;
+                using var upload = await http.PutAsJsonAsync($"api/wdb/charts/{sha}", chart, ScoreJson.Default.ChartUpload, cancellationToken)
+                    .ConfigureAwait(false);
+                upload.EnsureSuccessStatusCode();
+            }
+            store.MarkUploaded(batch.Select(static play => play.Id));
+            sent += batch.Count;
+            if (result.Accepted.Count < batch.Count)
+                Console.Error.WriteLine($"Warning SCORE_REJECTED: the server refused {batch.Count - result.Accepted.Count} play(s).");
+        }
+        sent += await syncDanAsync(store, baid, cancellationToken).ConfigureAwait(false);
+        await syncMedalsAsync(store, baid, cancellationToken).ConfigureAwait(false);
+        return sent;
+    }
+
+    // Every finished song and course for Don Medals, after the plays (an older server without medals costs them nothing).
+    private async Task syncMedalsAsync(ScoreStore store, long? baid, CancellationToken cancellationToken)
+    {
+        var devPlays = AcceptsDevPlays(http.BaseAddress);
+        while (store.PendingMedalSongs(baid, MedalBatchSize) is { Count: > 0 } pending)
+        {
+            var batch = devPlays ? pending : keep(pending, static song => (song.EngineVersion, song.Id), store.MarkMedalsSent);
+            if (batch.Count == 0)
+                continue;
+            // The machine's own offset: the server pays daily/weekly/monthly bonuses by the player's calendar.
+            var songs = batch.Select(static song => new UploadMedalSong(song.Id, song.Baid, song.PlayedAt.ToLocalTime(), song.Kind, song.CreditId, song.ChartSha256, song.Side, song.SelectSeconds)).ToList();
+            using var response = await http.PostAsJsonAsync("api/wdb/medals/songs", new MedalSongsRequest(songs), ScoreJson.Default.MedalSongsRequest,
+                cancellationToken).ConfigureAwait(false);
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                return; // an older server: they wait until it has medals
+            response.EnsureSuccessStatusCode();
+            var result = (await response.Content.ReadFromJsonAsync(ScoreJson.Default.MedalSongsResult, cancellationToken).ConfigureAwait(false))!;
+            store.MarkMedalsSent(batch.Select(static song => song.Id));
+            if (result.Credits.Count > 0 && result.Wallet is { } wallet)
+                MedalsPaid?.Invoke(result.Credits, wallet);
+        }
+    }
+
+    /// <summary>
+    /// Whether <paramref name="server"/> takes plays made by development builds and nightlies (<see cref="IsDevVersion"/>): only a
+    /// local or staging server. Elsewhere they are marked uploaded without being sent: a dev build's chart or scoring
+    /// code may score plays the server's scorer can't.
+    /// </summary>
+    public static bool AcceptsDevPlays(Uri? server) => server is not null
+        && (server.IsLoopback || server.Host.StartsWith("staging", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Whether a play's engine version is a development build's or a nightly's (unreleased scoring code).</summary>
+    public static bool IsDevVersion(string engineVersion) => engineVersion.Contains("-dev", StringComparison.Ordinal)
+        || engineVersion.Contains("-nightly", StringComparison.Ordinal);
+
+    // The plays a server that takes no dev plays gets; the dev ones are marked uploaded (dropped) here.
+    private static List<T> keep<T>(List<T> plays, Func<T, (string Version, Guid Id)> play, Action<IEnumerable<Guid>> markUploaded)
+    {
+        var dev = plays.Where(entry => IsDevVersion(play(entry).Version)).ToList();
+        if (dev.Count > 0)
+        {
+            markUploaded(dev.Select(entry => play(entry).Id));
+            Console.Error.WriteLine($"Warning SCORE_DEV: {dev.Count} play(s) from a development build not sent (not a local or staging server).");
+        }
+        return [.. plays.Except(dev)];
+    }
+
+    // Course plays, after the songs' so that a server without them yet costs the songs nothing.
+    private async Task<int> syncDanAsync(ScoreStore store, long? baid, CancellationToken cancellationToken)
+    {
+        var sent = 0;
+        var devPlays = AcceptsDevPlays(http.BaseAddress);
+        while (store.PendingDanPlays(baid, DanBatchSize) is { Count: > 0 } pending)
+        {
+            var batch = devPlays ? pending : keep(pending, static play => (play.EngineVersion, play.Id), store.MarkDanUploaded);
+            if (batch.Count == 0)
+                continue;
+            using var response = await http.PostAsJsonAsync("api/wdb/dan/plays", new DanPlaysRequest(batch), ScoreJson.Default.DanPlaysRequest, cancellationToken)
+                .ConfigureAwait(false);
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                return sent; // an older server: they wait here until it has the dan dojo
+            response.EnsureSuccessStatusCode();
+            var result = (await response.Content.ReadFromJsonAsync(ScoreJson.Default.DanPlaysResult, cancellationToken).ConfigureAwait(false))!;
+            store.MarkDanUploaded(batch.Select(static play => play.Id));
+            sent += batch.Count;
+            if (result.Accepted.Count < batch.Count)
+                Console.Error.WriteLine($"Warning SCORE_REJECTED: the server refused {batch.Count - result.Accepted.Count} dan play(s).");
+        }
+        return sent;
+    }
+
+    /// <summary>
+    /// Fire-and-forget <see cref="SyncAsync"/>; a sync already running covers the new plays.
+    /// <paramref name="job"/> reports it on the notice sidebar.
+    /// </summary>
+    public void SyncInBackground(ScoreStore store, long? baid, Waddamburo.Game.Flow.JobBoard.Job? job = null, Action? completed = null,
+        Func<bool>? uploadCustomSongs = null, Func<string, bool>? canUploadChart = null)
+    {
+        if (Interlocked.Exchange(ref _syncing, 1) == 1)
+        {
+            job?.Complete();
+            return;
+        }
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var sent = await SyncAsync(store, baid, uploadCustomSongs: uploadCustomSongs, canUploadChart: canUploadChart).ConfigureAwait(false);
+                job?.Complete();
+                completed?.Invoke();
+                if (sent > 0)
+                    Console.WriteLine($"Uploaded {sent} play(s).");
+            }
+            catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+            {
+                // Offline or server trouble: the plays stay pending for the next sync.
+                job?.Fail(exception.Message);
+                Console.Error.WriteLine($"Warning SCORE_SYNC: {exception.Message}");
+            }
+            finally
+            {
+                Volatile.Write(ref _syncing, 0);
+            }
+        });
+    }
+
+    internal sealed record LoginRequest(string Login, string Password, string? Code, string Device);
+
+    internal sealed record AiBattleRequest(string ChartSha256, string BaseSha256, int Course, int Options, int SupportLevel, int Version, long? Baid);
+
+    internal sealed record DeviceRequest(string Device);
+
+    internal sealed record DeviceTokenRequest(string DeviceCode);
+
+    internal sealed record RankingsRequest(IReadOnlyCollection<string> Charts);
+
+    internal sealed record PlaysRequest(List<UploadPlay> Plays);
+
+    internal sealed record DanPlaysRequest(List<UploadDanPlay> Plays);
+
+    internal sealed record DanPlaysResult(List<Guid> Accepted);
+
+    internal sealed record UploadMedalSong(Guid Id, long Baid, DateTimeOffset PlayedAt, string Kind, Guid? CreditId, string? ChartSha256, int Side, int? SelectSeconds);
+
+    internal sealed record MedalSongsRequest(List<UploadMedalSong> Songs);
+
+    internal sealed record CreditEndRequest(Guid CreditId, long? Baid);
+
+    internal sealed record CreditEndResult(List<PendingReward>? Rewards);
+
+    internal sealed record PurchaseRequest(int No, long? Baid, int? Type, int? Id);
+
+    internal sealed record RewardsSeenRequest(List<int[]> Items, long? Baid);
+
+    internal sealed record MedalSongsResult(List<Guid> Accepted, List<MedalCredit> Credits, int? Wallet);
+
+    internal sealed record BestsResult(List<RemoteBest> Bests, List<RemotePlay>? Recent, List<RemoteAiPlay>? AiPlays);
+
+    internal sealed record RankingsResult(Dictionary<string, List<RankingEntry>> Rankings);
+
+    internal sealed record PlaysResult(List<Guid> Accepted, List<string> MissingCharts);
+
+    internal sealed record LeaderboardResult(List<ScoreRow> Scores, ScoreRow? Mine);
+
+    internal sealed record ScoresResult(List<ScoreRow> Scores);
+
+    internal sealed record ReportRequest(string Reason);
+
+    internal sealed record MessageResult(string? Message);
+
+    internal sealed record ReplayResult : ScoreRow
+    {
+        public string ChartSha256 { get; init; } = "";
+
+        public string Replay { get; init; } = "";
+
+        public ScoreProfile? Player { get; init; }
+    }
+}

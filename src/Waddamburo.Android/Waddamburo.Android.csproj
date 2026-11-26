@@ -1,0 +1,71 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-android</TargetFramework>
+    <SupportedOSPlatformVersion>26</SupportedOSPlatformVersion>
+    <OutputType>Exe</OutputType>
+    <RuntimeIdentifiers Condition="'$(RuntimeIdentifier)' == ''">android-arm64;android-x64</RuntimeIdentifiers>
+    <RuntimeIdentifiers Condition="'$(RuntimeIdentifier)' != ''"></RuntimeIdentifiers>
+    <ApplicationId>org.waddamburo.game</ApplicationId>
+    <ApplicationTitle>Waddamburo</ApplicationTitle>
+    <ApplicationVersion>1</ApplicationVersion>
+    <ApplicationDisplayVersion>$(Version.Split('-')[0])</ApplicationDisplayVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- The game references the desktop executable project (Waddamburo.App) as a library. -->
+    <ValidateExecutableReferencesMatchSelfContained>false</ValidateExecutableReferencesMatchSelfContained>
+    <AndroidPackageFormat>apk</AndroidPackageFormat>
+    <!-- Self-contained APKs (adb install), not Fast Deployment's separately pushed assemblies. -->
+    <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
+    <IsAotCompatible>false</IsAotCompatible>
+  </PropertyGroup>
+
+  <!-- CoreCLR, the one runtime the game runs on everywhere: on a Snapdragon 439 song select went from ~30 fps (Mono,
+       fully AOT compiled) to about 50. Experimental on Android in .NET 10 (warning XA1040). -->
+  <PropertyGroup>
+    <UseMonoRuntime>false</UseMonoRuntime>
+    <NoWarn>$(NoWarn);XA1040</NoWarn>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <!-- partial: only the framework's assemblies are trimmed, the game's stay whole (Realm, JSON, SQLite reflect). -->
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>partial</TrimMode>
+    <DebugSymbols>false</DebugSymbols>
+  </PropertyGroup>
+
+  <!-- Native libraries staged by the two Android CMake presets. -->
+  <PropertyGroup>
+    <WaddamburoAndroidNativeDir Condition="'$(WaddamburoAndroidNativeDir)' == ''">$(MSBuildThisFileDirectory)../../out/build/native/android-arm64/android-package/stage/Release/lib</WaddamburoAndroidNativeDir>
+    <WaddamburoAndroidX64NativeDir Condition="'$(WaddamburoAndroidX64NativeDir)' == ''">$(MSBuildThisFileDirectory)../../out/build/native/android-x64/android-x64-package/stage/Release/lib</WaddamburoAndroidX64NativeDir>
+    <WaddamburoIncludeAndroidArm64 Condition="$([System.String]::Copy(';$(RuntimeIdentifiers);$(RuntimeIdentifier);').Contains(';android-arm64;'))">true</WaddamburoIncludeAndroidArm64>
+    <WaddamburoIncludeAndroidX64 Condition="$([System.String]::Copy(';$(RuntimeIdentifiers);$(RuntimeIdentifier);').Contains(';android-x64;'))">true</WaddamburoIncludeAndroidX64>
+  </PropertyGroup>
+  <ItemGroup>
+    <AndroidNativeLibrary Include="$(WaddamburoAndroidNativeDir)/*.so" Abi="arm64-v8a"
+                          Condition="'$(WaddamburoIncludeAndroidArm64)' == 'true'" />
+    <AndroidNativeLibrary Include="$(WaddamburoAndroidX64NativeDir)/*.so" Abi="x86_64"
+                          Condition="'$(WaddamburoIncludeAndroidX64)' == 'true'" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(WaddamburoAndroidNoticesDir)' != ''">
+    <AndroidAsset Include="$(WaddamburoAndroidNoticesDir)/**/*"
+                  LogicalName="licenses/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+  <Target Name="WaddamburoRequireAndroidNatives" BeforeTargets="Build">
+    <Error Condition="'$(WaddamburoIncludeAndroidArm64)' == 'true' And !Exists('$(WaddamburoAndroidNativeDir)/libbgfx.so')"
+           Text="Build the native libraries first: cd native &amp;&amp; cmake --preset android-package &amp;&amp; cmake --build --preset android-package" />
+    <Error Condition="'$(WaddamburoIncludeAndroidX64)' == 'true' And !Exists('$(WaddamburoAndroidX64NativeDir)/libbgfx.so')"
+           Text="Build the native libraries first: cd native &amp;&amp; cmake --preset android-x64-package &amp;&amp; cmake --build --preset android-x64-package" />
+  </Target>
+
+  <!-- NuGet falls back to the Linux x64 ImGui library for android-x64. The editor is desktop-only. -->
+  <Target Name="WaddamburoExcludeDesktopImGui" AfterTargets="ComputeFilesToPublish">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+          Condition="$([System.String]::Copy('%(ResolvedFileToPublish.FullPath)').Replace('\', '/').EndsWith('/runtimes/linux-x64/native/libcimgui.so'))" />
+    </ItemGroup>
+  </Target>
+
+  <ItemGroup>
+    <ProjectReference Include="../Waddamburo.App/Waddamburo.App.csproj" />
+  </ItemGroup>
+
+</Project>

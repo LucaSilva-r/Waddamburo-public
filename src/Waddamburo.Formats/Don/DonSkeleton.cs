@@ -42,20 +42,29 @@ public sealed class DonSkeleton
 
     public ImmutableArray<Matrix4x4> EvaluateWorld(ReadOnlySpan<float> frame)
     {
-        var required = Channels
-            .Where(static channel => channel.ValueOffset >= 0)
-            .Max(static channel => channel.ValueOffset + channel.ValueCount);
-        if (frame.Length < required)
-            throw new ArgumentException($"Pose requires at least {required} values.", nameof(frame));
-
-        var result = ImmutableArray.CreateBuilder<Matrix4x4>(Channels.Length);
-        foreach (var channel in Channels)
-        {
-            var local = localTransform(frame, channel);
-            result.Add(channel.ParentIndex < 0 ? local : local * result[channel.ParentIndex]);
-        }
-        return result.MoveToImmutable();
+        var result = new Matrix4x4[Channels.Length];
+        EvaluateWorld(frame, result);
+        return System.Runtime.InteropServices.ImmutableCollectionsMarshal.AsImmutableArray(result);
     }
+
+    /// <summary>The world transforms into <paramref name="destination"/> (one per channel): the per-frame form, no allocation.</summary>
+    public void EvaluateWorld(ReadOnlySpan<float> frame, Span<Matrix4x4> destination)
+    {
+        _required ??= Channels.Where(static channel => channel.ValueOffset >= 0)
+            .Max(static channel => channel.ValueOffset + channel.ValueCount);
+        if (frame.Length < _required)
+            throw new ArgumentException($"Pose requires at least {_required} values.", nameof(frame));
+        if (destination.Length < Channels.Length)
+            throw new ArgumentException("Too small for every channel's transform.", nameof(destination));
+        for (var index = 0; index < Channels.Length; index++)
+        {
+            var channel = Channels[index];
+            var local = localTransform(frame, channel);
+            destination[index] = channel.ParentIndex < 0 ? local : local * destination[channel.ParentIndex];
+        }
+    }
+
+    private int? _required;
 
     public ImmutableArray<Matrix4x4> CreateSkinningPalette(
         ReadOnlySpan<float> bindFrame,

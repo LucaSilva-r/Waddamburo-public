@@ -93,10 +93,12 @@ internal static partial class TjaPlayableChartReader
                         && player == target.Player
                         && occurrence == target.Occurrence)
                     {
-                        bpm = positiveNumber(bpmText, "BPM");
+                        bpm = nonZeroNumber(bpmText, "BPM");
+                        scroll = scroll with { BpmBack = bpm < 0 };
+                        bpm = Math.Abs(bpm);
                         timingPoints.Add(new ChartTimingPoint(TimeSpan.Zero, (double)bpm, numerator, denominator));
                         scrollPoints.Add(scrollPoint(TimeSpan.Zero, scroll));
-                        drawn.Start(bpm);
+                        drawn.Start(scroll.BpmBack ? -bpm : bpm);
                         effectPoints.Add(new ChartEffectPoint(TimeSpan.Zero, isGoGo));
                         active = true;
                     }
@@ -106,8 +108,7 @@ internal static partial class TjaPlayableChartReader
                 var headerSeparator = line.IndexOf(':');
                 var header = headerSeparator < 0 ? string.Empty : line[..headerSeparator].Trim().ToUpperInvariant();
                 if (header == "LEVEL")
-                    level = int.TryParse(line[(headerSeparator + 1)..].Trim(), NumberStyles.Integer,
-                        CultureInfo.InvariantCulture, out var stars) && stars > 0 ? stars : null;
+                    level = TjaMetadataReader.LeadingLevel(line[(headerSeparator + 1)..].Trim()) is { } stars && stars > 0 ? stars : null;
                 if (header is "SCOREINIT" or "SCOREDIFF")
                 {
                     // SCOREINIT may carry a second Shin-uchi term; Gen 3 uses the first.
@@ -173,6 +174,7 @@ internal static partial class TjaPlayableChartReader
                     ScoreDiff = scoreDiff,
                     Branching = checks.Count == 0 ? null : branching(checks, notes, longs),
                     Effects = drawn.Build(byBeat: scrollPoints.Any(static point => point.ByBeat)),
+                    Lyrics = [.. drawn.Lyrics.OrderBy(static lyric => lyric.Time)],
                     RouteControls = routeBlocks.Count == 0 ? [] : [.. ((string[])["#N", "#E", "#M"]).Select(name => new ChartRouteControls(
                         routeStream(timingPoints, routeBlocks, name, static own => own.Timing, static point => point.Time, static (point, at) => new ChartTimingPoint(at, point.BeatsPerMinute, point.BeatsPerMeasure, point.BeatUnit)),
                         routeStream(scrollPoints, routeBlocks, name, static own => own.Scroll, static point => point.Time, static (point, at) => point.At(at)))
@@ -564,19 +566,32 @@ internal static partial class TjaPlayableChartReader
             case "#MEASURE":
                 var parts = argument.Split('/');
                 if (parts.Length != 2
-                    || !int.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out numerator)
-                    || !int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out denominator)
-                    || numerator <= 0
-                    || denominator <= 0)
+                    || !int.TryParse(parts[0], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out numerator)
+                    || !int.TryParse(parts[1], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out denominator)
+                    || numerator is 0 or int.MinValue
+                    || denominator is 0 or int.MinValue)
                 {
-                    throw new InvalidDataException("TJA #MEASURE requires positive integer numerator/denominator values.");
+                    throw new InvalidDataException("TJA #MEASURE requires non-zero integer numerator/denominator values.");
                 }
+                // A negative measure goes with a negative tempo (#BPMCHANGE) so time still runs forward: it lasts as
+                // long as its positive one. ponytail: a sign on one of the two alone is read the same way.
+                (numerator, denominator) = (Math.Abs(numerator), Math.Abs(denominator));
                 appendOrReplace(timingPoints, new ChartTimingPoint(controlTime(timingPoints, cursorSeconds), (double)bpm, numerator, denominator));
                 break;
             case "#BPMCHANGE":
-                bpm = positiveNumber(argument, "#BPMCHANGE");
+                bpm = nonZeroNumber(argument, "#BPMCHANGE");
+                // A negative tempo (TJAP3/OpenTaiko/YataiDON, paired with a negative #MEASURE so time still runs
+                // forward) keeps its pace and runs the scroll backwards: by time (#NMSCROLL) the notes come from the
+                // other side; the beat count (#HBSCROLL/#BMSCROLL) counts down, so the lane slides back.
+                if (scroll.BpmBack != (bpm < 0))
+                {
+                    scroll = scroll with { BpmBack = !scroll.BpmBack };
+                    if (scroll.Mode == 0)
+                        appendOrReplace(scrollPoints, scrollPoint(controlTime(scrollPoints, cursorSeconds), scroll));
+                }
+                bpm = Math.Abs(bpm);
                 if (mainRoute)
-                    drawn.TempoChanged(cursorSeconds, bpm);
+                    drawn.TempoChanged(cursorSeconds, scroll.BpmBack ? -bpm : bpm);
                 appendOrReplace(timingPoints, new ChartTimingPoint(controlTime(timingPoints, cursorSeconds), (double)bpm, numerator, denominator));
                 break;
             case "#SCROLL":
@@ -602,7 +617,7 @@ internal static partial class TjaPlayableChartReader
                 // Negative delays are legal: editors offset one note with #DELAY x … #DELAY -x.
                 var delay = finiteDecimal(argument, "#DELAY");
                 if (mainRoute)
-                    drawn.Delayed(cursorSeconds, delay, bpm);
+                    drawn.Delayed(cursorSeconds, delay, scroll.BpmBack ? -bpm : bpm);
                 cursorSeconds = checked(cursorSeconds + delay);
                 ensureTimeFits(cursorSeconds, "TJA #DELAY places the chart outside the supported time range.");
                 break;
@@ -646,6 +661,48 @@ internal static partial class TjaPlayableChartReader
                 scroll = scroll with { Mode = name switch { "#HBSCROLL" => 1, "#BMSCROLL" => 2, _ => 0 } };
                 appendOrReplace(scrollPoints, scrollPoint(controlTime(scrollPoints, cursorSeconds), scroll));
                 break;
+            case "#CAMHOFFSET" or "#CAMVOFFSET" or "#CAMZOOM" or "#CAMROTATION" or "#CAMHSCALE" or "#CAMVSCALE" when mainRoute:
+                // TJAPlayer3-Extended (YataiDON, OpenTaiko): the whole screen moves (stage pixels), zooms, turns
+                // (degrees, clockwise) or stretches about its centre. A bad value skips the command.
+                if (cameraProperty(name[4..]) is { } setProperty && double.TryParse(argument.Split(',')[0].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var setValue)
+                    && double.IsFinite(setValue))
+                    drawn.CameraSet(cursorSeconds, setProperty, setValue);
+                break;
+            case { } start when mainRoute && start.StartsWith("#CAM", StringComparison.Ordinal) && start.EndsWith("START", StringComparison.Ordinal)
+                && cameraProperty(start[4..^5]) is { } startProperty:
+            {
+                // #CAM…START from,to[,IN|OUT|IN_OUT[,LINEAR|CUBIC|QUARTIC|QUINTIC|SINUSOIDAL|EXPONENTIAL|CIRCULAR]] … #CAM…END
+                var fields = argument.Split(',', StringSplitOptions.TrimEntries);
+                if (fields.Length >= 2
+                    && double.TryParse(fields[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var from) && double.IsFinite(from)
+                    && double.TryParse(fields[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var to) && double.IsFinite(to))
+                    drawn.CameraStart(cursorSeconds, startProperty, from, to,
+                        cameraEase(fields.Length > 2 ? fields[2] : "IN", fields.Length > 3 ? fields[3] : "LINEAR"));
+                break;
+            }
+            case { } end when mainRoute && end.StartsWith("#CAM", StringComparison.Ordinal) && end.EndsWith("END", StringComparison.Ordinal)
+                && cameraProperty(end[4..^3]) is { } endProperty:
+                drawn.CameraEnd(cursorSeconds, endProperty);
+                break;
+            case "#BORDERCOLOR" when mainRoute:
+            {
+                // #BORDERCOLOR r,g,b (0-255): the colour around the stage; #CAMRESET keeps it (YataiDON).
+                var fields = argument.Split(',', StringSplitOptions.TrimEntries);
+                var rgb = new double[3];
+                if (fields.Length >= 3 && Enumerable.Range(0, 3).All(i => double.TryParse(fields[i], NumberStyles.Float, CultureInfo.InvariantCulture, out rgb[i]) && double.IsFinite(rgb[i])))
+                {
+                    drawn.CameraSet(cursorSeconds, "borderred", rgb[0]);
+                    drawn.CameraSet(cursorSeconds, "bordergreen", rgb[1]);
+                    drawn.CameraSet(cursorSeconds, "borderblue", rgb[2]);
+                }
+                break;
+            }
+            case "#CAMRESET" when mainRoute:
+                drawn.CameraReset(cursorSeconds);
+                break;
+            case "#LYRIC" when mainRoute:
+                drawn.Lyric(cursorSeconds, argument);
+                break;
             case "#SENOTECHANGE":
                 drawn.NoteText(int.TryParse(argument, NumberStyles.Integer, CultureInfo.InvariantCulture, out var text) ? text : 0);
                 break;
@@ -654,16 +711,45 @@ internal static partial class TjaPlayableChartReader
             case "#NEXTSONG":
                 throw new NotSupportedException("TJA #NEXTSONG (a dan course in one file) is not supported.");
             default:
-                // #SECTION, #LYRIC and anything else (OpenTaiko's camera and object commands, #BMSCROLL/#HBSCROLL/#NMSCROLL
-                // scroll modes, #SPLITLANE, #BGAON, typos): the chart plays as written without the effect.
+                // #SECTION and anything else (OpenTaiko's object commands, #SPLITLANE, #BGAON,
+                // typos): the chart plays as written without the effect.
                 // ponytail: silently; a diagnostics list if users ask why an effect is missing.
                 break;
         }
     }
 
     // The scroll state between commands: #SCROLL's speed, #DIRECTION, #SUDDEN.
+    // The modchart camera property a TJAPlayer3-Extended camera command names (#CAM<name>, #CAM<name>START/END).
+    private static string? cameraProperty(string name) => name switch
+    {
+        "HOFFSET" or "HMOVE" => "x",
+        "VOFFSET" or "VMOVE" => "y",
+        "ZOOM" => "scale",
+        "ROTATION" => "rotation",
+        "HSCALE" => "scalex",
+        "VSCALE" => "scaley",
+        _ => null,
+    };
+
+    // A camera ease's direction and curve (YataiDON's defaults: IN, LINEAR; unknown words fall back to them).
+    private static ChartEase cameraEase(string direction, string curve)
+    {
+        var suffix = curve.ToUpperInvariant() switch
+        {
+            "CUBIC" => "Cubic", "QUARTIC" => "Quart", "QUINTIC" => "Quint", "SINUSOIDAL" => "Sine",
+            "EXPONENTIAL" => "Expo", "CIRCULAR" => "Circ", _ => null,
+        };
+        var prefix = direction.ToUpperInvariant() switch { "OUT" => "Out", "IN_OUT" => "InOut", _ => "In" };
+        return suffix is null ? ChartEase.Linear : Enum.Parse<ChartEase>(prefix + suffix);
+    }
+
     // Mode: 0 by time, 1 by beat (#HBSCROLL), 2 by beat at speed 1 (#BMSCROLL).
-    private readonly record struct TjaScroll(double Re, double Im, int Direction, TimeSpan? Show, TimeSpan? Wait, int Mode);
+    // BpmBack: a negative tempo is in force, reversing time scrolling (beat scrolling reverses through the beat count).
+    private readonly record struct TjaScroll(double Re, double Im, int Direction, TimeSpan? Show, TimeSpan? Wait, int Mode,
+        bool BpmBack = false)
+    {
+        public double Sign => Mode == 0 && BpmBack ? -1 : 1;
+    }
 
     // #DIRECTION turns the real speed (OpenTaiko's table: diagonals keep the full speed on both axes); a complex
     // #SCROLL keeps its own vertical part (TJAP3).
@@ -671,7 +757,7 @@ internal static partial class TjaPlayableChartReader
     {
         // #BMSCROLL ignores #SCROLL and #DIRECTION (OpenTaiko: speed 1, no vertical part); the speed option still applies.
         if (scroll.Mode == 2)
-            return new(time, 1) { Show = scroll.Show, Wait = scroll.Wait, ByBeat = true };
+            return new(time, scroll.Sign) { Show = scroll.Show, Wait = scroll.Wait, ByBeat = true };
         var (re, im) = scroll.Direction switch
         {
             1 => (0, -scroll.Re),
@@ -683,7 +769,7 @@ internal static partial class TjaPlayableChartReader
             7 => (-scroll.Re, scroll.Re),
             _ => (scroll.Re, 0d),
         };
-        return new(time, re) { Imaginary = scroll.Im != 0 ? scroll.Im : im, Show = scroll.Show, Wait = scroll.Wait, ByBeat = scroll.Mode == 1 };
+        return new(time, re * scroll.Sign) { Imaginary = (scroll.Im != 0 ? scroll.Im : im) * scroll.Sign, Show = scroll.Show, Wait = scroll.Wait, ByBeat = scroll.Mode == 1 };
     }
 
     /// <summary>A TJA real or complex number: <c>2</c>, <c>-1.5</c>, <c>3i</c>, <c>1+2i</c>, <c>0-100i</c>, <c>-i</c>.</summary>
@@ -737,10 +823,10 @@ internal static partial class TjaPlayableChartReader
         var player => player,
     };
 
-    private static decimal positiveNumber(string value, string field)
+    private static decimal nonZeroNumber(string value, string field)
     {
         var number = finiteDecimal(value, field);
-        return number > 0 ? number : throw new InvalidDataException($"TJA {field} must be positive.");
+        return number != 0 ? number : throw new InvalidDataException($"TJA {field} must not be zero.");
     }
 
     private static decimal finiteDecimal(string value, string field) =>

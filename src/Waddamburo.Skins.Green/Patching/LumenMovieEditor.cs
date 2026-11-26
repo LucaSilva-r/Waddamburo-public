@@ -67,7 +67,7 @@ public sealed class LumenMovieEditor
     }
 
     private readonly Dictionary<uint, (uint Body, uint Light)> _split = [];
-    private LmbRemoveObjectCommand? _removeTemplate;
+    private LmbTimelineCommand? _removeTemplate;
 
     /// <summary>
     /// Texture <paramref name="source"/> split for recolouring: each pixel read as shade × (base colour
@@ -190,7 +190,7 @@ public sealed class LumenMovieEditor
             return done[character] = (character, null, null);
         done[character] = (character, null, null); // cycles keep the original
         var timeline = sprite.Timeline.Select(command =>
-            command is LmbPlaceObjectCommand place ? replace(place, rule, done) : command).ToImmutableArray();
+            command is { Kind: LmbCommandKind.PlaceObject } place ? replace(place, rule, done) : command).ToImmutableArray();
         if (timeline.SequenceEqual(sprite.Timeline))
             return (character, null, null);
         var copy = _nextCharacter++;
@@ -220,12 +220,12 @@ public sealed class LumenMovieEditor
         ArgumentNullException.ThrowIfNull(rule);
         var done = new Dictionary<uint, (uint, TextureRule.Tint?, string?)>();
         var definition = _sprites[sprite];
-        var labels = definition.Timeline.OfType<LmbFrameLabelCommand>()
+        var labels = definition.Timeline.OfKind(LmbCommandKind.FrameLabel)
             .Select(command => (Name: _strings[(int)command.StringIndex].Value, Frame: (int)command.Frame)).ToArray();
         var start = labels.Single(entry => entry.Name == from).Frame;
         var end = labels.Select(static entry => entry.Frame).Where(frame => frame > start)
             .DefaultIfEmpty((int)definition.DeclaredFrameCount).Min();
-        var keyFrames = definition.Timeline.OfType<LmbFrameKeyCommand>().Select(static key => (int)key.Frame).ToHashSet();
+        var keyFrames = definition.Timeline.OfKind(LmbCommandKind.FrameKey).Select(static key => (int)key.Frame).ToHashSet();
         var first = keyFrames.Where(frame => frame <= start).DefaultIfEmpty(start).Max();
         var offset = (int)definition.DeclaredFrameCount - first;
         var added = new List<LmbTimelineCommand>();
@@ -237,20 +237,20 @@ public sealed class LumenMovieEditor
         var inKey = false;
         foreach (var command in definition.Timeline)
         {
-            if (command is LmbShowFrameCommand or LmbFrameKeyCommand)
-                inKey = command is LmbFrameKeyCommand key && key.Frame == first;
-            else if (inKey && command is not LmbFrameLabelCommand)
-                keyCommands.Add(command is LmbPlaceObjectCommand place ? replace(place, rule, done) : command);
+            if (command is { Kind: LmbCommandKind.ShowFrame or LmbCommandKind.FrameKey })
+                inKey = command is { Kind: LmbCommandKind.FrameKey } key && key.Frame == first;
+            else if (inKey && command is not { Kind: LmbCommandKind.FrameLabel })
+                keyCommands.Add(command is { Kind: LmbCommandKind.PlaceObject } place ? replace(place, rule, done) : command);
         }
-        var depths = definition.Timeline.OfType<LmbPlaceObjectCommand>().Select(static place => place.Depth).Distinct().ToArray();
+        var depths = definition.Timeline.OfKind(LmbCommandKind.PlaceObject).Select(static place => place.Depth).Distinct().ToArray();
         var template = _removeTemplate ??= _sprites.Values.SelectMany(static sprite => sprite.Timeline)
-            .OfType<LmbRemoveObjectCommand>().First();
+            .OfKind(LmbCommandKind.RemoveObject).First();
         var clearing = false;
         foreach (var command in definition.Timeline)
         {
             switch (command)
             {
-                case LmbShowFrameCommand show:
+                case { Kind: LmbCommandKind.ShowFrame } show:
                     copying = show.Frame >= first && show.Frame < end;
                     clearing = copying && show.Frame == first && keyCommands.Count > 0;
                     if (copying)
@@ -261,19 +261,19 @@ public sealed class LumenMovieEditor
                         added.AddRange(keyCommands);
                     }
                     continue;
-                case LmbFrameKeyCommand key:
+                case { Kind: LmbCommandKind.FrameKey } key:
                     copying = key.Frame >= first && key.Frame < end;
                     if (copying)
                         added.Add(key with { Frame = (uint)(key.Frame + offset) });
                     continue;
-                case LmbFrameLabelCommand:
+                case { Kind: LmbCommandKind.FrameLabel }:
                     continue;
             }
             // The first frame's placements come from its keyframe above; its scripts (stop()) stay.
-            if (copying && (!clearing || command is LmbDoActionCommand))
-                added.Add(command is LmbPlaceObjectCommand place ? replace(place, rule, done) : command);
+            if (copying && (!clearing || command is { Kind: LmbCommandKind.DoAction }))
+                added.Add(command is { Kind: LmbCommandKind.PlaceObject } place ? replace(place, rule, done) : command);
         }
-        var labelTemplate = definition.Timeline.OfType<LmbFrameLabelCommand>().First();
+        var labelTemplate = definition.Timeline.OfKind(LmbCommandKind.FrameLabel).First();
         added.Add(labelTemplate with { StringIndex = AddString(label), Frame = (uint)(start + offset) });
         _sprites[sprite] = definition with
         {
@@ -285,13 +285,13 @@ public sealed class LumenMovieEditor
 
     /// <summary>The sprites that have a frame labelled <paramref name="label"/>.</summary>
     public IEnumerable<uint> SpritesWithLabel(string label) => _sprites.Values
-        .Where(sprite => sprite.Timeline.OfType<LmbFrameLabelCommand>()
+        .Where(sprite => sprite.Timeline.OfKind(LmbCommandKind.FrameLabel)
             .Any(command => command.StringIndex < _strings.Count && _strings[(int)command.StringIndex].Value == label))
         .Select(static sprite => sprite.CharacterId)
         .ToArray();
 
     /// <summary>Sprite <paramref name="sprite"/>'s frame labels.</summary>
-    public IEnumerable<string> Labels(uint sprite) => _sprites[sprite].Timeline.OfType<LmbFrameLabelCommand>()
+    public IEnumerable<string> Labels(uint sprite) => _sprites[sprite].Timeline.OfKind(LmbCommandKind.FrameLabel)
         .Where(command => command.StringIndex < _strings.Count).Select(command => _strings[(int)command.StringIndex].Value);
 
     /// <summary>The characters <paramref name="roots"/> are or place, at any depth (sprites and shapes).</summary>
@@ -301,7 +301,7 @@ public sealed class LumenMovieEditor
         var pending = new Stack<uint>(roots);
         while (pending.TryPop(out var character))
             if (reached.Add(character) && _sprites.TryGetValue(character, out var sprite))
-                foreach (var place in sprite.Timeline.OfType<LmbPlaceObjectCommand>())
+                foreach (var place in sprite.Timeline.OfKind(LmbCommandKind.PlaceObject))
                     pending.Push(place.CharacterId);
         return reached;
     }
@@ -337,7 +337,7 @@ public sealed class LumenMovieEditor
     public IReadOnlySet<uint> PlacedAt(uint sprite, string label)
     {
         var definition = _sprites[sprite];
-        var labels = definition.Timeline.OfType<LmbFrameLabelCommand>()
+        var labels = definition.Timeline.OfKind(LmbCommandKind.FrameLabel)
             .Select(command => (Name: _strings[(int)command.StringIndex].Value, Frame: (int)command.Frame)).ToArray();
         var start = labels.Single(entry => entry.Name == label).Frame;
         var end = labels.Select(static entry => entry.Frame).Where(frame => frame > start)
@@ -348,11 +348,11 @@ public sealed class LumenMovieEditor
         {
             frame = command switch
             {
-                LmbShowFrameCommand show => (int)show.Frame,
-                LmbFrameKeyCommand key => (int)key.Frame,
+                { Kind: LmbCommandKind.ShowFrame } show => (int)show.Frame,
+                { Kind: LmbCommandKind.FrameKey } key => (int)key.Frame,
                 _ => frame,
             };
-            if (command is LmbPlaceObjectCommand place && frame >= start && frame < end)
+            if (command is { Kind: LmbCommandKind.PlaceObject } place && frame >= start && frame < end)
                 placed.Add(place.CharacterId);
         }
         return placed;
@@ -374,10 +374,10 @@ public sealed class LumenMovieEditor
         }
         var body = layer(texture => SplitForRecolour(texture, recolour.Reference).Body);
         var light = layer(texture => SplitForRecolour(texture, recolour.Reference).Light);
-        var template = _sprites.Values.First(static sprite => sprite.Timeline.OfType<LmbPlaceObjectCommand>().Any()
-            && sprite.Timeline.OfType<LmbShowFrameCommand>().Any());
-        var show = template.Timeline.OfType<LmbShowFrameCommand>().First();
-        var place = template.Timeline.OfType<LmbPlaceObjectCommand>().First() with
+        var template = _sprites.Values.First(static sprite => sprite.Timeline.OfKind(LmbCommandKind.PlaceObject).Any()
+            && sprite.Timeline.OfKind(LmbCommandKind.ShowFrame).Any());
+        var show = template.Timeline.OfKind(LmbCommandKind.ShowFrame).First();
+        var place = template.Timeline.OfKind(LmbCommandKind.PlaceObject).First() with
         {
             NameStringIndex = 0,
             Mode = 1,
@@ -408,7 +408,7 @@ public sealed class LumenMovieEditor
     }
 
     // A placement of the cloned character: its tint (colour multiply) and fill slot (instance name) applied.
-    private LmbPlaceObjectCommand replace(LmbPlaceObjectCommand place, Func<uint, TextureRule?> rule,
+    private LmbTimelineCommand replace(LmbTimelineCommand place, Func<uint, TextureRule?> rule,
         Dictionary<uint, (uint, TextureRule.Tint?, string?)> done)
     {
         var (child, tint, fill) = clone(place.CharacterId, rule, done);

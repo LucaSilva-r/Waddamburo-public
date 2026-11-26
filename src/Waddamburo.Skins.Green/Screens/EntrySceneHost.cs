@@ -50,6 +50,13 @@ public sealed class EntrySceneHost : IEntryScreen
     /// <summary>The entry movie on stage (null before it is attached).</summary>
     public LumenPlayer? Movie => _entry;
 
+    /// <summary>Whether the mode select offers the reward shop (a card's shop has loaded).</summary>
+    public Func<bool>? ShopAvailable { get; init; }
+
+    /// <summary>Whether the mode select offers AI battle: its movies are installed (a Green from before the update
+    /// that added it has none).</summary>
+    public bool AiBattleAvailable { get; init; } = true;
+
     private CoinBank? Coins => Session.Coins;
 
     /// <summary>Plays a VO_ENTRY cue the game itself requests (join and coin-mode prompts).</summary>
@@ -174,6 +181,7 @@ public sealed class EntrySceneHost : IEntryScreen
     public int? PreJoined { get; init; }
 
     private readonly bool[] _donHidden = new bool[2], _boardShown = new bool[2];
+    private bool _setupSecondJoined;
     // Home: a drum nobody plays after the setup; its stand (taiko_Np) goes as before any join (the movie starts it hidden).
     private readonly bool[] _standHidden = new bool[2];
     private readonly ScoreProfile?[] _setupProfiles = new ScoreProfile?[2];
@@ -262,8 +270,9 @@ public sealed class EntrySceneHost : IEntryScreen
             Session.Enter(side);
             assignCostumes(entry, side, PlayerLook?.Invoke(side));
             // An account plays as a card would: ModeSelect offers AI battle only with CardInfo.isCard and a player
-            // whose IsCoin and IsData are set (entry script); accounts never take the card path.
-            if (PlayerName?.Invoke(side) is { Length: > 0 })
+            // whose IsCoin and IsData are set (entry script), and greys the reward shop without one; accounts never
+            // take the card path. A home guest has a name ("Guest") but no look: no card data.
+            if (PlayerLook?.Invoke(side) is not null)
             {
                 entry.TryWriteScriptValue("_global.CardInfo.isCard", true);
                 entry.TryWriteScriptValue($"_global.res.playerInfo.{side}.isData", true);
@@ -284,7 +293,18 @@ public sealed class EntrySceneHost : IEntryScreen
             return;
         _ticks++;
         if (SetupMode)
+        {
             _entry.TrySetInstanceAlpha("modeSelect", 0);
+            // The setup fakes both players: the movie joined the opening drum (its InitEntry greets it);
+            // the other stand joins as a drum press would (PlayerEntry.CoinEntry: no voice), not with a
+            // second greeting as DON_BOTH gave.
+            if (Session.JoinedCount == 1 && !_setupSecondJoined)
+            {
+                _setupSecondJoined = true;
+                if (!_entry.TryCallScriptMethod("modeSelect.playerentry", "CoinEntry", [number(1 - Session.FirstJoined!.Value)]))
+                    Console.Error.WriteLine("Entry: no modeSelect.playerentry.CoinEntry to join the setup's other stand.");
+            }
+        }
         else if (_modeSelectFade >= 0)
         {
             _modeSelectFade++;
@@ -587,10 +607,10 @@ public sealed class EntrySceneHost : IEntryScreen
         lumen.RegisterMethod("IsPlayerbleCoinOrFree", _ => LumenHostValue.FromBoolean(canPay()));
         lumen.RegisterMethod("IsPlayerbleCoin", _ => LumenHostValue.FromBoolean(canPay()));
         lumen.RegisterMethod("IsCardReaderError", _ => LumenHostValue.FromBoolean(false));
-        // ponytail: the shop has no scene yet and is reported unavailable. Waiwai is on:
+        // The mode select's reward shop: a card's goods are in (traced 1 for a carded player). Waiwai is on:
         // the game enables it while online (traced 0 online, 1 offline); this engine has no network gate.
-        lumen.RegisterMethod("IsAvailableShop", _ => LumenHostValue.FromBoolean(false));
-        lumen.RegisterMethod("IsAvailableBattle", _ => LumenHostValue.FromBoolean(true));
+        lumen.RegisterMethod("IsAvailableShop", _ => LumenHostValue.FromBoolean(ShopAvailable?.Invoke() == true));
+        lumen.RegisterMethod("IsAvailableBattle", _ => LumenHostValue.FromBoolean(AiBattleAvailable));
         lumen.RegisterMethod("IsWaiwaiDisable", _ => LumenHostValue.FromBoolean(false));
         lumen.RegisterMethod("NotifyMaccollabo", _ => LumenHostValue.FromBoolean(false));
         lumen.RegisterMethod("NotifyRecognizecollabo", _ => LumenHostValue.FromBoolean(false));

@@ -38,7 +38,8 @@ public sealed partial class TjaCatalogProvider : ISongCatalogProvider, ICatalogA
         IProgress<CatalogScanProgress>? progress,
         CancellationToken cancellationToken)
     {
-        using var cached = MetadataCache?.Open(_root, "tja-v1", cancellationToken: cancellationToken);
+        // v2: LEVEL 9.6 / 9+ read as whole stars (v1 cached them as none).
+        using var cached = MetadataCache?.Open(_root, "tja-v2", cancellationToken: cancellationToken);
         return await inspectPaths(enumerateCharts(cancellationToken, cached?.Paths), progress, cancellationToken, cached).ConfigureAwait(false);
     }
 
@@ -120,7 +121,8 @@ public sealed partial class TjaCatalogProvider : ISongCatalogProvider, ICatalogA
             catch (Exception exception) when (exception is IOException
                 or UnauthorizedAccessException
                 or DecoderFallbackException
-                or ArgumentException)
+                or ArgumentException
+                or InvalidDataException)
             {
                 diagnostics.Add(warning(
                     "TJA_FILE_INVALID",
@@ -225,6 +227,10 @@ public sealed partial class TjaCatalogProvider : ISongCatalogProvider, ICatalogA
         return ValueTask.FromResult(stream);
     }
 
+    /// <summary>A TJA chart's file, relative to its library's folder (null: not a TJA chart).</summary>
+    public static string? RelativeChartPath(CatalogAssetKey asset) =>
+        asset is not null && TjaChartAssetKeyCodec.IsChart(asset) ? TjaChartAssetKeyCodec.Decode(asset).RelativePath : null;
+
     /// <summary>A single-player TJA held in memory (the benchmark's own chart): <paramref name="course"/>'s first chart.</summary>
     public static PlayableChart ReadChart(ReadOnlySpan<byte> bytes, ChartKey key, TaikoCourse course) =>
         TjaPlayableChartReader.Read(bytes, key, new TjaChartLocator("", "", course, "", 1), int.MaxValue, int.MaxValue);
@@ -281,7 +287,107 @@ public sealed partial class TjaCatalogProvider : ISongCatalogProvider, ICatalogA
             locator,
             _options.MaximumMeasures,
             _options.MaximumNotes);
+        if (video(TjaMetadataReader.Read(bytes), locator.RelativePath) is { } movie)
+            playable = playable with { Video = movie };
+        if (playable.Lyrics.IsEmpty && (otherCourseLyrics(bytes, chart, locator.Course)
+            ?? await lyricsAsync(bytes, path, playable.AuthoredOffset, cancellationToken).ConfigureAwait(false)) is { IsEmpty: false } lyrics)
+            playable = playable with { Lyrics = lyrics };
         return modchart is null ? playable : ChartModFile.Apply(playable, modchart);
+    }
+
+    // BGMOVIE (TJAPlayer3, OpenTaiko): a video beside the chart, starting MOVIEOFFSET seconds after the audio.
+    private ChartVideo? video(TjaMetadata metadata, string chartPath)
+    {
+        if (metadata.Get("BGMOVIE") is not { } name)
+            return null;
+        try
+        {
+            var path = resolveContainedPath(Path.Combine(Path.GetDirectoryName(chartPath) ?? "", name.Trim()));
+            // Charts made on Windows name their files in any case.
+            if (!File.Exists(path) && Path.GetDirectoryName(path) is { } folder && Directory.Exists(folder))
+                path = Directory.EnumerateFiles(folder).FirstOrDefault(file =>
+                    string.Equals(Path.GetFileName(file), Path.GetFileName(path), StringComparison.OrdinalIgnoreCase)) ?? path;
+            if (!File.Exists(path))
+                return null;
+            var offset = double.TryParse(metadata.Get("MOVIEOFFSET"), System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var seconds) && double.IsFinite(seconds) ? seconds : 0;
+            // Waddamburo's own: BGMOVIEBLEND:add (hologram videos) and BGMOVIEKEY:RRGGBB[,tolerance] (a green screen).
+            var key = metadata.Get("BGMOVIEKEY")?.Split(',', StringSplitOptions.TrimEntries);
+            // BGMOVIEBLEND:luma[,curve]: brightness is opacity (8 by default).
+            var blend = metadata.Get("BGMOVIEBLEND")?.Split(',', StringSplitOptions.TrimEntries) ?? [];
+            return new ChartVideo(path, TimeSpan.FromSeconds(offset))
+            {
+                Additive = blend is [var add, ..] && string.Equals(add, "add", StringComparison.OrdinalIgnoreCase),
+                LumaCurve = blend is [var luma, ..] && string.Equals(luma, "luma", StringComparison.OrdinalIgnoreCase)
+                    ? blend is [_, var curve, ..] && float.TryParse(curve, System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out var steep) && steep >= 1 ? Math.Min(steep, 64) : 8
+                    : null,
+                KeyColor = key is [var colour, ..] && int.TryParse(colour.TrimStart('#'), System.Globalization.NumberStyles.HexNumber,
+                    System.Globalization.CultureInfo.InvariantCulture, out var rgb) ? rgb & 0xFFFFFF : null,
+                KeyTolerance = key is [_, var tolerance, ..] && int.TryParse(tolerance, out var distance) ? Math.Clamp(distance, 0, 441) : 60,
+                // BGMOVIERECT:x,y,width,height in the 1280x720 stage's pixels.
+                Area = metadata.Get("BGMOVIERECT")?.Split(',', StringSplitOptions.TrimEntries)
+                    .Select(value => float.TryParse(value, System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out var number) ? number : float.NaN).ToArray()
+                    is [var x, var y, var width, var height] && float.IsFinite(x + y) && width > 0 && height > 0
+                    ? (x, y, width, height) : null,
+            };
+        }
+        catch (Exception exception) when (exception is ArgumentException or IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    // The song's lyrics are often written in one course only (ANTI-HERO: Ura): another course's #LYRIC lines, the same
+    // in chart time (every course starts at the file's OFFSET).
+    private static System.Collections.Immutable.ImmutableArray<ChartLyric>? otherCourseLyrics(byte[] bytes, ChartKey key, TaikoCourse course)
+    {
+        if (bytes.AsSpan().IndexOf("#LYRIC"u8) < 0)
+            return null;
+        foreach (var other in Enum.GetValues<TaikoCourse>().Where(other => other != course))
+        {
+            try
+            {
+                if (ReadChart(bytes, key, other).Lyrics is { IsEmpty: false } lyrics)
+                    return lyrics;
+            }
+            catch (Exception exception) when (exception is InvalidDataException or NotSupportedException or ArgumentException
+                or OverflowException or KeyNotFoundException)
+            {
+                // that course isn't in the file, or doesn't read: the next one
+            }
+        }
+        return null;
+    }
+
+    // The LYRICS: (or LYRICFILE:) header's .lrc file beside the chart, in chart time (its times are the audio's). A
+    // missing or broken one: no lyrics.
+    private async Task<System.Collections.Immutable.ImmutableArray<ChartLyric>?> lyricsAsync(byte[] chartBytes, string chartPath,
+        TimeSpan offset, CancellationToken cancellationToken)
+    {
+        var header = TjaMetadataReader.Decode(chartBytes).Split('\n')
+            .Select(static line => line.Trim())
+            .FirstOrDefault(static line => line.StartsWith("LYRICS:", StringComparison.OrdinalIgnoreCase)
+                || line.StartsWith("LYRICFILE:", StringComparison.OrdinalIgnoreCase));
+        // ponytail: the first .lrc named; several files (a comma list) or .vtt when someone has one.
+        var name = header?[(header.IndexOf(':') + 1)..].Split(',')[0].Trim();
+        if (string.IsNullOrEmpty(name) || !name.EndsWith(".lrc", StringComparison.OrdinalIgnoreCase))
+            return null;
+        try
+        {
+            var path = resolveContainedPath(Path.GetRelativePath(_root, Path.Combine(Path.GetDirectoryName(chartPath)!, name)));
+            var file = new FileInfo(path);
+            if (!file.Exists || file.Length > 1 << 20)
+                return null;
+            rejectReparsePoints(path);
+            return LrcLyrics.Read(TjaMetadataReader.Decode(await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false)), offset);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            Console.Error.WriteLine($"Lyrics {name} not used: {exception.Message}");
+            return null;
+        }
     }
 
     // The chart's own Song.wddmod beside Song.tja (ChartModFile), read fresh each load so edits show on the next play.
@@ -479,8 +585,8 @@ public sealed partial class TjaCatalogProvider : ISongCatalogProvider, ICatalogA
     {
         if (!double.TryParse(metadata.Get("BPM"), NumberStyles.Float, CultureInfo.InvariantCulture, out var bpm)
             || !double.IsFinite(bpm)
-            || bpm <= 0)
-            throw new InvalidDataException("TJA requires a positive BPM value.");
+            || bpm == 0)
+            throw new InvalidDataException("TJA requires a non-zero BPM value."); // negative: a reversed scroll
     }
 
     private string stableCategoryId(string category)

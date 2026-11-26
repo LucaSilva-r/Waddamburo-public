@@ -28,7 +28,8 @@ extern "C" {
 #define WADDAMBURO_MEDIA_ABI_VERSION_1_2 WADDAMBURO_MEDIA_ABI_VERSION(1U, 2U)
 #define WADDAMBURO_MEDIA_ABI_VERSION_1_3 WADDAMBURO_MEDIA_ABI_VERSION(1U, 3U)
 #define WADDAMBURO_MEDIA_ABI_VERSION_1_4 WADDAMBURO_MEDIA_ABI_VERSION(1U, 4U)
-#define WADDAMBURO_MEDIA_ABI_VERSION_CURRENT WADDAMBURO_MEDIA_ABI_VERSION_1_4
+#define WADDAMBURO_MEDIA_ABI_VERSION_1_5 WADDAMBURO_MEDIA_ABI_VERSION(1U, 5U)
+#define WADDAMBURO_MEDIA_ABI_VERSION_CURRENT WADDAMBURO_MEDIA_ABI_VERSION_1_5
 
 typedef int32_t waddamburo_media_result;
 
@@ -176,6 +177,23 @@ waddamburo_media_video_read_frame(
 WADDAMBURO_MEDIA_API void WADDAMBURO_MEDIA_CALL
 waddamburo_media_video_destroy(waddamburo_media_video *video);
 
+/* ABI 1.5: any container FFmpeg was built with (a .pam still reads as a program stream), frames at most
+   720 lines high (the stage's height), and seeking: the next read_frame returns the first frame at or
+   after the time (decoded from the keyframe before it). */
+WADDAMBURO_MEDIA_API waddamburo_media_result WADDAMBURO_MEDIA_CALL
+waddamburo_media_video_seek(waddamburo_media_video *video, int64_t microseconds);
+
+/* Nonzero: frames nothing refers to (B-frames) are not decoded, about half the work of a typical 60 fps video;
+   for a decoder running late. Zero: every frame again. */
+WADDAMBURO_MEDIA_API waddamburo_media_result WADDAMBURO_MEDIA_CALL
+waddamburo_media_video_skip_unreferenced(waddamburo_media_video *video, int32_t skip);
+
+/* Frames come out at most this many lines high (even sizes, the shape kept): as big as they are drawn. The new size
+   is returned; call it before reading frames. */
+WADDAMBURO_MEDIA_API waddamburo_media_result WADDAMBURO_MEDIA_CALL
+waddamburo_media_video_limit_height(waddamburo_media_video *video, uint32_t height, uint32_t *width_out,
+    uint32_t *height_out);
+
 /* ABI 1.4: re-encodes any decodable file as 48 kHz stereo Opus in Ogg (the decoded-audio cache). */
 WADDAMBURO_MEDIA_API waddamburo_media_result WADDAMBURO_MEDIA_CALL
 waddamburo_media_transcode_opus(
@@ -183,6 +201,32 @@ waddamburo_media_transcode_opus(
     const char *utf8_output_path,
     uint32_t bit_rate,
     waddamburo_media_error *error);
+
+/* Time-stretcher (Bungee): plays a song held in memory at another speed, keeping its pitch. Only in libraries built
+   with WADDAMBURO_MEDIA_STRETCH (release packages); callers check for the symbols, the ABI version is unchanged. */
+typedef struct waddamburo_media_stretch waddamburo_media_stretch;
+
+/* NULL when it cannot be made. */
+WADDAMBURO_MEDIA_API waddamburo_media_stretch *WADDAMBURO_MEDIA_CALL
+waddamburo_media_stretch_create(int32_t sample_rate, int32_t channels);
+
+WADDAMBURO_MEDIA_API void WADDAMBURO_MEDIA_CALL
+waddamburo_media_stretch_destroy(waddamburo_media_stretch *stretch);
+
+/* Renders frame_count interleaved frames of the song pcm (pcm_frame_count frames, interleaved, silence outside it) at
+   speed (song frames per output frame). restart != 0 starts afresh at *position (a song frame); otherwise it plays on
+   from where the last call stopped. *position becomes the song frame after the last one rendered. Returns the frames
+   rendered: frame_count, or 0 on failure. */
+WADDAMBURO_MEDIA_API int32_t WADDAMBURO_MEDIA_CALL
+waddamburo_media_stretch_render(
+    waddamburo_media_stretch *stretch,
+    const float *pcm,
+    int64_t pcm_frame_count,
+    double speed,
+    int32_t restart,
+    double *position,
+    float *output,
+    int32_t frame_count);
 
 #ifdef __cplusplus
 }

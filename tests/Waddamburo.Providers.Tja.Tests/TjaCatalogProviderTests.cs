@@ -34,6 +34,46 @@ public sealed class TjaCatalogProviderTests
     }
 
     [Fact]
+    public async Task DecimalAndPlusLevelsKeepTheirWholeStars()
+    {
+        using var library = new TemporaryLibrary();
+        library.WriteText("A/song.tja", "TITLE:A\nBPM:120\nCOURSE:Hard\nLEVEL:9+\n#START\n1000,\n#END\n"
+            + "COURSE:Oni\nLEVEL:10.7\n#START\n1000,\n#END\nCOURSE:Edit\nLEVEL:12.888\n#START\n1000,\n#END\n");
+        var provider = new TjaCatalogProvider(library.Path);
+        var song = Assert.Single((await provider.ScanAsync(null, CancellationToken.None)).Songs);
+        Assert.Equal([(TaikoCourse.Hard, 9), (TaikoCourse.Oni, 10), (TaikoCourse.Ura, 10)],
+            song.Charts.OrderBy(static chart => chart.Course).Select(static chart => (chart.Course!.Value, chart.Level ?? 0)));
+        var ura = song.Charts.Single(static chart => chart.Course == TaikoCourse.Ura);
+        Assert.Equal(12, (await provider.LoadChartAsync(ura.Key, ura.ChartAsset)).Level);
+    }
+
+    [Fact]
+    public async Task LyricsComeFromLyricCommandsOrTheLrcFileInChartTime()
+    {
+        using var library = new TemporaryLibrary();
+        // 120 BPM: a measure is 2 s. #LYRIC at the second measure; "\n" breaks the line; an empty one clears.
+        library.WriteText("A/song.tja", "TITLE:A\nBPM:120\nCOURSE:Oni\n#START\n1000,\n#LYRIC first\\nsecond\n1000,\n#LYRIC\n1000,\n#END\n");
+        // OFFSET -1: chart time = audio time - 1 s; [offset:500] moves the lines half a second sooner.
+        library.WriteText("B/song.tja", "TITLE:B\nBPM:120\nOFFSET:-1\nLYRICS:song.lrc\nCOURSE:Oni\n#START\n1000,\n#END\n");
+        library.WriteText("B/song.lrc", "[ar:someone]\n[offset:500]\n[00:03.50][00:05.00]chorus\nno time here\n[00:04.00]verse\n");
+        // C: lyrics in the Ura course only; the Oni chart shows them too.
+        library.WriteText("C/song.tja", "TITLE:C\nBPM:120\nCOURSE:Oni\n#START\n1000,\n#END\nCOURSE:Edit\n#START\n#LYRIC only here\n1000,\n#END\n");
+        var provider = new TjaCatalogProvider(library.Path);
+        var songs = (await provider.ScanAsync(null, CancellationToken.None)).Songs.OrderBy(static song => song.Title.Primary).ToArray();
+        async Task<ChartLyric[]> lyrics(int song)
+        {
+            var chart = Assert.Single(songs[song].Charts);
+            return [.. (await provider.LoadChartAsync(chart.Key, chart.ChartAsset)).Lyrics];
+        }
+
+        Assert.Equal([new(TimeSpan.FromSeconds(2), "first\nsecond"), new(TimeSpan.FromSeconds(4), "")], await lyrics(0));
+        Assert.Equal([new(TimeSpan.FromSeconds(2), "chorus"), new(TimeSpan.FromSeconds(2.5), "verse"), new(TimeSpan.FromSeconds(3.5), "chorus")],
+            await lyrics(1));
+        foreach (var chart in songs[2].Charts)
+            Assert.Equal([new(TimeSpan.Zero, "only here")], [.. (await provider.LoadChartAsync(chart.Key, chart.ChartAsset)).Lyrics]);
+    }
+
+    [Fact]
     public async Task FolderPrivacyIsCheckedFreshForEveryChartWithoutChangingChartContent()
     {
         using var library = new TemporaryLibrary();
@@ -244,6 +284,7 @@ public sealed class TjaCatalogProviderTests
         library.WriteText("Good/healthy.tja", "TITLE:Healthy\nBPM:120\nCOURSE:Oni\n#START\n1000,\n#END\n");
         library.WriteText("Bad/no-chart.tja", "TITLE:No chart\nBPM:120\nWAVE:missing.ogg\n");
         library.WriteText("Bad/no-course.tja", "TITLE:No course\nBPM:120\n#START\n1000,\n#END\n");
+        library.WriteText("Bad/zero-bpm.tja", "TITLE:Zero BPM\nBPM:0\nCOURSE:Oni\n#START\n1000,\n#END\n");
         library.WriteBytes("Bad/oversized.tja", new byte[65]);
         var provider = new TjaCatalogProvider(
             library.Path,
@@ -254,6 +295,7 @@ public sealed class TjaCatalogProviderTests
         Assert.Equal("Healthy", Assert.Single(contribution.Songs).Title.Primary);
         Assert.Contains(contribution.Diagnostics, diagnostic => diagnostic.Code == "TJA_AUDIO_UNSPECIFIED");
         Assert.Contains(contribution.Diagnostics, diagnostic => diagnostic.Code == "TJA_NO_SUPPORTED_CHARTS");
+        Assert.Contains(contribution.Diagnostics, diagnostic => diagnostic.Code == "TJA_FILE_INVALID" && diagnostic.Message.Contains("zero-bpm"));
         Assert.Contains(contribution.Diagnostics, diagnostic => diagnostic.Code == "TJA_FILE_TOO_LARGE");
     }
 
@@ -576,6 +618,40 @@ public sealed class TjaCatalogProviderTests
         var balloon = Assert.Single(chart.LongNotes);
         Assert.Equal((PlayableLongNoteKind.Balloon, 5), (balloon.Kind, balloon.RequiredHits));
         await Assert.ThrowsAsync<NotSupportedException>(() => loadSynthetic("#GAMETYPE Konga\n1,"));
+    }
+
+    [Fact]
+    public async Task NegativeTempoAndMeasureKeepTheirPaceAndReverseTheScroll()
+    {
+        // YataiDON/OpenTaiko: -120 BPM over -4/4 lasts a 4/4 measure at 120. By time the notes come from the other
+        // side; by beat (#HBSCROLL/#BMSCROLL) the count runs down, so the lane slides back.
+        var chart = await loadSynthetic("#MEASURE -4/4\n#BPMCHANGE -120\n1,\n#MEASURE 4/4\n#BPMCHANGE 120\n1,\n"
+            + "#HBSCROLL\n#MEASURE -4/4\n#BPMCHANGE -120\n1,\n#MEASURE 4/4\n#BPMCHANGE 120\n1,");
+        Assert.Equal([0d, 2d, 4d, 6d], chart.HitObjects.Select(n => n.StartTime.TotalSeconds));
+        Assert.Equal([(0d, -1d, false), (2d, 1d, false), (4d, 1d, true)], chart.ScrollPoints.Select(p => (p.Time.TotalSeconds, p.Multiplier, p.ByBeat)));
+        Assert.Equal(-4, chart.Effects.BeatAt(TimeSpan.FromSeconds(2)));
+        Assert.Equal(-4, chart.Effects.BeatAt(TimeSpan.FromSeconds(6)));
+        Assert.Equal(0, chart.Effects.BeatAt(TimeSpan.FromSeconds(8)));
+    }
+
+    [Fact]
+    public async Task CameraCommandsBecomeCameraChanges()
+    {
+        // 120 BPM: a measure is 2 s. A START sets its from value, then eases to its to value until its END.
+        var chart = await loadSynthetic("#BORDERCOLOR 255,128,0\n#CAMZOOM 2\n#CAMROTATIONSTART 0,90,OUT,CUBIC\n1,\n#CAMROTATIONEND\n"
+            + "#CAMHMOVESTART 10,-20\n1,\n#CAMRESET\n#CAMVSCALE oops\n1,");
+        var mods = chart.Effects.Mods;
+        Assert.All(mods, change => Assert.Equal("camera", change.Target));
+        Assert.Equal(2, ChartMods.ValueAt([.. mods.Where(m => m.Property == "scale")], TimeSpan.FromSeconds(1), 1));
+        var rotation = mods.Where(m => m.Property == "rotation").ToArray();
+        Assert.Equal((TimeSpan.FromSeconds(2), ChartEase.OutCubic), (rotation[1].Length, rotation[1].Ease));
+        Assert.Equal(90 * 0.875, ChartMods.ValueAt(rotation, TimeSpan.FromSeconds(1), 0), 9);
+        // No #CAMHMOVEEND: the move ends at once; #CAMRESET puts every property back, a bad value is skipped.
+        Assert.Equal(-20, ChartMods.ValueAt([.. mods.Where(m => m.Property == "x")], TimeSpan.FromSeconds(3), 0));
+        Assert.Equal(1, ChartMods.ValueAt([.. mods.Where(m => m.Property == "scale")], TimeSpan.FromSeconds(5), 1));
+        Assert.DoesNotContain(mods, m => m.Property == "scaley" && m.Value != 1);
+        // #BORDERCOLOR outlives #CAMRESET.
+        Assert.Equal(128, ChartMods.ValueAt([.. mods.Where(m => m.Property == "bordergreen")], TimeSpan.FromSeconds(5), 0));
     }
 
     [Fact]

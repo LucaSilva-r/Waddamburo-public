@@ -2,7 +2,7 @@ using System.Runtime.InteropServices;
 
 namespace Waddamburo.Platform.Sdl.Media;
 
-/// <summary>Sequential RGBA8 frames of a movie file (PAMF/MPEG program stream with H.264).</summary>
+/// <summary>RGBA8 frames of a movie file (PAMF, or a background video: MP4, AVI, FLV, MKV, WMV...), at most 720 lines high.</summary>
 public sealed unsafe class NativeVideoDecoder : IDisposable
 {
     private nint _handle;
@@ -31,9 +31,9 @@ public sealed unsafe class NativeVideoDecoder : IDisposable
         Duration = info.DurationMicroseconds < 0 ? null : TimeSpan.FromMicroseconds(info.DurationMicroseconds);
     }
 
-    public uint Width { get; }
+    public uint Width { get; private set; }
 
-    public uint Height { get; }
+    public uint Height { get; private set; }
 
     public TimeSpan? Duration { get; }
 
@@ -51,6 +51,33 @@ public sealed unsafe class NativeVideoDecoder : IDisposable
                 MediaResult.EndOfStream => false,
                 _ => throw new IOException($"Video decoding failed ({result})."),
             };
+        }
+    }
+
+    /// <summary>The next <see cref="TryReadFrame"/> returns the first frame at or after <paramref name="time"/>.</summary>
+    public void Seek(TimeSpan time)
+    {
+        ObjectDisposedException.ThrowIf(_handle == 0, this);
+        var result = NativeMediaMethods.VideoSeek(_handle, (long)time.TotalMicroseconds);
+        if (result != MediaResult.Ok)
+            throw new IOException($"Video seeking failed ({result}).");
+    }
+
+    /// <summary>Frames come out at most <paramref name="height"/> lines high (the shape kept); before the first frame.</summary>
+    public void LimitHeight(uint height)
+    {
+        ObjectDisposedException.ThrowIf(_handle == 0, this);
+        if (NativeMediaMethods.VideoLimitHeight(_handle, height, out var width, out var limited) == MediaResult.Ok)
+            (Width, Height) = (width, limited);
+    }
+
+    /// <summary>True: B-frames (nothing refers to them) are not decoded, for a decoder running late.</summary>
+    public bool SkipUnreferenced
+    {
+        set
+        {
+            ObjectDisposedException.ThrowIf(_handle == 0, this);
+            NativeMediaMethods.VideoSkipUnreferenced(_handle, value ? 1 : 0);
         }
     }
 

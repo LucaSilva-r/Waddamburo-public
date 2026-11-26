@@ -480,7 +480,7 @@ internal sealed class FilePreview : IDisposable
     {
         _pointerX = x;
         _drag = DragTarget.None;
-        if (_movie is { } movie && x >= 420f / 1280 && x <= 1240f / 1280
+        if (_movie is not null && x >= 420f / 1280 && x <= 1240f / 1280
             && y >= 577f / 720 && y <= 610f / 720)
         {
             _drag = DragTarget.Timeline;

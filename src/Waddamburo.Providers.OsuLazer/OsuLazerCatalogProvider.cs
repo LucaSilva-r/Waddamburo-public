@@ -11,9 +11,13 @@ namespace Waddamburo.Providers.OsuLazer;
 public sealed class OsuLazerCatalogProvider : ISongCatalogProvider, ICatalogAssetResolver, IPlayableChartProvider, IChartUploadPolicyProvider
 {
     private readonly string _root;
+
+    /// <summary>The data folder (lazer) or install (stable) it reads.</summary>
+    public string Root => _root;
     private readonly bool _stable;
     // osu!stable: where each file id lives (lazer's store is laid out by id instead).
     private IReadOnlyDictionary<string, string> _stableFiles = new Dictionary<string, string>();
+    private Dictionary<string, IReadOnlyDictionary<string, string>> _setFiles = new Dictionary<string, IReadOnlyDictionary<string, string>>();
 
     /// <summary>Reads lazer's data folder (with client.realm and files/), see <see cref="FindDataFolder"/>.</summary>
     public OsuLazerCatalogProvider(string dataFolder, CatalogProviderId? id = null)
@@ -23,6 +27,8 @@ public sealed class OsuLazerCatalogProvider : ISongCatalogProvider, ICatalogAsse
         _stable = OsuStableReader.IsInstall(_root);
         Id = id ?? new CatalogProviderId(_stable ? "osu-stable" : "osu-lazer");
     }
+
+    public string? StableSongsFolder { get; init; }
 
     public CatalogProviderId Id { get; }
 
@@ -90,10 +96,19 @@ public sealed class OsuLazerCatalogProvider : ISongCatalogProvider, ICatalogAsse
         progress?.Report(new CatalogScanProgress(Id, _stable ? "osu!.db" : "realm", 0, null));
         OsuLazerSnapshot snapshot;
         if (_stable)
-            (snapshot, _stableFiles) = OsuStableReader.Read(_root);
+            (snapshot, _stableFiles) = OsuStableReader.Read(_root, StableSongsFolder);
         else
             snapshot = OsuLazerRealmReader.Read(Path.Combine(_root, "client.realm"));
         cancellationToken.ThrowIfCancellationRequested();
+        // Each chart's set files by name, for the video its .osu names (read when the chart is played).
+        _setFiles = snapshot.BeatmapSets.SelectMany(static set =>
+            {
+                var files = set.Files.GroupBy(static file => file.Filename.Replace('\\', '/'), StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(static group => group.Key, static group => group.First().Hash, StringComparer.OrdinalIgnoreCase);
+                return set.Beatmaps.Select(beatmap => (beatmap.FileHash, files));
+            })
+            .GroupBy(static entry => entry.FileHash, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(static group => group.Key, static group => (IReadOnlyDictionary<string, string>)group.First().files, StringComparer.OrdinalIgnoreCase);
         var contribution = CreateContribution(snapshot, Id, Source);
         progress?.Report(new CatalogScanProgress(Id, "complete", contribution.Songs.Length, contribution.Songs.Length));
         return ValueTask.FromResult(contribution);
@@ -216,7 +231,11 @@ public sealed class OsuLazerCatalogProvider : ISongCatalogProvider, ICatalogAsse
         if (parts is not ["chart", var hash, var levelText] || !int.TryParse(levelText, out var level))
             throw new ArgumentException("Not an osu!lazer chart asset.", nameof(asset));
         var text = await File.ReadAllTextAsync(storePath(hash), cancellationToken).ConfigureAwait(false);
-        return OsuTaikoChartReader.Read(text, chart, level);
+        var playable = OsuTaikoChartReader.Read(text, chart, level);
+        if (OsuTaikoChartReader.Video(text) is var (file, offset) && _setFiles.TryGetValue(hash, out var files)
+            && files.TryGetValue(file, out var videoHash) && isHash(videoHash) && storePath(videoHash) is var path && File.Exists(path))
+            playable = playable with { Video = new ChartVideo(path, offset) };
+        return playable;
     }
 
     // lazer's file store: files/<h>/<hh>/<sha-256>; stable's files by the ids its scan gave them.

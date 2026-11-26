@@ -15,6 +15,7 @@ public sealed class TaikoLumenPresentation
     private readonly int _flightsAt; // foreground index the hit flights are drawn at
     private readonly IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer> _notes;
     private readonly IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer>? _handNotes;
+    private readonly IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer>? _sparkleNotes;
     private readonly IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer>? _synchroNotes;
     private readonly LumenSceneLayer? _rareNote;
     private readonly LumenSceneLayer? _kadonNote;
@@ -43,6 +44,7 @@ public sealed class TaikoLumenPresentation
         IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer>? handNotes = null,
         IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer>? synchroNotes = null,
         LumenSceneLayer? rareNote = null,
+        IReadOnlyDictionary<PlayableNoteKind, LumenSceneLayer>? sparkleNotes = null,
         LumenSceneLayer? kadonNote = null,
         IReadOnlyDictionary<string, LumenSceneLayer>? noteTexts = null,
         LumenSceneLayer? branchBar = null,
@@ -61,6 +63,7 @@ public sealed class TaikoLumenPresentation
         _roles = roles;
         _handNotes = handNotes;
         _synchroNotes = synchroNotes;
+        _sparkleNotes = sparkleNotes;
         _chart = chart;
         _judgement = judgement;
         _background = background.ToArray();
@@ -90,6 +93,13 @@ public sealed class TaikoLumenPresentation
         _layout = new ChartModValues(chart.Effects.Layout);
         _stage = new StageEffects(_mods, _geometry, targetMoves: !chart.Effects.JudgeMoves.IsEmpty, _layout);
         StageEffects.Prime(_background.Concat(_foreground));
+        // ponytail: only the gauge has a separate part movie; share more pivots here if another element gets one.
+        var layers = _background.Concat(_foreground).ToArray();
+        LumenSceneLayer? withRole(Func<string, bool> wanted) => layers.FirstOrDefault(layer =>
+            _roles?.GetValueOrDefault(layer.Player) is { } role && wanted(role));
+        if (withRole(static role => role.StartsWith("gage_don_1p_", StringComparison.Ordinal)) is { } gauge
+            && withRole(static role => role == "gage_fire_1p") is { } fire)
+            StageEffects.SharePivot(gauge, fire);
         judgement.Judged += onJudged;
     }
 
@@ -235,9 +245,13 @@ public sealed class TaikoLumenPresentation
     public bool ComboHidden => (_roles ?? new Dictionary<LumenPlayer, string>()).Any(static pair => StageEffects.TargetOf(pair.Value) == "combo"
         && !pair.Key.CreateRenderSnapshot().Quads.Any(static quad => quad.MultiplyColor.Alpha > 0));
 
+    /// <summary>The camera as the last <see cref="CreateLayers"/> placed the lane (<see cref="StageEffects.Camera"/>).</summary>
+    public (LumenMatrix Matrix, float Red, float Green, float Blue)? Camera { get; private set; }
+
     public (List<LumenSceneLayer> Back, List<LumenSceneLayer> Front) CreateLayers(TimeSpan time,
         LumenSceneLayer? character = null, int characterSlot = 0)
     {
+        Camera = _stage.IsActive ? _stage.Camera(time) : null;
         var layers = new List<LumenSceneLayer>(_background);
         if (character is { } don)
             layers.Insert(Math.Clamp(characterSlot, 0, layers.Count), don);
@@ -271,13 +285,16 @@ public sealed class TaikoLumenPresentation
             var note = _chart.HitObjects[index];
             if (!PlayableChart.IsOn(note.Branch, _judgement.BranchAt(note.StartTime))) continue;
             // Hand notes get their own movie when the scene has one (two players), else the big note's.
-            var template = note.IsKadon && _kadonNote is { } kadon ? kadon
+            var template = note.IsSparkle && _sparkleNotes?.GetValueOrDefault(note.Kind) is { } sparkle ? sparkle
+                : note.IsKadon && _kadonNote is { } kadon ? kadon
                 : note.IsRare && _rareNote is { } rare ? rare
                 : note.IsSynchro && _synchroNotes?.GetValueOrDefault(note.Kind) is { } synchro ? synchro
                 : note.IsHand && _handNotes?.GetValueOrDefault(note.Kind) is { } hand ? hand
                 : _notes[note.Kind];
             var control = NoteGeometry.ScrollTime(note);
             addAt(hitNotes, template, note.StartTime, time, note.Branch, hitNote: true, controlTime: control);
+            if (note.IsGiant && hitNotes.Count != 0)
+                hitNotes[0] = hitNotes[0] with { Transform = giant(hitNotes[0].Transform) };
             if (hitNotes.Count != 0 && !Doron) notes.Add((_chart.HitObjects[index].StartTime, hitNotes[0]));
             // Traced: each note spawns an onp_moji clone (ドン/カッ label) 82 px below it that scrolls with it.
             if (_noteTexts?.GetValueOrDefault(_noteLabels[index]) is { } text)
@@ -337,6 +354,17 @@ public sealed class TaikoLumenPresentation
     {
         if (_geometry.Place(noteTime, time, route, yOffset, hitNote, barLine, controlTime) is { } placed)
             layers.Add(template with { Transform = placed.Transform, Alpha = placed.Alpha });
+    }
+
+    // 太鼓の達人Wii's giant note: the big note's art scaled up, rolling (turned by the distance it travelled over its
+    // radius) as it comes. ponytail: sizes eyeballed from Wii footage (giant ≈ 3 small notes wide); tune here.
+    private const float GiantScale = 2f, GiantRadius = 95f;
+
+    private LumenMatrix giant(LumenMatrix placed)
+    {
+        var turn = (placed.X - _geometry.HitX) / GiantRadius;
+        var (cos, sin) = (GiantScale * MathF.Cos(turn), GiantScale * MathF.Sin(turn));
+        return new LumenMatrix(cos, sin, -sin, cos, 0, 0).Then(placed);
     }
 
     // When each note and bar is on the lane, so a frame skips the rest of a chart with one comparison each.

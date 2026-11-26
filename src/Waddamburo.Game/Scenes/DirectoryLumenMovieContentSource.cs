@@ -99,6 +99,7 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
     private LumenMovieContent decoded(string archiveId, LumenMovieContent content)
     {
         Decoded?.Invoke(archiveId, content);
+        content.HashTextures();
         return content;
     }
 
@@ -120,12 +121,30 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
         _prefetched = fresh;
     }
 
+    private (string ArchiveId, Task<DdpArchive> Archive)? _warmArchive;
+
+    /// <summary>
+    /// Decodes one movie on a worker thread, outside the prefetch (screens loaded ahead one movie at a time; the caller
+    /// keeps the result). The last archive read is kept for the next call (one package's movies come in a row).
+    /// </summary>
+    public Task<LumenMovieContent> Decode(string archiveId, string movieId)
+    {
+        if (_warmArchive is not { } last || last.ArchiveId != archiveId)
+            _warmArchive = last = (archiveId, Task.Run(() => DdpArchive.Open(File.ReadAllBytes(resolveArchivePath(archiveId)), _limits)));
+        return last.Archive.ContinueWith(task => decoded(archiveId,
+                LumenMovieContent.Load(task.GetAwaiter().GetResult().OpenMovie(movieId), _limits, KeepCompressed)),
+            CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
+    }
+
+    /// <summary>Lets go of the archive <see cref="Decode"/> kept (its movies are all decoded).</summary>
+    public void ForgetDecodeArchive() => _warmArchive = null;
+
     /// <summary>Every prefetched movie not yet taken is decoded (or failed, which its load reports).</summary>
     public bool PrefetchComplete => _prefetched.Values.All(static task => task.IsCompleted);
 
     /// <summary>Prefetched movies already decoded and not yet taken by a load.</summary>
-    public IEnumerable<LumenMovieContent> DecodedPrefetches => _prefetched.Values
-        .Where(static task => task.IsCompletedSuccessfully).Select(static task => task.Result);
+    public IEnumerable<((string ArchiveId, string MovieId) Key, LumenMovieContent Content)> DecodedPrefetches => _prefetched
+        .Where(static pair => pair.Value.IsCompletedSuccessfully).Select(static pair => (pair.Key, pair.Value.Result));
 
     /// <summary>Drops these prefetched movies (their pixels were freed after an upload since released).</summary>
     public void Forget(IReadOnlyCollection<LumenMovieContent> contents)
@@ -188,7 +207,7 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
             var length = new FileInfo(archivePath).Length;
             if (length > owner._limits.MaxFileBytes)
                 throw new InvalidDataException($"Archive '{archiveId}' exceeds the configured {owner._limits.MaxFileBytes}-byte limit.");
-            var profile = Environment.GetEnvironmentVariable("WADDAMBURO_PROFILE") == "1";
+            var profile = DiagnosticSwitches.Profile;
             var start = profile ? Stopwatch.GetTimestamp() : 0;
             var reused = _archives.TryGetValue(archivePath, out var archive);
             if (!reused)

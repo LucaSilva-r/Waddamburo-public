@@ -38,7 +38,7 @@ Both put the libraries in `out/build/native/<rid>/<preset>/stage/Release/`, and 
 
 ## 1. Install the .NET SDK
 
-`global.json` pins the SDK to **exactly 10.0.201** (`rollForward: disable`). With any other
+`global.json` pins the SDK to **exactly 10.0.404** (`rollForward: disable`). With any other
 SDK version every `dotnet` command fails with "A compatible .NET SDK was not found".
 Install it next to any others:
 
@@ -46,7 +46,7 @@ Install it next to any others:
 # Windows (PowerShell)
 New-Item -ItemType Directory -Force out/tools | Out-Null
 Invoke-WebRequest https://dot.net/v1/dotnet-install.ps1 -OutFile out/tools/dotnet-install.ps1
-powershell -ExecutionPolicy Bypass -File out/tools/dotnet-install.ps1 -Version 10.0.201 -InstallDir "$env:LOCALAPPDATA\Microsoft\dotnet"
+powershell -ExecutionPolicy Bypass -File out/tools/dotnet-install.ps1 -Version 10.0.404 -InstallDir "$env:LOCALAPPDATA\Microsoft\dotnet"
 $env:DOTNET_ROOT = "$env:LOCALAPPDATA\Microsoft\dotnet"
 $env:PATH = "$env:DOTNET_ROOT;$env:PATH"
 ```
@@ -55,16 +55,16 @@ $env:PATH = "$env:DOTNET_ROOT;$env:PATH"
 # Linux
 mkdir -p out/tools
 curl -fsSL https://dot.net/v1/dotnet-install.sh -o out/tools/dotnet-install.sh
-bash out/tools/dotnet-install.sh --version 10.0.201 --install-dir "$HOME/.dotnet"
+bash out/tools/dotnet-install.sh --version 10.0.404 --install-dir "$HOME/.dotnet"
 export DOTNET_ROOT="$HOME/.dotnet"
 export PATH="$DOTNET_ROOT:$PATH"
 ```
 
 These environment variables apply to the current terminal. Set them again in a new
-terminal, or add them to your shell profile. Alternatively, use the 10.0.201 SDK
+terminal, or add them to your shell profile. Alternatively, use the 10.0.404 SDK
 installer from <https://dotnet.microsoft.com/download/dotnet/10.0>.
 
-Before continuing, `dotnet --version` in the repository folder must print `10.0.201`.
+Before continuing, `dotnet --version` in the repository folder must print `10.0.404`.
 
 ## 2. Get the native libraries and run
 
@@ -94,7 +94,8 @@ dotnet build Waddamburo.slnx -c Release --no-restore
 The downloaded libraries belong to the latest release (`-Release vX.Y.Z` / an `vX.Y.Z`
 argument picks another). If the native code changed since then, the game reports that the
 media library or the text rasterizer "has an incompatible ABI": build the libraries
-yourself (below). Their licenses are in `licenses.zip` on the same release.
+yourself (below). Their licenses are in `licenses.zip`, inside the same release's
+`Waddamburo.sources-and-licenses.zip`.
 
 If the game says "The FFmpeg decoder backend is not built" or "built without FFmpeg", it
 is using libraries without FFmpeg: run the fetch script (or the package preset), then
@@ -108,10 +109,10 @@ CMake must be 3.25 or newer (Ubuntu 22.04's is too old).
 
 ```sh
 # Ubuntu / Debian
-sudo apt install build-essential cmake ninja-build make pkg-config curl python3 \
+sudo apt install build-essential cmake ninja-build make pkg-config curl python3 nasm \
     libx11-dev libgl-dev libwayland-dev
 # Fedora
-sudo dnf install gcc gcc-c++ cmake ninja-build make pkgconf curl python3 \
+sudo dnf install gcc gcc-c++ cmake ninja-build make pkgconf curl python3 nasm \
     libX11-devel mesa-libGL-devel wayland-devel
 
 cd native
@@ -119,6 +120,10 @@ cmake --preset linux-package
 cmake --build --preset linux-package
 cd ..
 ```
+
+On an arm64 machine (Raspberry Pi 5, Asahi, ARM servers) use the `linux-arm64-package` preset
+instead; it builds natively, there is no cross build. `nasm` is not needed there. The arm64
+build has no ImGui editor overlays (ImGui.NET ships no linux-arm64 library).
 
 ### Windows (MSYS2)
 
@@ -130,7 +135,7 @@ The Windows libraries are built with mingw-w64, the same compiler as the release
 
    ```sh
    pacman -S --needed make mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake \
-       mingw-w64-x86_64-ninja mingw-w64-x86_64-pkgconf
+       mingw-w64-x86_64-ninja mingw-w64-x86_64-pkgconf mingw-w64-x86_64-nasm
    ```
 
 3. In the same MINGW64 shell, build in your checkout:
@@ -147,6 +152,60 @@ The Windows libraries are built with mingw-w64, the same compiler as the release
 
 Run the `cmake --build` line again after changing native code.
 
+### macOS (Apple Silicon)
+
+Install the Command Line Tools (`xcode-select --install`) and, with [Homebrew](https://brew.sh),
+`brew install cmake ninja pkgconf`. Then:
+
+```sh
+cd native
+cmake --preset macos-package
+cmake --build --preset macos-package
+cd ..
+dotnet run --project src/Waddamburo.App -c Release -- "/path/to/USRDIR"
+```
+
+`eng/package.sh macos` builds the ad-hoc signed `Waddamburo.app` and
+`out/package/Waddamburo-macos-arm64.zip`. Without a Developer ID signature, macOS asks once:
+right-click the app and choose Open. macOS releases do not update themselves yet.
+
+### iOS
+
+On the Mac, with Xcode (the version the .NET `ios` workload asks for) and `dotnet workload install ios`:
+
+```sh
+cd native
+cmake --preset ios-package
+cmake --build --preset ios-package
+cd ..
+eng/package.sh ios   # out/package/Waddamburo.ipa, unsigned (NativeAOT)
+```
+
+Players sideload the IPA (SideStore, AltStore, TrollStore), which signs it with their own Apple ID.
+To run your own build on a device, sign it with your Apple ID's Personal Team: build once from an
+empty Xcode project to get its certificate and profile, then
+`dotnet publish src/Waddamburo.iOS -c Release -p:ApplicationId=<its bundle ID> "-p:CodesignKey=Apple Development: …" "-p:CodesignProvision=iOS Team Provisioning Profile: <its bundle ID>"`
+and `xcrun devicectl device install app`. The game's folders (Green, Custom Songs) are in the
+app's Documents, reachable from the Files app.
+
+### Windows on Arm
+
+The arm64 libraries are cross-built on Linux with [llvm-mingw](https://github.com/mstorsjo/llvm-mingw)
+(gcc's mingw has no arm64 target). Put its `bin` folder on `PATH`, then
+`eng/package.sh windows-arm64` builds the `windows-arm64-package` preset and
+`out/package/Waddamburo-arm64.exe`.
+
+### Android
+
+The Android app has its own toolchain (Android SDK and NDK, JDK 21, .NET's Android workload) and build steps: see
+[docs/development/android.md](docs/development/android.md).
+
+### Nintendo Switch (homebrew)
+
+`platforms/switch/build.sh` builds `out/package/Waddamburo.nro` with the .NET SDK and Docker (devkitPro's devkitA64
+image); `eng/package.sh switch` adds its notices and FFmpeg relink archive. How it works and how to test on a console:
+[platforms/switch/README.md](platforms/switch/README.md).
+
 ## Release files (`eng/package.sh`)
 
 `eng/package.sh` builds what is published on the
@@ -161,7 +220,7 @@ to this shell's path too:
 ```sh
 cd /c/path/to/Waddamburo-public
 export PATH="$(cygpath -u "$LOCALAPPDATA")/Microsoft/dotnet:$PATH"
-dotnet --version            # must report 10.0.201
+dotnet --version            # must report 10.0.404
 ./eng/package.sh windows    # out/package/Waddamburo.exe and native-win-x64.zip
 cp out/package/Waddamburo.exe /c/path/to/game/USRDIR/
 ```

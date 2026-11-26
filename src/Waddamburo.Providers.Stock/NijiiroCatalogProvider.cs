@@ -29,6 +29,9 @@ public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICata
 
     private readonly string _root;
     public CatalogMetadataCache? MetadataCache { get; init; }
+    public bool ConvertedAudio { get; init; }
+    public IReadOnlyList<NijiiroKeys> AlternateKeys { get; init; } = [];
+    public NijiiroKeys Keys => _keys;
     private readonly NijiiroKeys _keys;
     private Dictionary<string, int[]> _stars = [];
 
@@ -113,9 +116,9 @@ public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICata
     public ValueTask<SongCatalogContribution> ScanAsync(IProgress<CatalogScanProgress>? progress, CancellationToken cancellationToken)
     {
         // The key hash keeps installs opened with different keys apart; the keys themselves are not stored.
-        using var cached = MetadataCache?.Open(_root, "nijiiro-v1-" +
+        using var cached = MetadataCache?.Open(_root, (ConvertedAudio ? "nijiiro-opus-v1-" : "nijiiro-v1-") +
             Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
-                [.. _keys.Datatable ?? [], .. _keys.Fumen ?? []])), sourceTree: true, within: ["fumen", "sound"], cancellationToken);
+                [.. allKeys().SelectMany(static keys => (keys.Datatable ?? []).Concat(keys.Fumen ?? []))])), sourceTree: true, within: ["fumen", "sound"], cancellationToken);
         progress?.Report(new CatalogScanProgress(Id, "discover", 0, null));
         var diagnostics = new List<CatalogDiagnostic>();
         var music = musicinfo();
@@ -145,7 +148,7 @@ public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICata
             var audio = audioPath(id);
             if (!(cached?.Exists(audio) ?? File.Exists(audio)))
             {
-                diagnostics.Add(warning("NIJIIRO_AUDIO_MISSING", $"Song '{id}' has no song_{id}.nus3bank."));
+                diagnostics.Add(warning("NIJIIRO_AUDIO_MISSING", $"Song '{id}' has no music file."));
                 continue;
             }
             var key = new SongKey(Source, id);
@@ -184,7 +187,8 @@ public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICata
                 null,
                 charts,
                 new CatalogAssetKey(Id, $"audio:{id}"),
-                cached is null ? previewStart(audio) : cached.Read(audio, "preview", () => previewStart(audio), NijiiroCacheJsonContext.Default.NullableTimeSpan),
+                ConvertedAudio ? convertedPreview(audio) : cached is null ? BankPreviewStart(audio)
+                    : cached.Read(audio, "preview", () => BankPreviewStart(audio), NijiiroCacheJsonContext.Default.NullableTimeSpan),
                 subtitle.Japanese)
             {
                 EnglishSubtitle = subtitle.English,
@@ -215,25 +219,17 @@ public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICata
     public ValueTask<Stream> OpenReadAsync(CatalogAssetKey asset, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(asset);
-        if (asset.Provider != Id || asset.StableId.Split(':') is not ["audio", var id] || !SongId().IsMatch(id))
-            throw new ArgumentException("The asset is not Nijiiro music of this provider.", nameof(asset));
-        // A FileStream: the decoder hands its path to vgmstream-cli for G.719 banks.
-        Stream stream = new FileStream(audioPath(id), FileMode.Open, FileAccess.Read, FileShare.Read, 64 * 1024,
-            FileOptions.Asynchronous | FileOptions.SequentialScan);
-        return ValueTask.FromResult(stream);
+        cancellationToken.ThrowIfCancellationRequested();
+        var path = asset.Provider == Id && asset.StableId.Split(':') is ["audio", var id] && SongId().IsMatch(id)
+            ? audioPath(id) : resolveChart(asset).Path;
+        return ValueTask.FromResult<Stream>(new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 64 * 1024,
+            FileOptions.Asynchronous | FileOptions.SequentialScan));
     }
 
     public async ValueTask<PlayableChart> LoadChartAsync(ChartKey chart, CatalogAssetKey asset, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(chart);
-        ArgumentNullException.ThrowIfNull(asset);
-        if (asset.Provider != Id || asset.StableId.Split(':') is not ["chart", var id, [var letter], .. var player]
-            || !SongId().IsMatch(id) || !Courses.Contains(letter, StringComparison.Ordinal)
-            || player is not ([] or ["1" or "2"]))
-            throw new ArgumentException("The asset is not a Nijiiro chart of this provider.", nameof(asset));
-        var path = chartPath(id, letter, player is [var side] ? "_" + side : "");
-        if (!File.Exists(path))
-            path = chartPath(id, letter, "");
+        var (path, id, letter) = resolveChart(asset);
         if (new FileInfo(path).Length > MaximumFileBytes)
             throw new InvalidDataException("The selected fumen exceeds the chart-size limit.");
         var bytes = unpack(await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false), table: false);
@@ -242,6 +238,17 @@ public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICata
         {
             Level = _stars.TryGetValue(id, out var levels) && levels[course] > 0 ? levels[course] : null,
         };
+    }
+
+    private (string Path, string Id, char Course) resolveChart(CatalogAssetKey asset)
+    {
+        ArgumentNullException.ThrowIfNull(asset);
+        if (asset.Provider != Id || asset.StableId.Split(':') is not ["chart", var id, [var letter], .. var player]
+            || !SongId().IsMatch(id) || !Courses.Contains(letter, StringComparison.Ordinal)
+            || player is not ([] or ["1" or "2"]))
+            throw new ArgumentException("The asset is not a Nijiiro chart of this provider.", nameof(asset));
+        var path = chartPath(id, letter, player is [var side] ? "_" + side : "");
+        return (File.Exists(path) ? path : chartPath(id, letter, ""), id, letter);
     }
 
     // The hardest chart's tempo and length, for the bpm/length search and BPM grouping.
@@ -262,7 +269,7 @@ public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICata
     private string chartPath(string id, char course, string player) =>
         Path.Combine(_root, "fumen", id, $"{id}_{course}{player}.bin");
 
-    private string audioPath(string id) => Path.Combine(_root, "sound", $"song_{id}.nus3bank");
+    private string audioPath(string id) => Path.Combine(_root, "sound", $"song_{id}" + (ConvertedAudio ? ".ogg" : ".nus3bank"));
 
     // datatable/<name>.json, or the packed .bin; its "items" array.
     // The songs' own gameplay themes: music_attribute's ensoPartsID1 names a music_ensoparts entry, whose
@@ -320,8 +327,10 @@ public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICata
             return data;
         if (data.Length < 32 || data.Length % 16 != 0)
             throw new InvalidDataException("The Nijiiro file is neither plain, gzip nor AES-encrypted.");
-        if ((table ? _keys.Datatable : _keys.Fumen) is { } key)
+        foreach (var keys in allKeys())
         {
+            if ((table ? keys.Datatable : keys.Fumen) is not { } key)
+                continue;
             using var aes = Aes.Create();
             aes.Key = key;
             try
@@ -342,6 +351,8 @@ public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICata
             ? "Nijiiro's data tables are encrypted: put their key in config.cfg's nijiiro_datatable_key (64 hex digits)."
             : "Nijiiro's charts are encrypted: put their key in config.cfg's nijiiro_fumen_key (64 hex digits).");
     }
+
+    private IEnumerable<NijiiroKeys> allKeys() => AlternateKeys.Prepend(_keys);
 
     private static bool isGzip(byte[] data) => data.Length > 2 && data[0] == 0x1f && data[1] == 0x8b;
 
@@ -378,8 +389,19 @@ public sealed partial class NijiiroCatalogProvider : ISongCatalogProvider, ICata
             || BinaryPrimitives.ReadUInt32BigEndian(span[512..]) is > 0 and <= MaximumMeasures;
     }
 
+    private static TimeSpan? convertedPreview(string audio)
+    {
+        try
+        {
+            var cue = audio + ".preview";
+            return File.Exists(cue) && int.TryParse(File.ReadAllText(cue), System.Globalization.CultureInfo.InvariantCulture, out var milliseconds)
+                && milliseconds is >= 0 and < 3_600_000 ? TimeSpan.FromMilliseconds(milliseconds) : null;
+        }
+        catch (IOException) { return null; }
+    }
+
     // The 39.06 single-song bank template keeps its preview cue (ms) at 0x6C4; other layouts start at 0.
-    private static TimeSpan? previewStart(string bank)
+    public static TimeSpan? BankPreviewStart(string bank)
     {
         try
         {

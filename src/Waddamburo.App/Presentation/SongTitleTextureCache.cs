@@ -173,7 +173,7 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
         var rasterKey = new RasterKey(key, rasterScale, _squash());
         if (_resident.TryGetValue(rasterKey, out var cached))
         {
-            touch(rasterKey, cached.Node);
+            touch(cached.Node);
             return cached.Texture;
         }
         if (_failures.TryGetValue(rasterKey, out var failure))
@@ -202,12 +202,15 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
                 _pending.Add(rasterKey, rasterizeAsync(request, profile, rasterScale, rasterKey.Squash));
         }
 
-        var fallback = _leastRecentlyUsed.FirstOrDefault(node => node.Surface == key);
-        if (fallback == default)
-            return null;
-        var fallbackTexture = _resident[fallback];
-        touch(fallback, fallbackTexture.Node);
-        return fallbackTexture.Texture;
+        // Another raster of the same title (another scale) meanwhile; a plain loop, it runs every frame until ready.
+        for (var node = _leastRecentlyUsed.First; node is not null; node = node.Next)
+            if (node.Value.Surface == key)
+            {
+                var fallbackTexture = _resident[node.Value];
+                touch(fallbackTexture.Node);
+                return fallbackTexture.Texture;
+            }
+        return null;
     }
 
     public void Dispose()
@@ -262,7 +265,7 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
             return new RgbaTextSurface(width, height, rgba);
         }
         if (request.Kind == TitleTextureKind.Description)
-            return supersampled(rasterScale, scale => FolderArtPainter.Description(request.Text, _fontPath, request.OutlineRgb, (int)scale, squash));
+            return supersampled(rasterScale, scale => FolderArtPainter.Description(request.Text, _fontPath, request.OutlineRgb, (int)scale));
         if (request.Art is { } art)
             return request.Part == FolderArtPart.Box
                 ? (art.Style is FolderArtStyle.Original or FolderArtStyle.Nijiiro ? _normalModeBox.Value
@@ -318,10 +321,13 @@ internal sealed class SongTitleTextureCache : ISongBoardTextureService, IDisposa
         return new RgbaTextSurface(width, height, pixels);
     }
 
-    private void touch(RasterKey key, LinkedListNode<RasterKey> node)
+    // The same node to the front: no allocation (it ran for every title quad, every frame).
+    private void touch(LinkedListNode<RasterKey> node)
     {
+        if (_leastRecentlyUsed.First == node)
+            return;
         _leastRecentlyUsed.Remove(node);
-        _resident[key] = _resident[key] with { Node = _leastRecentlyUsed.AddFirst(key) };
+        _leastRecentlyUsed.AddFirst(node);
     }
 
     private void evictIfNeeded()

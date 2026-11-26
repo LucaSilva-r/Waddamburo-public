@@ -20,8 +20,12 @@ public sealed partial class StockCatalogProvider : ISongCatalogProvider, ICatalo
     private const int MaximumMeasures = 100_000;
     private const int MaximumNotes = 1_000_000;
     private const string Courses = "enhmx";
+    private const long PlaceholderMusicBytes = 300_000;
 
     private readonly string _root;
+
+    /// <summary>The data folder it reads (full path, no trailing separator).</summary>
+    public string Root => _root;
     public CatalogMetadataCache? MetadataCache { get; init; }
     private CatalogMetadataScope? _scan;
     private bool exists(string path) => _scan?.Exists(path) ?? File.Exists(path);
@@ -128,7 +132,12 @@ public sealed partial class StockCatalogProvider : ISongCatalogProvider, ICatalo
                 if (charts.Length == 0)
                     continue;
                 var bank = "SONG_" + entry.Id.ToUpperInvariant();
-                var hasAudio = exists(Path.Combine(_root, "sound", "bgm", "nub", bank + ".nub"));
+                var nub = Path.Combine(_root, "sound", "bgm", "nub", bank + ".nub");
+                // A withdrawn song's music is replaced by a short placeholder (a metronome; Green: 164352 bytes, the
+                // smallest real song is ~600 KB) while its charts stay: that counts as no music, so an older
+                // install's copy wins the merge.
+                // ponytail: size threshold, a content check if a placeholder ever gets as big as a real song.
+                var hasAudio = exists(nub) && (_scan?.Size(nub) ?? new FileInfo(nub).Length) > PlaceholderMusicBytes;
                 if (!hasAudio)
                     diagnostics.Add(warning("STOCK_AUDIO_MISSING", $"Music id '{entry.Id}' has no installed music."));
                 var extra = StockMetadata.Value.GetValueOrDefault(entry.Id);

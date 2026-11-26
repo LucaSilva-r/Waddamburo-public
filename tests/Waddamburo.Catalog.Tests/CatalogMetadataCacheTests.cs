@@ -57,8 +57,52 @@ public sealed partial class CatalogMetadataCacheTests : IDisposable
         using var connection = new SqliteConnection($"Data Source={Database}");
         connection.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT count(*) FROM file_metadata_v1";
+        command.CommandText = "SELECT count(*) FROM file_metadata_v2";
         Assert.Equal(1L, command.ExecuteScalar());
+    }
+
+    [Fact]
+    public async Task InstallationsStartFromTheLastInventoryAndPickUpChangesOneStartLate()
+    {
+        var cache = new CatalogMetadataCache(Database);
+        CatalogMetadataScope Install() => cache.Open(Root, "v1", sourceTree: true);
+        using (Install()) { } // walked, inventory stored
+        var added = Path.Combine(Root, "new.txt");
+        File.WriteAllText(added, "new");
+        using (var second = Install())
+            Assert.False(second.Exists(added)); // the stored inventory, no walk
+        await cache.Revalidations;
+        using var third = Install();
+        Assert.True(third.Exists(added));
+        using var library = Open(); // user libraries are always walked
+        Assert.True(library.Exists(added));
+    }
+
+    [Fact]
+    public async Task APausedCheckWaitsUntilResumed()
+    {
+        var cache = new CatalogMetadataCache(Database);
+        using (cache.Open(Root, "v1", sourceTree: true)) { }
+        cache.Paused = true;
+        using (cache.Open(Root, "v1", sourceTree: true)) { }
+        await Task.Delay(300);
+        Assert.False(cache.Revalidations.IsCompleted);
+        cache.Paused = false;
+        await cache.Revalidations.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public void AnInstallationLeftOutForOneStartIsWalkedWhenItComesBack()
+    {
+        CatalogMetadataScope Install(CatalogMetadataCache cache) => cache.Open(Root, "v1", sourceTree: true);
+        using (Install(new CatalogMetadataCache(Database))) { }
+        var added = Path.Combine(Root, "new.txt");
+        File.WriteAllText(added, "new");
+        var without = new CatalogMetadataCache(Database); // a start with the library removed
+        using (without.Open(Directory.CreateDirectory(Path.Combine(_directory, "other")).FullName, "v1", sourceTree: true)) { }
+        without.ForgetUnopenedInventories();
+        using var back = Install(new CatalogMetadataCache(Database));
+        Assert.True(back.Exists(added));
     }
 
     [Fact]
@@ -129,7 +173,7 @@ public sealed partial class CatalogMetadataCacheTests : IDisposable
         {
             connection.Open();
             using var command = connection.CreateCommand();
-            command.CommandText = "UPDATE file_metadata_v1 SET json='invalid json'";
+            command.CommandText = "UPDATE file_metadata_v2 SET json='invalid json'";
             command.ExecuteNonQuery();
         }
         using var next = Open();

@@ -171,24 +171,24 @@ internal static class TestMovies
         var code = new List<Avm1Instruction>();
         var offset = 0;
         Avm1Instruction op(byte opcode, Avm1Operand? operand = null, Avm1CodeBlock? body = null) =>
-            new(opcode, offset++, 1, [], operand, null, body);
+            new(opcode, offset++, 1, operand, null, body);
         Avm1Instruction push(params Avm1PushValue[] values) => op(0x96, new Avm1PushOperand([.. values]));
-        Avm1PushStringValue str(int index) => new(8, (ushort)index);
+        Avm1PushValue str(int index) => Avm1PushValue.FromString(8, (ushort)index);
         for (var index = 7; index < names.Length; index++)
         {
             var body = new Avm1CodeBlock(0, 6, [push(str(1)), op(0x1C),
-                push(str(index), new Avm1PushIntegerValue(2), str(2)), op(0x3D), op(0x17), op(0)]);
+                push(str(index), Avm1PushValue.FromInteger(2), str(2)), op(0x3D), op(0x17), op(0)]);
             body = body with { Instructions = [.. body.Instructions.Select((instruction, i) => instruction with { Offset = i })] };
             code.Add(op(0x9B, new Avm1FunctionOperand((ushort)index, 0, 0, [new(null, 1)], 6), body));
             code.Add(push(str(index))); code.Add(op(0x1C));
-            code.Add(push(new Avm1PushNullValue(), str(index), new Avm1PushIntegerValue(3), str(3)));
+            code.Add(push(Avm1PushValue.Null, str(index), Avm1PushValue.FromInteger(3), str(3)));
             code.Add(op(0x1C)); code.Add(push(str(4))); code.Add(op(0x4E));
             code.Add(push(str(5))); code.Add(op(0x4E)); code.Add(push(str(6))); code.Add(op(0x52)); code.Add(op(0x17));
         }
         code.Add(op(0x07)); code.Add(op(0));
         var action = new LmbAction(0, [], 0) { Code = new(0, code.Count, [.. code.Select((instruction, i) => instruction with { Offset = i })]) };
-        var sprite = new LmbSpriteDefinition(1, 1, 1, 1, 0, [], [new LmbFrameLabelCommand(0, 0, 0, [], null!),
-            new LmbShowFrameCommand(0, 1, [], null!), new LmbDoActionCommand(0, 0, [], null!)], null!);
+        var sprite = new LmbSpriteDefinition(1, 1, 1, 1, 0, [], [LmbTimelineCommand.FrameLabel(0, 0, 0, default),
+            LmbTimelineCommand.ShowFrame(0, 1, default), LmbTimelineCommand.DoAction(0, 0, default)], default);
         var movie = new LmbMovieDefinition(null!, null, [.. names.Select((name, index) => new LmbString(index, name, 0))],
             [], [], [], [], [], [action], [], [sprite], []);
         return new(new LumenPlayer(movie, 1280, 720, rootCharacterId: 1, hostBinding: new Recorder(calls)), LumenMatrix.Identity, 0, 0);

@@ -71,6 +71,9 @@ public sealed record SongSelectCategory(
 
     /// <summary>The open folder's description lines ('\n'); null takes <see cref="Art"/>'s lines.</summary>
     public string? Description { get; init; }
+
+    /// <summary>Green's own feature folder art (see <see cref="SongSelectEvent.Art"/>): the folder is one of the movie's feature folders.</summary>
+    public string? FeatureArt { get; init; }
 }
 
 /// <summary>A search's query and matching songs, in order (any library).</summary>
@@ -114,6 +117,9 @@ public sealed class SongSelectCatalogView
     /// <summary>The by-difficulty folder (GenreResource.COURSE_STAR, id 18).</summary>
     public const string CourseStarLabel = "むずかしさから曲をえらぶ";
 
+    /// <summary>The running event's folder (see <see cref="SongSelectEvent"/>).</summary>
+    public static readonly CategoryKey EventKey = new(SongSourceKind.Stock, "event");
+
     /// <summary>The by-difficulty folder's key.</summary>
     public static readonly CategoryKey CourseStarKey = new(SongSourceKind.Stock, "course-star");
 
@@ -151,13 +157,16 @@ public sealed class SongSelectCatalogView
     /// <paramref name="browse"/> (the osu!lazer library only) groups its songs into folders and sorts
     /// them, with a Group and a Sort spine after the folders to change either.
     /// <paramref name="online"/> adds an Online spine (it opens the online lobby); <paramref name="onlySong"/> lists that song alone.
+    /// <paramref name="eventFolder"/> lists the running event's stock songs in a folder of its name (none listed: no folder).
+    /// <paramref name="byGame"/> (the Wii and Wii U libraries) lists one folder per disc instead of the genres; a Group spine switches.
     /// </summary>
     public SongSelectCatalogView(SongCatalogSnapshot snapshot, SongSelectMode mode = SongSelectMode.Normal,
         bool modeSwitch = false, SongSourceKind? library = null, IEnumerable<SongSourceKind>? links = null,
         IEnumerable<SongKey>? favourites = null, bool tutorial = false, SongBrowse? browse = null,
         SongSearchResults? search = null, bool danDojo = false,
         IReadOnlyList<(string Id, string Name)>? danSeries = null, bool online = false, SongKey? onlySong = null,
-        Func<SongKey, SongDescriptor?>? received = null, bool courseStar = false, IReadOnlyList<string>? recentCharts = null, Random? random = null, bool rollFolder = false)
+        Func<SongKey, SongDescriptor?>? received = null, bool courseStar = false, IReadOnlyList<string>? recentCharts = null, Random? random = null, bool rollFolder = false,
+        SongSelectEvent? eventFolder = null, bool byGame = false)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         Revision = snapshot.Revision;
@@ -178,6 +187,8 @@ public sealed class SongSelectCatalogView
             ? browsed(snapshot, browse, osu)
             : snapshot.Categories
                 .Where(category => library is null || category.Key.Source == library)
+                // The Wii libraries' per-disc folders (WiiLibraryProvider), listed instead of the genres when grouped by game.
+                .Where(category => category.Key.StableId.StartsWith("release:", StringComparison.Ordinal) == (byGame && wii(library)))
                 .Select(category => (category.Key, category.Name, Songs: category.Songs.Select(key => snapshot.Songs[key]),
                     Descriptor: (SongCategoryDescriptor?)category));
         var searchFolder = search is null ? [] : new[]
@@ -262,6 +273,18 @@ public sealed class SongSelectCatalogView
                 SongCategoryPresentation.AlwaysVisible | SongCategoryPresentation.HideSongCount | SongCategoryPresentation.Roll,
                 boardStyle(""), [shuffled[^1]])];
         RollPool = [.. shuffled];
+        // The event's songs, as the other folders list them (locked ones are already gone), under the event's name.
+        var eventMusic = eventFolder is null || mode != SongSelectMode.Normal ? [] : eventFolder.MusicIds.ToHashSet(StringComparer.Ordinal);
+        var eventSongs = genres.SelectMany(static category => category.Songs)
+            .Where(song => song.Descriptor.Key.Source == SongSourceKind.Stock && eventMusic.Contains(song.Descriptor.Key.StableId))
+            .DistinctBy(static song => song.Descriptor.Key).ToArray();
+        extraFolders = eventSongs.Length == 0 ? extraFolders : [new SongSelectCategory(EventKey, eventFolder!.Name, FeatureLabel,
+            SongCategoryPresentation.AlwaysVisible, boardStyle(eventFolder.Name), [.. eventSongs])
+            {
+                FeatureArt = eventFolder.Art,
+                // Without Green's art: a named folder of its own colour.
+                Tint = eventFolder.Art is null ? (230, 60, 120) : null,
+            }, .. extraFolders];
         var categories = searchFolder.Concat(tutorialFolder).Concat(courseStarFolder).Concat(extraFolders).Concat(favouriteFolder).Concat(historyFolder).Concat(genres)
             .Concat(danDojo && mode == SongSelectMode.Normal && library is null or SongSourceKind.Stock ? new[]
             {
@@ -272,15 +295,19 @@ public sealed class SongSelectCatalogView
             } : [])
             .Concat(library is { } browsing && browsing.IsOsu() && browse is not null ? new[]
             {
-                control(browsing, SongBrowseControl.Group, $"Group: {SongBrowse.Name(browse.Group)}"),
-                control(browsing, SongBrowseControl.Sort, $"Sort: {SongBrowse.Name(browse.Sort)}"),
+                control(browsing, SongBrowseControl.Group, $"Group: {SongBrowse.Name(browse.Group)}",
+                    Enum.GetValues<SongGroupMode>().Select(static group => (group.ToString(), SongBrowse.Name(group)))),
+                control(browsing, SongBrowseControl.Sort, $"Sort: {SongBrowse.Name(browse.Sort)}",
+                    Enum.GetValues<SongSortMode>().Select(static sort => (sort.ToString(), SongBrowse.Name(sort)))),
             } : [])
+            .Concat(wii(library) ? new[] { control(library!.Value, SongBrowseControl.Group, $"Group: {(byGame ? "Game" : "Genre")}",
+                [("Genre", "Genre"), ("Game", "Game")]) } : [])
             .Concat((links ?? []).Select(link => new SongSelectCategory(new CategoryKey(link, "library"),
                 LibraryName(link), FeatureLabel, SongCategoryPresentation.AlwaysVisible | SongCategoryPresentation.FolderEnd,
                 boardStyle(""), [], link)
             {
                 Tint = LibraryTint(link),
-                Art = libraryArt(snapshot, link),
+                Art = libraryArt(link),
             }));
         if (tutorial && mode == SongSelectMode.Waiwai)
             categories = categories.Append(new SongSelectCategory(new CategoryKey(SongSourceKind.Stock, "waiwai-tutorial"),
@@ -310,12 +337,13 @@ public sealed class SongSelectCatalogView
 
     public SongSelectMode Mode { get; }
 
-    /// <summary>A library's folder colour: stock sky blue, custom TJA green, osu! pink, Nijiiro violet.</summary>
+    /// <summary>A library's folder colour: stock sky blue, custom TJA green, osu! pink, Nijiiro violet, Wii and Wii U white.</summary>
     public static (byte R, byte G, byte B) LibraryTint(SongSourceKind library) => library switch
     {
         SongSourceKind.Tja => (130, 210, 60),
         SongSourceKind.OsuLazer or SongSourceKind.OsuStable => (255, 102, 171),
         SongSourceKind.Nijiiro => (170, 110, 255),
+        SongSourceKind.Wii or SongSourceKind.WiiU => (255, 255, 255),
         _ => (60, 170, 240),
     };
 
@@ -341,11 +369,12 @@ public sealed class SongSelectCatalogView
 
     /// <summary>
     /// A library's genre art for boards in a folder of mixed songs (search results): stock J-POP blue,
-    /// custom TJA Variety green, osu!lazer Kids pink, Nijiiro おすすめ.
+    /// custom TJA Variety green, osu!lazer Kids pink, Nijiiro おすすめ, Wii and Wii U Vocaloid white.
     /// </summary>
     public static string SourceLabel(SongSourceKind source) => source switch
     {
         SongSourceKind.Tja => "バラエティ",
+        SongSourceKind.Wii or SongSourceKind.WiiU => "ボーカロイド",
         SongSourceKind.OsuLazer or SongSourceKind.OsuStable => "童謡",
         SongSourceKind.Nijiiro => "おすすめ",
         _ => "J-POP",
@@ -359,12 +388,37 @@ public sealed class SongSelectCatalogView
             SongSourceKind.Tja => "Variety",
             SongSourceKind.OsuLazer or SongSourceKind.OsuStable => "Kids",
             SongSourceKind.Nijiiro => "",
+            SongSourceKind.Wii or SongSourceKind.WiiU => "Vocaloid",
             _ => "J-POP",
         }) : Categories[category].BoardStyle;
 
-    private static SongSelectCategory control(SongSourceKind library, SongBrowseControl control, string name) =>
+    private static bool wii(SongSourceKind? library) => library is SongSourceKind.Wii or SongSourceKind.WiiU;
+
+    // A Group or Sort folder: its spines are the choices (as the dan dojo folder's series); deciding one applies it.
+    private static SongSelectCategory control(SongSourceKind library, SongBrowseControl control, string name,
+        IEnumerable<(string Value, string Title)> options) =>
         new(new CategoryKey(library, $"control:{control}"), name, FeatureLabel,
-            SongCategoryPresentation.AlwaysVisible | SongCategoryPresentation.FolderEnd, boardStyle(""), [], Control: control);
+            SongCategoryPresentation.AlwaysVisible | SongCategoryPresentation.HideSongCount, boardStyle(""),
+            [.. options.Select(option => optionSong(control, option.Value, option.Title))], Control: control);
+
+    private const string BrowseOptionPrefix = "browse-option:";
+
+    // A spine, not a song (no notes or music), as danSeriesSong.
+    private static SongSelectSong optionSong(SongBrowseControl control, string value, string title)
+    {
+        var key = new SongKey(SongSourceKind.Stock, $"{BrowseOptionPrefix}{control}:{value}");
+        return new SongSelectSong(new SongDescriptor(key, new SongTitle(title), null,
+            [new SongChartDescriptor(new ChartKey(key, "option"), "option", new CatalogAssetKey(new CatalogProviderId("option"), key.StableId))]), default, [.. new int?[5]]);
+    }
+
+    /// <summary>A spine that is no song (a dan series, a Group or Sort choice): no music to miss.</summary>
+    public static bool IsSpine(SongKey song) => DanSeriesOf(song) is not null || BrowseOptionOf(song) is not null;
+
+    /// <summary>The Group or Sort choice a spine in such a folder stands for; null: a real song.</summary>
+    public static (SongBrowseControl Control, string Value)? BrowseOptionOf(SongKey song) =>
+        song.StableId.StartsWith(BrowseOptionPrefix, StringComparison.Ordinal)
+        && song.StableId[BrowseOptionPrefix.Length..].Split(':', 2) is [var control, var value]
+        && Enum.TryParse<SongBrowseControl>(control, out var parsed) ? (parsed, value) : null;
 
     private readonly SongCatalogSnapshot _snapshot;
     private readonly ImmutableArray<SongSelectSong> _courseStarPool;
@@ -449,7 +503,7 @@ public sealed class SongSelectCatalogView
     private static string songs(int count) => count == 1 ? "1 song" : $"{count} songs";
 
     // The library folders' slogans: one column per line, short enough for a column (about 9 characters).
-    private static FolderArt? libraryArt(SongCatalogSnapshot snapshot, SongSourceKind library) => library switch
+    private static FolderArt? libraryArt(SongSourceKind library) => library switch
     {
         SongSourceKind.Stock => new FolderArt(FolderArtStyle.Original, LibraryName(library),
             Japanese ? "オリジナル\n曲で\nあそぼう!!" : "Play the\noriginal\nsongs!!"),
@@ -460,6 +514,10 @@ public sealed class SongSelectCatalogView
             Japanese ? "ニジイロの\n譜面で\nあそぼう!!" : "Play Taiko\nNijiiro\ncharts!!"),
         SongSourceKind.Tja => new FolderArt(FolderArtStyle.Tja, LibraryName(library),
             Japanese ? "じぶんの\n譜面で\nあそぼう!!" : "Play your\ncustom\ncharts!!"),
+        SongSourceKind.Wii => new FolderArt(FolderArtStyle.Original, LibraryName(library),
+            Japanese ? "Wiiの\n曲で\nあそぼう!!" : "Play the\nWii\nsongs!!"),
+        SongSourceKind.WiiU => new FolderArt(FolderArtStyle.Original, LibraryName(library),
+            Japanese ? "Wii Uの\n曲で\nあそぼう!!" : "Play the\nWii U\nsongs!!"),
         _ => null,
     };
 
@@ -483,6 +541,8 @@ public sealed class SongSelectCatalogView
         SongSourceKind.Tja => Japanese ? "創作譜面" : "CUSTOM TJA",
         SongSourceKind.OsuLazer => Japanese ? "osu!lazer" : "OSU! LAZER",
         SongSourceKind.OsuStable => Japanese ? "osu!stable" : "OSU! STABLE",
+        SongSourceKind.Wii => "WII",
+        SongSourceKind.WiiU => "WII U",
         _ => library.ToString(),
     };
 

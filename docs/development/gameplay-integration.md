@@ -1,7 +1,7 @@
 # Gameplay integration
 
-This is the first repair slice for the contract review, not complete gameplay or
-an arcade scoring specification.
+The gameplay clock, input and Lumen contracts, with their reference sources. Scoring rules are in
+[scoring](scoring.md).
 
 ## Sources and decisions
 

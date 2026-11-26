@@ -25,6 +25,12 @@ public sealed class ScheduledAudioSource : IAudioStreamSource
     public Exception? Failure => _failure ?? _source.Failure;
     public long ProducedFrames => Interlocked.Read(ref _position);
 
+    /// <summary>
+    /// Read ahead of the output (device voices): a read the decoder cannot fill yet just returns less, the rest
+    /// follows in order. Read at the output's pace instead, a short read is a gap the song cannot recover from.
+    /// </summary>
+    internal bool Gapless { get; set; }
+
     public int Read(Span<float> interleavedDestination)
     {
         var destination = interleavedDestination;
@@ -43,7 +49,14 @@ public sealed class ScheduledAudioSource : IAudioStreamSource
                 throw new InvalidDataException("The song decoder returned an invalid frame count.");
             read = samples / Format.Channels;
             if (read < frames - prefix && !_source.IsCompleted)
+            {
+                if (Gapless)
+                {
+                    Interlocked.Add(ref _position, prefix + read);
+                    return (prefix + read) * Format.Channels;
+                }
                 _failure = new IOException("Gameplay audio underrun; playback cannot continue in sync.");
+            }
         }
         if (Failure is not null)
             _ended = true;

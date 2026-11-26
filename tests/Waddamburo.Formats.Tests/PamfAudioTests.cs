@@ -19,7 +19,7 @@ public sealed class PamfAudioTests
         var sector = movie.AsSpan(2048, 2048);
         var position = pack(sector);
         position = pes(sector, position, 0xE0, pts: 90_000, []);                      // video at 1 s
-        position = pes(sector, position, 0xBD, pts: 85_500, [0, 0, 0, 0, .. units[..20]]); // audio 50 ms earlier
+        pes(sector, position, 0xBD, pts: 85_500, [0, 0, 0, 0, .. units[..20]]); // audio 50 ms earlier
         var next = movie.AsSpan(4096, 2048);
         pes(next, pack(next), 0xBD, pts: null, [0, 0, 0, 12, .. units[20..]]);
 

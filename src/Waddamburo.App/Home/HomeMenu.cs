@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using Waddamburo.Game.Flow;
+using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Media;
 using Waddamburo.Providers.Stock;
 using static Waddamburo.App.Strings;
@@ -34,6 +35,8 @@ internal enum HomeMenuAction
     BakeTextures,
     /// <summary>Close the game and start it again (settings that apply at start, memory after a bake).</summary>
     RestartGame,
+    /// <summary>Reopen the audio output with the new settings (back to the attract, every sound stops).</summary>
+    SwitchAudio,
     /// <summary>Start the audio calibration (the calibration page shows it).</summary>
     Calibrate,
     /// <summary>The calibration page closed (saved or not): its sound stops.</summary>
@@ -42,6 +45,8 @@ internal enum HomeMenuAction
     Settings,
     /// <summary>Start the game again into the benchmark (it starts again as usual after).</summary>
     RunBenchmark,
+    /// <summary>Song Select: play the pending rewards' animation.</summary>
+    Rewards,
 }
 
 /// <summary>
@@ -68,6 +73,40 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     /// <summary>The display's exclusive fullscreen modes, largest first (set once by the host).</summary>
     // ponytail: read once at start; a different monitor plugged in later needs a restart.
     public static IReadOnlyList<(int Width, int Height, int RefreshRate)> DisplayModes { get; set; } = [];
+
+    // The Exclusive Period row's choices: the device's minimum (its default when the minimum proves too short), its
+    // default, then frames.
+    private static readonly int[] ExclusivePeriods = [0, -1, 32, 64, 128, 256, 512, 1024, 2048];
+
+    /// <summary>The exclusive or ASIO output the game runs (its buffer setting and device or driver, the frames it took), or null.</summary>
+    public static Func<(AudioOutputMode Mode, int Setting, string? Device, int Frames, int Rate)?>? OutputInUse { get; set; }
+
+    /// <summary>The running ASIO driver's outputs (mono channels); 0 before one ran.</summary>
+    public static int AsioOutputs { get; set; }
+
+    /// <summary>The installed ASIO drivers' names (read again as the settings open).</summary>
+    public static IReadOnlyList<string> AsioDrivers { get; set; } = [];
+
+    // The ASIO Driver row's choices after the first: the drivers, and the saved one when it is not installed.
+    private static string[] asioDrivers(ArcadeSettings s) =>
+        s.AsioDriver is { } saved && !AsioDrivers.Contains(saved) ? [.. AsioDrivers, saved] : [.. AsioDrivers];
+
+    // The ASIO Buffer row's choices: the driver's preferred size, then frames (the driver takes the nearest it allows).
+    private static readonly int[] AsioBuffers = [0, 32, 64, 128, 256, 512, 1024, 2048];
+
+    /// <summary>The playback devices' names (read again as the settings open).</summary>
+    public static IReadOnlyList<string> AudioDevices { get; set; } = [];
+
+    /// <summary>Linux: the ALSA playback PCMs exclusive output lists (read again as the settings open).</summary>
+    public static IReadOnlyList<string> AlsaDevices { get; set; } = [];
+
+    // The Audio Device row's choices after the default: the devices (ALSA's for exclusive output on Linux), and the saved
+    // one when it is not plugged in.
+    private static string[] audioDevices(ArcadeSettings s)
+    {
+        var devices = OperatingSystem.IsLinux() && s.AudioOutput == AudioOutputMode.Exclusive ? AlsaDevices : AudioDevices;
+        return s.AudioDevice is { } saved && !devices.Contains(saved) ? [.. devices, saved] : [.. devices];
+    }
 
     /// <summary>The saved layouts' names (the Layouts page lists them).</summary>
     public static Func<IReadOnlyList<string>> LayoutNames { get; set; } = static () => [];
@@ -126,8 +165,10 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         new(Setting: toggle("settings.random_song_folder", static s => s.RandomSongFolder, static (s, v) => s with { RandomSongFolder = v })),
         new(Setting: toggle("settings.autoplay", static s => s.Autoplay, static (s, v) => s with { Autoplay = v })),
         new(Setting: toggle("settings.arcade_hud", static s => s.ArcadeHud, static (s, v) => s with { ArcadeHud = v })),
-        new(Setting: toggle("settings.mouse_controls", static s => s.MouseControls, static (s, v) => s with { MouseControls = v })),
-        new(Setting: toggle("settings.discord_presence", static s => s.DiscordPresence, static (s, v) => s with { DiscordPresence = v })),
+        new(Setting: toggle("settings.mouse_controls", static s => s.MouseControls, static (s, v) => s with { MouseControls = v }),
+            Shown: static _ => !PlatformInfo.IsMobile),
+        new(Setting: toggle("settings.discord_presence", static s => s.DiscordPresence, static (s, v) => s with { DiscordPresence = v }),
+            Shown: static _ => !PlatformInfo.IsMobile),
         new(Setting: toggle("settings.upload_custom_songs", static s => s.UploadCustomSongs, static (s, v) => s with { UploadCustomSongs = v })),
         new(Setting: toggle("settings.upload_banner", static s => s.UploadBanner, static (s, v) => s with { UploadBanner = v })),
         new(Setting: new(T("settings.gameplay_skin"), skinIndex,
@@ -153,7 +194,8 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             },
             static (value, step) => value + Math.Sign(step), 0,
             static value => T(value switch { 0 => "settings.cache_folder.user", 1 => "settings.cache_folder.game", _ => "settings.cache_folder.custom" }),
-            2, Hint: T("settings.cache_folder.hint"))),
+            2, Hint: T("settings.cache_folder.hint")),
+            Shown: static _ => !PlatformInfo.IsMobile),
         new(T("section.volume")),
         new(Setting: volume("settings.master_volume", static s => s.MasterVolume, static (s, v) => s with { MasterVolume = v }, AudioBus.Bgm)),
         new(Setting: volume("settings.music_volume", static s => s.MusicVolume, static (s, v) => s with { MusicVolume = v }, AudioBus.Bgm)),
@@ -179,24 +221,87 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             static value => value == 0 ? T("settings.retry_hold.instant") : T("settings.retry_hold.value", value), 1000,
             Hint: T("settings.retry_hold.hint"))),
         new(Setting: toggle("settings.hide_tutorials", static s => s.TutorialSeen, static (s, v) => s with { TutorialSeen = v })),
-        new(Setting: toggle("settings.record_performance", static s => s.RecordPerformance, static (s, v) => s with { RecordPerformance = v })),
+        new(Setting: toggle("settings.record_performance", static s => s.RecordPerformance, static (s, v) => s with { RecordPerformance = v }),
+            Shown: static _ => !PlatformInfo.IsMobile),
         new(T("section.controls")),
         new(T("section.sound")),
         new(Setting: toggle("settings.stereo_panning", static s => s.StereoPanning, static (s, v) => s with { StereoPanning = v })),
-        new(Setting: toggle("settings.mute_in_background", static s => s.MuteInBackground, static (s, v) => s with { MuteInBackground = v })),
+        new(Setting: toggle("settings.mute_in_background", static s => s.MuteInBackground, static (s, v) => s with { MuteInBackground = v }),
+            Shown: static _ => !PlatformInfo.IsMobile),
         new(Setting: toggle("settings.drum_sound_in_songs", static s => s.DrumSoundInSongs, static (s, v) => s with { DrumSoundInSongs = v })),
+        // The output: applied at start (leaving the settings asks for the restart).
+        new(T("section.audio_advanced")),
+        // Exclusive output: WASAPI on Windows, direct ALSA on Linux; ASIO on Windows only.
+        new(Setting: new(T("settings.audio_output"), static s => (int)s.AudioOutput, static (s, v) => s with { AudioOutput = (AudioOutputMode)v },
+            static (value, step) => value + Math.Sign(step), 0,
+            static value => T(value switch { 1 => "settings.audio_output.exclusive", 2 => "settings.audio_output.asio", _ => "settings.audio_output.shared" }),
+            OperatingSystem.IsWindows() ? 2 : 1, Hint: T("settings.audio_output.hint")),
+            Shown: static _ => OperatingSystem.IsWindows() || OperatingSystem.IsLinux()),
+        // 0 = the system's default, then each device (a saved one that is unplugged listed last).
+        new(Setting: new(T("settings.audio_device"), static s => s.AudioDevice is { } name ? Array.IndexOf(audioDevices(s), name) + 1 : 0,
+            static (s, v) => audioDevices(s) is var devices && v == 0 || devices.Length == 0 ? s with { AudioDevice = null }
+                : s with { AudioDevice = devices[Math.Min(v, devices.Length) - 1] },
+            static (value, step) => value + Math.Sign(step), 0, static _ => "", int.MaxValue, Hint: T("settings.audio_device.hint"))
+        {
+            FormatFor = static s => s.AudioDevice is not { } device ? T("settings.audio_device.default")
+                : OperatingSystem.IsLinux() && s.AudioOutput == AudioOutputMode.Exclusive ? AlsaOutput.Label(device) : device,
+        }, Shown: static s => !PlatformInfo.IsMobile && s.AudioOutput != AudioOutputMode.Asio),
+        // ASIO: the driver (0 = the first installed, then each; a saved one no longer installed listed last) and its buffer.
+        new(Setting: new(T("settings.asio_driver"), static s => s.AsioDriver is { } name ? Array.IndexOf(asioDrivers(s), name) + 1 : 0,
+            static (s, v) => asioDrivers(s) is var drivers && v == 0 || drivers.Length == 0 ? s with { AsioDriver = null }
+                : s with { AsioDriver = drivers[Math.Min(v, drivers.Length) - 1] },
+            static (value, step) => value + Math.Sign(step), 0, static _ => "", int.MaxValue, Hint: T("settings.asio_driver.hint"))
+        {
+            FormatFor = static s => s.AsioDriver ?? (AsioDrivers.Count == 0 ? T("settings.asio_driver.none") : T("settings.asio_driver.first")),
+        }, Shown: static s => s.AudioOutput == AudioOutputMode.Asio),
+        // The pairs the running driver has (eight before one ran: up to outputs 15-16).
+        new(Setting: new(T("settings.asio_outputs"), static s => s.AsioOutputPair, static (s, v) => s with { AsioOutputPair = v },
+            static (value, step) => Math.Clamp(value + Math.Sign(step), 0, AsioOutputs >= 2 ? AsioOutputs / 2 - 1 : 7), 0,
+            static value => $"{value * 2 + 1}-{value * 2 + 2}", 63, Hint: T("settings.asio_outputs.hint")),
+            Shown: static s => s.AudioOutput == AudioOutputMode.Asio),
+        new(Setting: new(T("settings.asio_buffer"), static s => Math.Max(0, Array.IndexOf(AsioBuffers, s.AsioBufferFrames)),
+            static (s, v) => s with { AsioBufferFrames = AsioBuffers[v] },
+            static (value, step) => value + Math.Sign(step), 0, static _ => "", AsioBuffers.Length - 1, Hint: T("settings.asio_buffer.hint"))
+        {
+            // The size the driver took, in frames and milliseconds (it may round a requested one).
+            FormatFor = static s => (s.AsioBufferFrames == 0 ? T("settings.asio_buffer.preferred") : T("settings.audio_buffer.value", s.AsioBufferFrames))
+                + (OutputInUse?.Invoke() is { Mode: AudioOutputMode.Asio } use && use.Setting == s.AsioBufferFrames && use.Device == s.AsioDriver
+                    ? T("settings.exclusive_period.in_use", use.Frames, (1000.0 * use.Frames / use.Rate).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)) : ""),
+        }, Shown: static s => s.AudioOutput == AudioOutputMode.Asio),
         new(Setting: new(T("settings.audio_buffer"), static s => s.AudioBufferFrames, static (s, v) => s with { AudioBufferFrames = v },
             static (value, step) => step > 0 ? value * 2 : value / 2, 64,
-            static value => T("settings.audio_buffer.value", value), 2048, Hint: T("settings.audio_buffer.hint"))),
-        new(Setting: toggle("settings.exclusive_audio", static s => s.AudioExclusive, static (s, v) => s with { AudioExclusive = v })),
+            static value => T("settings.audio_buffer.value", value), 2048, Hint: T("settings.audio_buffer.hint")),
+            Shown: static s => s.AudioOutput == AudioOutputMode.Shared),
+        new(Setting: new(T("settings.exclusive_period"), static s => Math.Max(0, Array.IndexOf(ExclusivePeriods, s.AudioExclusivePeriod)),
+            static (s, v) => s with { AudioExclusivePeriod = ExclusivePeriods[v] },
+            static (value, step) => value + Math.Sign(step), 0, static value => ExclusivePeriods[value] switch
+            {
+                0 => T("settings.exclusive_period.minimum"),
+                -1 => T("settings.exclusive_period.default"),
+                var frames => T("settings.audio_buffer.value", frames),
+            }, ExclusivePeriods.Length - 1, Hint: T("settings.exclusive_period.hint"))
+        {
+            // Device minimum or default, as the game runs it now: the period it picked, in frames and milliseconds.
+            FormatFor = static s => ExclusivePeriods[Math.Max(0, Array.IndexOf(ExclusivePeriods, s.AudioExclusivePeriod))] switch
+            {
+                0 or -1 when OutputInUse?.Invoke() is { Mode: AudioOutputMode.Exclusive } use && use.Setting == s.AudioExclusivePeriod && use.Device == s.AudioDevice
+                    => T(s.AudioExclusivePeriod == 0 ? "settings.exclusive_period.minimum" : "settings.exclusive_period.default")
+                        + T("settings.exclusive_period.in_use", use.Frames, (1000.0 * use.Frames / use.Rate).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)),
+                0 => T("settings.exclusive_period.minimum"),
+                -1 => T("settings.exclusive_period.default"),
+                var frames => T("settings.audio_buffer.value", frames),
+            },
+        },
+            Shown: static s => s.AudioOutput == AudioOutputMode.Exclusive),
         new(T("section.display")),
         new(Setting: new(T("settings.fullscreen"), static s => !s.Fullscreen ? 0 : exclusive(s) ? 2 : 1,
             static (s, v) => s with { Fullscreen = v != 0, ExclusiveFullscreen = v == 2 ? true : v == 1 ? false : s.ExclusiveFullscreen },
             static (value, step) => value + Math.Sign(step), 0,
             static value => T(value switch { 0 => "value.off", 1 => "settings.fullscreen.borderless", _ => "settings.fullscreen.exclusive" }),
             ExclusiveAvailable ? 2 : 1,
-            Hint: T(ExclusiveAvailable ? "settings.fullscreen.hint_exclusive" : "settings.fullscreen.hint"))),
-        new(Shown: exclusive, Setting: new(T("settings.resolution"),
+            Hint: T(ExclusiveAvailable ? "settings.fullscreen.hint_exclusive" : "settings.fullscreen.hint")),
+            Shown: static _ => !PlatformInfo.IsMobile),
+        new(Shown: static s => !PlatformInfo.IsMobile && exclusive(s), Setting: new(T("settings.resolution"),
             static s => Array.IndexOf(resolutions, (s.FullscreenWidth, s.FullscreenHeight)) + 1,
             static (s, v) => (v = Math.Min(v, resolutions.Length)) == 0
                 ? s with { FullscreenWidth = 0, FullscreenHeight = 0, RefreshRate = 0 }
@@ -204,7 +309,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             static (value, step) => value + Math.Sign(step), 0,
             static value => value == 0 || value > resolutions.Length ? T("settings.resolution.native") : $"{resolutions[value - 1].Width}x{resolutions[value - 1].Height}",
             int.MaxValue, Hint: T("settings.resolution.hint"))),
-        new(Shown: static s => exclusive(s) && s.FullscreenWidth > 0, Setting: new(T("settings.refresh_rate"),
+        new(Shown: static s => !PlatformInfo.IsMobile && exclusive(s) && s.FullscreenWidth > 0, Setting: new(T("settings.refresh_rate"),
             static s => Array.IndexOf(rates(s), s.RefreshRate) + 1,
             static (s, v) => s with { RefreshRate = Math.Min(v, rates(s).Length) is var index and > 0 ? rates(s)[index - 1] : 0 },
             static (value, step) => value + Math.Sign(step), 0, static _ => "", int.MaxValue,
@@ -224,23 +329,27 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             Hint: T("settings.frame_limit.hint"))),
         new(Setting: new(T("settings.letterbox_size"), static s => s.LetterboxSize, static (s, v) => s with { LetterboxSize = v },
             static (value, step) => value + step, 20, static value => value == 100 ? T("value.off") : T("value.percent", value), 100,
-            Hint: T("settings.letterbox_size.hint"))),
-        new(Shown: static s => s.LetterboxSize < 100, Setting: new(T("settings.letterbox_x"), static s => s.LetterboxX,
+            Hint: T("settings.letterbox_size.hint")),
+            Shown: static _ => !PlatformInfo.IsMobile),
+        new(Shown: static s => !PlatformInfo.IsMobile && s.LetterboxSize < 100, Setting: new(T("settings.letterbox_x"), static s => s.LetterboxX,
             static (s, v) => s with { LetterboxX = v }, static (value, step) => value + step, 0, static value => T("value.percent", value), 100,
             Hint: T("settings.letterbox_x.hint"))),
-        new(Shown: static s => s.LetterboxSize < 100, Setting: new(T("settings.letterbox_y"), static s => s.LetterboxY,
+        new(Shown: static s => !PlatformInfo.IsMobile && s.LetterboxSize < 100, Setting: new(T("settings.letterbox_y"), static s => s.LetterboxY,
             static (s, v) => s with { LetterboxY = v }, static (value, step) => value + step, 0, static value => T("value.percent", value), 100,
             Hint: T("settings.letterbox_y.hint"))),
+        new(Setting: toggle("settings.performance_overlay", static s => s.PerformanceOverlay, static (s, v) => s with { PerformanceOverlay = v })),
         new(T("section.graphics")),
         new(Setting: new(T("settings.upscale"), static s => (int)s.Upscale, static (s, v) => s with { Upscale = (UpscaleLevel)v },
             static (value, step) => value + Math.Sign(step), 0,
             static value => T(value switch { 0 => "value.off", 1 => "settings.upscale.text", _ => "settings.upscale.full" }), 2,
-            Hint: T("settings.upscale.hint"))),
+            Hint: T("settings.upscale.hint")),
+            Shown: static _ => !PlatformInfo.IsMobile),
         new(Setting: new(T("settings.background_upscaling"), static s => s.UpscaleThreads, static (s, v) => s with { UpscaleThreads = v },
             static (value, step) => value + Math.Sign(step), 0,
             static value => value == 0 ? T("value.off") : value == 1 ? T("settings.background_upscaling.one")
                 : T("settings.background_upscaling.many", value), UpscaleThreadsMaximum,
-            Hint: T("settings.background_upscaling.hint"))),
+            Hint: T("settings.background_upscaling.hint")),
+            Shown: static _ => !PlatformInfo.IsMobile),
         new(Setting: new(T("settings.long_titles"), static s => s.SquashTitles ? 1 : 0, static (s, v) => s with { SquashTitles = v != 0 },
             static (value, _) => 1 - value, 0, static value => T(value != 0 ? "settings.long_titles.squash" : "settings.long_titles.shrink"), 1,
             Hint: T("settings.long_titles.hint"))),
@@ -307,7 +416,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     public int Selection { get; private set; }
 
     public string Title => T(Bake is not null ? "menu.title.bake" : Calibration is not null ? "menu.title.calibration"
-        : _restartPrompt ? "menu.title.restart" : _reportPrompt ? "menu.title.report"
+        : _restartPrompt ? "menu.title.restart" : _audioPrompt ? "menu.title.audio" : _reportPrompt ? "menu.title.report"
         : _quitPrompt ? "menu.title.quit" : _layoutsPage ? TwoPlayerLayouts() ? "menu.title.layouts_two" : "menu.title.layouts"
         : "menu.title.paused") is var title
         && _layoutPick is { } pick ? _removePrompt ? T("menu.title.remove_layout", pick) : pick : title;
@@ -341,7 +450,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     private long _calibrationDoneAt;
 
     /// <summary>A line above the choices (the restart prompt's reason), or null.</summary>
-    public string? Message => _restartPrompt ? T("menu.restart_message") : null;
+    public string? Message => _restartPrompt ? T("menu.restart_message") : _audioPrompt ? T("menu.audio_message") : null;
 
     /// <summary>What the player picked to report the replay for (with <see cref="HomeMenuAction.Report"/>): a server reason.</summary>
     public string ReportReason { get; private set; } = "cheating";
@@ -357,19 +466,25 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     // bake (the memory it used goes back with the restart); "Later" is not asked again for the same state.
     private readonly ArcadeSettings _atStart = get();
     private bool _restartPrompt;
+    // Leaving the settings after an audio output change asks to apply it now (back to the attract) or at the next start;
+    // "Later" is not asked again for the same settings.
+    private bool _audioPrompt;
+    private (AudioOutputMode, string?, int, int, string?, int, int)? _audioDeclined;
+
+    /// <summary>The audio output settings the game runs with (set by the host).</summary>
+    public static Func<(AudioOutputMode, string?, int, int, string?, int, int)> RunningAudio { get; set; } = static () => default;
     private string? _declined;
     private string[] _pauseChoices = [];
 
     private string restartState()
     {
         var now = get();
-        var changed = now.AudioBufferFrames != _atStart.AudioBufferFrames || now.AudioExclusive != _atStart.AudioExclusive
-            || now.TjaFolder != _atStart.TjaFolder || now.NijiiroFolder != _atStart.NijiiroFolder || now.OsuFolder != _atStart.OsuFolder || now.OsuStableFolder != _atStart.OsuStableFolder
+        var changed = now.TjaFolder != _atStart.TjaFolder || now.NijiiroFolder != _atStart.NijiiroFolder || now.OsuFolder != _atStart.OsuFolder || now.OsuStableFolder != _atStart.OsuStableFolder
             || now.StockFolders != _atStart.StockFolders
             || now.CacheFolder != _atStart.CacheFolder
             || now.Language != _atStart.Language || now.EnglishTitles != _atStart.EnglishTitles;
         return changed || _baked
-            ? $"{now.AudioBufferFrames}|{now.AudioExclusive}|{now.TjaFolder}|{now.NijiiroFolder}|{now.StockFolders}|{now.OsuFolder}|{now.OsuStableFolder}|{now.CacheFolder}|{now.Language}|{now.EnglishTitles}|{_baked}" : "";
+            ? $"{now.TjaFolder}|{now.NijiiroFolder}|{now.StockFolders}|{now.OsuFolder}|{now.OsuStableFolder}|{now.CacheFolder}|{now.Language}|{now.EnglishTitles}|{_baked}" : "";
     }
 
     /// <summary>The choices shown (the pause choices, or a prompt's).</summary>
@@ -383,11 +498,11 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     /// <paramref name="reviewing"/>: a replay or practice is on: restarting plays the song for real.
     /// <paramref name="reportable"/>: another player's downloaded replay: its player can be reported.
     /// <paramref name="noResume"/>: a dan course: its pause can't be resumed, only restarted or left.
-    /// <paramref name="quit"/>: home, outside a song (the demo play counts as the attract): the game can be closed.
+    /// <paramref name="quit"/>: desktop home mode can close the game outside a song (including the attract demo).
     /// <paramref name="layout"/>: the song can open the layout editor (a local single-player song).
     /// </remarks>
     public void Open(bool gameplay, bool attract = false, bool songSelect = false, bool replayable = false, bool reviewing = false,
-        bool reportable = false, bool noResume = false, bool inRoom = false, bool quit = false, bool layout = false)
+        bool reportable = false, bool noResume = false, bool inRoom = false, bool quit = false, bool layout = false, bool rewards = false)
     {
         _noResume = noResume;
         _calibrationOffered = songSelect;
@@ -408,11 +523,17 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
             _choices = [.. _choices[..^1], "online.leave", _choices[^1]];
         else if (inRoom)
             _choices = ["menu.resume", "menu.settings", "online.leave"];
-        if (quit && !gameplay)
+        if (quit && !gameplay && !PlatformInfo.IsMobile)
             _choices = [.. _choices, "menu.quit_game"];
+        // A phone's files (config.cfg, logs, custom songs) in the system's file screen, which MIUI and others hide.
+        if (!gameplay && Boot.OpenGameFiles is not null)
+            _choices = [.. _choices, "menu.game_files"];
+        // Only while there are rewards to show (Song Select).
+        if (rewards && songSelect && !inRoom)
+            _choices = [_choices[0], "menu.new_rewards", .. _choices[1..]];
         IsOpen = true;
         Selection = 0;
-        _restartPrompt = _reportPrompt = _quitPrompt = _layoutsPage = _removePrompt = false;
+        _restartPrompt = _audioPrompt = _reportPrompt = _quitPrompt = _layoutsPage = _removePrompt = false;
         _layoutPick = null;
         VgmstreamCli.Recheck(); // it may have been installed while the game ran
     }
@@ -433,11 +554,20 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     {
         Selection = Array.IndexOf(_choices, "menu.settings");
         save();
+        // A restart reopens the audio too, so the prompt comes first.
         if (restartState() is { Length: > 0 } state && state != _declined)
         {
             _restartPrompt = true;
             _pauseChoices = _choices;
             _choices = ["menu.restart_now", "menu.later"];
+            Selection = 0;
+            return;
+        }
+        if (get().AudioOutputSettings is var audio && audio != RunningAudio() && audio != _audioDeclined)
+        {
+            _audioPrompt = true;
+            _pauseChoices = _choices;
+            _choices = ["menu.apply_now", "menu.later"];
             Selection = 0;
         }
     }
@@ -453,6 +583,12 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         {
             if (Selection == 0)
                 return close(HomeMenuAction.RestartGame);
+            return Back();
+        }
+        if (_audioPrompt)
+        {
+            if (Selection == 0)
+                return close(HomeMenuAction.SwitchAudio);
             return Back();
         }
         if (_reportPrompt)
@@ -494,7 +630,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
                 case "menu.back": return Back();
             }
             _layoutPick = _layoutsNames[Selection - 1];
-            _choices = ["layouts.use", "layouts.edit", "layouts.remove", "menu.back"];
+            _choices = PlatformInfo.IsMobile ? ["layouts.use", "layouts.remove", "menu.back"] : ["layouts.use", "layouts.edit", "layouts.remove", "menu.back"];
             Selection = 0;
             return HomeMenuAction.None;
         }
@@ -516,6 +652,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
                 Selection = 0;
                 return HomeMenuAction.None;
             case "menu.song_select": return close(HomeMenuAction.SongSelect);
+            case "menu.new_rewards": return close(HomeMenuAction.Rewards);
             case "menu.return_to_title": return close(HomeMenuAction.Title);
             case "menu.quit_game":
                 _quitPrompt = true;
@@ -524,6 +661,9 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
                 Selection = 1;
                 return HomeMenuAction.None;
             case "online.leave": return close(HomeMenuAction.LeaveRoom);
+            case "menu.game_files":
+                Boot.OpenGameFiles?.Invoke();
+                return HomeMenuAction.None;
             default: return close(HomeMenuAction.Resume);
         }
     }
@@ -535,7 +675,8 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
     {
         var active = ActiveLayout();
         _layoutsNames = [.. LayoutNames()];
-        _choices = ["layouts.stock", .. _layoutsNames.Select(name => "=" + (name == active ? "● " : "") + name), "layouts.new", "menu.back"];
+        _choices = ["layouts.stock", .. _layoutsNames.Select(name => "=" + (name == active ? "● " : "") + name),
+            .. PlatformInfo.IsMobile ? (string[])[] : ["layouts.new"], "menu.back"]; // the layout editor is desktop-only (ImGui)
         Selection = active is null ? 0 : Math.Max(0, Array.IndexOf(_layoutsNames, active) + 1);
     }
 
@@ -544,7 +685,7 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         if (_removePrompt)
         {
             _removePrompt = false;
-            _choices = ["layouts.use", "layouts.edit", "layouts.remove", "menu.back"];
+            _choices = PlatformInfo.IsMobile ? ["layouts.use", "layouts.remove", "menu.back"] : ["layouts.use", "layouts.edit", "layouts.remove", "menu.back"];
             Selection = 2;
             return HomeMenuAction.None;
         }
@@ -566,6 +707,14 @@ internal sealed class HomeMenu(Func<ArcadeSettings> get, Action<ArcadeSettings> 
         {
             _declined = restartState();
             _restartPrompt = false;
+            _choices = _pauseChoices;
+            Selection = Array.IndexOf(_choices, "menu.settings");
+            return HomeMenuAction.None;
+        }
+        if (_audioPrompt)
+        {
+            _audioDeclined = get().AudioOutputSettings;
+            _audioPrompt = false;
             _choices = _pauseChoices;
             Selection = Array.IndexOf(_choices, "menu.settings");
             return HomeMenuAction.None;

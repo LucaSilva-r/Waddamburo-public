@@ -78,4 +78,17 @@ public sealed class ReviewClockTests
         clock.Update(step, scrub: -1); // a fresh hold starts slow again
         Assert.Equal(-2, clock.Rate, 1);
     }
+
+    [Fact]
+    public void DraggingMovesByTheDragAndHoldsTheClock()
+    {
+        var clock = new ReviewClock(s(-3), s(200));
+        clock.Update(s(1)); // playing
+        clock.Update(TimeSpan.FromMilliseconds(100), drag: s(-0.5));
+        Assert.Equal((s(-2.5), -5d, true), (clock.Position, clock.Rate, clock.Scrubbing));
+        clock.Update(TimeSpan.FromMilliseconds(100), drag: TimeSpan.Zero); // the finger stands: so does the clock
+        Assert.Equal((s(-2.5), 0d), (clock.Position, clock.Rate));
+        clock.Update(TimeSpan.FromMilliseconds(100)); // let go: it plays on
+        Assert.Equal(s(-2.4), clock.Position);
+    }
 }

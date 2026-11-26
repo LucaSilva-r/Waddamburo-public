@@ -99,29 +99,29 @@ public sealed class LiveEffectsTests
     private static LumenSceneLayer Marker()
     {
         var shape = new LmbShapeDefinition(2, 1, [], [new LmbShapeGeometry(
-            [new(-4, -4, 0, 0), new(4, -4, 1, 0), new(4, 4, 1, 1), new(-4, 4, 0, 1)], 0, 1 << 16, [], null!)], null!);
+            [new(-4, -4, 0, 0), new(4, -4, 1, 0), new(4, 4, 1, 1), new(-4, 4, 0, 1)], 0, 1 << 16, default)], default);
         var sprite = new LmbSpriteDefinition(1, 1, 1, 1, 0, [],
-            [new LmbFrameLabelCommand(1, 0, 0, [], null!), new LmbShowFrameCommand(0, 1, [], null!),
-             new LmbPlaceObjectCommand(2, 1, 1, 1, 0, 1, 0, 0, 0, uint.MaxValue, uint.MaxValue, [], null!)], null!);
+            [LmbTimelineCommand.FrameLabel(1, 0, 0, default), LmbTimelineCommand.ShowFrame(0, 1, default),
+             LmbTimelineCommand.PlaceObject(2, 1, 1, 1, 0, 1, 0, 0, 0, uint.MaxValue, uint.MaxValue, default)], default);
         var names = new[] { "", "target", "flash", "external", "ExternalInterface", "addCallback",
             "SetComboCount", "SetBranchAvailable", "SetGogo" };
         var code = new List<Avm1Instruction>();
         Avm1Instruction Op(byte opcode, Avm1Operand? operand = null, Avm1CodeBlock? body = null) =>
-            new(opcode, code.Count, 1, [], operand, null, body);
-        Avm1PushStringValue Str(int index) => new(8, (ushort)index);
+            new(opcode, code.Count, 1, operand, null, body);
+        Avm1PushValue Str(int index) => Avm1PushValue.FromString(8, (ushort)index);
         void Push(params Avm1PushValue[] values) => code.Add(Op(0x96, new Avm1PushOperand([.. values])));
         for (var i = 6; i < names.Length; i++)
         {
             code.Add(Op(0x9B, new Avm1FunctionOperand((ushort)i, 0, 0, [], 1),
-                new Avm1CodeBlock(0, 1, [new(0, 0, 1, [], null, null, null)])));
+                new Avm1CodeBlock(0, 1, [new(0, 0, 1, null, null, null)])));
             Push(Str(i)); code.Add(Op(0x1C));
-            Push(new Avm1PushNullValue(), Str(i), new Avm1PushIntegerValue(3), Str(2));
+            Push(Avm1PushValue.Null, Str(i), Avm1PushValue.FromInteger(3), Str(2));
             code.Add(Op(0x1C)); Push(Str(3)); code.Add(Op(0x4E));
             Push(Str(4)); code.Add(Op(0x4E)); Push(Str(5)); code.Add(Op(0x52)); code.Add(Op(0x17));
         }
         code.Add(Op(0));
         var action = new LmbAction(0, [], 0) { Code = new(0, code.Count, [.. code.Select((op, i) => op with { Offset = i })]) };
-        sprite = sprite with { Timeline = [.. sprite.Timeline, new LmbDoActionCommand(0, 0, [], null!)] };
+        sprite = sprite with { Timeline = [.. sprite.Timeline, LmbTimelineCommand.DoAction(0, 0, default)] };
         var movie = new LmbMovieDefinition(null!, null, [.. names.Select((name, i) => new LmbString(i, name, 0))],
             [], [new(1, 0, 0, 1, 0, 0)], [], [], [], [action], [shape], [sprite], []);
         return new(new LumenPlayer(movie, 1280, 720, rootCharacterId: 1), LumenMatrix.Identity with { X = 400, Y = 250 }, 0, 0);

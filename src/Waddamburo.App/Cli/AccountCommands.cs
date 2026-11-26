@@ -1,6 +1,5 @@
 using System.Text;
 using Waddamburo.Game.Flow;
-using Waddamburo.Game.Scores;
 
 namespace Waddamburo.App.Cli;
 

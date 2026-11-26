@@ -31,7 +31,57 @@ public sealed class AudioMixerTests
         Assert.IsType<IOException>(source.Failure);
     }
 
+    [Fact]
+    public void SongClockRetainsItsLastPositionWhenTheAudioDeviceFails()
+    {
+        using var output = new TestPullOutput();
+        using var audio = new AudioEngine(output);
+        var transport = audio.PlayTransport(new ScheduledAudioSource(
+            new TestStreamSource(output.Format, new float[8]), TimeSpan.Zero, TimeSpan.Zero));
+        output.Render(4);
+        var position = audio.GetPosition(transport);
+        Assert.True(position > TimeSpan.Zero);
+
+        output.Failure = new IOException("Device disconnected.");
+
+        Assert.Equal(position, audio.GetPosition(transport));
+        audio.SetPaused(transport, true);
+    }
+
     private static readonly SdlAudioFormat StereoFourHertz = new(4, 2);
+
+    [Fact]
+    public void ADecodingClipIsSilentUntilReadyThenLoopsAndAFailedOneEnds()
+    {
+        var format = new SdlAudioFormat(4, 1);
+        var decoding = new TaskCompletionSource<AudioClip>();
+        using var source = new DecodingClipSource(format, decoding.Task, loop: true);
+        var block = new float[5];
+        Assert.Equal(5, source.Read(block));
+        Assert.Equal([0f, 0f, 0f, 0f, 0f], block);
+        Assert.False(source.IsCompleted);
+        decoding.SetResult(new AudioClip(format, [0.1f, 0.2f, 0.3f, 0.9f], new AudioLoopRegion(1, 3)));
+        Assert.Equal(5, source.Read(block));
+        Assert.Equal([0.1f, 0.2f, 0.3f, 0.2f, 0.3f], block);
+        Assert.False(source.IsCompleted);
+
+        using var once = new DecodingClipSource(format, decoding.Task, loop: false);
+        Assert.Equal(4, once.Read(block));
+        Assert.Equal([0.1f, 0.2f, 0.3f, 0.9f], block[..4]);
+        Assert.True(once.IsCompleted);
+
+        using var failed = new DecodingClipSource(format, Task.FromException<AudioClip>(new InvalidDataException()), loop: true);
+        Assert.Equal(5, failed.Read(block));
+        Assert.True(failed.IsCompleted);
+
+        // Stopped while it decodes: gone, not a blip when it is ready.
+        var mixer = new AudioMixer(format);
+        var pending = new TaskCompletionSource<AudioClip>();
+        var handle = mixer.PlayStream(new DecodingClipSource(format, pending.Task, loop: true), AudioBus.Bgm);
+        mixer.Stop(handle, TimeSpan.FromSeconds(0.5));
+        mixer.Render(block);
+        Assert.False(mixer.IsPlaying(handle));
+    }
 
     [Fact]
     public void VoicesMixAcrossBusesWithVolumeAndClipping()
@@ -201,6 +251,29 @@ public sealed class AudioMixerTests
 
     private static AudioClip clip(float left, float right)
         => new(StereoFourHertz, [left, right]);
+
+    private sealed class TestPullOutput : IPullAudioOutput
+    {
+        private Action<Span<float>> _render = null!;
+
+        public SdlAudioFormat Format => new(4, 1);
+        public SdlAudioFormat HardwareFormat => Format;
+        public int HardwareBufferFrames => 0;
+        public string Driver => "Test";
+        public ulong SubmittedFrames { get; private set; }
+        public ulong QueuedFrames => Failure is { } failure ? throw failure : 0UL;
+        public Exception? Failure { get; set; }
+
+        public void Start(Action<Span<float>> render) => _render = render;
+
+        public void Render(int frames)
+        {
+            _render(new float[frames * Format.Channels]);
+            SubmittedFrames += (ulong)frames;
+        }
+
+        public void Dispose() { }
+    }
 
     private sealed class TestStreamSource(
         SdlAudioFormat format,

@@ -12,11 +12,11 @@ public sealed class AudioEngine : IDisposable
 {
     private const int RenderFrames = 128;
     // ~21 ms at 48 kHz: rides out the GC's own pauses while scenes load (8-20 ms traced); drum hits skip it.
-    private const int TargetQueuedFrames = 1024;
+    private const int MinimumQueuedFrames = 1024;
 
-    private readonly IAudioOutput _device;
-    private readonly CancellationTokenSource _cancellation = new();
-    private readonly Thread? _producer;
+    private IAudioOutput _device;
+    private CancellationTokenSource _cancellation = new();
+    private Thread? _producer;
     private readonly object _outputGate = new();
     private volatile bool _performanceMonitoring;
     private long _performanceBlocks;
@@ -28,7 +28,57 @@ public sealed class AudioEngine : IDisposable
         ArgumentNullException.ThrowIfNull(device);
         _device = device;
         Mixer = new AudioMixer(device.Format);
-        if (device is SdlAudioDevice sdl)
+        attach(device);
+    }
+
+    /// <summary>The output the mix plays on (the engine owns it after <see cref="SwitchOutput"/>).</summary>
+    public IAudioOutput Output => _device;
+
+    /// <summary>
+    /// Plays the mix on another output: everything stops, the current output is closed first (exclusive and ASIO
+    /// outputs hold the device), then <paramref name="open"/> opens the next. The mixer, its buses and every clip stay.
+    /// False when the next output runs at another format than the mix (the clips were decoded for it): it is closed
+    /// and the engine stays silent; the caller restarts.
+    /// </summary>
+    public bool SwitchOutput(Func<IAudioOutput> open)
+    {
+        ArgumentNullException.ThrowIfNull(open);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        _cancellation.Cancel();
+        _producer?.Join();
+        _producer = null;
+        Mixer.StopAll();
+        Mixer.UseDirectVoices(null); // the old device destroys them
+        Mixer.UseDeviceVoices(null);
+        // Not under _outputGate: a pull output's thread renders under it, and disposing joins that thread.
+        _device.Dispose();
+        _cancellation.Dispose();
+        _cancellation = new CancellationTokenSource();
+        _failure = null;
+        var next = open();
+        _device = next;
+        if (next.Format != Mixer.Format)
+        {
+            next.Dispose();
+            return false;
+        }
+        attach(next);
+        return true;
+    }
+
+    private void attach(IAudioOutput device)
+    {
+        if (device is SdlAudioDevice voiced && !DiagnosticSwitches.SoftwareMix)
+        {
+            // Every sound on a device stream of its own, mixed by SDL's native thread (see AudioMixer.Device): a GC
+            // pause no longer silences anything playing. The pump only refills and sets gains.
+            Mixer.UseDirectVoices(voiced.CreateDirectVoice);
+            Mixer.UseDeviceVoices(voiced.CreateVoiceStream);
+            voiced.Resume();
+            _producer = new Thread(pump) { IsBackground = true, Name = "Audio pump", Priority = ThreadPriority.Highest };
+            _producer.Start();
+        }
+        else if (device is SdlAudioDevice sdl)
         {
             // The mix keeps a queue (it rides out GC pauses); drum hits skip it.
             Mixer.UseDirectVoices(sdl.CreateDirectVoice);
@@ -38,8 +88,8 @@ public sealed class AudioEngine : IDisposable
             _producer = new Thread(() => produce(sdl)) { IsBackground = true, Name = "Audio mix", Priority = ThreadPriority.Highest };
             _producer.Start();
         }
-        else if (OperatingSystem.IsWindows() && device is WasapiExclusiveOutput exclusive)
-            exclusive.Start(render);
+        else if (device is IPullAudioOutput pull)
+            pull.Start(render);
         else
             throw new ArgumentException($"Unsupported audio output {device.GetType().Name}.", nameof(device));
     }
@@ -49,10 +99,10 @@ public sealed class AudioEngine : IDisposable
     /// <summary>What the game is doing (scene, tick), named in the underrun trace; read on the mix thread.</summary>
     public Func<string>? TraceContext { get; set; }
 
-    private Exception? _failure;
+    private volatile Exception? _failure;
 
     public Exception? Failure => _failure
-        ?? (OperatingSystem.IsWindows() && _device is WasapiExclusiveOutput exclusive ? exclusive.Failure : null);
+        ?? (_device as IPullAudioOutput)?.Failure;
 
     public void SetPerformanceMonitoring(bool enabled) => _performanceMonitoring = enabled;
 
@@ -64,20 +114,24 @@ public sealed class AudioEngine : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         lock (_outputGate)
         {
-            var transport = new AudioStreamTransport(source, () => _device.SubmittedFrames,
+            // Device voices count the song's own stream from its first frame.
+            var transport = new AudioStreamTransport(source, () => Mixer.UsesDeviceVoices ? 0 : _device.SubmittedFrames,
                 () => $"{_device.Diagnostics}; {TraceContext?.Invoke()}");
             transport.Handle = Mixer.PlayStream(transport, bus, volume);
             return transport;
         }
     }
 
-    /// <summary>Monotonic output-position estimate interpolated between hardware buffer updates.</summary>
+    /// <summary>Monotonic output-position estimate, held at its last reading if the device fails.</summary>
     public TimeSpan GetPosition(AudioStreamTransport transport)
     {
         ArgumentNullException.ThrowIfNull(transport);
         lock (_outputGate)
-            return transport.Position(_device.SubmittedFrames, _device.QueuedFrames,
-                TimeSpan.FromSeconds((double)_device.HardwareBufferFrames / _device.HardwareFormat.SampleRate));
+            return Failure is not null ? transport.LastPosition
+                : Mixer.UsesDeviceVoices ? Mixer.StreamCounters(transport.Handle) is var (submitted, queued)
+                    ? transport.Position(submitted, queued, latency()) : transport.LastPosition
+                : transport.Position(_device.SubmittedFrames, _device.QueuedFrames,
+                    TimeSpan.FromSeconds((double)_device.HardwareBufferFrames / _device.HardwareFormat.SampleRate));
     }
 
     /// <summary>
@@ -89,10 +143,14 @@ public sealed class AudioEngine : IDisposable
         ArgumentNullException.ThrowIfNull(transport);
         lock (_outputGate)
         {
-            if (paused)
-                _ = transport.Position(_device.SubmittedFrames, _device.QueuedFrames,
-                    TimeSpan.FromSeconds((double)_device.HardwareBufferFrames / _device.HardwareFormat.SampleRate));
-            transport.SetPaused(paused, _device.SubmittedFrames);
+            if (Failure is not null)
+                return;
+            // Device voices: the song's stream is unbound while paused and nothing goes in, so its own counter needs no
+            // correction (no frames pass for it).
+            var counters = Mixer.UsesDeviceVoices ? Mixer.StreamCounters(transport.Handle) : (_device.SubmittedFrames, _device.QueuedFrames);
+            if (paused && counters is var (submitted, queued))
+                _ = transport.Position(submitted, queued, latency());
+            transport.SetPaused(paused, counters?.Submitted ?? 0);
             Mixer.SetStreamPaused(transport.Handle, paused);
         }
     }
@@ -105,8 +163,29 @@ public sealed class AudioEngine : IDisposable
         uint sourceStreamIndex = 0)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        var clip = AudioClip.Load(path, _device.Format, maximumDuration, sourceStreamIndex);
-        return Mixer.Play(clip, bus, volume);
+        return playFile(path, bus, volume, maximumDuration, sourceStreamIndex, loop: false);
+    }
+
+    private readonly Dictionary<string, Task<AudioClip>> _preloaded = [];
+
+    /// <summary>Decodes a file in the background and keeps it for <see cref="PlayLoop"/> and <see cref="PlayOneShot"/>.</summary>
+    public void Preload(string path)
+    {
+        var format = _device.Format;
+        _preloaded.TryAdd(Path.GetFullPath(path), Task.Run(() => AudioClip.Load(path, format)));
+    }
+
+    /// <summary>Plays a file decoded off this thread (a jingle took 0.7 s to decode on a Switch): silent until it is ready.</summary>
+    private AudioPlaybackHandle playFile(string path, AudioBus bus, float volume, TimeSpan? maximumDuration, uint sourceStreamIndex, bool loop)
+    {
+        if (!File.Exists(path))
+            throw new FileNotFoundException("The audio file does not exist.", path);
+        var format = _device.Format;
+        var kept = maximumDuration is null && sourceStreamIndex == 0 ? _preloaded.GetValueOrDefault(Path.GetFullPath(path)) : null;
+        var decoding = kept ?? Task.Run(() => AudioClip.Load(path, format, maximumDuration, sourceStreamIndex));
+        _ = decoding.ContinueWith(task => Console.Error.WriteLine($"{Path.GetFileName(path)} is unavailable: {task.Exception!.InnerException!.Message}"),
+            CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
+        return Mixer.PlayStream(new DecodingClipSource(format, decoding, loop), bus, volume);
     }
 
     public AudioPlaybackHandle PlayLoop(
@@ -117,8 +196,7 @@ public sealed class AudioEngine : IDisposable
         uint sourceStreamIndex = 0)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        var clip = AudioClip.Load(path, _device.Format, maximumDuration, sourceStreamIndex);
-        return Mixer.Play(clip, bus, volume, loop: true);
+        return playFile(path, bus, volume, maximumDuration, sourceStreamIndex, loop: true);
     }
 
     /// <summary>
@@ -128,16 +206,47 @@ public sealed class AudioEngine : IDisposable
     /// </summary>
     public void FillAhead(TimeSpan ahead)
     {
+        if (Mixer.UsesDeviceVoices)
+        {
+            Mixer.Pump(ahead);
+            return;
+        }
         if (_device is not SdlAudioDevice device || _disposed)
             return;
         var target = (ulong)(ahead.TotalSeconds * device.Format.SampleRate);
         var samples = new float[RenderFrames * device.Format.Channels];
         lock (_outputGate)
-            while (device.QueuedFrames < target)
+            while (Failure is null && device.QueuedFrames < target)
             {
                 render(samples);
                 device.Queue(samples);
             }
+    }
+
+    private TimeSpan latency() => TimeSpan.FromSeconds((double)_device.HardwareBufferFrames / _device.HardwareFormat.SampleRate);
+
+    // Device voices: every few ms, refills and gains (SDL mixes on its own thread; this only has to keep up with the
+    // streams' queues, seconds deep).
+    private void pump()
+    {
+        try
+        {
+            while (!_cancellation.IsCancellationRequested)
+            {
+                var start = _performanceMonitoring ? Stopwatch.GetTimestamp() : 0;
+                Mixer.Pump();
+                if (_performanceMonitoring)
+                {
+                    Interlocked.Add(ref _performanceWorkTicks, Stopwatch.GetTimestamp() - start);
+                    Interlocked.Increment(ref _performanceBlocks);
+                }
+                Thread.Sleep(3);
+            }
+        }
+        catch (Exception exception)
+        {
+            _failure = exception;
+        }
     }
 
     private void render(Span<float> samples)
@@ -159,6 +268,11 @@ public sealed class AudioEngine : IDisposable
     {
         var samples = new float[RenderFrames * device.Format.Channels];
         var rate = (double)device.Format.SampleRate;
+        // At least two device periods: a device that pulls a whole period at once (Android) must find the next one
+        // already queued.
+        // ponytail: phones queue 2048 (~43 ms): Android's mixer pulls 20 ms periods (more than SDL reports) and the
+        // mix thread oversleeps by a few ms there; use the real burst (AAudio framesPerBurst) once SDL exposes it.
+        var target = (ulong)Math.Max(PlatformInfo.IsMobile ? 2048 : MinimumQueuedFrames, 2 * device.HardwareBufferFrames);
         // The underrun trace: when the mix last queued, how much it left queued, the GC's pause total then.
         long lastQueued = 0, lastWake = Stopwatch.GetTimestamp();
         ulong queuedAfter = 0;
@@ -168,7 +282,7 @@ public sealed class AudioEngine : IDisposable
         {
             while (!_cancellation.IsCancellationRequested)
             {
-                if (device.QueuedFrames >= TargetQueuedFrames)
+                if (device.QueuedFrames >= target)
                 {
                     lastWake = Stopwatch.GetTimestamp();
                     Thread.Sleep(1);

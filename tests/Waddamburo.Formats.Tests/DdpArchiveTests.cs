@@ -79,7 +79,7 @@ public sealed class DdpArchiveTests
         Assert.Throws<FormatReadException>(() => DdpArchiveIndex.Parse(embeddedNull));
 
         var invalidUtf8 = createArchive([new MovieFixture("x", 0, 0, 0, 0)]);
-        var nameOffset = findFirstNameOffset(invalidUtf8);
+        var nameOffset = FirstNameOffset;
         invalidUtf8[nameOffset] = 0xFF;
         Assert.Throws<FormatReadException>(() => DdpArchiveIndex.Parse(invalidUtf8));
     }
@@ -227,11 +227,7 @@ public sealed class DdpArchiveTests
         return stream.ToArray();
     }
 
-    private static int findFirstNameOffset(byte[] archive)
-    {
-        const int fixedPrefixLength = 12 + 4 + 4 + 2 + 20 + 4 + 9 + 4;
-        return fixedPrefixLength;
-    }
+    private const int FirstNameOffset = 12 + 4 + 4 + 2 + 20 + 4 + 9 + 4;
 
     private static void writeUInt32(Stream stream, uint value)
     {

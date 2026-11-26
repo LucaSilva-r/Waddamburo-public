@@ -15,10 +15,13 @@ public sealed class JobBoard
 
     public JobBoard(TimeProvider? time = null) => _time = time ?? TimeProvider.System;
 
-    /// <summary>A job of <paramref name="total"/> steps (null: no count, an indeterminate bar).</summary>
-    public Job Start(string title, int? total = null)
+    /// <summary>
+    /// A job of <paramref name="total"/> steps (null: no count, an indeterminate bar). <paramref name="quiet"/>: listed
+    /// in the notices menu only, never as a card on screen (routine work the player needs no word of).
+    /// </summary>
+    public Job Start(string title, int? total = null, bool quiet = false)
     {
-        var job = new Job(title, total, _time);
+        var job = new Job(title, total, _time) { Quiet = quiet };
         lock (_jobs)
         {
             _jobs.RemoveAll(job => job.EndedAt is { } ended && _time.GetUtcNow() - ended > KeepFinished);
@@ -56,6 +59,8 @@ public sealed class JobBoard
         public string Title { get; }
 
         public int? Total { get; }
+
+        public bool Quiet { get; init; }
 
         public int Done => Volatile.Read(ref _done);
 

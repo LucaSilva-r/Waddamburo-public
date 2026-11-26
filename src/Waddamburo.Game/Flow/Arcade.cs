@@ -11,12 +11,36 @@ public enum TimingIndicator { Off, GoodBad, Always }
 /// </summary>
 public enum ControllerVibration { Off, BigNotes, AllNotes, EveryHit }
 
+/// <summary>The on-screen drum on touch screens (config.cfg touch_drum): Auto hides it while a controller is connected
+/// or keys are played.</summary>
+public enum TouchDrumMode { Auto, On, Off }
+
+/// <summary>A chart's background video (config.cfg background_video): over the backdrops of every layout, under the lane
+/// only (one player; the backdrops above it stay), or not shown.</summary>
+public enum BackgroundVideoMode { On, UnderLane, Off }
+
+/// <summary>The touch drum's shape (config.cfg touch_drum_layout): one half drum at the bottom, or two don circles the
+/// player places (anywhere else is ka, by the screen's side).</summary>
+public enum TouchDrumLayout { Whole, Split }
+
 /// <summary>
 /// Cabinet settings (the original's service-menu options plus Waddamburo's own), read from
 /// config.cfg: <c>key = value</c> lines, <c>#</c> comments. The file carries
 /// <c>config_version</c>; an older file gets each later version's settings appended (with their
 /// comments and defaults) the next time it is loaded, keeping the user's edits.
 /// </summary>
+/// <summary>How sound reaches the device (config.cfg audio_output).</summary>
+public enum AudioOutputMode
+{
+    /// <summary>SDL's output, shared with other programs (audio_buffer_frames applies).</summary>
+    Shared,
+    /// <summary>The device for the game alone (audio_exclusive_period applies): WASAPI exclusive on Windows, a direct ALSA
+    /// PCM on Linux (audio_device = its ALSA name, such as plughw:CARD=X,DEV=1).</summary>
+    Exclusive,
+    /// <summary>Windows: an ASIO driver (asio_driver, asio_buffer_frames).</summary>
+    Asio,
+}
+
 /// <summary>Picture quality (config.cfg upscale; the Settings menu's Upscaling).</summary>
 public enum UpscaleLevel
 {
@@ -28,7 +52,7 @@ public enum UpscaleLevel
     Full,
 }
 
-public sealed record ArcadeSettings
+public sealed partial record ArcadeSettings
 {
     public const string FileName = "config.cfg";
 
@@ -76,7 +100,7 @@ public sealed record ArcadeSettings
         audio_offset_ms = 0
         # input_offset_ms: raise it when your hits are judged late (the drum or keyboard lags).
         input_offset_ms = 0
-        # audio_buffer_frames: the audio device's period, applied at start. Lower = less delay; too low crackles.
+        # audio_buffer_frames: the shared output's period, applied at start. Lower = less delay; too low crackles.
         audio_buffer_frames = 256
 
         """,
@@ -102,10 +126,23 @@ public sealed record ArcadeSettings
 
         """,
         """
-        # audio_exclusive (Windows): take the sound device for the game alone (WASAPI exclusive mode)
-        # for the lowest delay; other programs are silent while the game runs. Recalibrate the offsets
-        # after changing it. Falls back to shared output when the device refuses.
-        audio_exclusive = false
+        # audio_output: shared, exclusive: take the sound device for the game alone (WASAPI exclusive mode on
+        # Windows, a direct ALSA PCM on Linux: audio_device = its ALSA name, for cabinets without PipeWire) for
+        # the lowest delay; other programs are silent while the game runs; or asio
+        # (Windows): an ASIO driver. Recalibrate the offsets after changing it. Falls back to shared
+        # output when the device or driver refuses.
+        audio_output = shared
+        # audio_device: the playback device by name, empty = the system's default.
+        audio_device =
+        # audio_exclusive_period: exclusive mode's period in frames; 0 = the device's minimum (its default
+        # when the minimum proves too short at start), -1 = its default. Raise it when the sound stutters.
+        audio_exclusive_period = 0
+        # asio_driver: the ASIO driver by name, empty = the first installed. asio_buffer_frames: its buffer,
+        # 0 = the driver's preferred size (set in its control panel), else the nearest size it allows.
+        asio_driver =
+        asio_buffer_frames = 0
+        # asio_output_pair: the outputs played on, 0 = 1-2, 1 = 3-4, and so on.
+        asio_output_pair = 0
 
         """,
         """
@@ -155,6 +192,9 @@ public sealed record ArcadeSettings
         letterbox_size = 100
         letterbox_x = 50
         letterbox_y = 50
+        # performance_overlay: the frame rate and timings in the top-right corner (F5 shows or hides them
+        # until the game closes).
+        performance_overlay = false
 
         """,
         """
@@ -170,8 +210,8 @@ public sealed record ArcadeSettings
         p2_left_don = x, pad2:dpad_down, pad2:dpad_right, pad2:left_stick
         p2_right_don = c, pad2:south, pad2:west, pad2:right_stick
         p2_right_ka = v, pad2:east, pad2:right_shoulder, pad2:right_trigger
-        # pad_menus: gamepad = in the menus a controller's D-pad moves, its bottom button picks and its
-        # right button or Start is Escape, and the pads above count in songs only; drum = a drum that
+        # pad_menus: gamepad = in the menus a controller's D-pad moves, its bottom button picks, Start opens
+        # the menu and its right button goes back, and the pads above count in songs only; drum = a drum that
         # shows up as a controller: the pads above everywhere.
         pad_menus = gamepad
         # fast_song_scroll: in song select the list keeps up with quick rim hits and the mouse wheel, and
@@ -219,7 +259,18 @@ public sealed record ArcadeSettings
         # timing_indicator (also in the Settings menu): a glow under the judgement circle after a hit,
         # blue when early, red when late. good_bad = after a Good or Bad only; always = after every hit
         # (Greats too); off.
-        timing_indicator = good_bad
+        timing_indicator = off
+        # lyrics (also in the Settings menu): a song's lyrics under the lane while it plays (TJA #LYRIC, or the
+        # .lrc file its LYRICS: header names).
+        lyrics = false
+        # Its look (Settings > Game Options > Lyrics): lyrics_x / lyrics_y move it from the bottom centre (stage
+        # pixels, 1280x720), lyrics_scale in percent, lyrics_outline the outline's RGB (hex), lyrics_background the
+        # band behind it in percent opacity (0 = none).
+        lyrics_x = 0
+        lyrics_y = 0
+        lyrics_scale = 100
+        lyrics_outline = 25248E
+        lyrics_background = 0
 
         """,
         """
@@ -289,6 +340,13 @@ public sealed record ArcadeSettings
         # counted as a coin in the bookkeeping).
         button_coin = f2
         button_service = f3
+        # A card without a card reader: button_card_1p / button_card_2p (unbound until set in DRUM CONTROLS) insert
+        # the Banapass access code card_1p / card_2p (20 digits, the card's back or TaikOnline) as if read, starting
+        # the entry like a paired card. Anyone who can read this file can play on these cards.
+        button_card_1p =
+        button_card_2p =
+        card_1p =
+        card_2p =
 
         """,
         """
@@ -352,6 +410,9 @@ public sealed record ArcadeSettings
         upload_banner = true
         # The first custom-library upload question was answered; false = ask on the next entry.
         custom_upload_notice_seen = false
+        # The osu! installs found were offered at startup (lazer, stable: none, one or both); false = ask on the next
+        # start that finds one not set yet.
+        osu_libraries_asked = false
 
         """,
     ];
@@ -371,33 +432,43 @@ public sealed record ArcadeSettings
     [
         "d, pad1:dpad_left, pad1:left_shoulder, pad1:left_trigger, midi:31",
         "f, pad1:dpad_down, pad1:dpad_right, pad1:left_stick, midi:35",
-        "j, pad1:south, pad1:west, pad1:right_stick, midi:36",
-        "k, pad1:east, pad1:right_shoulder, pad1:right_trigger, midi:37",
+        Switch ? "j, pad1:east, pad1:north, pad1:right_stick, midi:36" : "j, pad1:south, pad1:west, pad1:right_stick, midi:36",
+        Switch ? "k, pad1:south, pad1:right_shoulder, pad1:right_trigger, midi:37" : "k, pad1:east, pad1:right_shoulder, pad1:right_trigger, midi:37",
         "z, pad2:dpad_left, pad2:left_shoulder, pad2:left_trigger",
         "x, pad2:dpad_down, pad2:dpad_right, pad2:left_stick",
-        "c, pad2:south, pad2:west, pad2:right_stick",
-        "v, pad2:east, pad2:right_shoulder, pad2:right_trigger",
+        Switch ? "c, pad2:east, pad2:north, pad2:right_stick" : "c, pad2:south, pad2:west, pad2:right_stick",
+        Switch ? "v, pad2:south, pad2:right_shoulder, pad2:right_trigger" : "v, pad2:east, pad2:right_shoulder, pad2:right_trigger",
     ]);
+
+    // A Switch's face buttons arrive by label (its A as south, B east, X west, Y north: menus confirm with A), so its
+    // drum and button defaults name them for the same places as an Xbox pad's: don on the bottom and left, ka on the right.
+    private static readonly bool Switch = AppContext.TryGetSwitch("Waddamburo.Switch", out var value) && value;
 
     /// <summary>The buttons beside the drum, in the order of <see cref="Buttons"/> (SdlInputBindings.Buttons).</summary>
     public static readonly string[] ButtonKeys =
         ["button_back", "button_search", "button_scores", "button_practise", "button_notices", "button_restart", "button_confirm",
-            "button_coin", "button_service", "button_screenshot"];
+            "button_coin", "button_service", "button_screenshot", "button_card_1p", "button_card_2p"];
 
     /// <summary>What presses each button (<see cref="ButtonKeys"/> order), as <see cref="Controls"/> lists a pad's.</summary>
     public EquatableList Buttons { get; init; } = new(
     [
         "backspace",
         "tab, pad1:back",
-        "l, pad1:north",
-        "p, pad1:west",
+        Switch ? "l, pad1:west" : "l, pad1:north",
+        Switch ? "p, pad1:north" : "p, pad1:west",
         "e, pad1:right_shoulder",
         "q, pad1:left_shoulder",
         "return, pad1:south",
         "f2",
         "f3",
         "f12",
+        "",
+        "",
     ]);
+
+    /// <summary>The Banapass access codes the card buttons insert (20 digits; null: none).</summary>
+    public string? Card1P { get; init; }
+    public string? Card2P { get; init; }
 
     /// <summary>A controller's bound pads also drive the menus (a drum); false: it is a gamepad there.</summary>
     public bool PadMenusAsDrum { get; init; }
@@ -447,6 +518,19 @@ public sealed record ArcadeSettings
     /// <summary>In the menus the mouse wheel is the rims (replays: it seeks) and a left click a don.</summary>
     public bool MouseControls { get; init; } = true;
 
+    /// <summary>The on-screen drum and the menus' touch buttons on touch screens.</summary>
+    public TouchDrumMode TouchDrum { get; init; } = TouchDrumMode.Auto;
+
+    /// <summary>The on-screen drum face's size, percent of the default (config.cfg touch_drum_size).</summary>
+    public int TouchDrumSize { get; init; } = 100;
+
+    public TouchDrumLayout TouchDrumLayout { get; init; } = TouchDrumLayout.Whole;
+
+    /// <summary>The split layout's left and right don circles: centre on the stage (0-1), radius in stage heights.</summary>
+    public (float X, float Y, float R) TouchDonLeft { get; init; } = (.3f, .72f, .2f);
+
+    public (float X, float Y, float R) TouchDonRight { get; init; } = (.7f, .72f, .2f);
+
     /// <summary>Discord shows what the player is doing (home mode, while Discord runs).</summary>
     public bool DiscordPresence { get; init; } = true;
 
@@ -459,8 +543,35 @@ public sealed record ArcadeSettings
     /// <summary>The custom-library upload question has been answered on this installation.</summary>
     public bool CustomUploadNoticeSeen { get; init; }
 
+    /// <summary>The osu! installs found at startup were offered (they are only read once chosen).</summary>
+    public bool OsuLibrariesAsked { get; init; }
+
     /// <summary>Which hits get the early/late glow under the judgement circle.</summary>
-    public TimingIndicator TimingIndicator { get; init; } = TimingIndicator.GoodBad;
+    /// <summary>A song's lyrics (TJA #LYRIC or its .lrc) shown while it plays (#45).</summary>
+    public bool Lyrics { get; init; }
+
+    /// <summary>A chart's background video (TJA BGMOVIE, osu! Video): where it shows, or off.</summary>
+    // On everywhere; a weak phone's player turns it off (software decoding; MediaCodec through FFmpeg was slower still:
+    // every frame copied back through Java; a SurfaceTexture straight into bgfx would be the hardware path).
+    public BackgroundVideoMode BackgroundVideo { get; init; } = BackgroundVideoMode.On;
+
+    /// <summary>How much the background video is darkened (percent), so the notes stay readable.</summary>
+    public int BackgroundVideoDim { get; init; } = 20;
+
+    /// <summary>Don-chan's 3D rendering resolution, percent of the window's (lower on phones, whose GPUs it costs most).</summary>
+    public int DonResolution { get; init; } = OperatingSystem.IsAndroid() || OperatingSystem.IsIOS() ? 60 : 100;
+
+    /// <summary>The most frames a second a background video shows (30 or 60): 30 halves the decoding on weak CPUs.</summary>
+    public int BackgroundVideoFps { get; init; } = 30;
+
+    /// <summary>The lyrics' place from the bottom centre (stage pixels), size (percent), outline (0xRRGGBB) and backing band (percent opacity).</summary>
+    public int LyricsX { get; init; }
+    public int LyricsY { get; init; }
+    public int LyricsScale { get; init; } = 100;
+    public int LyricsOutline { get; init; } = 0x25248E;
+    public int LyricsBackground { get; init; }
+
+    public TimingIndicator TimingIndicator { get; init; } = TimingIndicator.Off; // new players took the glow for a bug (#43)
 
     /// <summary>A list of strings compared by content, so the settings record still compares by value.</summary>
     public sealed class EquatableList(IEnumerable<string> items) : IReadOnlyList<string>, IEquatable<EquatableList>
@@ -498,6 +609,9 @@ public sealed record ArcadeSettings
 
     /// <summary>Frames per second at most, outside exclusive fullscreen; 0 = no limit.</summary>
     public int FpsCap { get; init; }
+
+    /// <summary>The performance overlay (frame rate, timings) from the start; F5 still toggles it for the session.</summary>
+    public bool PerformanceOverlay { get; init; }
 
     /// <summary>The dan dojo series a cabinet offers (home mode picks one in the game).</summary>
     public string DanSeries { get; init; } = "green";
@@ -567,11 +681,30 @@ public sealed record ArcadeSettings
     /// <summary>Milliseconds the player's hits arrive late: they are judged this much earlier.</summary>
     public int InputOffsetMs { get; init; }
 
-    /// <summary>The audio device period requested at start (SDL may choose another).</summary>
+    /// <summary>The shared output's device period requested at start (SDL may choose another).</summary>
     public int AudioBufferFrames { get; init; } = 256;
 
-    /// <summary>Windows: WASAPI exclusive output at the device's minimum period, instead of SDL's shared output.</summary>
-    public bool AudioExclusive { get; init; }
+    /// <summary>Shared (SDL) or, on Windows, WASAPI exclusive output.</summary>
+    public AudioOutputMode AudioOutput { get; init; }
+
+    /// <summary>The playback device's name; null = the system's default.</summary>
+    public string? AudioDevice { get; init; }
+
+    /// <summary>Exclusive output's period in frames; 0 = the device's minimum (checked at start), -1 = its default.</summary>
+    public int AudioExclusivePeriod { get; init; }
+
+    /// <summary>The ASIO driver's name; null = the first installed.</summary>
+    public string? AsioDriver { get; init; }
+
+    /// <summary>The ASIO buffer in frames; 0 = the driver's preferred size.</summary>
+    public int AsioBufferFrames { get; init; }
+
+    /// <summary>The ASIO outputs played on: 0 = 1-2, 1 = 3-4, and so on.</summary>
+    public int AsioOutputPair { get; init; }
+
+    /// <summary>The settings the audio output opens with: a change reopens it (back to the attract, no restart).</summary>
+    public (AudioOutputMode, string?, int, int, string?, int, int) AudioOutputSettings =>
+        (AudioOutput, AudioDevice, AudioBufferFrames, AudioExclusivePeriod, AsioDriver, AsioBufferFrames, AsioOutputPair);
 
     /// <summary>Two players' sounds panned to their own side; false: centred, shared.</summary>
     public bool StereoPanning { get; init; } = true;
@@ -666,10 +799,10 @@ public sealed record ArcadeSettings
         : IsGameCache(cacheFolder) ? Path.Combine(home, "cache")
         : Path.GetFullPath(cacheFolder!);
 
-    /// <summary>An osu!lazer data folder (null: the default install's, when there is one).</summary>
+    /// <summary>An osu!lazer data folder (null: none, the library is off).</summary>
     public string? OsuFolder { get; init; }
 
-    /// <summary>An osu!stable install, its own library beside lazer's (null: the default install's, when there is one).</summary>
+    /// <summary>An osu!stable install, its own library beside lazer's (null: none, the library is off).</summary>
     public string? OsuStableFolder { get; init; }
 
     /// <summary>The osu!lazer library's folder grouping and song order (its Group and Sort spines change them).</summary>
@@ -788,139 +921,7 @@ public sealed record ArcadeSettings
             var value = line[(separator + 1)..].Trim();
             settings = key switch
             {
-                "free_play" => settings with { FreePlay = boolean(value, index) },
-                "credits_per_coin" => settings with { CreditsPerCoin = count(value, index, 1) },
-                "credits_1p" => settings with { CreditsOnePlayer = count(value, index, 1) },
-                "credits_2p" => settings with { CreditsTwoPlayers = count(value, index, 1) },
-                "songs_per_session" => settings with { SongsPerSession = count(value, index, 1) },
-                "server" => settings with { Server = value.Length == 0 ? null : server(value, index) },
-                "server_insecure" => settings with { ServerInsecure = boolean(value, index) },
-                "cabinet_token" => settings with { CabinetToken = value.Length == 0 ? null : value },
-                "config_version" => settings with { Version = count(value, index, 0) },
-                "fullscreen" => settings with { Fullscreen = boolean(value, index) },
-                "vsync" => settings with { Vsync = boolean(value, index) },
-                "frame_latency" => settings with { FrameLatency = integer(value, index, 1, 3) },
-                "dan_series" => settings with { DanSeries = value },
-                "fps_cap" => settings with { FpsCap = integer(value, index, 0, 10000) },
-                "fullscreen_mode" => settings with { ExclusiveFullscreen = value.ToLowerInvariant() switch
-                {
-                    "borderless" => false,
-                    "exclusive" => true,
-                    _ => throw new InvalidDataException($"{FileName} line {index}: fullscreen_mode is borderless or exclusive, not '{value}'."),
-                } },
-                "fullscreen_resolution" => resolution(value, index) is var (width, height)
-                    ? settings with { FullscreenWidth = width, FullscreenHeight = height } : settings,
-                "refresh_rate" => settings with { RefreshRate = integer(value, index, 0, 1000) },
-                "letterbox_size" => settings with { LetterboxSize = integer(value, index, 20, 100) },
-                "letterbox_x" => settings with { LetterboxX = integer(value, index, 0, 100) },
-                "letterbox_y" => settings with { LetterboxY = integer(value, index, 0, 100) },
-                "console" => settings with { ShowConsole = boolean(value, index) },
-                "auto_update" => settings with { AutoUpdate = boolean(value, index) },
-                "free_movies" => settings with { FreeMovies = boolean(value, index) },
-                "title_language" => settings with { EnglishTitles = value.ToLowerInvariant() switch
-                {
-                    "english" => true,
-                    "japanese" => false,
-                    _ => throw new InvalidDataException($"{FileName} line {index}: title_language is english or japanese, not '{value}'."),
-                } },
-                "language" => settings with { Language = value.Length > 0 ? value.ToLowerInvariant() : SystemLanguage },
-                "master_volume" => settings with { MasterVolume = integer(value, index, 0, 100) },
-                "music_volume" => settings with { MusicVolume = integer(value, index, 0, 100) },
-                "drum_volume" => settings with { DrumVolume = integer(value, index, 0, 100) },
-                "effects_volume" => settings with { EffectsVolume = integer(value, index, 0, 100) },
-                "voice_volume" => settings with { VoiceVolume = integer(value, index, 0, 100) },
-                "menu_volume" => settings with { MenuVolume = integer(value, index, 0, 100) },
-                "attract_volume" => settings with { AttractVolume = integer(value, index, 0, 100) },
-                "audio_offset_ms" => settings with { AudioOffsetMs = integer(value, index, -1000, 1000) },
-                "input_offset_ms" => settings with { InputOffsetMs = integer(value, index, -1000, 1000) },
-                "audio_buffer_frames" => settings with { AudioBufferFrames = integer(value, index, 16, 8192) },
-                "audio_exclusive" => settings with { AudioExclusive = boolean(value, index) },
-                "stereo_panning" => settings with { StereoPanning = boolean(value, index) },
-                "upscale" => settings with { Upscale = value.ToLowerInvariant() switch
-                {
-                    "off" => UpscaleLevel.Off,
-                    "text" => UpscaleLevel.Text,
-                    "full" => UpscaleLevel.Full,
-                    _ => throw new InvalidDataException($"{FileName} line {index}: upscale is off, text or full, not '{value}'."),
-                } },
-                // Before upscale: on or off (off kept the game drawn at the screen's resolution). The next save renames it.
-                "upscale_textures" => settings with { Upscale = boolean(value, index) ? UpscaleLevel.Full : UpscaleLevel.Text },
-                "upscale_threads" => settings with { UpscaleThreads = integer(value, index, 0, 1024) },
-                "squash_titles" => settings with { SquashTitles = boolean(value, index) },
-                "mute_in_background" => settings with { MuteInBackground = boolean(value, index) },
-                "drum_sound_in_songs" => settings with { DrumSoundInSongs = boolean(value, index) },
-                "controller_vibration" => settings with { ControllerVibration = value.ToLowerInvariant() switch
-                {
-                    "off" or "false" => ControllerVibration.Off,
-                    "big" or "true" => ControllerVibration.BigNotes,
-                    "notes" => ControllerVibration.AllNotes,
-                    "all" => ControllerVibration.EveryHit,
-                    _ => throw new InvalidDataException($"{FileName} line {index}: controller_vibration is off, big, notes or all, not '{value}'."),
-                } },
-                "online_warning_accepted" => settings with { OnlineWarningAccepted = boolean(value, index) },
-                "share_warning_accepted" => settings with { ShareWarningAccepted = boolean(value, index) },
-                // ponytail: '#' starts a comment, so a folder path cannot contain one.
-                "tja_folder" => settings with { TjaFolder = value.Length == 0 ? null : value },
-                "layout" => settings with { Layout = value.Length == 0 ? null : value },
-                "layout_2p" => settings with { Layout2P = value.Length == 0 ? null : value },
-                "nijiiro_folder" => settings with { NijiiroFolder = value.Length == 0 ? null : value },
-                "nijiiro_datatable_key" => settings with { NijiiroDatatableKey = value },
-                "nijiiro_fumen_key" => settings with { NijiiroFumenKey = value },
-                "stock_folders" => settings with { StockFolders = value.Length == 0 ? null : value },
-                "osu_folder" => settings with { OsuFolder = value.Length == 0 ? null : value },
-                "osu_stable_folder" => settings with { OsuStableFolder = value.Length == 0 ? null : value },
-                "cache_folder" => settings with { CacheFolder = value.Length == 0 ? null : value },
-                "osu_group" => settings with { OsuBrowse = settings.OsuBrowse with
-                {
-                    Group = Enum.TryParse<SongSelect.SongGroupMode>(value, true, out var group) ? group : settings.OsuBrowse.Group,
-                } },
-                "osu_sort" => settings with { OsuBrowse = settings.OsuBrowse with
-                {
-                    Sort = Enum.TryParse<SongSelect.SongSortMode>(value, true, out var sort) ? sort : settings.OsuBrowse.Sort,
-                } },
-                "renderer" => settings with { Renderer = value.ToLowerInvariant() switch
-                {
-                    "auto" => null,
-                    "vulkan" or "gles" or "opengl" or "d3d11" or "metal" => value.ToLowerInvariant(),
-                    _ => throw new InvalidDataException($"{FileName} line {index}: renderer is auto, vulkan, gles, opengl, d3d11 or metal, not '{value}'."),
-                } },
-                "mode" => settings with { Home = value.ToLowerInvariant() switch
-                {
-                    "home" => true,
-                    "arcade" => false,
-                    _ => throw new InvalidDataException($"{FileName} line {index}: mode is home or arcade, not '{value}'."),
-                } },
-                "drum_debounce_ms" => settings with { DrumDebounceMs = integer(value, index, 0, 100) },
-                "retry_hold_ms" => settings with { RetryHoldMs = integer(value, index, 0, 1000) },
-                "record_performance" => settings with { RecordPerformance = boolean(value, index) },
-                "fast_song_scroll" => settings with { FastSongScroll = boolean(value, index) },
-                "show_oni" => settings with { ShowOni = boolean(value, index) },
-                "random_song_folder" => settings with { RandomSongFolder = boolean(value, index) },
-                "autoplay" => settings with { Autoplay = boolean(value, index) },
-                "arcade_hud" => settings with { ArcadeHud = boolean(value, index) },
-                "tutorial_seen" => settings with { TutorialSeen = boolean(value, index) },
-                "timer_freeze" => settings with { TimerFreeze = boolean(value, index) },
-                "dev_autoplay" => settings with { DevAutoplay = boolean(value, index) },
-                "dev_no_focus_pause" => settings with { DevNoFocusPause = boolean(value, index) },
-                "mouse_controls" => settings with { MouseControls = boolean(value, index) },
-                "custom_upload_notice_seen" => settings with { CustomUploadNoticeSeen = boolean(value, index) },
-                "upload_custom_songs" => settings with { UploadCustomSongs = boolean(value, index) },
-                "upload_banner" => settings with { UploadBanner = boolean(value, index) },
-                "discord_presence" => settings with { DiscordPresence = boolean(value, index) },
-                "gameplay_skin" => settings with { GameplaySkin = value.Length > 0 ? value : "auto" },
-                "timing_indicator" => settings with { TimingIndicator = value.ToLowerInvariant() switch
-                {
-                    "off" => TimingIndicator.Off,
-                    "good_bad" => TimingIndicator.GoodBad,
-                    "always" => TimingIndicator.Always,
-                    _ => throw new InvalidDataException($"{FileName} line {index}: timing_indicator is off, good_bad or always, not '{value}'."),
-                } },
-                "pad_menus" => settings with { PadMenusAsDrum = value.ToLowerInvariant() switch
-                {
-                    "gamepad" => false,
-                    "drum" => true,
-                    _ => throw new InvalidDataException($"{FileName} line {index}: pad_menus is gamepad or drum, not '{value}'."),
-                } },
+                _ when KeysByName.TryGetValue(key, out var known) => known.Read(settings, value, index),
                 _ when Array.IndexOf(ButtonKeys, key) is var button and >= 0 => settings with
                 {
                     Buttons = settings.Buttons.With(button, string.Join(", ",
@@ -959,94 +960,10 @@ public sealed record ArcadeSettings
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         ArgumentNullException.ThrowIfNull(settings);
-        var values = new Dictionary<string, object>
-        {
-            ["master_volume"] = settings.MasterVolume,
-            ["music_volume"] = settings.MusicVolume,
-            ["drum_volume"] = settings.DrumVolume,
-            ["effects_volume"] = settings.EffectsVolume,
-            ["voice_volume"] = settings.VoiceVolume,
-            ["menu_volume"] = settings.MenuVolume,
-            ["attract_volume"] = settings.AttractVolume,
-            ["audio_offset_ms"] = settings.AudioOffsetMs,
-            ["input_offset_ms"] = settings.InputOffsetMs,
-            ["audio_buffer_frames"] = settings.AudioBufferFrames,
-            ["audio_exclusive"] = settings.AudioExclusive ? "true" : "false",
-            ["stereo_panning"] = settings.StereoPanning ? "true" : "false",
-            ["upscale"] = settings.Upscale.ToString().ToLowerInvariant(),
-            ["upscale_threads"] = settings.UpscaleThreads,
-            ["squash_titles"] = settings.SquashTitles ? "true" : "false",
-            ["mute_in_background"] = settings.MuteInBackground ? "true" : "false",
-            ["drum_sound_in_songs"] = settings.DrumSoundInSongs ? "true" : "false",
-            ["controller_vibration"] = settings.ControllerVibration switch
-            {
-                ControllerVibration.Off => "off",
-                ControllerVibration.AllNotes => "notes",
-                ControllerVibration.EveryHit => "all",
-                _ => "big",
-            },
-            ["online_warning_accepted"] = settings.OnlineWarningAccepted ? "true" : "false",
-            ["share_warning_accepted"] = settings.ShareWarningAccepted ? "true" : "false",
-            ["tja_folder"] = settings.TjaFolder ?? "",
-            ["layout"] = settings.Layout ?? "",
-            ["layout_2p"] = settings.Layout2P ?? "",
-            ["nijiiro_folder"] = settings.NijiiroFolder ?? "",
-            ["nijiiro_datatable_key"] = settings.NijiiroDatatableKey,
-            ["nijiiro_fumen_key"] = settings.NijiiroFumenKey,
-            ["stock_folders"] = settings.StockFolders ?? "",
-            ["osu_folder"] = settings.OsuFolder ?? "",
-            ["osu_stable_folder"] = settings.OsuStableFolder ?? "",
-            ["cache_folder"] = settings.CacheFolder ?? "",
-            ["osu_group"] = settings.OsuBrowse.Group.ToString().ToLowerInvariant(),
-            ["osu_sort"] = settings.OsuBrowse.Sort.ToString().ToLowerInvariant(),
-            ["fullscreen"] = settings.Fullscreen ? "true" : "false",
-            ["vsync"] = settings.Vsync ? "true" : "false",
-            ["frame_latency"] = settings.FrameLatency,
-            ["fps_cap"] = settings.FpsCap,
-            ["fullscreen_mode"] = settings.ExclusiveFullscreen ? "exclusive" : "borderless",
-            ["fullscreen_resolution"] = settings.FullscreenWidth == 0 ? "native" : $"{settings.FullscreenWidth}x{settings.FullscreenHeight}",
-            ["refresh_rate"] = settings.RefreshRate,
-            ["letterbox_size"] = settings.LetterboxSize,
-            ["letterbox_x"] = settings.LetterboxX,
-            ["letterbox_y"] = settings.LetterboxY,
-            ["drum_debounce_ms"] = settings.DrumDebounceMs,
-            ["retry_hold_ms"] = settings.RetryHoldMs,
-            ["record_performance"] = settings.RecordPerformance ? "true" : "false",
-            ["fast_song_scroll"] = settings.FastSongScroll ? "true" : "false",
-            ["show_oni"] = settings.ShowOni ? "true" : "false",
-            ["random_song_folder"] = settings.RandomSongFolder ? "true" : "false",
-            ["autoplay"] = settings.Autoplay ? "true" : "false",
-            ["arcade_hud"] = settings.ArcadeHud ? "true" : "false",
-            ["tutorial_seen"] = settings.TutorialSeen ? "true" : "false",
-            ["timer_freeze"] = settings.TimerFreeze ? "true" : "false",
-            ["dev_autoplay"] = settings.DevAutoplay ? "true" : "false",
-            ["dev_no_focus_pause"] = settings.DevNoFocusPause ? "true" : "false",
-            ["mouse_controls"] = settings.MouseControls ? "true" : "false",
-            ["custom_upload_notice_seen"] = settings.CustomUploadNoticeSeen ? "true" : "false",
-            ["upload_custom_songs"] = settings.UploadCustomSongs ? "true" : "false",
-            ["upload_banner"] = settings.UploadBanner ? "true" : "false",
-            ["discord_presence"] = settings.DiscordPresence ? "true" : "false",
-            ["gameplay_skin"] = settings.GameplaySkin,
-            ["timing_indicator"] = settings.TimingIndicator switch
-            {
-                TimingIndicator.Off => "off",
-                TimingIndicator.Always => "always",
-                _ => "good_bad",
-            },
-            ["pad_menus"] = settings.PadMenusAsDrum ? "drum" : "gamepad",
-            ["language"] = settings.Language,
-            ["title_language"] = settings.EnglishTitles ? "english" : "japanese",
-        };
-        if (cabinet)
-        {
-            values["free_play"] = settings.FreePlay ? "true" : "false";
-            values["credits_per_coin"] = settings.CreditsPerCoin;
-            values["credits_1p"] = settings.CreditsOnePlayer;
-            values["credits_2p"] = settings.CreditsTwoPlayers;
-            values["songs_per_session"] = settings.SongsPerSession;
-        }
-        if (mode)
-            values["mode"] = settings.Home ? "home" : "arcade";
+        var values = new Dictionary<string, object>();
+        foreach (var key in Keys)
+            if (key.Write is { } write && (key.Saved == Saved.Menu || key.Saved == Saved.Cabinet && cabinet || key.Saved == Saved.Mode && mode))
+                values[key.Name] = write(settings);
         for (var pad = 0; pad < ControlKeys.Length; pad++)
             values[ControlKeys[pad]] = settings.Controls[pad];
         for (var button = 0; button < ButtonKeys.Length; button++)
@@ -1054,8 +971,8 @@ public sealed record ArcadeSettings
         var lines = (File.Exists(path) ? File.ReadAllText(path) : DefaultFileText).Split('\n');
         for (var index = 0; index < lines.Length; index++)
             foreach (var (key, value) in values)
-                // upscale_textures (on/off) became upscale: its line is rewritten in place.
-                if (isKey(lines[index], key) || key == "upscale" && isKey(lines[index], "upscale_textures"))
+                // upscale_textures (on/off) became upscale, audio_exclusive audio_output: their lines are rewritten in place.
+                if (isKey(lines[index], key) || KeysByName.TryGetValue(key, out var known) && known.Replaces is { } older && isKey(lines[index], older))
                 {
                     lines[index] = string.Create(CultureInfo.InvariantCulture, $"{key} = {value}");
                     values.Remove(key);
@@ -1102,54 +1019,4 @@ public sealed record ArcadeSettings
         int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var number) && number >= minimum
             ? number
             : throw new InvalidDataException($"{FileName} line {line}: '{value}' must be a whole number of at least {minimum}.");
-}
-
-/// <summary>
-/// The cabinet's credit counter: a coin is credited the moment it arrives (its sound is queued
-/// separately by the host); credits only go when a player joins. It lives for the whole process:
-/// nothing but a restart resets it.
-/// </summary>
-public sealed class CoinBank(ArcadeSettings settings)
-{
-    public ArcadeSettings Settings { get; } = settings ?? throw new ArgumentNullException(nameof(settings));
-
-    public int Credits { get; private set; }
-
-    public void InsertCoin() => Credits += Settings.CreditsPerCoin;
-
-    /// <summary>The credits are service credits (the counter shows its service text) until they are used up.</summary>
-    public bool Service { get; private set; }
-
-    /// <summary>
-    /// The service switch (traced session-service-coin): one more service credit; the first one replaces whatever
-    /// coins were inserted (1 coin, then service: 1 service credit). It isn't a coin: the bookkeeping doesn't count it.
-    /// </summary>
-    public void ServiceCredit()
-    {
-        if (!Service)
-            (Credits, Service) = (0, true);
-        Credits++;
-    }
-
-    /// <summary>The credits inserted are dropped (the service menu opening).</summary>
-    public void Clear() => (Credits, Service) = (0, false);
-
-    /// <summary>What the next player to join pays: one player's price, or the rest of the two-player price.</summary>
-    public int JoinCost(int joinedPlayers) => joinedPlayers == 0
-        ? Settings.CreditsOnePlayer
-        : Settings.CreditsTwoPlayers - Settings.CreditsOnePlayer;
-
-    /// <summary>Credits still missing for the next join (0 when affordable).</summary>
-    public int Missing(int joinedPlayers) => Math.Max(0, JoinCost(joinedPlayers) - Credits);
-
-    public bool TryJoin(int joinedPlayers)
-    {
-        var cost = JoinCost(joinedPlayers);
-        if (Credits < cost)
-            return false;
-        Credits -= cost;
-        if (Credits == 0)
-            Service = false;
-        return true;
-    }
 }

@@ -96,6 +96,12 @@ public interface IDonPresentationController
         SetAccessory(playerIndex, look?.Puchi ?? 0);
     }
 
+    /// <summary>
+    /// Whether the installed data has a shop costume (kigurumi 3, body 4, head 5, puchi 7): TaikOnline serves the latest Green
+    /// revision's goods, an older install may lack some.
+    /// </summary>
+    bool HasCostume(int type, int id) => true;
+
     /// <summary>The puchi chara floating beside a player's Don (0 = none); kept across scenes.</summary>
     void SetAccessory(int playerIndex, int puchi)
     {

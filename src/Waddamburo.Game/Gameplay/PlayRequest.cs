@@ -43,6 +43,9 @@ public static class TaikoGuest
     /// <summary>Each drum's drum sound (音色, 0-5: SE_GAME_NEIRO_00n), chosen on Song Select's tone board.</summary>
     public static int[] Tones { get; } = new int[2];
 
+    /// <summary>Song Select's timer (whole seconds, as shown) when the last song was picked; null with the countdown off.</summary>
+    public static int? SelectSeconds { get; set; }
+
     /// <summary>Each drum unlocked Oni (right-rim hits on the course board): it stays shown for the rest of the credit.</summary>
     public static bool[] Mania { get; } = new bool[2];
 
@@ -56,8 +59,11 @@ public static class TaikoGuest
     /// Kept for the app's run, or the credit (PlayerSession.Reset clears it with Mania).</summary>
     public static int?[] LastCourse { get; } = new int?[2];
 
-    /// <summary>Green's drum sounds: 太鼓, お祭り, いぬねこ, 豪華な太鼓, ドラム, タンバリン.</summary>
-    public const int ToneCount = 6;
+    /// <summary>
+    /// Green's drum sounds (its tone_name textures): 太鼓, お祭り, いぬねこ, 豪華な太鼓, ドラム, タンバリン, 和田どん, 手拍子, コンガ,
+    /// 8ビット太鼓, ソイヤ, メカドン, ふなっしー, ラップ, 細貝さん, 朱美ちゃん, シンセドラム.
+    /// </summary>
+    public const int ToneCount = 17;
 }
 
 public sealed record PlayerChartRequest

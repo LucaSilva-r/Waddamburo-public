@@ -79,6 +79,22 @@ public sealed unsafe class NativeAudioDecoder : IDisposable
         }
     }
 
+    // The game banks the bundled vgmstream reads (the native library's path_uses_vgmstream): through the path API
+    // only, since a stream goes to FFmpeg.
+    private static readonly string[] VgmstreamExtensions = [".nus3bank", ".nus3audio", ".nub", ".bnsf", ".spsis14", ".spsis22", ".idsp"];
+
+    /// <summary>A decoder for <paramref name="input"/>: by its path when it is a game bank file, read by vgmstream.</summary>
+    public static NativeAudioDecoder Open(Stream input, uint outputSampleRate = 0, uint outputChannels = 0)
+    {
+        if (input is FileStream file && VgmstreamExtensions.Any(extension => file.Name.EndsWith(extension, StringComparison.OrdinalIgnoreCase)))
+        {
+            var path = file.Name;
+            input.Dispose();
+            return new NativeAudioDecoder(path, outputSampleRate, outputChannels);
+        }
+        return new NativeAudioDecoder(input, outputSampleRate, outputChannels);
+    }
+
     /// <summary>
     /// Creates a decoder over a provider-owned stream. The decoder takes ownership of
     /// <paramref name="input"/> unless <paramref name="leaveOpen"/> is true.

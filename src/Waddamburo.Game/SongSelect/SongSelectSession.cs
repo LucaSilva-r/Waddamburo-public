@@ -28,6 +28,12 @@ public interface ISongBoardTextureService
         SongBoardTextureStyle style,
         SongBoardTextureKind kind);
 
+    /// <summary>
+    /// A song's title drawn horizontally at 720x103 (scene_change's song name), which is also the reward animation's song plates'
+    /// shape (Songname_hlong's fill is 360x52). The shop's song detail is vertical, like Song Select's boards.
+    /// </summary>
+    LumenNativeSurfaceKey GetTransitionTitle(SongSelectSong song, string? subtitle = null) => default;
+
     /// <summary>A folder name: Compact = vertical spine text, Expanded = horizontal banner.</summary>
     LumenNativeSurfaceKey GetFolderName(string name, SongBoardTextureKind kind, uint outlineRgb = 0);
 
@@ -121,7 +127,22 @@ public sealed class SongSelectSession
     public void StopCountdown()
     {
         Timer.Stop();
+        RecordPick();
         CountdownStopped?.Invoke();
+    }
+
+    // A song was picked: the timer's value now counts for the titles that ask where it stopped.
+    private bool _picked;
+
+    /// <summary>
+    /// Where the pick stops the timer (Green's 668899 titles), as the timer shows it; it still ticks once after the pick
+    /// (players aimed a second above), so the timer's stop (StopCountdown, or leaving) records it again.
+    /// </summary>
+    public void RecordPick(bool picked = false)
+    {
+        _picked |= picked;
+        if (_picked)
+            TaikoGuest.SelectSeconds = Counting ? (int)Math.Ceiling(Timer.Remaining.TotalSeconds) : null;
     }
 
     /// <summary>Seconds left on the countdown; null while none runs (home, or the countdown off).</summary>
@@ -145,6 +166,10 @@ public sealed class SongSelectSession
             if (course < 0)
                 continue;
             TaikoGuest.LastCourse[side] = Math.Min(course, (int)TaikoCourse.Oni);
+            // Oni picked where it showed at once (a song missing a course: no right-ka presses, no isMania) stays
+            // shown, or the next song's cursor starts on its hidden slot.
+            if (course == (int)TaikoCourse.Oni)
+                TaikoGuest.Mania[side] = true;
             if (played is not null && course <= (int)TaikoCourse.Oni && SongSelectCatalogView.CourseStar(played, course) is { } stars)
                 TaikoGuest.LastCourseStar[side] = (course, stars);
         }
@@ -180,6 +205,9 @@ public sealed class SongSelectSession
     /// <summary>The players decided a Group or Sort spine: Song Select reloads with the next grouping or order.</summary>
     public SongBrowseControl? BrowseRequested { get; private set; }
 
+    /// <summary>A Group or Sort folder's choice was decided (its value: the mode's name, or Genre/Game for the Wii libraries).</summary>
+    public (SongBrowseControl Control, string Value)? BrowsePicked { get; private set; }
+
     /// <summary>The folder and song of the last course decided (to come back to it).</summary>
     public (CategoryKey Category, SongKey Song)? Picked { get; private set; }
 
@@ -213,6 +241,8 @@ public sealed class SongSelectSession
             DanRequested = true;
             Picked = (Catalog.Categories[category].Key, picked.Descriptor.Key);
         }
+        else if (picked is not null && SongSelectCatalogView.BrowseOptionOf(picked.Descriptor.Key) is { } option)
+            BrowsePicked = option;
         CourseSelectSong = Catalog.TryGetSong(category, song, out var open) ? open : null;
         LeavingCourseSelect = false;
     }

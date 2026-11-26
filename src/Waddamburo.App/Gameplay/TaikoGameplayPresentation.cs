@@ -2,7 +2,7 @@ using Waddamburo.Catalog;
 using Waddamburo.Game;
 using Waddamburo.Game.Don;
 using Waddamburo.Game.Gameplay;
-using Waddamburo.Game.Online;
+using Waddamburo.Services.Online;
 using Waddamburo.Game.Scenes;
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
@@ -145,6 +145,8 @@ internal sealed class TaikoGameplayPresentation(IGameplaySkin gameplaySkin, Acti
         var layers = scene.Layers.Select((layer, index) => (layer.Definition, Layer: scene.Player.Layers[index],
             layer.Content)).ToArray();
         _stage = null;
+        // ponytail: the first chart's (a dan course's first song); per-song lyrics in a dan when someone asks.
+        (_lyrics, _drawnAt) = (charts.Count == 0 ? [] : charts[0].Lyrics, TimeSpan.MinValue);
         if (charts.Count == 1)
         {
             _shared = [];
@@ -240,6 +242,9 @@ internal sealed class TaikoGameplayPresentation(IGameplaySkin gameplaySkin, Acti
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(lane, _lanes.Length);
         _lanes[lane].ReplaceEffects(effects);
     }
+
+    /// <summary>The camera as the lanes were last placed (shared, so the first lane's); null when it is untouched.</summary>
+    public (LumenMatrix Matrix, float Red, float Green, float Blue)? Camera => _lanes.Length == 0 ? null : _lanes[0].Camera;
 
     /// <remarks><paramref name="allLanes"/>: both lanes' elements, the second lane's named *_p2 (a two-player layout).</remarks>
     public IReadOnlyList<StageEffectElement> EffectElements(TimeSpan time, bool allLanes = false) =>
@@ -363,24 +368,93 @@ internal sealed class TaikoGameplayPresentation(IGameplaySkin gameplaySkin, Acti
     /// <summary>Each lane's latest judged hit, early or late, for the timing glow.</summary>
     public IEnumerable<TimingMark> TimingMarks => _lanes.Select(static lane => lane.LastTiming).OfType<TimingMark>();
 
+    private System.Collections.Immutable.ImmutableArray<ChartLyric> _lyrics = [];
+    private TimeSpan _drawnAt = TimeSpan.MinValue;
+
+    /// <summary>The lyrics line at the chart time last drawn (its lines), or null.</summary>
+    public string? Lyric
+    {
+        get
+        {
+            var at = -1;
+            for (var index = 0; index < _lyrics.Length && _lyrics[index].Time <= _drawnAt; index++)
+                at = index; // ponytail: a scan per frame; a few hundred lines at most
+            return at < 0 || _lyrics[at].Text.Length == 0 ? null : _lyrics[at].Text;
+        }
+    }
+
+    private readonly LumenQuadBuffer _sceneQuads = new();
+    private readonly LumenQuadBuffer _backdropQuads = new();
+    private readonly LumenQuadBuffer _overDancerQuads = new();
+
+    /// <summary>The background video to draw this frame (GameplayFlow sets it per frame; null: none).</summary>
+    public GameplayVideoLayer? Video { get; set; }
+
+    // 1P's lane band ends here (stage pixels): the under-the-lane video fills the stage below it.
+    // ponytail: Green's 1P layout measured on screen; a layout editor move of the lane does not move it.
+    private const float UnderLaneTop = 348;
+
+    /// <remarks>Lasts until the next one (its quads are reused).</remarks>
     public LumenRenderSnapshot CreateSnapshot(TimeSpan time, float interpolation)
     {
+        _drawnAt = time;
         if (_lanes.Length == 0)
             throw new InvalidOperationException("Gameplay is not prepared.");
         // Both lanes' backs (backdrops, lanes, notes), then their fronts, then the shared overlays:
         // each lane is separate on screen, and the kusudama covers both.
         var parts = _lanes.Select(lane => lane.CreateLayers(time)).ToArray();
-        var layers = parts.SelectMany(part => part.Back).Concat(parts.SelectMany(part => part.Front)).Concat(_shared);
-        var snapshot = new LumenScenePlayer(1280, 720, layers).CreateRenderSnapshot(interpolation, player =>
+        var backs = parts.SelectMany(part => part.Back);
+        // A background video goes over every lane's backdrops (they are drawn first, all of them: two lanes' backdrops
+        // and lanes do not overlap) and under everything else.
+        var backdrops = Video is null ? [] : backs.Where(layer => _lanes.Any(lane => lane.IsBackdrop(layer))).ToArray();
+        var layers = (backdrops.Length == 0 ? backs : backs.Except(backdrops)).Concat(parts.SelectMany(part => part.Front)).Concat(_shared);
+        float beats(LumenPlayer player)
         {
             foreach (var lane in _lanes)
                 if (lane.BeatInterpolation(player) is { } beat)
                     return beat;
             return interpolation;
-        });
+        }
+        var snapshot = new LumenScenePlayer(1280, 720, layers).CreateRenderSnapshot(interpolation, beats, _sceneQuads);
+        if (Video is { } video)
+        {
+            // A seen-through video (added or keyed: holograms, green screens) takes the dancers' place, at their depth:
+            // the backdrops above them (sparkles, the Go-Go splash) stay over it, as on a stage. An opaque one covers all.
+            bool dancer(LumenSceneLayer layer) => _lanes.Any(lane => lane.IsDancer(layer));
+            var split = video.HidesDancers && Array.FindIndex(backdrops, dancer) is var at and >= 0 ? at : backdrops.Length;
+            var under = new LumenScenePlayer(1280, 720, backdrops[..split].Where(layer => !video.HidesDancers || !dancer(layer)))
+                .CreateRenderSnapshot(interpolation, beats, _backdropQuads).Quads;
+            var over = new LumenScenePlayer(1280, 720, backdrops[split..].Where(layer => !dancer(layer)))
+                .CreateRenderSnapshot(interpolation, beats, _overDancerQuads).Quads;
+            snapshot = new LumenRenderSnapshot(1280, 720, [.. under, videoQuad(video), .. over, .. snapshot.Quads]);
+        }
         foreach (var lane in _lanes)
             snapshot = lane.Tint(snapshot);
         return snapshot;
+    }
+
+    // The video filling its area (the stage, or below 1P's lane), cropped to keep its shape, darkened by its dim.
+    private static LumenRenderQuad videoQuad(GameplayVideoLayer video)
+    {
+        var shade = 1 - video.Dim;
+        // The chart's own box: the whole frame in it, as the charter sized it.
+        var (left, top, width, height) = video.Area ?? (0, video.UnderLane ? UnderLaneTop : 0, 1280, 720 - (video.UnderLane ? UnderLaneTop : 0));
+        // Else cover: the UVs keep the middle of the frame that fits the area's shape.
+        var (u, v) = video.Area is not null ? (0f, 0f)
+            : video.Aspect > width / height ? ((1 - width / height / video.Aspect) / 2, 0f) : (0f, (1 - video.Aspect * height / width) / 2);
+        float right = left + width, bottom = top + height;
+        // No frame yet (an opaque video starting later in the song): the quad is solid black (texture * 0 + opaque black).
+        var black = !video.Shown;
+        return new LumenRenderQuad(0,
+            new LumenRenderVertex(left, top, u, v), new LumenRenderVertex(right, top, 1 - u, v),
+            new LumenRenderVertex(right, bottom, 1 - u, 1 - v), new LumenRenderVertex(left, bottom, u, 1 - v),
+            // Faded: an opaque or added video to black, a keyed one (seen through by its alpha) to nothing.
+            black ? LumenRenderColor.Transparent : video.HidesDancers && !video.Additive
+                ? new LumenRenderColor(shade, shade, shade, video.Fade)
+                : new LumenRenderColor(shade * video.Fade, shade * video.Fade, shade * video.Fade, 1),
+            black ? new LumenRenderColor(0, 0, 0, 1) : LumenRenderColor.Transparent,
+            video.Additive && !black ? LumenRenderBlend.Add : LumenRenderBlend.Normal,
+            NativeSurface: Waddamburo.App.Presentation.BackgroundVideo.Surface, LumaKey: black ? 0 : video.LumaKey);
     }
 
     /// <summary>One player's lane: judgement, score, gauge, Don and the lane's movies.</summary>
@@ -448,6 +522,10 @@ internal sealed class TaikoGameplayPresentation(IGameplaySkin gameplaySkin, Acti
 
         private static TimeSpan shown(TimeSpan time) => time;
         private readonly int _characterSlot;
+        private readonly HashSet<LumenPlayer> _backdrops = [];
+        public bool IsDancer(LumenSceneLayer layer) => layer.Player == _dancers;
+
+        public bool IsBackdrop(LumenSceneLayer layer) => _backdrops.Contains(layer.Player);
         private readonly int _side;
         private readonly int? _soundLane;
         private readonly LumenSceneLayer[] _beatLayers;
@@ -911,6 +989,10 @@ internal sealed class TaikoGameplayPresentation(IGameplaySkin gameplaySkin, Acti
             // Don is drawn right after his backdrop (reference frame order).
             // Waiwai: both Dons stand in front of the stage lights and projectors (user-confirmed: the
             // second lane's Don, drawn after them, looked right).
+            // The backdrops (skies, dancers' floor, Go-Go splash…: depth 3002 and up) a background video covers;
+            // Don-chan (3001) and the chibi runners (3000) stay over it.
+            _backdrops = background.Where(static pair => GameplaySceneComposition.Depth(pair.Key) >= 3002)
+                .Select(static pair => pair.Value.Player).ToHashSet();
             _characterSlot = stage is not null
                 ? background.Count(pair => GameplaySceneComposition.Depth(pair.Key) >= 3000)
                 : Array.FindIndex(background, pair => pair.Key is "donbg" or "donbg_w_00") + 1;
@@ -932,16 +1014,24 @@ internal sealed class TaikoGameplayPresentation(IGameplaySkin gameplaySkin, Acti
                         [PlayableNoteKind.BigKa] = layers["onp_tetunagikatsu_1p"],
                     }
                     : null,
-                layers.TryGetValue("onp_synchro_don_1p", out var synchroDon)
+                layers.TryGetValue("onp_synchro_daidon_1p", out var synchroBigDon)
                     ? new Dictionary<PlayableNoteKind, LumenSceneLayer>
                     {
-                        [PlayableNoteKind.Don] = synchroDon,
+                        [PlayableNoteKind.Don] = layers["onp_synchro_don_1p"],
                         [PlayableNoteKind.Ka] = layers["onp_synchro_katsu_1p"],
-                        [PlayableNoteKind.BigDon] = layers["onp_synchro_daidon_1p"],
+                        [PlayableNoteKind.BigDon] = synchroBigDon,
                         [PlayableNoteKind.BigKa] = layers["onp_synchro_daikatsu_1p"],
                     }
                     : null,
                 layers.GetValueOrDefault("onp_rare_0_w_00"),
+                // 太鼓の達人Wii's sparkling notes: the small synchro notes' glow.
+                layers.TryGetValue("onp_synchro_don_1p", out var sparkleDon)
+                    ? new Dictionary<PlayableNoteKind, LumenSceneLayer>
+                    {
+                        [PlayableNoteKind.Don] = sparkleDon,
+                        [PlayableNoteKind.Ka] = layers["onp_synchro_katsu_1p"],
+                    }
+                    : null,
                 layers.GetValueOrDefault("onp_kadon"),
                 // One onp_moji player per text label (a traced clone per note, parked on its label).
                 NoteTextLabels.ToDictionary(label => label, label =>
@@ -1048,7 +1138,7 @@ internal sealed class TaikoGameplayPresentation(IGameplaySkin gameplaySkin, Acti
 
         // Diagnostic: WADDAMBURO_DRUM_TRACE=1 prints each drum hit with the time since the pad's last one
         // (a drum that sends double hits shows pairs a few milliseconds apart) and the ones the debounce drops.
-        private static readonly bool TraceDrum = Environment.GetEnvironmentVariable("WADDAMBURO_DRUM_TRACE") == "1";
+        private static readonly bool TraceDrum = DiagnosticSwitches.DrumTrace;
         private readonly TimeSpan[] _lastPadPress = new TimeSpan[4];
         private readonly DrumDebounce _debounce = new();
 
@@ -1134,6 +1224,8 @@ internal sealed class TaikoGameplayPresentation(IGameplaySkin gameplaySkin, Acti
         public IReadOnlyList<StageEffectElement> EffectElements(TimeSpan time) =>
             _presentation.EffectElements(shown(time), _character?.Layer, _characterSlot);
 
+        public (LumenMatrix Matrix, float Red, float Green, float Blue)? Camera => _presentation.Camera;
+
         public void RemoveNote(int index) => _presentation.RemoveNote(index);
 
         public void FlashTarget() => _gameMovies.FlashTarget();
@@ -1167,3 +1259,9 @@ internal sealed class TaikoGameplayPresentation(IGameplaySkin gameplaySkin, Acti
 /// </summary>
 internal sealed record TimingMark(bool Early, bool Great, float X, float Y, float Radius, long At,
     Waddamburo.Lumen.Runtime.LumenMatrix Placement);
+
+/// <summary>A frame's background video: its width over height, where it goes, and how much it is darkened (0-1).</summary>
+internal readonly record struct GameplayVideoLayer(float Aspect, bool UnderLane, float Dim, bool Additive = false,
+    (float X, float Y, float Width, float Height)? Area = null, bool HidesDancers = false, float LumaKey = 0,
+    bool Shown = true, float Fade = 1); // Shown false: no frame yet, its quad is drawn black; Fade: its fade in/out (0-1)
+

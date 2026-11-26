@@ -1,7 +1,5 @@
 using System.Diagnostics;
 using Waddamburo.Game.Flow;
-using Waddamburo.Game.Online;
-using Waddamburo.Game.Scores;
 
 namespace Waddamburo.App.Tools;
 
@@ -69,9 +67,9 @@ internal static class OnlineTest
 
     private static async Task<int> runAsync(ArcadeSettings arcade, AccountBook accounts, string? code)
     {
-        var token = Environment.GetEnvironmentVariable("WADDAMBURO_ONLINE_TOKEN") is { Length: > 0 } fromEnvironment ? fromEnvironment
+        var token = DiagnosticSwitches.OnlineToken is { Length: > 0 } fromEnvironment ? fromEnvironment
             : accounts.Default?.Token ?? (accounts.Accounts is [var first, ..] ? first.Token : null);
-        var serverOverride = Environment.GetEnvironmentVariable("WADDAMBURO_ONLINE_SERVER") is { Length: > 0 } fromVariable ? new Uri(fromVariable) : null;
+        var serverOverride = DiagnosticSwitches.OnlineServer is { Length: > 0 } fromVariable ? new Uri(fromVariable) : null;
         if ((serverOverride ?? arcade.Server) is not { } server || token is null)
         {
             say("RESULT: the online test needs a server and an account.");
@@ -81,8 +79,8 @@ internal static class OnlineTest
         say($"Server: {server}");
         await using var session = new OnlineSession(ScoreClient.CreateHttp(server, insecure, token), insecure)
         {
-            ShareLanWithStrangers = Environment.GetEnvironmentVariable("WADDAMBURO_ONLINE_LAN") == "1",
-            RelayOnly = Environment.GetEnvironmentVariable("WADDAMBURO_ONLINE_RELAY_ONLY") == "1",
+            ShareLanWithStrangers = DiagnosticSwitches.OnlineLan,
+            RelayOnly = DiagnosticSwitches.OnlineRelayOnly,
         };
         var received = 0L;
         session.Link.Received += _ => Interlocked.Increment(ref received);

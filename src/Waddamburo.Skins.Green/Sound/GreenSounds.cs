@@ -39,7 +39,7 @@ public sealed class GreenSounds(GreenSoundSet set, ISoundPlayer player)
 
     public bool IsPlaying(SoundHandle? handle) => Player.IsPlaying(handle);
 
-    public void Stop(SoundHandle? handle) => Player.Stop(handle);
+    public void Stop(SoundHandle? handle, TimeSpan? fade = null) => Player.Stop(handle, fade);
 
     /// <summary>A whole-number argument of a movie's sound call.</summary>
     public static bool TryInteger(ImmutableArray<LumenHostValue> arguments, int index, out int result)

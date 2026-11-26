@@ -117,7 +117,8 @@ The optional vgmstream integration in `native/media/src/media.c` is original wra
 code written against vgmstream's public `libvgmstream` API. The dependency recipe in
 `native/vgmstream/` is original Waddamburo build configuration against upstream
 vgmstream commit `09c9f40caae4747e44b6a993b3d5b654cef4d1f7`. It downloads the
-unmodified upstream archive, builds it with G.719 disabled, and vendors no source. Container
+upstream archive by hash, excludes the two Siren 14 helper sources from the extracted
+build, and disables G.719 and G.722.1. No vgmstream source is vendored. Container
 selection uses filename extensions and public library behavior. The public decode
 regression uses a project-authored, silent synthetic BNSF/IS22 fixture. Private game
 audio was used only for local compatibility checks; no sample, hash, path, capture,
@@ -316,3 +317,9 @@ THIRD_PARTY_NOTICES.md, with the complete upstream license at
 white for tinting and rasterizes at 64 pixels through the existing SVG renderer.
 No icon library, font, or additional dependency is introduced. Asset IDs, folder
 metadata, context menus, and reference updates are original project code.
+
+The arcade update package reader (`src/Waddamburo.Formats/Packages/ArcadePackage.cs`) is independently implemented
+from the publicly described algorithm in [RPCS3 issue 7482](https://github.com/RPCS3/rpcs3/issues/7482) (credited
+there to SSL and zecoxao): the payload is XORed with SHA-1 of a header-derived seed and the block index. Entry layout
+was checked on user-supplied update files. No code is copied; no key is embedded (the seed comes from each package's
+header). The Green import's file list comes from the user's game manifests (`eng/green-data-list.py`).

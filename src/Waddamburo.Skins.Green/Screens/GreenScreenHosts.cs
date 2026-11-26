@@ -1,4 +1,5 @@
 using Waddamburo.Skins.Green.Art;
+using Waddamburo.Skins.Green.Screens;
 using Waddamburo.Catalog;
 using Waddamburo.Game.Dan;
 using Waddamburo.Game.Don;
@@ -25,7 +26,7 @@ public sealed class GreenScreenHosts(
     ISongBoardTextureService textures,
     GreenScreenSounds? sounds,
     IDonPresentationController? don,
-    Func<TaikoSongInfo> songInfo,
+    ISongPreviewController previews,
     bool countdown,
     Func<IReadOnlyList<TaikoPlayResult>> playResults,
     Func<ArcadeSettings> arcadeSettings,
@@ -130,14 +131,6 @@ public sealed class GreenScreenHosts(
     /// <summary>A drum's player's crowns by chart key, read as Song Select loads (null: a guest).</summary>
     public Func<int, IReadOnlyDictionary<string, TaikoCrown>?>? Crowns { get; init; }
 
-    /// <summary>Each saved play's previous best on its chart, by play index (results' best score).</summary>
-    public Func<int, long?>? Best { get; init; }
-
-    public Func<int, RankingPlacement?>? Placement { get; init; }
-
-    /// <summary>Songs started this credit (song select shows the next one's number).</summary>
-    public Func<int>? SongsStarted { get; init; }
-
     /// <summary>AI battle's song select panels: the player's rank, points to the next, wins, wins to the next reward.</summary>
     public Func<AiBattlePanels>? AiPanels { get; init; }
 
@@ -211,6 +204,18 @@ public sealed class GreenScreenHosts(
     /// <summary>The boot's music credit pages there are (the copyright NUT's).</summary>
     public int CopyrightPages { get; init; }
 
+    /// <summary>Whether TaikOnline answers (checked from boot on): the entry's mode select then offers the reward shop.</summary>
+    public Func<bool>? ServerOnline { get; init; }
+
+    /// <summary>Whether Green's AI battle movies are installed (the entry's mode select offers it only then).</summary>
+    public bool AiBattleInstalled { get; init; } = true;
+
+    /// <summary>The carded player whose Don Medals the credit's end shows (reward_shop over the game over); null: none.</summary>
+    public Func<RewardShopPlayer?>? RewardPlayer { get; init; }
+
+    /// <summary>The reward shop on stage (the medal screen or a shopping visit).</summary>
+    public RewardShopHostBinding? RewardShop { get; set; }
+
     /// <summary>Called when a player joins at entry (coin mode updates the indicator panel).</summary>
     public Action<int>? EntryJoined { get; init; }
 
@@ -238,10 +243,10 @@ public sealed class GreenScreenHosts(
 
     /// <summary>What follows the results (see <see cref="TaikoCredit"/>).</summary>
     // Home: an endless credit, song after song, no revival and no end message.
-    public TaikoCreditNext CreditNext => arcade.Home ? TaikoCreditNext.NextSong : TaikoCredit.Next(songInfo().Stage,
+    public TaikoCreditNext CreditNext => arcade.Home ? TaikoCreditNext.NextSong : TaikoCredit.Next(Credit.SongInfo.Stage,
         [.. playResults().Select(play => play.Cleared)], arcade.SongsPerSession);
 
-    private int endMessage => arcade.Home ? 0 : TaikoCredit.EndMessage(songInfo().Stage,
+    private int endMessage => arcade.Home ? 0 : TaikoCredit.EndMessage(Credit.SongInfo.Stage,
         [.. playResults().Select(play => play.Cleared)], arcade.SongsPerSession);
 
     // --- Host construction ---
@@ -250,6 +255,11 @@ public sealed class GreenScreenHosts(
     {
         LayerLoading?.Invoke(layer.HostId);
         // A front-end scene movie starts the indicator parts its following layers attach to.
+        if (layer.HostId == "reward-shop-visit")
+            _parts = new IndicatorParts(IndicatorPartsScene.RewardShop, counting) { ShowCounter = HideArcadeHud?.Invoke() != true };
+        // The medal screen: its name boards only.
+        if (layer.HostId == "reward-shop")
+            _parts = new IndicatorParts(IndicatorPartsScene.RewardShop, counting) { ShowCounter = false };
         if (layer.HostId == "player-entry")
         {
             _parts = new IndicatorParts(IndicatorPartsScene.Entry, counting) { ShowCounter = HideArcadeHud?.Invoke() != true };
@@ -270,6 +280,10 @@ public sealed class GreenScreenHosts(
                 PlayerName = side => PlayerName?.Invoke(side),
                 CardDialog = open => CardDialog?.Invoke(open),
                 PreJoined = Credit.EntryRejoined,
+                // Green always offers the shop (traced IsAvailableShop 1) and greys it itself for a drum without card
+                // data. Fixed for the scene: an answer that changes rebuilds the boards (the shop popped in late).
+                ShopAvailable = ServerOnline?.Invoke() == true ? static () => true : static () => false,
+                AiBattleAvailable = AiBattleInstalled,
             };
             _entryPrevious = Credit.EntryRejoined is null ? 0 : 1; // SCENE_ATTRACT / SCENE_SONGSELECT
             Credit.EntryRejoined = null;
@@ -281,7 +295,7 @@ public sealed class GreenScreenHosts(
         else if (layer.HostId == "song-select")
         {
             // time_counter has art for songs 1-4 (red when final); home's endless credit stays on 1.
-            var next = arcade.Home ? 1 : (SongsStarted?.Invoke() ?? 0) + 1;
+            var next = arcade.Home ? 1 : Credit.SongsPlayed + 1;
             _parts = new IndicatorParts(IndicatorPartsScene.SongSelect, counting)
             {
                 MusicNumber = Math.Min(next, 4),
@@ -298,7 +312,7 @@ public sealed class GreenScreenHosts(
                 Path.GetFileNameWithoutExtension(layer.MovieId)),
             "song-select" => songSelectHost(),
             GameplaySceneComposition.StaticHostId or GameplaySceneComposition.PlayerTwoHostId =>
-                new LumenLayerHost(new TaikoGameplayHostBinding(songInfo, sounds is null ? null : sounds.Frontend.PlayCue)),
+                new LumenLayerHost(new TaikoGameplayHostBinding(() => Credit.SongInfo, sounds is null ? null : sounds.Frontend.PlayCue)),
             RainbowTransitionComposition.StaticHostId => new LumenLayerHost(null),
             LayerRoles.SystemIndicators => new LumenLayerHost(null),
             "result" => resultHost(),
@@ -322,6 +336,8 @@ public sealed class GreenScreenHosts(
             "ai-tutorial-timer" => new LumenLayerHost(null, movie => ModeTutorial?.AttachTimer(movie)),
             "dani-select" => daniSelectHost(),
             "gameover" => gameOverHost(),
+            "reward-shop" => rewardShopHost(),
+            "reward-shop-visit" => rewardShopVisitHost(),
             "attract" => attractHost(),
             "boot" => new LumenLayerHost(null, bootCredits),
             _ => throw new KeyNotFoundException($"No Lumen host is configured for '{layer.HostId}'."),
@@ -386,9 +402,10 @@ public sealed class GreenScreenHosts(
         if (plays.Count == 0)
             throw new InvalidOperationException("Results loaded without a finished play.");
         IReadOnlyList<TaikoPlayResult> own = [plays[0]];
-        var binding = new ResultHostBinding(() => own, songInfo().Stage, endMessage, don, sounds?.Results, 0)
+        var binding = new ResultHostBinding(() => own, Credit.SongInfo.Stage, endMessage, don, sounds?.Results, 0)
         {
-            Best = Best,
+            Best = Credit.Best,
+            Placement = Credit.Placement, // the ranking, as on a song's results
             AiBattle = true,
             PlayCue = sounds is null ? null : sounds.Frontend.PlayCue,
             NormalResultClosed = () => AiSectionResult?.Start(),
@@ -414,7 +431,7 @@ public sealed class GreenScreenHosts(
     private LumenLayerHost aiSectionResultHost()
     {
         var outcome = Credit.AiOutcome ?? throw new InvalidOperationException("AI battle results without a battle.");
-        var binding = AiSectionResult = new AiSectionResultBinding(outcome, Credit.AiNumbers ?? AiResultNumbers.NewPlayer with { ShowProgress = false },
+        var binding = AiSectionResult = new AiSectionResultBinding(outcome, Credit.AiNumbers ?? AiResultNumbers.NewPlayer,
             sounds is null ? null : sounds.Frontend.PlayCue, Credit.AiSectionBest)
         {
             Backdrop = () => AiResultBackground,
@@ -441,11 +458,11 @@ public sealed class GreenScreenHosts(
         var plays = playResults();
         if (plays.Count == 0)
             throw new InvalidOperationException("Results loaded without a finished play.");
-        var binding = new ResultHostBinding(() => plays, songInfo().Stage, endMessage,
+        var binding = new ResultHostBinding(() => plays, Credit.SongInfo.Stage, endMessage,
             don, sounds?.Results, Credit.PlayerSide)
         {
-            Best = Best,
-            Placement = Placement,
+            Best = Credit.Best,
+            Placement = Credit.Placement,
         };
         return new LumenLayerHost(binding, player =>
         {
@@ -466,7 +483,7 @@ public sealed class GreenScreenHosts(
             void tell(string name, LumenHostValue value) => player.Publish(name, value, drum);
             tell("result.course", LumenHostValue.FromString(play.Course.ToString().ToLowerInvariant()));
             tell("result.score", LumenHostValue.FromNumber(play.Score));
-            tell("result.best", Best?.Invoke(index) is { } best ? LumenHostValue.FromNumber(best) : LumenHostValue.Undefined);
+            tell("result.best", Credit.Best(index) is { } best ? LumenHostValue.FromNumber(best) : LumenHostValue.Undefined);
             tell("result.good", LumenHostValue.FromNumber(play.Great));
             tell("result.ok", LumenHostValue.FromNumber(play.Good));
             tell("result.bad", LumenHostValue.FromNumber(play.Miss));
@@ -550,8 +567,154 @@ public sealed class GreenScreenHosts(
 
     private LumenLayerHost gameOverHost()
     {
-        var binding = GameOver = new GameOverHostBinding(sounds?.GameOver, Credit.PlayerSide, Credit.TwoPlayers);
+        var binding = GameOver = new GameOverHostBinding(sounds?.GameOver, Credit.PlayerSide, Credit.TwoPlayers,
+            RewardPlayer?.Invoke() is null ? null : () => RewardShop?.Ended ?? false,
+            static side => TaikoGuest.Profiles[side] is { Baid: > 0 });
         return new LumenLayerHost(binding, binding.Attach);
+    }
+
+    private LumenLayerHost rewardShopHost()
+    {
+        var player = RewardPlayer?.Invoke() ?? throw new InvalidOperationException("reward_shop without a carded player.");
+        var (season, telop) = Waddamburo.Game.Scores.DonMedals.Season(DateOnly.FromDateTime(DateTime.Now));
+        var binding = RewardShop = new RewardShopHostBinding(season, telop, player, sounds?.RewardShop, parts: _parts);
+        var layer = rewardShopLayer(binding, season);
+        if (player.Rewards is not { Count: > 0 })
+            return layer;
+        // The reward sliders' fills (rewardicon_/rewardname_<n>p_<index>, in PushReward order): a costume's icon and name
+        // plate, a song's title.
+        var songs = new SongSelectCatalogView(catalog).Categories.SelectMany(category => category.Songs.Select(song => (Song: song, Category: category)))
+            .Where(static entry => entry.Song.Descriptor.Key.Source == SongSourceKind.Stock)
+            .GroupBy(static entry => entry.Song.Descriptor.Key.StableId).ToDictionary(static group => group.Key, static group => group.First());
+        var rewards = player.Rewards.Where(reward => installed(reward.Type, reward.Id, reward.MusicId, songs.ContainsKey)).ToList();
+        binding = RewardShop = new RewardShopHostBinding(season, telop, player with { Rewards = rewards }, sounds?.RewardShop, parts: _parts);
+        layer = rewardShopLayer(binding, season);
+        return new LumenLayerHost(binding, movie =>
+        {
+            layer.Initialize?.Invoke(movie);
+            var side = $"{player.Side + 1}p";
+            for (var index = 0; index < rewards.Count; index++)
+            {
+                var reward = rewards[index];
+                if (reward.Type is 3 or 4 or 5)
+                {
+                    var set = reward.Type switch { 3 => 0, 5 => 1, _ => 2 };
+                    movie.SetNativeFill($"rewardicon_{side}_{index}", CostumeIconTextures.Key(set, reward.Id));
+                    movie.SetNativeFill($"rewardname_{side}_{index}", CostumeIconTextures.NameKey(set, reward.Id));
+                }
+                else if (reward.MusicId is { } musicId && songs.TryGetValue(musicId, out var entry))
+                    movie.SetNativeFill($"rewardname_{side}_{index}", textures.GetTransitionTitle(entry.Song));
+            }
+        });
+    }
+
+    // The season's art in reward_shop's fills and the players' Don-chan in their costumes (don1pM / don2pM), as at the entry.
+    private LumenLayerHost rewardShopLayer(RewardShopHostBinding binding, int season) => new(binding, movie =>
+    {
+        // ponytail: slot names guessed from the movie's strings; checked on screen.
+        movie.SetNativeFill("season_BG", SeasonArt.Key("BG", season));
+        movie.SetNativeFill("season_thema", SeasonArt.Key("thema", season));
+        for (var side = 0; side < 2; side++)
+        {
+            movie.SetNativeFill($"season_fan_{side + 1}p", SeasonArt.Key("daishi_1p2p", season, side));
+            movie.SetNativeFill($"medalbase{side + 1}p", SeasonArt.Key("medal_1p2p", season, side));
+        }
+        if (don is not null)
+            DonLumenBinding.Attach(movie, don);
+        binding.Attach(movie);
+    });
+
+    // Whether this install can show a good TaikOnline serves (the latest Green revision's): a stock song in the library, a
+    // costume or puchi with its model. Tones always pass.
+    private bool installed(int type, int id, string? musicId, Func<string, bool> hasSong) => type switch
+    {
+        1 => musicId is { } music && hasSong(music),
+        3 or 4 or 5 or 7 => don?.HasCostume(type, id) ?? true,
+        _ => true,
+    };
+
+    // The movie's GENRELABEL order (1-8).
+    private static readonly string[] ShopGenres = ["J-POP", "アニメ", "ボーカロイド", "童謡", "バラエティ", "クラシック", "ゲームミュージック", "ナムコオリジナル"];
+
+    /// <summary>
+    /// The reward shop after a card entry (shopping mode): the season's goods TaikOnline serves, songs found in the stock
+    /// library by musicid (their genre, stars, title and preview), costumes previewed on the player's Don.
+    /// </summary>
+    private LumenLayerHost rewardShopVisitHost()
+    {
+        var state = Credit.WaitForShopGoods();
+        // Each joined drum: a card whose shop came in buys with its medals; anyone else (a guest, a card the server missed)
+        // only looks.
+        int[] joined = Credit.TwoPlayers ? [0, 1] : [Credit.PlayerSide];
+        var shops = Credit.Shops.Select(shop => shop?.State.IsCompletedSuccessfully == true ? shop : null).ToArray();
+        var view = new SongSelectCatalogView(catalog);
+        var songs = view.Categories.SelectMany(category => category.Songs.Select(song => (Song: song, Category: category)))
+            .Where(static entry => entry.Song.Descriptor.Key.Source == SongSourceKind.Stock)
+            .GroupBy(static entry => entry.Song.Descriptor.Key.StableId).ToDictionary(static group => group.Key, static group => group.First());
+        (SongSelectSong Song, SongSelectCategory Category)? song(int id) =>
+            state.Goods.FirstOrDefault(goods => goods.Type == 1 && goods.Id == id)?.MusicId is { } musicId
+            && songs.TryGetValue(musicId, out var entry) ? entry : null;
+        bool[] owned(ShopGoods item) => [.. shops.Select(shop => shop?.State.Result.Goods.Any(goods => goods.No == item.No && goods.Owned) == true)];
+        var goods = state.Goods.Where(item => installed(item.Type, item.Id, item.MusicId, songs.ContainsKey)).Select(item => song(item.Id) is { } entry && item.Type == 1
+            ? new RewardShopGoods(item, owned(item), Array.IndexOf(ShopGenres, entry.Category.AuthoredLabel) + 1,
+                [.. new[] { TaikoCourse.Easy, TaikoCourse.Normal, TaikoCourse.Hard, TaikoCourse.Oni }.Select(course => entry.Song.Level(course) ?? 0)])
+            : new RewardShopGoods(item, owned(item))).ToList();
+        var dressed = new[] { true, true }; // each Don wears its player's own look
+        var visit = new RewardShopVisit(goods, joined, [.. shops.Select(shop => shop?.State.Result.Medals)],
+            async (side, no) =>
+            {
+                if (shops[side] is not { } shop)
+                    return null;
+                try
+                {
+                    var answer = await shop.Purchase(no).ConfigureAwait(false);
+                    if (answer.Result == "ok" && state.Goods.FirstOrDefault(goods => goods.No == no) is { } bought
+                        && TaikoGuest.Profiles[side] is { Locked: { } locks } profile)
+                        TaikoGuest.Profiles[side] = profile with { Locked = locks.Unlock(bought.Type, bought.Id, bought.MusicId) };
+                    return answer;
+                }
+                catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+                {
+                    Console.Error.WriteLine($"Warning SHOP: the purchase failed ({exception.Message}).");
+                    return null;
+                }
+            },
+            (side, type, id) =>
+            {
+                // A song plays its preview; a costume (kigurumi 3, head 5, body 4) is worn alone; -2 (the exit) and songs bring back the
+                // player's own look. True: the Don changes (the movie waits for FinishCostumeLoad).
+                // ponytail: one preview player; the last cursor to move picks the song.
+                if (type == 1 && song(id) is { Song.Descriptor: { AudioAsset: { } audio } descriptor })
+                    previews.SetPreview(new SongPreviewRequest(descriptor.Key, audio, descriptor.PreviewStart ?? TimeSpan.Zero));
+                else
+                    previews.Silence();
+                if (don is null || side is not (0 or 1))
+                    return false;
+                if (type is 3 or 4 or 5)
+                {
+                    don.SetCostume(side, new DonCostume(type == 3 ? id : null, type == 5 ? id : 0, type == 4 ? id : 0, 0));
+                    dressed[side] = false;
+                    return true;
+                }
+                if (dressed[side])
+                    return false;
+                don.SetLook(side, TaikoGuest.Profiles[side]?.Look);
+                dressed[side] = true;
+                return true;
+            },
+            (slot, type, id) => type switch
+            {
+                // The detail's song name is vertical, like Song Select's boards.
+                1 when slot is 10 or 11 && song(id) is var (entry, category) =>
+                    textures.GetSongTitle(entry, category.BoardStyle, SongBoardTextureKind.Expanded),
+                3 or 4 or 5 => slot is 6 or 7 ? CostumeIconTextures.NameKey(iconSet(type), id) : CostumeIconTextures.Key(iconSet(type), id),
+                _ => null,
+            },
+            static (type, id) => type is 3 or 4 or 5 ? CostumeIconTextures.Key(iconSet(type), id) : null) { ServerMessages = !arcade.Home };
+        // Shop TYPE_SUIT 3 / TYPE_HEAD 5 / TYPE_BODY 4 → the icon sets kigurumi 0, head 1, body 2.
+        static int iconSet(int type) => type switch { 3 => 0, 5 => 1, _ => 2 };
+        var binding = RewardShop = new RewardShopHostBinding(state.SeasonId, state.Telop, null, sounds?.RewardShop, visit, don, _parts);
+        return rewardShopLayer(binding, state.SeasonId);
     }
 
     private LumenLayerHost attractHost()

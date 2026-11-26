@@ -83,11 +83,11 @@ namespace Waddamburo.Platform.Sdl.Rendering
         /// for BC1/BC3 gains nothing over decoding them ourselves; BC7 counts it, as before).
         /// </summary>
         public static bool Supports(TextureBlockFormat format) =>
-            (bgfx.get_caps()->formats[(int)bgfxFormat(format)] & (uint)(format == TextureBlockFormat.Bc7
+            (bgfx.get_caps()->formats[(int)bgfxFormat(format)] & (uint)(format == TextureBlockFormat.Bc7 && !PlatformInfo.IsMobile
                 ? bgfx.CapsFormatFlags.Texture2d | bgfx.CapsFormatFlags.Texture2dEmulated
                 : bgfx.CapsFormatFlags.Texture2d)) != 0;
 
-        private static bgfx.TextureFormat bgfxFormat(TextureBlockFormat format) => format switch
+        internal static bgfx.TextureFormat bgfxFormat(TextureBlockFormat format) => format switch
         {
             TextureBlockFormat.Bc1 => bgfx.TextureFormat.BC1,
             TextureBlockFormat.Bc3 => bgfx.TextureFormat.BC3,
@@ -144,7 +144,7 @@ namespace Waddamburo.Platform.Sdl.Rendering
 
         /// <summary>Turns vsync on or off (the next present resets the swap chain); the diagnostic env var still wins.</summary>
         public static void SetVsync(bool vsync) =>
-            ResetFlags = vsync && Environment.GetEnvironmentVariable("WADDAMBURO_PRESENT_MODE") is not ("immediate" or "mailbox")
+            ResetFlags = vsync && DiagnosticSwitches.PresentMode is not ("immediate" or "mailbox")
                 ? (uint)bgfx.ResetFlags.Vsync : 0;
 
         private static Thread? s_renderThread;
@@ -166,17 +166,19 @@ namespace Waddamburo.Platform.Sdl.Rendering
 
             var init = new bgfx.Init();
             bgfx.init_ctor(&init);
-            init.type = Environment.GetEnvironmentVariable("WADDAMBURO_RENDERER")?.ToLowerInvariant() switch
+            init.type = DiagnosticSwitches.Renderer?.ToLowerInvariant() switch
             {
                 "vulkan" => bgfx.RendererType.Vulkan,
                 "opengl" or "gl" => bgfx.RendererType.OpenGL,
                 "gles" or "opengles" => bgfx.RendererType.OpenGLES,
                 "d3d11" => bgfx.RendererType.Direct3D11,
                 "metal" => bgfx.RendererType.Metal,
+                // ponytail: GLES on Android until Vulkan is tried on real phones (renderer = vulkan to test).
+                _ when OperatingSystem.IsAndroid() => bgfx.RendererType.OpenGLES,
                 _ => bgfx.RendererType.Count,
             };
             // Diagnostic: WADDAMBURO_PRESENT_MODE=immediate or mailbox renders uncapped (no vsync).
-            ResetFlags = Environment.GetEnvironmentVariable("WADDAMBURO_PRESENT_MODE") is "immediate" or "mailbox"
+            ResetFlags = DiagnosticSwitches.PresentMode is "immediate" or "mailbox"
                 ? 0 : (uint)bgfx.ResetFlags.Vsync;
             init.debug = (byte)(debug ? 1 : 0);
             init.callback = (IntPtr)Callbacks.Interface;
@@ -193,7 +195,7 @@ namespace Waddamburo.Platform.Sdl.Rendering
                 throw new InvalidOperationException("bgfx could not initialize a renderer.");
             }
             // Diagnostic: the hitch trace reports GPU time per view, which needs bgfx's profiler.
-            if (Environment.GetEnvironmentVariable("WADDAMBURO_HITCH_TRACE") == "1")
+            if (DiagnosticSwitches.HitchTrace)
                 bgfx.set_debug((uint)bgfx.DebugFlags.Profiler, default, 0);
         }
 
@@ -224,8 +226,40 @@ namespace Waddamburo.Platform.Sdl.Rendering
         public static void Frame()
         {
             lock (s_pendingLock)
+            {
+                if (s_surfaceGone)
+                    return; // the window is gone (Android, in the background): nothing may render
                 s_pendingFrames++;
+            }
             _ = bgfx.frame(0);
+        }
+
+        private static bool s_surfaceGone;
+
+        /// <summary>
+        /// Android is about to destroy the window's surface (its UI thread, before it does): no frame is submitted from
+        /// now on, and this returns once the render thread has finished the ones it had (at most a second). A frame drawn
+        /// into a destroyed surface hung the GPU (Adreno), and Android killed the game.
+        /// </summary>
+        public static void SurfaceDestroying()
+        {
+            lock (s_pendingLock)
+                s_surfaceGone = true;
+            var deadline = Environment.TickCount64 + 1000;
+            while (Environment.TickCount64 < deadline)
+            {
+                lock (s_pendingLock)
+                    if (s_pendingFrames == 0)
+                        return;
+                Thread.Sleep(1);
+            }
+        }
+
+        /// <summary>The surface is back: frames go out again (the caller resets bgfx onto it).</summary>
+        public static void SurfaceReturned()
+        {
+            lock (s_pendingLock)
+                s_surfaceGone = false;
         }
 
         /// <summary>
@@ -238,7 +272,8 @@ namespace Waddamburo.Platform.Sdl.Rendering
             get
             {
                 lock (s_pendingLock)
-                    return s_pendingFrames <= ((ResetFlags & (uint)bgfx.ResetFlags.Vsync) != 0 ? MaxFrameLatency - 1 : 1);
+                    return !s_surfaceGone
+                        && s_pendingFrames <= ((ResetFlags & (uint)bgfx.ResetFlags.Vsync) != 0 ? MaxFrameLatency - 1 : 1);
             }
         }
 
@@ -254,8 +289,13 @@ namespace Waddamburo.Platform.Sdl.Rendering
             var properties = SDL_GetWindowProperties(window);
             if (OperatingSystem.IsWindows())
                 init->swapChain.nwh = (void*)SDL_GetPointerProperty(properties, SDL_PROP_WINDOW_WIN32_HWND_POINTER, IntPtr.Zero);
+            else if (OperatingSystem.IsAndroid())
+                init->swapChain.nwh = (void*)SDL_GetPointerProperty(properties, SDL_PROP_WINDOW_ANDROID_WINDOW_POINTER, IntPtr.Zero);
             else if (OperatingSystem.IsMacOS())
                 init->swapChain.nwh = (void*)SDL_GetPointerProperty(properties, SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, IntPtr.Zero);
+            else if (OperatingSystem.IsIOS())
+                // bgfx's Metal renderer draws into a CAMetalLayer: SDL makes a Metal view on the window (kept for its life).
+                init->swapChain.nwh = (void*)SDL_Metal_GetLayer(SDL_Metal_CreateView(window));
             else if (SDL_GetCurrentVideoDriver() == "wayland")
             {
                 init->swapChain.ndt = (void*)SDL_GetPointerProperty(properties, SDL_PROP_WINDOW_WAYLAND_DISPLAY_POINTER, IntPtr.Zero);

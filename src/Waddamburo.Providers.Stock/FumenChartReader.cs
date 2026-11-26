@@ -24,7 +24,11 @@ internal static class FumenChartReader
     private const int NoteSize = 24;
     private const int RollPadding = 8;
 
-    public static PlayableChart Read(ReadOnlySpan<byte> data, ChartKey key, int maximumMeasures, int maximumNotes)
+    // wiiNotes: the console releases' (太鼓の達人Wii, Wii U) note types 14-25: 14/15 giant don/ka (big notes drawn
+    // giant), 16-25 sparkling notes (items in medleys: 16-18 and 21-23 don, 19-20 and 24-25 ka; from footage of Super
+    // Mario medley ふつう and Namcot medley), drawn glowing.
+    public static PlayableChart Read(ReadOnlySpan<byte> data, ChartKey key, int maximumMeasures, int maximumNotes,
+        bool wiiNotes = false)
     {
         if (data.Length < HeaderSize)
             throw new InvalidDataException("The fumen is shorter than its header.");
@@ -43,7 +47,7 @@ internal static class FumenChartReader
 
         // Audio time (ms) of every event; shifted to non-negative chart time at the end.
         var measures = new List<(double Time, double Bpm, double[] Speeds, bool GoGo, bool Barline)>(measureCount);
-        var notes = new List<(double Time, PlayableNoteKind Kind, bool Hand, bool InRun, bool Ko, ChartBranch? Branch, int Measure)>();
+        var notes = new List<(double Time, PlayableNoteKind Kind, bool Hand, bool InRun, bool Ko, ChartBranch? Branch, int Measure, bool Giant, bool Sparkle)>();
         var longNotes = new List<(double Start, double End, PlayableLongNoteKind Kind, int Hits, ChartBranch? Branch)>();
         var checks = new List<(int Measure, ChartBranchThreshold Normal, ChartBranchThreshold Expert, ChartBranchThreshold Master)>();
         int? scoreInit = null, scoreDiff = null;
@@ -78,6 +82,11 @@ internal static class FumenChartReader
                 {
                     reader.Require(NoteSize);
                     var type = reader.Int32();
+                    var (giant, sparkle) = (wiiNotes && type is 14 or 15, wiiNotes && type is >= 16 and <= 25);
+                    if (giant)
+                        type -= 7;
+                    else if (sparkle)
+                        type = type is 19 or 20 or 24 or 25 ? 0x4 : 0x1;
                     var position = reader.Single();
                     reader.Position += 8; // item, padding
                     int first = reader.UInt16(), second = reader.UInt16();
@@ -99,7 +108,7 @@ internal static class FumenChartReader
                     if (isRoll)
                         longNotes.Add((noteMs, noteMs + Math.Max(0, duration), type == 0x9 ? PlayableLongNoteKind.BigRoll : PlayableLongNoteKind.Roll, 0, route));
                     else if (kind(type) is { } noteKind)
-                        notes.Add((noteMs, noteKind, type is 0xB or 0xD, type is 0x2 or 0x3 or 0x5, type is 0x3, route, measure));
+                        notes.Add((noteMs, noteKind, type is 0xB or 0xD, type is 0x2 or 0x3 or 0x5, type is 0x3, route, measure, giant, sparkle));
                     if (notes.Count + longNotes.Count > maximumNotes)
                         throw new InvalidDataException("The fumen exceeds the note limit.");
                 }
@@ -147,7 +156,7 @@ internal static class FumenChartReader
             chartTime(endMs),
             notes.OrderBy(static note => note.Time).Select(note => new PlayableHitObject(chartTime(note.Time), note.Kind, note.Hand)
                 {
-                    InRun = note.InRun, IsKo = note.Ko, Branch = note.Branch,
+                    InRun = note.InRun, IsKo = note.Ko, Branch = note.Branch, IsGiant = note.Giant, IsSparkle = note.Sparkle,
                     // きたさいたま2000's slow don (combo 547, oni) sits on its measure's end, 4 µs past the next
                     // measure's start (reported on Discord: it took the next speed).
                     ScrollFrom = note.Measure + 1 < measures.Count && note.Time >= measures[note.Measure + 1].Time

@@ -73,6 +73,16 @@ internal sealed class GameSounds
 
     public bool IsCoinPlaying => Bank.IsCoinPlaying;
 
+    /// <summary>The screens' music, decoded in the background and kept: it starts at once, however slow the storage.</summary>
+    // ponytail: the engine's music names listed again; a missing one only starts late, as without this.
+    public void PreloadMusic()
+    {
+        foreach (var name in new[] { "music.entry", "music.result", "music.roll", "music.gameover", "music.shop",
+            "music.result.waiwai", "music.result.ai", "music.remind", "music.dan" })
+            if (Set.Describe(new(name)) is [var first, ..])
+                Bank.PreloadMusic(first.Source);
+    }
+
     /// <summary>Everything but the coin stops, and the next credit starts fresh.</summary>
     public void StopAll()
     {

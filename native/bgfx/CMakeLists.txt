@@ -30,13 +30,16 @@ endif()
 # never touches the desktop GL/GLU libraries bgfx.cmake links; EGL is loaded at runtime).
 if(MINGW)
   list(APPEND _renderer_args "-DCMAKE_SHARED_LINKER_FLAGS=-static")
+elseif(ANDROID)
+  # bgfx.cmake links no GL libraries for Android; a shared bgfx needs them itself.
+  list(APPEND _renderer_args "-DCMAKE_SHARED_LINKER_FLAGS=-lEGL -lGLESv3 -landroid")
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   list(APPEND _renderer_args "-DCMAKE_SHARED_LINKER_FLAGS=-Wl,--as-needed")
 endif()
 # A scene switch holds the old scene, the prefetched new one and the kept Song Select/gameplay
 # copies at once (~4000 textures peak); bgfx's default 4096 handles ran out mid-session.
 set(_cxx_flags "-DBGFX_CONFIG_MAX_TEXTURES=16384")
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR ANDROID)
   # Naming any renderer skips all of config.h's defaults, so Vulkan is listed too.
   string(APPEND _cxx_flags " -DBGFX_CONFIG_RENDERER_OPENGL=0 -DBGFX_CONFIG_RENDERER_OPENGLES=30 -DBGFX_CONFIG_RENDERER_VULKAN=1")
 endif()
@@ -48,6 +51,7 @@ ExternalProject_Add(waddamburo_bgfx_build
   DOWNLOAD_DIR "${CMAKE_SOURCE_DIR}/../out/downloads"
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE
   SOURCE_DIR "${CMAKE_SOURCE_DIR}/../out/source/bgfx.cmake"
+  PATCH_COMMAND "${CMAKE_COMMAND}" -DSOURCE_DIR=<SOURCE_DIR> -P "${CMAKE_CURRENT_SOURCE_DIR}/android-surface.cmake"
   BINARY_DIR "${_bgfx_root}/build"
   CMAKE_ARGS
     ${_toolchain_args}
@@ -83,6 +87,9 @@ if(WIN32)
     set(_built "${_bgfx_prefix}/bin/bgfx.dll")
   endif()
   set(_staged "${_stage}/bin/bgfx.dll")
+elseif(APPLE)
+  set(_built "${_bgfx_prefix}/lib/libbgfx.dylib")
+  set(_staged "${_stage}/lib/libbgfx.dylib")
 else()
   set(_built "${_bgfx_prefix}/lib/libbgfx.so")
   set(_staged "${_stage}/lib/libbgfx.so")

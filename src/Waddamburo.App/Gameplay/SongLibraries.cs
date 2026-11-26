@@ -44,6 +44,72 @@ internal sealed class SongLibraries : IDisposable
 
     public ISongCatalogProvider[] Providers { get; }
 
+    /// <summary>
+    /// The libraries another device can mirror from this one (song sync): each install's folders as its provider reads
+    /// them. Received libraries are left out (a device serves its own). Nijiiro music is converted when a paired
+    /// receiver asks to sync its library.
+    /// </summary>
+    public List<Sync.SyncLibrary> SyncLibraries(string greenData)
+    {
+        var received = Sync.ReceivedLibraries.Root is { } root ? Path.GetFullPath(root) + Path.DirectorySeparatorChar : null;
+        bool own(string folder) => received is null || !Path.GetFullPath(folder).StartsWith(received, StringComparison.Ordinal);
+        var green = Path.TrimEndingDirectorySeparator(Path.GetFullPath(greenData));
+        List<Sync.SyncLibrary> libraries = [];
+        foreach (var provider in Providers.SelectMany(static provider => provider switch
+        {
+            MergedCatalogProvider merged => merged.Sources,
+            WiiLibraryProvider wii => wii.Discs,
+            _ => [provider],
+        }))
+        {
+            switch (provider)
+            {
+                case StockCatalogProvider stock when stock.Root == green:
+                    libraries.Add(Sync.SyncLibrary.Of("green", "Green", ("data", stock.Root)) with { OpenCatalog = () => new StockCatalogProvider(stock.Root) });
+                    break;
+                case StockCatalogProvider stock when own(stock.Root):
+                    libraries.Add(Sync.SyncLibrary.Of("stock", Cli.GameDataLayout.ReleaseOf(stock.Root).Name ?? Path.GetFileName(Path.GetDirectoryName(stock.Root)) ?? "Arcade",
+                        ("data", stock.Root)) with { OpenCatalog = () => new StockCatalogProvider(stock.Root) });
+                    break;
+                case WiiCatalogProvider wii when own(wii.Root):
+                    libraries.Add(Sync.SyncLibrary.Of("wii", wii.Release, ("files", wii.Root)) with { OpenCatalog = () => new WiiCatalogProvider(wii.Root) });
+                    break;
+                case WiiUCatalogProvider wiiU when own(wiiU.Folders.Content):
+                    // Title folders (content's parent) side by side: the receiver's provider finds the update and DLC there.
+                    var (content, update, dlc) = wiiU.Folders;
+                    libraries.Add(Sync.SyncLibrary.Of("wiiu", wiiU.Release, [("game", Path.GetDirectoryName(content)!),
+                        .. update is null ? [] : new[] { ("update", Path.GetDirectoryName(update)!) },
+                        .. dlc is null ? [] : new[] { ("dlc", Path.GetDirectoryName(dlc)!) }]) with { OpenCatalog = () => new WiiUCatalogProvider(content) });
+                    break;
+                case NijiiroCatalogProvider nijiiro when !nijiiro.ConvertedAudio && own(nijiiro.Root):
+                    libraries.Add(Sync.SyncLibrary.Of(Sync.NijiiroSync.Kind, $"Nijiiro ({nijiiro.NewestSong})", (Sync.NijiiroSync.Part, nijiiro.Root)) with
+                    {
+                        OpenCatalog = () => new NijiiroCatalogProvider(nijiiro.Root, keys: nijiiro.Keys),
+                        Nijiiro = new Sync.NijiiroSync(nijiiro.Keys),
+                    });
+                    break;
+                case TjaCatalogProvider tja when own(tja.Root):
+                    libraries.Add(Sync.SyncLibrary.Of("tja", "TJA: " + Path.GetFileName(tja.Root), ("tja", tja.Root)) with { OpenCatalog = () => new TjaCatalogProvider(tja.Root) });
+                    break;
+                case OsuLazerCatalogProvider osu when own(osu.Root):
+                    // ponytail: the whole folder (lazer's every beatmap and skin, stable's Songs of every mode); a
+                    // taiko-only file list if the size bothers anyone.
+                    libraries.Add(osu.Source == SongSourceKind.OsuStable
+                        ? Sync.SyncLibrary.Of("osu-stable", "osu!stable", ("osu", osu.Root)) with
+                        {
+                            Parts = [("osu/Songs", OsuStableReader.SongsFolder(osu.Root)), ("osu", osu.Root)],
+                            OpenCatalog = () => new OsuLazerCatalogProvider(osu.Root),
+                        }
+                        : Sync.SyncLibrary.Of("osu-lazer", "osu!lazer", ("osu", osu.Root)) with { OpenCatalog = () => new OsuLazerCatalogProvider(osu.Root) });
+                    break;
+            }
+        }
+        return libraries;
+    }
+
+    /// <summary>The metadata cache the scan used: its background checks of the installations report through it.</summary>
+    public CatalogMetadataCache? MetadataCache { get; private set; }
+
     public SongCatalogSnapshot Snapshot { get; }
 
     /// <summary>
@@ -54,10 +120,47 @@ internal sealed class SongLibraries : IDisposable
 
     /// <summary>Scans the libraries; throws when none lists a song. <paramref name="dataRoot"/>: the game's data folder.</summary>
     /// <paramref name="percent"/>: how far the scan is, 0-100, from the scanning threads.
-    public static SongLibraries Load(string dataRoot, ArcadeSettings arcade, string defaultTjaFolder, Action<int>? percent = null)
+    /// <paramref name="building"/>: runs once when this start parses many song files again (the cache is being built).
+    public static SongLibraries Load(string dataRoot, ArcadeSettings arcade, string defaultTjaFolder, Action<int>? percent = null,
+        Action? building = null)
+    {
+        try
+        {
+            return load(dataRoot, arcade, defaultTjaFolder, percent, building);
+        }
+        catch (EmptyCatalogException)
+        {
+            // The cache's inventories can be from before the songs were there (a phone's copy still running when the
+            // game first started): they are walked again only after a start succeeds. Once, from scratch.
+            var cacheFolder = Path.GetDirectoryName(VgmstreamCli.CacheDirectory)!;
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            foreach (var file in Directory.EnumerateFiles(cacheFolder, "catalog-metadata-v2.db*"))
+            {
+                try { File.Delete(file); }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { }
+            }
+            Console.WriteLine("No songs found with the catalog cache: scanning again without it.");
+            return load(dataRoot, arcade, defaultTjaFolder, percent, building);
+        }
+    }
+
+    private sealed class EmptyCatalogException(string message) : InvalidOperationException(message);
+
+    private static SongLibraries load(string dataRoot, ArcadeSettings arcade, string defaultTjaFolder, Action<int>? percent,
+        Action? building)
     {
         var tja = arcade.TjaFolder ?? defaultTjaFolder;
-        var metadataCache = new CatalogMetadataCache(Path.Combine(Path.GetDirectoryName(VgmstreamCli.CacheDirectory)!, "catalog-metadata.db"));
+        var cacheFolder = Path.GetDirectoryName(VgmstreamCli.CacheDirectory)!;
+        // v1's rowid tables were read with a seek per row; v2 starts clean (the cache is disposable).
+        try { File.Delete(Path.Combine(cacheFolder, "catalog-metadata.db")); }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { }
+        var metadataCache = new CatalogMetadataCache(Path.Combine(cacheFolder, "catalog-metadata-v2.db"))
+        {
+            // The installations' folders are walked again once the start is over, not against its own reads.
+            // ponytail: a fixed minute after the scan; signal the end of the boot instead if a slow disk still collides.
+            RevalidateAfter = Task.Delay(TimeSpan.FromMinutes(1)),
+            Building = building,
+        };
         List<(string, string)> problems = [];
         if (arcade.Home && arcade.TjaFolder is not null && !Directory.Exists(tja))
             problems.Add((tja, "Folder not found"));
@@ -65,21 +168,31 @@ internal sealed class SongLibraries : IDisposable
             problems.Add((arcade.OsuFolder, "No osu!lazer data in this folder"));
         if (arcade.Home && !string.IsNullOrEmpty(arcade.OsuStableFolder) && OsuLazerCatalogProvider.FindStableFolder(arcade.OsuStableFolder) is null)
             problems.Add((arcade.OsuStableFolder, "No osu!stable install (osu!.db) in this folder"));
+        // Custom TJA is a home-mode library of its own (arcade matches the game 1:1); WADDAMBURO_CUSTOM_TJA=1 lists it
+        // in arcade too. TJA libraries mirrored from other devices join it (the local copy of a song wins).
+        List<ISongCatalogProvider> tjas = arcade.Home || DiagnosticSwitches.CustomTja
+            ? [.. new[] { tja }.Where(Directory.Exists).Concat(Sync.ReceivedLibraries.Folders("tja").Select(static folder => Path.Combine(folder, "tja")))
+                .Where(Directory.Exists).Select(root => new TjaCatalogProvider(root) { MetadataCache = metadataCache })]
+            : [];
+        // osu! (home mode): the folder set in the settings (none: off; the startup offers the installs found), else one
+        // mirrored from another device.
+        var osu = (string.IsNullOrEmpty(arcade.OsuFolder) ? null : OsuLazerCatalogProvider.FindDataFolder(arcade.OsuFolder))
+            ?? Sync.ReceivedLibraries.Folders("osu-lazer").Select(static folder => Path.Combine(folder, "osu"))
+                .FirstOrDefault(static folder => File.Exists(Path.Combine(folder, "client.realm")) && Directory.Exists(Path.Combine(folder, "files")));
+        var localStable = string.IsNullOrEmpty(arcade.OsuStableFolder) ? null : OsuLazerCatalogProvider.FindStableFolder(arcade.OsuStableFolder);
+        var stable = localStable ?? Sync.ReceivedLibraries.Folders("osu-stable").Select(static folder => Path.Combine(folder, "osu"))
+            .FirstOrDefault(OsuStableReader.IsInstall);
         var libraries = new SongLibraries([
             .. stock(dataRoot, arcade, problems, metadataCache),
-            // Custom TJA is a home-mode library of its own (arcade matches the game 1:1);
-            // WADDAMBURO_CUSTOM_TJA=1 lists it in arcade too.
-            .. (arcade.Home || Environment.GetEnvironmentVariable("WADDAMBURO_CUSTOM_TJA") == "1") && Directory.Exists(tja)
-                ? [new TjaCatalogProvider(tja) { MetadataCache = metadataCache }] : Array.Empty<ISongCatalogProvider>(),
+            .. tjas.Count switch { 0 => [], 1 => tjas, _ => [new MergedCatalogProvider(tjas)] },
             // A Nijiiro installation picked in the settings (home mode), left out when it cannot play.
             .. arcade.Home ? nijiiro(arcade, problems, metadataCache) : [],
-            // osu!lazer's native taiko beatmaps (home mode): the folder set in the settings, else the default install.
-            .. arcade.Home && OsuLazerCatalogProvider.FindDataFolder(arcade.OsuFolder) is { } osu
-                ? [new OsuLazerCatalogProvider(osu)] : Array.Empty<ISongCatalogProvider>(),
-            // osu!stable's (home mode), a library of its own: the folder set in the settings, else the default install.
-            .. arcade.Home && OsuLazerCatalogProvider.FindStableFolder(arcade.OsuStableFolder) is { } stable
-                ? [new OsuLazerCatalogProvider(stable)] : Array.Empty<ISongCatalogProvider>(),
+            // osu!lazer's native taiko beatmaps and osu!stable's, each a library of its own.
+            .. arcade.Home && osu is not null ? [new OsuLazerCatalogProvider(osu)] : Array.Empty<ISongCatalogProvider>(),
+            .. arcade.Home && stable is not null ? [new OsuLazerCatalogProvider(stable) { StableSongsFolder = localStable is null ? Path.Combine(stable, "Songs") : null }] : Array.Empty<ISongCatalogProvider>(),
         ], percent);
+        metadataCache.ForgetUnopenedInventories();
+        libraries.MetadataCache = metadataCache;
         libraries.Problems.AddRange(problems);
         var snapshot = libraries.Snapshot;
         foreach (var status in snapshot.Providers)
@@ -89,7 +202,7 @@ internal sealed class SongLibraries : IDisposable
         if (snapshot.Categories.IsEmpty)
         {
             libraries.Dispose();
-            throw new InvalidOperationException(snapshot.Diagnostics.FirstOrDefault(static diagnostic => diagnostic.Severity == CatalogDiagnosticSeverity.Error)?.Message
+            throw new EmptyCatalogException(snapshot.Diagnostics.FirstOrDefault(static diagnostic => diagnostic.Severity == CatalogDiagnosticSeverity.Error)?.Message
                 ?? "No song provider discovered any browsable categories.");
         }
         Console.WriteLine($"Catalog revision {snapshot.Revision}: {snapshot.Categories.Length} categories.");
@@ -101,7 +214,10 @@ internal sealed class SongLibraries : IDisposable
     // The game's own songs, then (home mode) other releases' that it lacks, newest release first.
     private static ISongCatalogProvider[] stock(string dataRoot, ArcadeSettings arcade, List<(string, string)> problems, CatalogMetadataCache metadataCache)
     {
-        var others = arcade.Home ? ArcadeSettings.Folders(arcade.StockFolders)
+        // Other releases mirrored from another device join those set here.
+        IEnumerable<string> received = [.. Sync.ReceivedLibraries.Folders("stock"), .. Sync.ReceivedLibraries.Folders("wii"), .. Sync.ReceivedLibraries.Folders("wiiu")];
+        var others = arcade.Home ? ArcadeSettings.Folders(arcade.StockFolders).Concat(Boot.StockFolders).Concat(received)
+            .Where(static folder => WiiCatalogProvider.FindRoot(folder) is null && WiiUCatalogProvider.FindRoot(folder) is null)
             .Select(folder => StockCatalogProvider.FindDataRoot(folder) is { } root ? root : warnMissing(folder, problems))
             .OfType<string>()
             .Where(root => !string.Equals(root, Path.GetFullPath(dataRoot), StringComparison.Ordinal))
@@ -110,20 +226,40 @@ internal sealed class SongLibraries : IDisposable
             .ToList() : [];
         // The running game's data is Green, the newest release: it comes first whatever the others are.
         List<string> roots = [.. StockCatalogProvider.IsStockData(dataRoot) ? [dataRoot] : Array.Empty<string>(), .. others];
-        return roots.Count switch
+        // Wii and Wii U discs set among them: the WII and WII U libraries.
+        var folders = arcade.Home ? [.. ArcadeSettings.Folders(arcade.StockFolders), .. Boot.StockFolders, .. received] : Array.Empty<string>();
+        List<WiiUCatalogProvider> wiiU = [.. folders.Select(WiiUCatalogProvider.FindRoot).OfType<string>()
+            .Distinct(StringComparer.Ordinal).Select(static root => new WiiUCatalogProvider(root))];
+        List<WiiCatalogProvider> wii = [.. folders.Select(WiiCatalogProvider.FindRoot).OfType<string>()
+            .Distinct(StringComparer.Ordinal).Select(static root => new WiiCatalogProvider(root))];
+        ISongCatalogProvider[] wiiLibrary = [.. wii.Count > 0 ? [new WiiLibraryProvider(wii)] : Array.Empty<ISongCatalogProvider>(),
+            .. wiiU.Count > 0 ? [new WiiLibraryProvider(wiiU)] : Array.Empty<ISongCatalogProvider>()];
+        return [.. roots.Count switch
         {
             0 => [],
             1 => [new StockCatalogProvider(roots[0]) { MetadataCache = metadataCache }],
-            _ => [new MergedCatalogProvider([.. roots.Select(root => new StockCatalogProvider(root) { MetadataCache = metadataCache })])],
-        };
+            _ => new ISongCatalogProvider[] { new MergedCatalogProvider([.. roots.Select(root => new StockCatalogProvider(root) { MetadataCache = metadataCache })]) },
+        }, .. wiiLibrary];
     }
 
     // Nijiiro installations that can play, the newest (highest song number) first.
     private static ISongCatalogProvider[] nijiiro(ArcadeSettings arcade, List<(string, string)> problems, CatalogMetadataCache metadataCache)
     {
-        var installs = ArcadeSettings.Folders(arcade.NijiiroFolder)
-            .Select(folder => (Folder: folder, Installation: new NijiiroCatalogProvider(folder,
-                keys: NijiiroKeys.Parse(arcade.NijiiroDatatableKey, arcade.NijiiroFumenKey)) { MetadataCache = metadataCache }))
+        var configured = ArcadeSettings.Folders(arcade.NijiiroFolder).Select(folder =>
+            (Folder: folder, Installation: new NijiiroCatalogProvider(folder,
+                keys: NijiiroKeys.Parse(arcade.NijiiroDatatableKey, arcade.NijiiroFumenKey)) { MetadataCache = metadataCache }));
+        var received = Sync.ReceivedLibraries.Folders(Sync.NijiiroSync.Kind).Select(folder =>
+        {
+            var root = Path.Combine(folder, Sync.NijiiroSync.Part);
+            var keys = Sync.NijiiroSync.ReadConfig(folder);
+            return (Folder: root, Installation: new NijiiroCatalogProvider(root, keys: keys.FirstOrDefault())
+            {
+                MetadataCache = metadataCache,
+                ConvertedAudio = true,
+                AlternateKeys = [.. keys.Skip(1)],
+            });
+        });
+        var installs = configured.Concat(received)
             .Where(install => usable(install.Folder, install.Installation, problems))
             .Select(static install => install.Installation)
             .OrderByDescending(static installation => installation.NewestSong)
@@ -140,8 +276,10 @@ internal sealed class SongLibraries : IDisposable
 
     private static string? warnMissing(string folder, List<(string, string)> problems)
     {
-        Console.Error.WriteLine($"Game data left out: no songs in {folder}.");
-        problems.Add((folder, "No game songs in this folder"));
+        // A missing folder (removed, or a drive not plugged in) says so: its songs are left out until it is back.
+        var why = Directory.Exists(folder) ? "No game songs in this folder" : "Folder not found";
+        Console.Error.WriteLine($"Game data left out: {why}: {folder}.");
+        problems.Add((folder, why));
         return null;
     }
 
@@ -149,7 +287,7 @@ internal sealed class SongLibraries : IDisposable
     /// Why a Nijiiro installation cannot be played, null when it can: its own <see cref="NijiiroCatalogProvider.Problem"/>,
     /// or no vgmstream-cli for its G.719 music (a song would start without its sound).
     /// </summary>
-    public static string? NijiiroProblem(NijiiroCatalogProvider installation) => installation.Problem ?? VgmstreamProblem;
+    public static string? NijiiroProblem(NijiiroCatalogProvider installation) => installation.Problem ?? (installation.ConvertedAudio ? null : VgmstreamProblem);
 
     /// <summary>Null when vgmstream-cli is found, else what to do about it.</summary>
     public static string? VgmstreamProblem => VgmstreamCli.IsInstalled ? null
@@ -157,7 +295,7 @@ internal sealed class SongLibraries : IDisposable
 
     private static bool usable(string folder, NijiiroCatalogProvider installation, List<(string, string)> problems)
     {
-        if (NijiiroProblem(installation) is not { } problem)
+        if ((Directory.Exists(folder) ? NijiiroProblem(installation) : "Folder not found") is not { } problem)
             return true;
         Console.Error.WriteLine($"Nijiiro library left out: {problem}");
         problems.Add((folder, problem));

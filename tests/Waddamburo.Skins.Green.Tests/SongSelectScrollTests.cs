@@ -73,14 +73,14 @@ public sealed class SongSelectScrollTests
 
     private static (LumenPlayer Movie, SongSelectScroll Scroll) menu(bool panelVisible)
     {
-        LmbPlaceObjectCommand place(uint id, ushort depth, uint name) =>
-            new(id, depth, name, 1, 0, depth, 0, 0, 0, uint.MaxValue, uint.MaxValue, [], null!);
+        LmbTimelineCommand place(uint id, ushort depth, uint name) =>
+            LmbTimelineCommand.PlaceObject(id, depth, name, 1, 0, depth, 0, 0, 0, uint.MaxValue, uint.MaxValue, default);
         LmbSpriteDefinition sprite(uint id, params LmbTimelineCommand[] children) => new(id, 0, 1, 0, 0, [],
-            [new LmbShowFrameCommand(0, (uint)children.Length, [], null!), .. children], null!);
+            [LmbTimelineCommand.ShowFrame(0, (uint)children.Length, default), .. children], default);
         var list = new LmbSpriteDefinition(3, 2, 3, 2, 0, [],
-            [new LmbShowFrameCommand(0, 0, [], null!),
-             new LmbFrameLabelCommand(4, 1, 0, [], null!), new LmbShowFrameCommand(1, 0, [], null!),
-             new LmbFrameLabelCommand(5, 2, 0, [], null!), new LmbShowFrameCommand(2, 0, [], null!)], null!);
+            [LmbTimelineCommand.ShowFrame(0, 0, default),
+             LmbTimelineCommand.FrameLabel(4, 1, 0, default), LmbTimelineCommand.ShowFrame(1, 0, default),
+             LmbTimelineCommand.FrameLabel(5, 2, 0, default), LmbTimelineCommand.ShowFrame(2, 0, default)], default);
         var definition = new LmbMovieDefinition(null!, null,
             [new(0, "", 0), new(1, "main", 0), new(2, "genreSelect_", 0), new(3, "courseStar_", 0),
              new(4, "カーソル右", 0), new(5, "カーソル左", 0)], [], [new(1, 0, 0, 1, 0, 0)], [], [], [], [], [],

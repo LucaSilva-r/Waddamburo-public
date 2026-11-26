@@ -173,8 +173,12 @@ public interface IGameOverSoundController
 /// shop_gameover.lm, the end-of-credit screen: the movie asks for the players (answered with
 /// SetPlayerBasicData), waits for IsReady_Gameover and reports LumenTerminate_Gameover when done.
 /// </summary>
-public sealed class GameOverHostBinding(IGameOverSoundController? sounds = null, int side = 0, bool twoPlayers = false)
-    : ILumenHostBinding
+/// <remarks>
+/// <paramref name="ready"/>: with the medal screen over it (<see cref="RewardShopHostBinding"/>), the movie waits
+/// until it ends and the card-recommendation music (a guest's) does not play (traced: only JINGLE_GOVER).
+/// </remarks>
+public sealed class GameOverHostBinding(IGameOverSoundController? sounds = null, int side = 0, bool twoPlayers = false,
+    Func<bool>? ready = null, Func<int, bool>? carded = null) : ILumenHostBinding
 {
     private LumenPlayer? _player;
     private bool _infoRequested;
@@ -193,7 +197,7 @@ public sealed class GameOverHostBinding(IGameOverSoundController? sounds = null,
                 if (_player is { } player) sendPlayers(player);
                 return LumenHostValue.Undefined;
             });
-            lumen.RegisterMethod("IsReady_Gameover", static _ => LumenHostValue.FromNumber(1));
+            lumen.RegisterMethod("IsReady_Gameover", _ => LumenHostValue.FromNumber(ready?.Invoke() is false ? 0 : 1));
             lumen.RegisterMethod("LumenTerminate_Gameover", _ =>
             {
                 Ended = true;
@@ -213,7 +217,8 @@ public sealed class GameOverHostBinding(IGameOverSoundController? sounds = null,
     public void Attach(LumenPlayer player)
     {
         _player = player;
-        sounds?.StartGameOverMusic();
+        if (ready is null)
+            sounds?.StartGameOverMusic();
         if (_infoRequested) sendPlayers(player);
     }
 
@@ -239,11 +244,12 @@ public sealed class GameOverHostBinding(IGameOverSoundController? sounds = null,
     }
 
     // ponytail: guests (no card data) on their drums.
+    // SetPlayerBasicData(playerID, isJoin, isData): isData, a card's data; without it the movie recommends a card
+    // (its RecommendScene) to that guest before the curtain.
     private void sendPlayers(LumenPlayer player)
     {
-        LumenPlayerCalls.Call(player, "SetPlayerBasicData", LumenHostValue.FromNumber(0),
-            LumenHostValue.FromBoolean(twoPlayers || side == 0), LumenHostValue.FromBoolean(false));
-        LumenPlayerCalls.Call(player, "SetPlayerBasicData", LumenHostValue.FromNumber(1),
-            LumenHostValue.FromBoolean(twoPlayers || side == 1), LumenHostValue.FromBoolean(false));
+        for (var index = 0; index < 2; index++)
+            LumenPlayerCalls.Call(player, "SetPlayerBasicData", LumenHostValue.FromNumber(index),
+                LumenHostValue.FromBoolean(twoPlayers || side == index), LumenHostValue.FromBoolean(carded?.Invoke(index) == true));
     }
 }

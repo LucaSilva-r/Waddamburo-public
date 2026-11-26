@@ -31,7 +31,7 @@ internal sealed class BootChecks : IDisposable
     private readonly string _fontPath;
     private readonly OverlayMenu _menu;
     private readonly List<Check> _checks = [];
-    private readonly (string Text, RenderColor Colour)[] _footer;
+    private (string Text, RenderColor Colour)[] _footer;
 
     // Nobody at the window (a scripted run): a failure is thrown on, not waited on.
     private readonly bool _interactive;
@@ -62,7 +62,7 @@ internal sealed class BootChecks : IDisposable
         Console.WriteLine($"Boot: {name}.");
         present();
         // Diagnostic: WADDAMBURO_BOOT_FAIL=<check> (SONG LIBRARY, MOVIES ...) fails that check, to see the error screen.
-        if (Environment.GetEnvironmentVariable("WADDAMBURO_BOOT_FAIL") == name)
+        if (DiagnosticSwitches.BootFail == name)
             throw new InvalidOperationException($"WADDAMBURO_BOOT_FAIL asked {name} to fail.");
     }
 
@@ -73,6 +73,10 @@ internal sealed class BootChecks : IDisposable
             last.Percent = percent;
     }
 
+    /// <summary>A line above the version at the bottom, for something the player should know while it loads (any thread).</summary>
+    public void Note(string text) =>
+        _footer = [(OverlayMenu.upper(text), OverlayMenu.White), .. _footer];
+
     /// <summary>The part under way is OK.</summary>
     public void Done()
     {
@@ -81,8 +85,8 @@ internal sealed class BootChecks : IDisposable
     }
 
     /// <summary>
-    /// The last part is NG but not fatal (the game goes on without it): <paramref name="why"/> shows after it, briefly;
-    /// <paramref name="details"/> go to the log.
+    /// The last part is NG but not fatal (the game goes on without it): <paramref name="why"/> shows after it, held a
+    /// second so it can be read; <paramref name="details"/> go to the log.
     /// </summary>
     public void Warn(string why, IEnumerable<string>? details = null)
     {
@@ -94,6 +98,39 @@ internal sealed class BootChecks : IDisposable
         Console.Error.WriteLine($"Warning BOOT: {why}");
         foreach (var detail in details ?? [])
             Console.Error.WriteLine($"Warning BOOT:   {detail}");
+        present();
+        if (!_interactive)
+            return;
+        for (var until = Environment.TickCount64 + 1000; Environment.TickCount64 < until; Thread.Sleep(15))
+            present();
+    }
+
+    /// <summary>
+    /// A question on the boot screen, in the usual overlay pages: <paramref name="page"/> (given the action that closes
+    /// it) shows until it closes, the loading waiting meanwhile; Escape closes it too. Scripted runs skip it.
+    /// </summary>
+    public void Ask(Func<Action, OverlayPage> page)
+    {
+        if (!_interactive)
+            return;
+        var open = true;
+        _menu.Push(page(() => { open = false; _menu.Pop(); }));
+        var keys = new List<SdlKeyboardKey>();
+        while (open)
+        {
+            keys.Clear();
+            if (!_application.PumpAndPresent(_menu.Frame(), out var escape, keys))
+                throw new BootClosedException();
+            if (escape)
+            {
+                open = false;
+                _menu.Pop();
+                break;
+            }
+            var pulses = new SdlKeyboardSnapshot(keys);
+            _menu.Tick(pulses, pulses, escape: false);
+            Thread.Sleep(15);
+        }
         present();
     }
 
@@ -155,11 +192,16 @@ internal sealed class BootChecks : IDisposable
         "GRAPHICS" => "service.boot.graphics",
         "GAMEPLAY DATA" => "service.boot.gameplay_data",
         "MOVIES" => "service.boot.movies",
+        "SCREENS" => "service.boot.screens",
+        "AI BATTLE" => "service.boot.ai_battle",
         "SYSTEM SETUP" => "service.boot.system_setup",
         "STARTUP" => "service.boot.startup",
         "GAME" => "service.boot.game",
         _ => "service.boot.system",
     }));
+
+    /// <summary>One frame of the screen (the part under way goes on).</summary>
+    public void Draw() => present();
 
     private void present()
     {

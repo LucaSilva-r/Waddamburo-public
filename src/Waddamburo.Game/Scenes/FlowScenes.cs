@@ -26,6 +26,7 @@ public static class FlowScenes
     public static readonly SceneId WaiwaiTutorial = new("waiwai-tutorial");
     public static readonly SceneId AiTutorial = new("ai-tutorial");
     public static readonly SceneId DaniSelect = new("dani-select");
+    public static readonly SceneId RewardShop = new("reward-shop");
 
     // Traced session30: the game plays this as Song Select ends and sends it out once dani_select has loaded.
     public static SceneDefinition DanCover { get; } = new(SceneDefinition.CurrentVersion, new SceneId("dan-cover"), [
@@ -132,6 +133,7 @@ public static class FlowScenes
         ]),
         DaniSelectScene(0),
         NormalGameOver,
+        RewardShopVisit,
         // AI battle's farewell as a credit ends (traced session-ai-battle-3: remind, and its backdrop common_bg under it).
         new SceneDefinition(SceneDefinition.CurrentVersion, AiRemind, [
             new SceneLayerDefinition("ghost/common_bg/packeddata.ddp", "common_bg/common_bg.lm", LumenMatrix.Identity, "ai-remind-bg"),
@@ -152,6 +154,37 @@ public static class FlowScenes
     public static SceneDefinition NormalGameOver { get; } =
         new SceneDefinition(SceneDefinition.CurrentVersion, GameOver, [
             new SceneLayerDefinition("reward_shop/packeddata.ddp", "shop_gameover/shop_gameover.lm", LumenMatrix.Identity, "gameover"),
+        ]);
+
+    // Green's ごほうびタイム: reward_shop in medal mode over the game over, which waits for it (traced
+    // research/traces/session-rewards-1.md: shop_gameover at depth -890, under reward_shop).
+    // Front to back as traced: the curtain (shop_gameover, depth -890) over the name boards (90) over the medal screen.
+    public static SceneDefinition RewardGameOver { get; } =
+        new SceneDefinition(SceneDefinition.CurrentVersion, GameOver, [
+            new SceneLayerDefinition("reward_shop/packeddata.ddp", "reward_shop/reward_shop.lm", LumenMatrix.Identity, "reward-shop"),
+            // The player's name board (traced scene 12: SetPlayer, Fadein), as in the shop.
+            indicatorPart("player_name", 60, 638),
+            indicatorPart("player_name", 948, 638),
+            new SceneLayerDefinition("reward_shop/packeddata.ddp", "shop_gameover/shop_gameover.lm", LumenMatrix.Identity, "gameover"),
+        ]);
+
+    // Home: Song Select's "New rewards" plays the medal screen with the rewards alone (no medals paid), then goes back.
+    public static SceneDefinition HomeRewards { get; } =
+        new SceneDefinition(SceneDefinition.CurrentVersion, RewardShop, [
+            new SceneLayerDefinition("reward_shop/packeddata.ddp", "reward_shop/reward_shop.lm", LumenMatrix.Identity, "reward-shop"),
+            indicatorPart("player_name", 60, 638),
+            indicatorPart("player_name", 948, 638),
+        ]);
+
+    // The shop after a card entry (traced session-rewards-1 scene 21: SetNextScene(3) from the mode select), then Song Select.
+    // Its indicator parts as traced: the drums' name boards (left, right; at their Song Select places) and the counter.
+    public static SceneDefinition RewardShopVisit { get; } =
+        new SceneDefinition(SceneDefinition.CurrentVersion, RewardShop, [
+            new SceneLayerDefinition("reward_shop/packeddata.ddp", "reward_shop/reward_shop.lm", LumenMatrix.Identity, "reward-shop-visit"),
+            indicatorPart("player_name", 60, 638),
+            indicatorPart("player_name", 948, 638),
+            indicatorPart("time_counter"),
+            indicatorPart("over_msg"), // "connecting" during a purchase (arcade)
         ]);
 
     // A dan course's end (traced sessions 30 to 32): the same calls and sounds as the normal one, its own movie.

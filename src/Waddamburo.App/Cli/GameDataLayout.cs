@@ -23,6 +23,10 @@ internal sealed record GameDataLayout(
     /// <summary>The stable build's home (the cache's default place, shared with a nightly).</summary>
     public string CacheHome { get; init; } = Home;
 
+    /// <summary>Where config.cfg, the crash logs and screenshots go: <see cref="Boot.UserHome"/> (a phone's folder the
+    /// player can open), else <see cref="Home"/>.</summary>
+    public string Shared { get; init; } = Home;
+
     public static GameDataLayout Resolve(string root, string? fontOverride = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(root);
@@ -32,7 +36,7 @@ internal sealed record GameDataLayout(
 
         var lumen = Path.Combine(fullRoot, "data", "lumendata", "packed");
         var don = Path.Combine(fullRoot, "data", "don3d");
-        var tja = Path.Combine(fullRoot, "custom_songs");
+        var tja = Boot.TjaFolder ?? Path.Combine(fullRoot, "custom_songs");
         var sound = Path.Combine(fullRoot, "data", "sound");
         // None of the game data has to be there (docs/development/free-movies.md): without Don-chan's data
         // he is not drawn, without the sound data the game is silent, and a movie the data lacks is the engine's
@@ -44,18 +48,31 @@ internal sealed record GameDataLayout(
             if (missing)
                 Console.WriteLine($"Game data: without {what}.");
 
-        var stableHome = Path.Combine(fullRoot, "waddamburo");
-        moveIntoHome(fullRoot, stableHome);
-        var home = BuildInfo.Nightly ? Path.Combine(fullRoot, "waddamburo-nightly") : stableHome;
+        // On a phone the game folder is one the player fills (from a PC): Waddamburo's own files go to the app's
+        // private storage instead.
+        var stableHome = Boot.AppHome ?? Path.Combine(fullRoot, "waddamburo");
+        if (Boot.AppHome is null)
+            moveIntoHome(fullRoot, stableHome);
+        var home = BuildInfo.Nightly && Boot.AppHome is null ? Path.Combine(fullRoot, "waddamburo-nightly") : stableHome;
         if (home != stableHome && !Directory.Exists(home))
             seedNightly(stableHome, home);
+        Directory.CreateDirectory(home);
         // The user's font when they supplied one, else the bundled one; the bundled fonts draw what it lacks.
         var bundled = BundledFonts.Extract(Path.Combine(home, "fonts"));
         var font = fontOverride is null ? findTitleFont(fullRoot) ?? bundled.Title : Path.GetFullPath(fontOverride);
         if (!File.Exists(font))
             throw new FileNotFoundException($"The title font does not exist: {font}", font);
-        string[] fallbacks = font == bundled.Title ? [bundled.Fallback] : [bundled.Title, bundled.Fallback];
-        return new GameDataLayout(fullRoot, home, lumen, donRoot, tja, soundRoot, font, fallbacks, bundled.Service) { CacheHome = stableHome };
+        string[] fallbacks = font == bundled.Title ? [bundled.Hangul, bundled.Fallback] : [bundled.Title, bundled.Hangul, bundled.Fallback];
+        // A phone's settings move once from the private home to the player's folder (logs start there afresh).
+        var shared = Boot.UserHome ?? home;
+        if (shared != home)
+        {
+            Directory.CreateDirectory(shared);
+            var settings = Path.Combine(home, Waddamburo.Game.Flow.ArcadeSettings.FileName);
+            if (File.Exists(settings) && !File.Exists(Path.Combine(shared, Waddamburo.Game.Flow.ArcadeSettings.FileName)))
+                File.Move(settings, Path.Combine(shared, Waddamburo.Game.Flow.ArcadeSettings.FileName));
+        }
+        return new GameDataLayout(fullRoot, home, lumen, donRoot, tja, soundRoot, font, fallbacks, bundled.Service) { CacheHome = stableHome, Shared = shared };
     }
 
     // Not copied into a nightly's home: what it makes for itself, and the shared cache.
@@ -76,18 +93,18 @@ internal sealed record GameDataLayout(
                 var relative = Path.GetRelativePath(stable, file);
                 var top = relative.Split(Path.DirectorySeparatorChar)[0];
                 if (NotSeeded.Contains(top) || top.StartsWith("backup-", StringComparison.Ordinal)
-                    || top.StartsWith(Waddamburo.Game.Scores.ScoreStore.FileName, StringComparison.Ordinal))
+                    || top.StartsWith(Waddamburo.Services.Scores.ScoreStore.FileName, StringComparison.Ordinal))
                     continue;
                 var target = Path.Combine(partial, relative);
                 Directory.CreateDirectory(Path.GetDirectoryName(target)!);
                 File.Copy(file, target);
             }
-            var scores = Path.Combine(stable, Waddamburo.Game.Scores.ScoreStore.FileName);
+            var scores = Path.Combine(stable, Waddamburo.Services.Scores.ScoreStore.FileName);
             if (File.Exists(scores))
             {
                 using var source = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={scores};Mode=ReadOnly;Pooling=False");
                 using var copy = new Microsoft.Data.Sqlite.SqliteConnection(
-                    $"Data Source={Path.Combine(partial, Waddamburo.Game.Scores.ScoreStore.FileName)};Pooling=False");
+                    $"Data Source={Path.Combine(partial, Waddamburo.Services.Scores.ScoreStore.FileName)};Pooling=False");
                 source.Open();
                 copy.Open();
                 source.BackupDatabase(copy);
@@ -180,11 +197,67 @@ internal sealed record GameDataLayout(
     /// </summary>
     public static string DefaultRoot()
     {
-        var executable = Environment.GetEnvironmentVariable("APPIMAGE") ?? Environment.ProcessPath;
-        var directory = Path.GetDirectoryName(executable);
+        if (Chosen is { } chosen)
+            return chosen;
+        var directory = ExecutableFolder;
+        if (directory is not null && Directory.Exists(Path.Combine(directory, "data", "lumendata", "packed")) && IsGreen(directory))
+            return directory;
+        // A dump imported by the first start's setup (or one dropped next to a Katsu-Don USRDIR).
+        if (HasGreen(ImportRoot))
+            return ImportRoot;
         return directory is not null && Directory.Exists(Path.Combine(directory, "data", "lumendata", "packed"))
             ? directory
             : Directory.GetCurrentDirectory();
+    }
+
+    /// <summary>The Green the first start's setup filled (started even when not whole: START ANYWAY).</summary>
+    public static string? Chosen { get; set; }
+
+    /// <summary>The folder Waddamburo runs from (the AppImage's on Linux).</summary>
+    public static string? ExecutableFolder =>
+        Path.GetDirectoryName(Environment.GetEnvironmentVariable("APPIMAGE") ?? Environment.ProcessPath);
+
+    /// <summary>Where a PC's first start imports a downloaded dump: Green beside Waddamburo (else this user's data
+    /// folder, when Waddamburo's own can't be written: Program Files).</summary>
+    public static string ImportRoot { get; } = importRoot();
+
+    private static string importRoot()
+    {
+        if (ExecutableFolder is { } folder)
+            try
+            {
+                var green = Path.Combine(folder, "Green");
+                if (Directory.Exists(green))
+                    return green;
+                // Not made here (every start asks): only whether Waddamburo's folder takes a file.
+                var probe = Path.Combine(folder, ".waddamburo-write-test");
+                File.WriteAllText(probe, "");
+                File.Delete(probe);
+                return green;
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+            }
+        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Waddamburo", "Green");
+    }
+
+    /// <summary>Whether <paramref name="root"/> holds a Green the game can start on: Green's (not another release's,
+    /// <see cref="requireGreen"/>), with nothing but songs missing.</summary>
+    public static bool HasGreen(string root) =>
+        Directory.Exists(Path.Combine(root, "data", "lumendata", "packed")) && IsGreen(root) && GreenData.MissingRequired(root) is [];
+
+    /// <summary>Whether the release in <paramref name="root"/> is Green (its PARAM.SFO, when it has one, says S111).</summary>
+    public static bool IsGreen(string root)
+    {
+        try
+        {
+            requireGreen(Path.GetFullPath(root));
+            return true;
+        }
+        catch (InvalidDataException)
+        {
+            return false;
+        }
     }
 
     private static string? findTitleFont(string root)
@@ -240,12 +313,21 @@ internal sealed record GameDataLayout(
     public static (int Order, string? Name) ReleaseOf(string dataRoot)
     {
         var sfo = Path.Combine(dataRoot, "..", "..", "PARAM.SFO");
-        if (!File.Exists(sfo) || sfoTitle(File.ReadAllBytes(sfo)) is not { } title
+        return File.Exists(sfo) ? ReleaseOfSfo(File.ReadAllBytes(sfo)) : (-1, null);
+    }
+
+    /// <summary>The release a PARAM.SFO's contents name (see <see cref="ReleaseOf"/>); Green is the last one.</summary>
+    public static (int Order, string? Name) ReleaseOfSfo(byte[] sfo)
+    {
+        if (sfoTitle(sfo) is not { } title
             || System.Text.RegularExpressions.Regex.Match(title, @"\(([A-Z0-9-]+)\)\s*$") is not { Success: true } code
             || Array.FindIndex(Releases, release => release.Code == code.Groups[1].Value) is not (>= 0 and var order))
             return (-1, null);
         return (order, Releases[order].Name);
     }
+
+    /// <summary>The number of releases <see cref="ReleaseOfSfo"/> knows (Green's order is one less).</summary>
+    public static int ReleaseCount => Releases.Length;
 
     // Waddamburo runs Green (S111) only. The game folder (USRDIR's parent) names its release in PARAM.SFO;
     // without one (USRDIR copied on its own) nothing is checked. Downloads often hold an older release

@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Waddamburo.Catalog;
-using Waddamburo.Game.Scores;
 
 namespace Waddamburo.Game.Dan;
 
@@ -12,7 +11,7 @@ public sealed record DanCatalogue(List<DanSeries> Series)
     {
         try
         {
-            return JsonSerializer.Deserialize(File.ReadAllText(path), ScoreJson.Default.DanCatalogue);
+            return JsonSerializer.Deserialize(File.ReadAllText(path), DanJson.Default.DanCatalogue);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
         {
@@ -27,7 +26,7 @@ public sealed record DanCatalogue(List<DanSeries> Series)
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllText(path, JsonSerializer.Serialize(this, ScoreJson.Default.DanCatalogue));
+            File.WriteAllText(path, JsonSerializer.Serialize(this, DanJson.Default.DanCatalogue));
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {

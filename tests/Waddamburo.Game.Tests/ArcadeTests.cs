@@ -137,6 +137,35 @@ public sealed class ArcadeTests
     }
 
     [Fact]
+    public void AudioExclusiveBecomesAudioOutput()
+    {
+        Assert.Equal(AudioOutputMode.Shared, ArcadeSettings.Parse("").AudioOutput);
+        Assert.Equal(AudioOutputMode.Exclusive, ArcadeSettings.Parse("audio_exclusive = true").AudioOutput);
+        Assert.Equal(AudioOutputMode.Shared, ArcadeSettings.Parse("audio_exclusive = false").AudioOutput);
+        var asio = ArcadeSettings.Parse("audio_output = asio\nasio_driver = ASIO4ALL v2\nasio_buffer_frames = 128\nasio_output_pair = 1");
+        Assert.Equal((AudioOutputMode.Asio, "ASIO4ALL v2", 128, 1), (asio.AudioOutput, asio.AsioDriver, asio.AsioBufferFrames, asio.AsioOutputPair));
+        var path = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(path, "audio_exclusive = true\n");
+            ArcadeSettings.SaveMenuSettings(path, new ArcadeSettings
+            {
+                AudioOutput = AudioOutputMode.Exclusive, AudioDevice = "Speakers (Scarlett Solo USB)", AudioExclusivePeriod = 256,
+            });
+            var text = File.ReadAllText(path);
+            Assert.StartsWith("audio_output = exclusive\n", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("audio_exclusive =", text, StringComparison.Ordinal);
+            var saved = ArcadeSettings.Parse(text);
+            Assert.Equal((AudioOutputMode.Exclusive, "Speakers (Scarlett Solo USB)", 256),
+                (saved.AudioOutput, saved.AudioDevice, saved.AudioExclusivePeriod));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void TheServiceMenuSavesTheCabinetSettings()
     {
         var path = Path.GetTempFileName();
@@ -174,17 +203,17 @@ public sealed class ArcadeTests
     }
 
     [Fact]
-    public void TimingIndicatorDefaultsToGoodAndBadAndSavesBack()
+    public void TimingIndicatorDefaultsToOffAndSavesBack()
     {
-        Assert.Equal(TimingIndicator.GoodBad, ArcadeSettings.Parse(ArcadeSettings.DefaultFileText).TimingIndicator);
+        Assert.Equal(TimingIndicator.Off, ArcadeSettings.Parse(ArcadeSettings.DefaultFileText).TimingIndicator);
         Assert.Equal(TimingIndicator.Always, ArcadeSettings.Parse("timing_indicator = Always").TimingIndicator);
         Assert.Throws<InvalidDataException>(() => ArcadeSettings.Parse("timing_indicator = sometimes"));
         var path = Path.GetTempFileName();
         try
         {
-            var settings = ArcadeSettings.Parse(ArcadeSettings.DefaultFileText) with { TimingIndicator = TimingIndicator.Off };
+            var settings = ArcadeSettings.Parse(ArcadeSettings.DefaultFileText) with { TimingIndicator = TimingIndicator.GoodBad };
             ArcadeSettings.SaveMenuSettings(path, settings);
-            Assert.Equal(TimingIndicator.Off, ArcadeSettings.Parse(File.ReadAllText(path)).TimingIndicator);
+            Assert.Equal(TimingIndicator.GoodBad, ArcadeSettings.Parse(File.ReadAllText(path)).TimingIndicator);
         }
         finally
         {

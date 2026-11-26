@@ -23,6 +23,7 @@ crashdumps/
 *.nud
 *.nsh
 *.tja
+!samples/*/*.tja
 *.ttf
 *.otf
 *.bmp
@@ -37,5 +38,4 @@ crashdumps/
 
 # Synthetic fixtures are reviewed exceptions
 !tests/fixtures/synthetic/**
-AGENTS.md
 CLAUDE.md

@@ -28,9 +28,13 @@ internal static class SelfUpdate
 {
     private const string ApplyOption = "--apply-update=";
     private const string UpdatedOption = "--updated";
+    // The process's arch, not the OS's: an x64 build under Windows on Arm's emulation updates to the x64 build.
+    private static bool Arm64 => System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture
+        == System.Runtime.InteropServices.Architecture.Arm64;
+    private static string AppImageArch => Arm64 ? "aarch64" : "x86_64";
 
     // ponytail: test hook; point it at a local server serving a releases/latest-shaped JSON (an array for nightlies).
-    private static string LatestReleaseUrl => Environment.GetEnvironmentVariable("WADDAMBURO_UPDATE_URL")
+    private static string LatestReleaseUrl => DiagnosticSwitches.UpdateUrl
         ?? (nightly
             ? "https://api.github.com/repos/LucaSilva-r/Waddamburo-public/releases?per_page=30"
             : "https://api.github.com/repos/LucaSilva-r/Waddamburo-public/releases/latest");
@@ -44,6 +48,9 @@ internal static class SelfUpdate
         var apply = args.FirstOrDefault(static argument => argument.StartsWith(ApplyOption, StringComparison.Ordinal));
         var updated = args.Contains(UpdatedOption, StringComparer.Ordinal);
         args = args.Where(static argument => argument != UpdatedOption && !argument.StartsWith(ApplyOption, StringComparison.Ordinal)).ToArray();
+        // The Switch swaps its NRO in UpdateNow: no second process to hand over to.
+        if (PlatformInfo.IsSwitch)
+            return false;
         if (apply is not null)
         {
             // Running from <file>.update: the old instance is exiting; take its place.
@@ -85,7 +92,7 @@ internal static class SelfUpdate
     {
         if (installedFile() is not { } installed || currentVersion() is not { } current)
             return false;
-        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+        using var http = new HttpClient(Waddamburo.Services.Online.ServerConnector.Handler(insecure: false)) { Timeout = TimeSpan.FromSeconds(10) };
         http.DefaultRequestHeaders.UserAgent.ParseAdd($"Waddamburo/{current}");
         Release? release;
         try
@@ -117,7 +124,7 @@ internal static class SelfUpdate
                 [
                     (Strings.T("service.update.downloading", release.Tag), OverlayMenu.White),
                     ($"[{new string('#', filled)}{new string('-', 30 - filled)}] {done}%", OverlayMenu.Green),
-                    (Strings.T("service.update.restarts"), OverlayMenu.White),
+                    (Strings.T(PlatformInfo.IsSwitch ? "service.update.switch_closes" : "service.update.restarts"), OverlayMenu.White),
                 ];
             }, Footer: () => [(OverlayMenu.upper(WindowTitle), OverlayMenu.Cyan)]), home: false);
         var download = Task.Run(async () =>
@@ -126,6 +133,8 @@ internal static class SelfUpdate
             {
                 await downloadAsync(http, release, installed, value => Volatile.Write(ref percent, value), cancel.Token)
                     .ConfigureAwait(false);
+                if (PlatformInfo.IsSwitch)
+                    swapNro(installed); // in place before the player can close the game
             }
             catch (Exception exception) when (isNetworkFailure(exception) || exception is InvalidDataException)
             {
@@ -149,11 +158,76 @@ internal static class SelfUpdate
             Console.Error.WriteLine($"Update {release.Tag} failed: {failure.Message}");
             return false;
         }
+        if (PlatformInfo.IsSwitch)
+        {
+            // ponytail: the Switch reports an error however the game closes itself (a bare svcExitProcess, or appletExit
+            // with exit mode 1, both tried 2026-11-25), and returning to the loader leaves the runtime's threads in an
+            // unloaded NRO; so the player is told first. Find a clean exit and drop the warning.
+            menu.Open(new OverlayPage(() => Strings.T("service.update.title"), static () => [], Centred: true, Legend: false,
+                Body: () =>
+                [
+                    (Strings.T("service.update.switch_done", release.Tag), OverlayMenu.White),
+                    (Strings.T("service.update.switch_error"), OverlayMenu.Yellow),
+                    (Strings.T("service.update.switch_close"), OverlayMenu.White),
+                ], Footer: () => [(OverlayMenu.upper(WindowTitle), OverlayMenu.Cyan)]), home: false);
+            var keys = new List<SdlKeyboardKey>();
+            while (application.PumpAndPresent(menu.Frame(), out var escape, keys) && !escape && !keys.Contains(SdlKeyboardKey.Enter))
+            {
+                keys.Clear();
+                Thread.Sleep(15);
+            }
+            SwitchNro.ExitProcess();
+            return true;
+        }
         launch(installed + ".update", [.. args, ApplyOption + installed]);
         return true;
     }
 
-    private sealed record Release(string Tag, Uri Download, long Size, string? Digest);
+    /// <summary>
+    /// Switch: the loader read the whole NRO into memory at start, so its file can be replaced while it runs; the next
+    /// start (hbmenu or the HOME-menu forwarder, same path) runs the new one. The old file stays as .old until the new
+    /// one is in place, so a power cut never leaves no NRO. A failure throws (IOException): the update fails.
+    /// </summary>
+    private static void swapNro(string installed)
+    {
+        try
+        {
+            File.Move(installed, installed + ".old", overwrite: true);
+            File.Move(installed + ".update", installed);
+            File.Delete(installed + ".old");
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            if (!File.Exists(installed) && File.Exists(installed + ".old"))
+                File.Move(installed + ".old", installed);
+            throw new IOException($"the update could not replace {installed}: {exception.Message}", exception);
+        }
+        Console.WriteLine($"Updated {installed}: the next start runs it.");
+    }
+
+    private sealed record Release(string Tag, Uri Download, long Size, string? Digest, Uri? Page);
+
+    /// <summary>
+    /// A phone's release build: the newer release on GitHub (its tag and page, where the APK is downloaded and installed
+    /// by hand), or null (up to date, a development build, or no answer within a few seconds). Android has no updates in
+    /// place: the game says so instead (<see cref="Online.UpdateGate"/>).
+    /// </summary>
+    public static (string Tag, Uri Page)? NewerForPhone()
+    {
+        if (currentVersion() is not { } current)
+            return null;
+        using var http = new HttpClient(Waddamburo.Services.Online.ServerConnector.Handler(insecure: false)) { Timeout = TimeSpan.FromSeconds(4) };
+        http.DefaultRequestHeaders.UserAgent.ParseAdd($"Waddamburo/{current}");
+        try
+        {
+            return findNewer(http, current) is { Page: { } page } release ? (release.Tag, page) : null;
+        }
+        catch (Exception exception) when (isNetworkFailure(exception))
+        {
+            Console.Error.WriteLine($"Update check failed: {exception.Message}");
+            return null;
+        }
+    }
 
     private static Release? findNewer(HttpClient http, Version current)
     {
@@ -176,12 +250,14 @@ internal static class SelfUpdate
         if (!newer)
             return null;
         // A nightly's files are named apart, to sit beside the stable ones.
-        var assetName = (OperatingSystem.IsWindows(), nightly) switch
+        var assetName = OperatingSystem.IsAndroid() ? nightly ? "Waddamburo-nightly.apk" : "Waddamburo.apk"
+            : PlatformInfo.IsSwitch ? nightly ? "Waddamburo-nightly.nro" : "Waddamburo.nro"
+            : (OperatingSystem.IsWindows(), nightly) switch
         {
-            (true, false) => "Waddamburo.exe",
-            (true, true) => "Waddamburo-nightly.exe",
-            (false, false) => "Waddamburo-x86_64.AppImage",
-            (false, true) => "Waddamburo-nightly-x86_64.AppImage",
+            (true, false) => Arm64 ? "Waddamburo-arm64.exe" : "Waddamburo.exe",
+            (true, true) => Arm64 ? "Waddamburo-nightly-arm64.exe" : "Waddamburo-nightly.exe",
+            (false, false) => $"Waddamburo-{AppImageArch}.AppImage",
+            (false, true) => $"Waddamburo-nightly-{AppImageArch}.AppImage",
         };
         var asset = newest.GetProperty("assets").EnumerateArray()
             .FirstOrDefault(candidate => candidate.GetProperty("name").GetString() == assetName);
@@ -189,7 +265,8 @@ internal static class SelfUpdate
             return null;
         return new Release(tag, new Uri(asset.GetProperty("browser_download_url").GetString()!),
             asset.TryGetProperty("size", out var size) ? size.GetInt64() : 0,
-            asset.TryGetProperty("digest", out var digest) ? digest.GetString() : null);
+            asset.TryGetProperty("digest", out var digest) ? digest.GetString() : null,
+            newest.TryGetProperty("html_url", out var page) && Uri.TryCreate(page.GetString(), UriKind.Absolute, out var pageUri) ? pageUri : null);
     }
 
     private static async Task downloadAsync(HttpClient http, Release release, string installed, Action<int> progress, CancellationToken cancel)
@@ -215,7 +292,7 @@ internal static class SelfUpdate
             File.Delete(partial);
             throw new InvalidDataException("the download does not match its checksum");
         }
-        if (!OperatingSystem.IsWindows())
+        if (!OperatingSystem.IsWindows() && !PlatformInfo.IsSwitch)
             File.SetUnixFileMode(partial, File.GetUnixFileMode(installed));
         File.Move(partial, installed + ".update", overwrite: true);
     }
@@ -231,12 +308,6 @@ internal static class SelfUpdate
             start.ArgumentList.Add(argument);
         Process.Start(start)?.Dispose();
     }
-
-    /// <summary>
-    /// Starts the game again with the same arguments (a settings change that needs a restart, or memory
-    /// to give back after a texture bake): the release file, or this executable in development.
-    /// </summary>
-    public static void Relaunch(string[] args) => launch(installedFile() ?? Environment.ProcessPath!, args);
 
     /// <summary>Retries a file operation while the other instance still holds the file (up to 10 s).</summary>
     private static void retry(Action operation)
@@ -255,10 +326,11 @@ internal static class SelfUpdate
         }
     }
 
-    /// <summary>The file a release runs from: the AppImage, or the single-file exe on Windows.</summary>
+    /// <summary>The file a release runs from: the AppImage, the single-file exe on Windows, or the Switch's NRO.</summary>
     private static string? installedFile() =>
         Environment.GetEnvironmentVariable("APPIMAGE") is { Length: > 0 } appImage ? appImage
         : OperatingSystem.IsWindows() ? Environment.ProcessPath
+        : PlatformInfo.IsSwitch ? SwitchNro.Path
         : null;
 
     /// <summary>The window title: the release version (and a nightly's commit), or "dev" and the commit for other builds.</summary>

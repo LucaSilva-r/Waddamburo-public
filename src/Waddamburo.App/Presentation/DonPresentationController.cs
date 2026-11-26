@@ -101,6 +101,8 @@ internal sealed class DonPresentationController(SdlDonRenderer renderer) : IDonP
         }
     }
 
+    public bool HasCostume(int type, int id) => _renderer.HasCostume(type, id);
+
     public void SetAccessory(int playerIndex, int puchi)
     {
         try

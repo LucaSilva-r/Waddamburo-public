@@ -1,0 +1,187 @@
+using Waddamburo.Platform.Sdl;
+using Waddamburo.Platform.Sdl.Rendering;
+
+namespace Waddamburo.App.Presentation;
+
+/// <summary>
+/// Draws <see cref="TouchDrum"/>: the drum face's top half at the bottom of the stage (each half flashing red on
+/// don, a blue ring around it on ka), the menus' buttons, and the back and search buttons in the top corners.
+/// </summary>
+internal static class TouchDrumOverlay
+{
+    private const float StageWidth = 1280, StageHeight = 720;
+    private static readonly (byte, byte, byte) Face = (250, 250, 250), Outline = (40, 40, 40), Don = (255, 70, 40), Ka = (60, 190, 255);
+    private const double FlashSeconds = 0.15;
+
+    // As phone taiko games draw it: one white drum face (don); everything around it is ka, which flashes a ring on its side.
+    public static IEnumerable<RenderQuad> Quads(OverlayPainter painter, ulong[] hits, ulong now)
+    {
+        if (TouchDrum.Split)
+        {
+            foreach (var quad in splitQuads(painter, hits, now, editing: false))
+                yield return quad;
+            yield break;
+        }
+        var centreX = TouchDrum.CenterX * StageWidth;
+        var centreY = TouchDrum.CenterY * StageHeight;
+        var face = TouchDrum.FaceRadius * StageHeight;
+        var ring = face + 14;
+        foreach (var right in (bool[])[false, true])
+        {
+            var (ka, don) = right ? (3, 2) : (0, 1);
+            if (flash(hits[ka], now) is > 0 and var kaFlash)
+                yield return quarter(painter, "flash-ka", right, centreX, centreY, ring, Ka, null, .8f * kaFlash);
+            yield return quarter(painter, "face", right, centreX, centreY, face, Face, Outline, .8f);
+            if (flash(hits[don], now) is > 0 and var donFlash)
+                yield return quarter(painter, "flash-don", right, centreX, centreY, face, Don, Outline, .6f * donFlash);
+        }
+    }
+
+    /// <summary>The menu's buttons (<see cref="TouchDrum.MenuButtons"/>: up, OK, down) and the back button.</summary>
+    public static IEnumerable<RenderQuad> MenuQuads(OverlayPainter painter, ulong[] hits, ulong now)
+    {
+        foreach (var (code, x, y, width, height) in TouchDrum.MenuButtons)
+        {
+            float w = width * StageWidth, h = height * StageHeight;
+            yield return painter.Canvas(("touch-menu", code), x * StageWidth, y * StageHeight, w, h, canvas =>
+            {
+                canvas.RoundedRect(0, 0, w, h, 16, (40, 40, 40), 3, (230, 230, 230));
+                (byte, byte, byte) ink = (240, 240, 240);
+                if (code == TouchDrum.Ok)
+                    canvas.Text("OK", w / 2, h / 2, w * .6f, h * .5f);
+                else if (code == TouchDrum.Up)
+                    canvas.Triangle((w / 2, h * .25f), (w * .25f, h * .72f), (w * .75f, h * .72f), ink);
+                else
+                    canvas.Triangle((w / 2, h * .75f), (w * .25f, h * .28f), (w * .75f, h * .28f), ink);
+            }, .6f + .4f * flash(hits[code], now));
+        }
+    }
+
+    /// <summary>The scene's own touch buttons (<see cref="TouchKey"/>): the menu buttons' look; "&lt;", "&gt;", "^" and
+    /// "v" are drawn as arrows, any other label as text.</summary>
+    public static IEnumerable<RenderQuad> KeyQuads(OverlayPainter painter, IReadOnlyList<TouchKey> keys, ulong[] hits, ulong now)
+    {
+        for (var index = 0; index < Math.Min(keys.Count, TouchDrum.MaxKeys); index++)
+        {
+            var key = keys[index];
+            float w = key.Width * StageWidth, h = key.Height * StageHeight;
+            yield return painter.Canvas(("touch-key", key.Label, w, h), key.X * StageWidth, key.Y * StageHeight, w, h, canvas =>
+            {
+                canvas.RoundedRect(0, 0, w, h, 14, (40, 40, 40), 3, (230, 230, 230));
+                (byte, byte, byte) ink = (240, 240, 240);
+                float cx = w / 2, cy = h / 2, a = Math.Min(w, h) * .28f;
+                switch (key.Label)
+                {
+                    case "<": canvas.Triangle((cx - a, cy), (cx + a * .8f, cy - a), (cx + a * .8f, cy + a), ink); break;
+                    case ">": canvas.Triangle((cx + a, cy), (cx - a * .8f, cy - a), (cx - a * .8f, cy + a), ink); break;
+                    case "^": canvas.Triangle((cx, cy - a), (cx - a, cy + a * .8f), (cx + a, cy + a * .8f), ink); break;
+                    case "v": canvas.Triangle((cx, cy + a), (cx - a, cy - a * .8f), (cx + a, cy - a * .8f), ink); break;
+                    default: canvas.Text(key.Label, cx, cy, w * .85f, h * .42f); break;
+                }
+            }, .6f + .4f * flash(hits[TouchDrum.KeyBase + index], now));
+        }
+    }
+
+    /// <summary>The screen keyboard's show/hide button (<see cref="TouchDrum.KeyboardButton"/>): a keyboard of keys.</summary>
+    public static RenderQuad KeyboardQuad(OverlayPainter painter, ulong[] hits, ulong now)
+    {
+        var (x, y, width, height) = TouchDrum.KeyboardButton;
+        float w = width * StageWidth, h = height * StageHeight;
+        return painter.Canvas("touch-keyboard", x * StageWidth, y * StageHeight, w, h, canvas =>
+        {
+            canvas.RoundedRect(0, 0, w, h, 16, (40, 40, 40), 3, (230, 230, 230));
+            // Three rows of keys, the space bar under them.
+            float key = w * .11f, gap = w * .04f, left = w * .17f, top = h * .26f;
+            for (var row = 0; row < 3; row++)
+                for (var column = 0; column < 5; column++)
+                    canvas.RoundedRect(left + column * (key + gap), top + row * (key + gap), key, key, 2, (240, 240, 240), 0);
+            canvas.RoundedRect(left + key + gap, top + 3 * (key + gap), 3 * key + 2 * gap, key * .8f, 2, (240, 240, 240), 0);
+        }, .6f + .4f * flash(hits[TouchDrum.Keyboard], now));
+    }
+
+    /// <summary>Song select's search button (Tab): a rounded square with a magnifier, in the top-right corner.</summary>
+    public static RenderQuad SearchQuad(OverlayPainter painter, ulong[] hits, ulong now)
+    {
+        var size = TouchDrum.SearchSize * StageHeight - 16;
+        return painter.Canvas("touch-search", StageWidth - 8 - size, 8, size, size, canvas =>
+        {
+            canvas.RoundedRect(0, 0, size, size, 12, (40, 40, 40), 3, (230, 230, 230));
+            // The lens (a ring) and its handle (a thin diagonal bar of two triangles).
+            canvas.Ring(size * .2f, size * .2f, size * .42f, size * .42f, size * .21f, 5, (240, 240, 240));
+            (float X, float Y) a = (size * .58f, size * .62f), b = (size * .62f, size * .58f), c = (size * .82f, size * .78f), d = (size * .78f, size * .82f);
+            canvas.Triangle(a, b, c, (240, 240, 240));
+            canvas.Triangle(a, c, d, (240, 240, 240));
+        }, .6f + .4f * flash(hits[TouchDrum.Search], now));
+    }
+
+    /// <summary>The notices button (E): a rounded square with a bell, beside the back button.</summary>
+    public static RenderQuad NoticesQuad(OverlayPainter painter, ulong[] hits, ulong now)
+    {
+        var size = TouchDrum.BackSize * StageHeight - 16;
+        return painter.Canvas("touch-notices", TouchDrum.BackSize * StageHeight + 8, 8, size, size, canvas =>
+        {
+            (byte, byte, byte) ink = (240, 240, 240);
+            canvas.RoundedRect(0, 0, size, size, 12, (40, 40, 40), 3, (230, 230, 230));
+            // The bell: a dome, its flared rim, the clapper under it.
+            canvas.RoundedRect(size * .3f, size * .22f, size * .4f, size * .46f, size * .2f, ink, 0);
+            canvas.RoundedRect(size * .22f, size * .6f, size * .56f, size * .1f, size * .05f, ink, 0);
+            canvas.RoundedRect(size * .44f, size * .72f, size * .12f, size * .1f, size * .05f, ink, 0);
+        }, .6f + .4f * flash(hits[TouchDrum.Notices], now));
+    }
+
+    /// <summary>The back button (Escape): a rounded square with a left arrow, in the top-left corner.</summary>
+    public static RenderQuad BackQuad(OverlayPainter painter, ulong[] hits, ulong now)
+    {
+        var size = TouchDrum.BackSize * StageHeight - 16;
+        return painter.Canvas("touch-back", 8, 8, size, size, canvas =>
+        {
+            canvas.RoundedRect(0, 0, size, size, 12, (40, 40, 40), 3, (230, 230, 230));
+            canvas.Triangle((size * .28f, size / 2), (size * .62f, size * .26f), (size * .62f, size * .74f), (240, 240, 240));
+        }, .6f + .4f * flash(hits[TouchDrum.Back], now));
+    }
+
+    /// <summary>The split circles being edited: each with its resize knob, and how to use it.</summary>
+    public static IEnumerable<RenderQuad> EditorQuads(OverlayPainter painter, ulong[] hits, ulong now, string hint) =>
+        [
+            painter.Rect(0, 0, StageWidth, StageHeight, new RenderColor(0, 0, 0, .55f)),
+            .. splitQuads(painter, hits, now, editing: true),
+            painter.Text(hint, StageWidth / 2, 40, 900, 30),
+        ];
+
+    // The split layout: two don circles; a ka flashes a ring around its side's circle.
+    private static IEnumerable<RenderQuad> splitQuads(OverlayPainter painter, ulong[] hits, ulong now, bool editing)
+    {
+        for (var circle = 0; circle < 2; circle++)
+        {
+            var (x, y, r) = TouchDrum.Dons[circle];
+            float centreX = x * StageWidth, centreY = y * StageHeight, face = r * StageHeight, ring = face + 14;
+            var (ka, don) = circle == 0 ? (0, 1) : (3, 2);
+            if (flash(hits[ka], now) is > 0 and var kaFlash)
+                yield return disc(painter, "split-ka", ring, centreX, centreY, Ka, null, .8f * kaFlash);
+            yield return disc(painter, "split-face", face, centreX, centreY, Face, Outline, .8f);
+            if (flash(hits[don], now) is > 0 and var donFlash)
+                yield return disc(painter, "split-don", face, centreX, centreY, Don, Outline, .6f * donFlash);
+            if (editing)
+            {
+                var knob = TouchDrum.KnobRadius * StageHeight;
+                yield return disc(painter, "split-knob", knob, centreX + face, centreY, Ka, Outline, 1);
+            }
+        }
+    }
+
+    private static RenderQuad disc(OverlayPainter painter, string kind, float radius, float centreX, float centreY,
+        (byte, byte, byte) colour, (byte, byte, byte)? outline, float alpha) =>
+        painter.Canvas(("touch-disc", kind, MathF.Round(radius)), centreX - radius, centreY - radius, radius * 2, radius * 2,
+            canvas => canvas.RoundedRect(0, 0, radius * 2, radius * 2, radius, colour, outline is null ? 0 : 3, outline), alpha);
+
+    // One side's quarter disc above the centre (the lower half lies below the stage), outlined or not.
+    private static RenderQuad quarter(OverlayPainter painter, string kind, bool right, float centreX, float centreY,
+        float radius, (byte, byte, byte) colour, (byte, byte, byte)? outline, float alpha) =>
+        painter.Canvas(("touch-drum", kind, right, radius), right ? centreX : centreX - radius, centreY - radius, radius, radius,
+            canvas => canvas.RoundedRect(right ? -radius : 0, 0, radius * 2, radius * 2, radius, colour,
+                outline is null ? 0 : 3, outline), alpha);
+
+    // 1 just hit, fading to 0 over FlashSeconds.
+    private static float flash(ulong hit, ulong now) =>
+        hit == 0 ? 0 : (float)Math.Max(0, 1 - (now - hit) / 1e9 / FlashSeconds);
+}

@@ -201,7 +201,7 @@ public sealed class AudioClip
 }
 
 /// <summary>Thread-safe software mixer whose output format is fixed at construction.</summary>
-public sealed class AudioMixer
+public sealed partial class AudioMixer
 {
     private readonly object _gate = new();
     private readonly BusState[] _buses = new BusState[Enum.GetValues<AudioBus>().Length];
@@ -231,7 +231,8 @@ public sealed class AudioMixer
         get
         {
             lock (_gate)
-                return _voices.Count != 0 || _streamVoices.Count != 0 || _direct.Values.Any(static entry => entry.Voice.IsPlaying);
+                return _voices.Count != 0 || _streamVoices.Count != 0 || _deviceVoices.Count != 0
+                    || _direct.Values.Any(static entry => entry.Voice.IsPlaying);
         }
     }
 
@@ -239,11 +240,16 @@ public sealed class AudioMixer
     /// Plays <see cref="AudioBus.DrumHit"/> one-shots through device-mixed voices instead of this mixer's
     /// output, so they skip the output queue. Their gain is taken when they start.
     /// </summary>
+    /// <remarks>Null stops using them (the output changes): the voices are dropped, their device destroys them.</remarks>
     // ponytail: volume changes, bus fades and pauses don't reach a drum hit already sounding (< 1 s).
-    public void UseDirectVoices(Func<DirectVoice> create)
+    public void UseDirectVoices(Func<DirectVoice>? create)
     {
         lock (_gate)
+        {
             _createDirect = create;
+            if (create is null)
+                _direct.Clear();
+        }
     }
 
     /// <summary>Reports whether the identified clip or stream still has mixer-owned samples to render.</summary>
@@ -253,6 +259,7 @@ public sealed class AudioMixer
         {
             return _voices.Exists(candidate => candidate.Handle == handle)
                 || _streamVoices.Exists(candidate => candidate.Handle == handle)
+                || _deviceVoices.Exists(candidate => candidate.Handle == handle)
                 || _direct.Values.Any(entry => entry.Handle == handle && entry.Voice.IsPlaying);
         }
     }
@@ -263,6 +270,7 @@ public sealed class AudioMixer
         lock (_gate)
             return _voices.Exists(voice => voice.Bus == bus && !voice.Paused)
                 || _streamVoices.Exists(voice => voice.Bus == bus && !voice.Paused)
+                || _deviceVoices.Exists(voice => voice.Bus == bus && !voice.Paused)
                 || (bus == AudioBus.DrumHit && _direct.Values.Any(static entry => entry.Voice.IsPlaying));
     }
 
@@ -304,7 +312,8 @@ public sealed class AudioMixer
                 _direct[clip] = (voice, handle);
                 return handle;
             }
-            _voices.Add(new Voice(handle, clip, bus, volume, loop));
+            if (startDevice(handle, bus, volume, clip, loop, null) is null)
+                _voices.Add(new Voice(handle, clip, bus, volume, loop));
             return handle;
         }
     }
@@ -323,7 +332,8 @@ public sealed class AudioMixer
         lock (_gate)
         {
             var handle = new AudioPlaybackHandle(checked(++_nextHandle));
-            _streamVoices.Add(new StreamVoice(handle, source, bus, volume));
+            if (startDevice(handle, bus, volume, null, false, source) is null)
+                _streamVoices.Add(new StreamVoice(handle, source, bus, volume));
             return handle;
         }
     }
@@ -341,6 +351,17 @@ public sealed class AudioMixer
                     entry.Voice.Stop((int)fadeFrames);
                     return;
                 }
+            if (_deviceVoices.Find(candidate => candidate.Handle == handle) is { } device)
+            {
+                if (fadeFrames == 0)
+                {
+                    _deviceVoices.Remove(device);
+                    release(device);
+                }
+                else
+                    device.BeginFade(fadeFrames);
+                return;
+            }
             if (voice is not null)
             {
                 if (fadeFrames == 0)
@@ -372,6 +393,14 @@ public sealed class AudioMixer
             if (bus == AudioBus.DrumHit)
                 foreach (var entry in _direct.Values)
                     entry.Voice.Stop((int)fadeFrames);
+            foreach (var device in _deviceVoices.Where(voice => voice.Bus == bus).ToArray())
+                if (fadeFrames == 0)
+                {
+                    _deviceVoices.Remove(device);
+                    release(device);
+                }
+                else
+                    device.BeginFade(fadeFrames);
             if (fadeFrames == 0)
             {
                 _voices.RemoveAll(voice => voice.Bus == bus);
@@ -400,6 +429,9 @@ public sealed class AudioMixer
             foreach (var voice in _streamVoices)
                 voice.Source.Dispose();
             _streamVoices.Clear();
+            foreach (var voice in _deviceVoices)
+                release(voice);
+            _deviceVoices.Clear();
         }
     }
 
@@ -417,6 +449,8 @@ public sealed class AudioMixer
         lock (_gate)
             if (_streamVoices.Find(candidate => candidate.Handle == handle) is { } stream)
                 stream.Paused = paused;
+            else if (_deviceVoices.Find(candidate => candidate.Handle == handle) is { } device)
+                device.Paused = paused;
     }
 
     /// <summary>Ramps everything the mixer outputs (the game going to the background and back).</summary>
@@ -438,6 +472,8 @@ public sealed class AudioMixer
             foreach (var voice in _voices.Where(voice => voice.Bus == bus))
                 voice.Paused = paused;
             foreach (var voice in _streamVoices.Where(voice => voice.Bus == bus))
+                voice.Paused = paused;
+            foreach (var voice in _deviceVoices.Where(voice => voice.Bus == bus))
                 voice.Paused = paused;
         }
     }

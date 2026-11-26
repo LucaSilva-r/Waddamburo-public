@@ -1,0 +1,205 @@
+using System.Globalization;
+
+namespace Waddamburo.Platform.Sdl.Text;
+
+/// <summary>
+/// An RGBA buffer the host's own UI (pairing pill, account picker) is drawn into at the window's
+/// scale: anti-aliased shapes from signed distances, the game's outlined title font, and images.
+/// Coordinates are stage units (1280x720); <see cref="Scale"/> maps them to pixels.
+/// </summary>
+public sealed class VectorCanvas(int width, int height, int scale, string fontPath)
+{
+    public int Scale { get; } = scale;
+    public int PixelWidth { get; } = width * scale;
+    public int PixelHeight { get; } = height * scale;
+    public byte[] Pixels { get; } = new byte[width * scale * height * scale * 4];
+
+    /// <summary>A rounded rectangle (stage units) filled with <paramref name="fill"/> inside an outline.</summary>
+    public void RoundedRect(float x, float y, float w, float h, float radius, (byte R, byte G, byte B) fill,
+        float outline = 3, (byte R, byte G, byte B)? outlineColour = null)
+    {
+        float s = Scale;
+        int x0 = Math.Max(0, (int)(x * s) - 1), x1 = Math.Min(PixelWidth, (int)((x + w) * s) + 1);
+        int y0 = Math.Max(0, (int)(y * s) - 1), y1 = Math.Min(PixelHeight, (int)((y + h) * s) + 1);
+        float cx = (x + w / 2) * s, cy = (y + h / 2) * s, hx = w / 2 * s - radius * s, hy = h / 2 * s - radius * s;
+        for (var py = y0; py < y1; py++)
+            for (var px = x0; px < x1; px++)
+            {
+                // Distance to a rounded box: the inner box grown by the radius.
+                float dx = Math.Max(Math.Abs(px + 0.5f - cx) - hx, 0), dy = Math.Max(Math.Abs(py + 0.5f - cy) - hy, 0);
+                var distance = MathF.Sqrt(dx * dx + dy * dy) - radius * s;
+                if (outline > 0)
+                    Blend(px, py, outlineColour ?? (0, 0, 0), Coverage(distance));
+                Blend(px, py, fill, Coverage(distance + outline * s));
+            }
+    }
+
+    /// <summary>A filled triangle (stage units), e.g. a choice arrow.</summary>
+    public void Triangle((float X, float Y) a, (float X, float Y) b, (float X, float Y) c, (byte R, byte G, byte B) colour)
+    {
+        float s = Scale;
+        (float X, float Y) p0 = (a.X * s, a.Y * s), p1 = (b.X * s, b.Y * s), p2 = (c.X * s, c.Y * s);
+        int x0 = Math.Max(0, (int)Math.Min(p0.X, Math.Min(p1.X, p2.X)) - 1), x1 = Math.Min(PixelWidth, (int)Math.Max(p0.X, Math.Max(p1.X, p2.X)) + 2);
+        int y0 = Math.Max(0, (int)Math.Min(p0.Y, Math.Min(p1.Y, p2.Y)) - 1), y1 = Math.Min(PixelHeight, (int)Math.Max(p0.Y, Math.Max(p1.Y, p2.Y)) + 2);
+        // Signed distance to each edge (inside negative, whichever winding), then the largest.
+        float edge((float X, float Y) from, (float X, float Y) to, float px, float py)
+        {
+            float dx = to.X - from.X, dy = to.Y - from.Y, length = MathF.Sqrt(dx * dx + dy * dy);
+            return ((px - from.X) * dy - (py - from.Y) * dx) / length;
+        }
+        var winding = MathF.Sign(edge(p0, p1, p2.X, p2.Y));
+        for (var py = y0; py < y1; py++)
+            for (var px = x0; px < x1; px++)
+            {
+                float fx = px + 0.5f, fy = py + 0.5f;
+                // Inside, every edge has the winding's sign: negate so inside is negative.
+                var distance = Math.Max(Math.Max(-winding * edge(p0, p1, fx, fy), -winding * edge(p1, p2, fx, fy)),
+                    -winding * edge(p2, p0, fx, fy));
+                Blend(px, py, colour, Coverage(distance));
+            }
+    }
+
+    /// <summary>A ring (an outline only), e.g. the picker's selection.</summary>
+    public void Ring(float x, float y, float w, float h, float radius, float thickness, (byte R, byte G, byte B) colour)
+    {
+        float s = Scale;
+        float cx = (x + w / 2) * s, cy = (y + h / 2) * s, hx = w / 2 * s - radius * s, hy = h / 2 * s - radius * s;
+        for (var py = 0; py < PixelHeight; py++)
+            for (var px = 0; px < PixelWidth; px++)
+            {
+                float dx = Math.Max(Math.Abs(px + 0.5f - cx) - hx, 0), dy = Math.Max(Math.Abs(py + 0.5f - cy) - hy, 0);
+                var distance = MathF.Abs(MathF.Sqrt(dx * dx + dy * dy) - radius * s + thickness * s / 2) - thickness * s / 2;
+                Blend(px, py, colour, Coverage(distance));
+            }
+    }
+
+    /// <summary>
+    /// The game's outlined title text, cropped to its ink and centred at (<paramref name="centreX"/>,
+    /// <paramref name="centreY"/>), shrunk to fit <paramref name="maxWidth"/> x <paramref name="maxHeight"/>.
+    /// <paramref name="spacing"/> (in em) spreads the characters apart, drawn one by one on a shared baseline: the most
+    /// gap between two characters; a longer text closes the gaps first and only then shrinks.
+    /// </summary>
+    public void Text(string text, float centreX, float centreY, float maxWidth, float maxHeight, uint outlineRgb = 0x000000,
+        float anchorX = 0.5f, (byte R, byte G, byte B)? tint = null, float spacing = 0)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return;
+        var fillOnly = tint is not null;
+        RgbaTextSurface render(string value) => GlyphLineRasterizer.Render(fontPath, value, outlineRgb, (uint)Scale);
+        var line = render(text);
+        if (ink(line, fillOnly) is not { } whole)
+            return;
+        if (spacing <= 0)
+        {
+            Image(line, whole, centreX, centreY, maxWidth, maxHeight, upscale: false, anchorX, tint);
+            return;
+        }
+        // Each character's own columns, all cropped to the whole line's rows (so they share its baseline).
+        var gap = (int)(spacing * whole.H);
+        // A space is a glyph with no surface.
+        var space = (int)(0.4f * whole.H);
+        var glyphs = new List<(RgbaTextSurface? Surface, int X, int W)>();
+        var elements = StringInfo.GetTextElementEnumerator(text);
+        while (elements.MoveNext())
+        {
+            var element = elements.GetTextElement();
+            if (!string.IsNullOrWhiteSpace(element) && render(element) is var glyph && ink(glyph, fillOnly) is { } box)
+                glyphs.Add((glyph, box.X, box.W));
+            else
+                glyphs.Add((null, 0, space));
+        }
+        float s = Scale;
+        var inked = glyphs.Sum(static glyph => glyph.W);
+        var factor = Math.Min(1f, Math.Min(maxWidth * s / inked, maxHeight * s / whole.H));
+        // The room the letters leave, shared by the gaps up to their most (output units).
+        var gaps = Math.Max(1, glyphs.Count - 1);
+        var gapOut = Math.Clamp((maxWidth - inked * factor / s) / gaps, 0, gap * factor / s);
+        var width = inked * factor / s + gapOut * (glyphs.Count - 1);
+        var x = centreX - width * anchorX;
+        foreach (var (surface, gx, gw) in glyphs)
+        {
+            var partWidth = gw * factor / s;
+            if (surface is not null)
+                Image(surface, (gx, whole.Y, gw, whole.H), x + partWidth / 2, centreY, partWidth, whole.H * factor / s,
+                    upscale: false, tint: tint);
+            x += partWidth + gapOut;
+        }
+    }
+
+    // The bounding box of a surface's ink (null: nothing drawn).
+    private static (int X, int Y, int W, int H)? ink(RgbaTextSurface surface, bool fillOnly)
+    {
+        int sw = (int)surface.Width, sh = (int)surface.Height;
+        int left = sw, right = -1, top = sh, bottom = -1;
+        for (var y = 0; y < sh; y++)
+            for (var x = 0; x < sw; x++)
+                if (coverage(surface, (y * sw + x) * 4, fillOnly) != 0)
+                {
+                    left = Math.Min(left, x); right = Math.Max(right, x);
+                    top = Math.Min(top, y); bottom = Math.Max(bottom, y);
+                }
+        return right < 0 ? null : (left, top, right - left + 1, bottom - top + 1);
+    }
+
+    /// <summary>
+    /// An image (or part of one) fitted into a box, keeping its aspect: centred at a point, or with
+    /// <paramref name="anchorX"/> 1 ending at it (0 starting). Shrinking averages the source pixels under
+    /// each output pixel. <paramref name="tint"/> draws only the white fill of outlined title text, in that colour.
+    /// </summary>
+    public void Image(RgbaTextSurface image, (int X, int Y, int W, int H)? part, float centreX, float centreY,
+        float maxWidth, float maxHeight, bool upscale = true, float anchorX = 0.5f, (byte R, byte G, byte B)? tint = null)
+    {
+        var (sx, sy, sw, sh) = part ?? (0, 0, (int)image.Width, (int)image.Height);
+        float s = Scale;
+        var factor = Math.Min(maxWidth * s / sw, maxHeight * s / sh);
+        if (!upscale)
+            factor = Math.Min(1f, factor);
+        int outWidth = (int)Math.Round(sw * factor), outHeight = (int)Math.Round(sh * factor);
+        int originX = (int)Math.Round(centreX * s - outWidth * anchorX), originY = (int)Math.Round(centreY * s - outHeight / 2f);
+        var stride = (int)image.Width;
+        var fillOnly = tint is not null;
+        for (var y = 0; y < outHeight; y++)
+            for (var x = 0; x < outWidth; x++)
+            {
+                // The source pixels under this one (one when enlarging), averaged with premultiplied colour.
+                int x0 = Math.Min(sw - 1, (int)(x / factor)), x1 = Math.Min(sw, Math.Max(x0 + 1, (int)((x + 1) / factor)));
+                int y0 = Math.Min(sh - 1, (int)(y / factor)), y1 = Math.Min(sh, Math.Max(y0 + 1, (int)((y + 1) / factor)));
+                float alpha = 0, red = 0, green = 0, blue = 0;
+                for (var v = y0; v < y1; v++)
+                    for (var u = x0; u < x1; u++)
+                    {
+                        var source = ((sy + v) * stride + sx + u) * 4;
+                        var a = coverage(image, source, fillOnly);
+                        alpha += a;
+                        red += image.Pixels[source] * a;
+                        green += image.Pixels[source + 1] * a;
+                        blue += image.Pixels[source + 2] * a;
+                    }
+                if (alpha <= 0)
+                    continue;
+                var colour = tint ?? ((byte)Math.Round(red / alpha), (byte)Math.Round(green / alpha), (byte)Math.Round(blue / alpha));
+                Blend(originX + x, originY + y, colour, alpha / ((x1 - x0) * (y1 - y0)));
+            }
+    }
+
+    // With a tint only the title rasterizer's white fill counts (its brightness), not its black outline.
+    private static float coverage(RgbaTextSurface image, int index, bool fillOnly) =>
+        image.Pixels[index + 3] / 255f * (fillOnly ? image.Pixels[index] / 255f : 1f);
+
+    public static float Coverage(float distance) => Math.Clamp(0.5f - distance, 0f, 1f);
+
+    /// <summary>Straight-alpha "over" at a pixel; outside the buffer is ignored.</summary>
+    public void Blend(int x, int y, (byte R, byte G, byte B) colour, float alpha)
+    {
+        if (alpha <= 0 || x < 0 || y < 0 || x >= PixelWidth || y >= PixelHeight)
+            return;
+        var index = (y * PixelWidth + x) * 4;
+        var below = Pixels[index + 3] / 255f;
+        var result = alpha + below * (1 - alpha);
+        byte mix(byte top, byte bottom) => (byte)Math.Round((top * alpha + bottom * below * (1 - alpha)) / result);
+        Pixels[index] = mix(colour.R, Pixels[index]);
+        Pixels[index + 1] = mix(colour.G, Pixels[index + 1]);
+        Pixels[index + 2] = mix(colour.B, Pixels[index + 2]);
+        Pixels[index + 3] = (byte)Math.Round(result * 255);
+    }
+}

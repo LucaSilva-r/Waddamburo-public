@@ -60,27 +60,27 @@ public readonly record struct SongSelectCoursePresentation(
     // keep the game's board, zero bits): every slot the song lacks is marked invalid, hidden
     // Easy/Normal/Hard always. The nonzero bits put the board in the movie's restricted mode
     // (MusicInfo.HasInvalidCourse): Oni shows at once (CheckMania, no right-ka presses) and missing
-    // courses are greyed and cannot be picked. In that mode Ura shows in Oni's place: right for a song with Ura
-    // but no Oni (an Edit-only TJA), so only a song with both keeps the game's board when it misses a course.
-    // ponytail: such a song's missing courses stay pickable; SongSelectSession plays its nearest course.
+    // courses are greyed and cannot be picked. A valid Ura bit shows Ura in Oni's place: right for a song with Ura
+    // but no Oni (an Edit-only TJA). A song with both marks Ura invalid: Oni shows, and right-ka presses on it
+    // switch to Ura as on the game's board (its stars are sent; SongSelectCoursePatch lets the presses count).
     private static AuthoredSongCourseBits restrictions(SongSelectSong song)
     {
         var complete = song.HasCourse(TaikoCourse.Easy) && song.HasCourse(TaikoCourse.Normal)
             && song.HasCourse(TaikoCourse.Hard) && song.HasCourse(TaikoCourse.Oni);
-        if (!song.Descriptor.Key.Source.IsOsu()
-            && (complete || song.HasCourse(TaikoCourse.Oni) && song.HasCourse(TaikoCourse.Ura)))
+        if (complete && !song.Descriptor.Key.Source.IsOsu())
             return AuthoredSongCourseBits.None;
         var available = AuthoredSongCourseBits.None;
         foreach (var (course, bit) in new[]
         {
             (TaikoCourse.Easy, AuthoredSongCourseBits.Easy), (TaikoCourse.Normal, AuthoredSongCourseBits.Normal),
             (TaikoCourse.Hard, AuthoredSongCourseBits.Hard), (TaikoCourse.Oni, AuthoredSongCourseBits.Oni),
-            (TaikoCourse.Ura, AuthoredSongCourseBits.HiddenOni),
         })
         {
             if (song.HasCourse(course))
                 available |= bit;
         }
+        if (song.HasCourse(TaikoCourse.Ura) && !song.HasCourse(TaikoCourse.Oni))
+            available |= AuthoredSongCourseBits.HiddenOni;
         return AuthoredSongCourseBits.All & ~available;
     }
 
@@ -437,6 +437,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable, Wadd
     public void Dispose()
     {
         _session.Timer.Stop();
+        _session.RecordPick();
         // A host reload (library, grouping, order, search) keeps the music playing.
         if (!Reloading)
             _session.StopMusic();
@@ -461,10 +462,16 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable, Wadd
         _featureFolders.Clear();
         var genres = registerCustomGenres();
         var custom = 0;
+        var used = new HashSet<string>(StringComparer.Ordinal);
         for (var index = 0; index < _session.Catalog.Categories.Length; index++)
         {
             var category = _session.Catalog.Categories[index];
             var label = category.AuthoredLabel;
+            // The movie keeps one folder per genre label: a second folder of a genre (Wii and Wii U J-POP) takes a
+            // custom genre named after it.
+            if (label != SongSelectCatalogView.FeatureLabel && category.Key != SongSelectCatalogView.RollKey
+                && !used.Add(label) && custom < genres)
+                label = customGenre(custom++, category);
             // AssignMusic's last argument picks a feature folder's slot (00-09) whose spine and banner
             // show host-drawn text; -1 = none (the baked イベント art). Named folders take a custom genre
             // (the patched ボーカロイド art: own colour and name slots) while there are slots; more than ten
@@ -474,7 +481,8 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable, Wadd
             if (category.Key == SongSelectCatalogView.RollKey)
             {
             }
-            else if (label == SongSelectCatalogView.FeatureLabel && custom < genres)
+            // A folder with Green's feature art is one of the movie's feature folders (its art fills a feature slot).
+            else if (label == SongSelectCatalogView.FeatureLabel && custom < genres && category.FeatureArt is null)
                 label = customGenre(custom++, category);
             else if (label == SongSelectCatalogView.FeatureLabel)
             {
@@ -547,10 +555,16 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable, Wadd
             // Play options (the arcade's were for card players only; here anyone's): every item offered, the
             // drum's last choice selected. As the movie's own developer setup: Assign(p, 0b11111111),
             // SetDefaultSession(p, item bits, 真打), SetValidOptionMenu(p, session, tone).
-            // 音色 (drum sound): Green's tones 1-5 offered beside the plain drum (always listed), the drum's last.
+            // 音色 (drum sound): Green's tones offered beside the plain drum (always listed; the movie's Assign takes any
+            // number of bits), less those "Only what I earned" keeps locked; the drum's last, if still offered.
             if (_sides.Contains(player))
             {
-                tryInvoke("AssignTone", LumenHostValue.FromNumber(player), LumenHostValue.FromNumber((1 << TaikoGuest.ToneCount) - 2));
+                var lockedTones = TaikoGuest.Profiles.ElementAtOrDefault(player)?.Locked?.Tones ?? [];
+                var tones = Enumerable.Range(1, TaikoGuest.ToneCount - 1).Where(tone => !lockedTones.Contains(tone))
+                    .Aggregate(0, static (bits, tone) => bits | 1 << tone);
+                if (lockedTones.Contains(TaikoGuest.Tones[player]))
+                    TaikoGuest.Tones[player] = 0;
+                tryInvoke("AssignTone", LumenHostValue.FromNumber(player), LumenHostValue.FromNumber(tones));
                 tryInvoke("SetDefaultTone", LumenHostValue.FromNumber(player), LumenHostValue.FromNumber(TaikoGuest.Tones[player]));
                 var options = TaikoGuest.Options[player];
                 tryInvoke("AssignSession", LumenHostValue.FromNumber(player), LumenHostValue.FromNumber(0b11111111));
@@ -628,7 +642,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable, Wadd
 
     // Diagnostic: WADDAMBURO_ICON_GALLERY=1 gives the n-th song of a folder the n-th frame label of the
     // board icon clip (mod their count), to see every icon the boards can show.
-    private static readonly string[]? IconGallery = Environment.GetEnvironmentVariable("WADDAMBURO_ICON_GALLERY") == "1"
+    private static readonly string[]? IconGallery = DiagnosticSwitches.IconGallery
         ? ["time_new", "present_1P", "present_2P", "present", "usercup_1P", "usercup_2P", "usercup", "officialcup_1P",
             "officialcup_2P", "officialcup", "vs_1P", "vs_2P", "vs", "time_limited", "character_1", "feature", "entry2players"]
         : null;
@@ -1041,10 +1055,19 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable, Wadd
                 var distance = Math.Abs(folder.Category - cursor);
                 return Math.Min(distance, count - distance);
             });
-            var name = _session.Catalog.Categories[nearest.Category].Name;
+            var category = _session.Catalog.Categories[nearest.Category];
+            var name = category.Name;
             if (_slotNames[group.Key] == name)
                 continue;
             _slotNames[group.Key] = name;
+            if (category.FeatureArt is { } art)
+            {
+                requirePlayer().SetNativeFill($"feature_board_tate_{group.Key:00}", SongSelectEvent.FeatureBoard("v", art));
+                requirePlayer().SetNativeFill($"feature_board_yoko_{group.Key:00}", SongSelectEvent.FeatureBoard("h", art));
+                requirePlayer().SetNativeFill($"feature_board_icon_{group.Key:00}", SongSelectEvent.FeatureBoard("icon", art));
+                requirePlayer().SetNativeFill($"feature_board_image_{group.Key:00}", SongSelectEvent.FeatureBoard("image", art));
+                continue;
+            }
             requirePlayer().SetNativeFill($"feature_board_tate_{group.Key:00}",
                 _session.GetFolderName(name, SongBoardTextureKind.Compact));
             requirePlayer().SetNativeFill($"feature_board_yoko_{group.Key:00}",
@@ -1073,15 +1096,19 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable, Wadd
         // Each spine is one of the 13 recycled boards; its own folder names it (scoped native fill).
         for (var board = 0; board < Boards.Length; board++)
         {
-            if (_player.ReadScriptValue($"_global.CppConnection.resource.musicboardList.{board}.musicInfo.genreIndex")
+            if (_player.ReadScriptValue(BoardGenrePaths[board])
                     is not double shown || (int)shown == _boardFolders[board])
                 continue;
             _boardFolders[board] = (int)shown;
             var folder = _featureFolders.FindIndex(entry => entry.Category == (int)shown);
             if (folder < 0)
                 continue;
-            _player.SetNativeFill($"{Boards[board]}/feature_board_tate_{_featureFolders[folder].Slot:00}",
-                _session.GetFolderName(_session.Catalog.Categories[(int)shown].Name, SongBoardTextureKind.Compact));
+            var shownCategory = _session.Catalog.Categories[(int)shown];
+            var slot = _featureFolders[folder].Slot;
+            _player.SetNativeFill($"{Boards[board]}/feature_board_tate_{slot:00}", shownCategory.FeatureArt is { } art
+                ? SongSelectEvent.FeatureBoard("v", art) : _session.GetFolderName(shownCategory.Name, SongBoardTextureKind.Compact));
+            if (shownCategory.FeatureArt is { } icon)
+                _player.SetNativeFill($"{Boards[board]}/feature_board_icon_{slot:00}", SongSelectEvent.FeatureBoard("icon", icon));
         }
         // The banner over the centre (feature_board_yoko_*) follows the cursor.
         if (_player.CallScriptNumber("_global.container", "GetCurrentMusicInfo", "genreIndex") is { } cursor
@@ -1101,6 +1128,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable, Wadd
         "musicBoard_right4_", "musicBoard_right5_", "musicBoard_right6_",
     ];
     private readonly int[] _boardFolders = [.. Enumerable.Repeat(-1, 13)];
+    // Read every tick: built once.
+    private static readonly string[] BoardGenrePaths = [.. Enumerable.Range(0, 13).Select(static board =>
+        string.Create(System.Globalization.CultureInfo.InvariantCulture, $"_global.CppConnection.resource.musicboardList.{board}.musicInfo.genreIndex"))];
     private int _polledCursor = -1;
 
     private LumenHostValue notifyGenreFolder(LumenHostCall call)
@@ -1154,15 +1184,16 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable, Wadd
 
     /// <summary>
     /// Marks or unmarks the song under the cursor; its boards redraw their icons at once. The favourites
-    /// folder itself changes when Song Select next loads. False when the cursor is on no song.
+    /// folder itself changes when Song Select next loads. The song under the cursor, or the one in course select;
+    /// null when there is none, else the song and whether it is now a favourite.
     /// </summary>
-    public bool ToggleFavourite()
+    public (SongSelectSong Song, bool Added)? ToggleFavourite()
     {
-        if (Favourites is null || _centre is not { } centre
-            || !_session.Catalog.TryGetSong(centre.Category, centre.Song, out var song))
-            return false;
+        if (Favourites is null || SongUnderCursor is not { } song)
+            return null;
         var key = song.Descriptor.Key;
-        Console.WriteLine($"Favourite {(Favourites.Toggle(key) ? "added" : "removed")}: {key}.");
+        var added = Favourites.Toggle(key);
+        Console.WriteLine($"Favourite {(added ? "added" : "removed")}: {key}.");
         // Inside the favourites folder its list stays until the folder closes (the boards index it).
         _favouritesChanged = true;
         if (_session.OpenFolder != _session.Catalog.FavouritesCategory)
@@ -1179,7 +1210,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable, Wadd
                 Console.Error.WriteLine($"Song Select board {slot} has no musicInfo to refresh.");
             invoke("UpdateMusicBoard", LumenHostValue.FromNumber(slot));
         }
-        return true;
+        return (song, added);
     }
 
     private LumenHostValue clearSelectionSurfaces()
@@ -1233,6 +1264,9 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable, Wadd
     private LumenHostValue notifySelection(LumenHostCall call)
     {
         var request = AuthoredSongSelectionRequest.FromHostCall(call);
+        // Where the pick stops the timer (Green's 668899 titles), as GetTimeSec shows it; it still ticks once after the
+        // pick (players aimed a second above), so the timer's stop (StopTimer, or leaving) records it again.
+        _session.RecordPick(picked: true);
         static int course(int? authored) => authored is null or < 0 ? -1
             : AuthoredSongSelectionRequest.ToCatalogCourse(authored.Value);
         KeepOptions();

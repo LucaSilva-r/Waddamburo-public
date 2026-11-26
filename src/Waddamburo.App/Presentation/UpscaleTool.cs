@@ -71,7 +71,7 @@ internal sealed class UpscaleTool : IDisposable
     {
         // The model is embedded; WADDAMBURO_UPSCALE_MODEL names a folder of other ncnn files to try.
         CompactUpscaler model;
-        if (Environment.GetEnvironmentVariable("WADDAMBURO_UPSCALE_MODEL") is { Length: > 0 } folder)
+        if (DiagnosticSwitches.UpscaleModel is { Length: > 0 } folder)
         {
             var param = Path.Combine(folder, ModelName + ".param");
             var bin = Path.Combine(folder, ModelName + ".bin");

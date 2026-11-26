@@ -9,7 +9,7 @@ namespace Waddamburo.Platform.Sdl.Rendering;
 public readonly record struct RgbaTextureUpload(uint Width, uint Height, ReadOnlyMemory<byte> Pixels);
 
 /// <summary>Owns bgfx resources and frame submission for one window.</summary>
-internal sealed unsafe class RenderDevice : IDisposable
+internal sealed unsafe partial class RenderDevice : IDisposable
 {
     // Prepasses (the Don targets) own views 0..ClearView-1 and run first; bgfx executes views in id order.
     internal const ushort ClearView = 16;
@@ -29,6 +29,8 @@ internal sealed unsafe class RenderDevice : IDisposable
     private readonly List<IGpuRenderPrepass> _prepasses = [];
     private readonly bgfx.ProgramHandle _quadProgram;
     private readonly bgfx.ProgramHandle _maskProgram;
+    private readonly bgfx.ProgramHandle _lumaProgram;
+    private readonly bgfx.UniformHandle _lumaUniform;
     // The frosted backdrop: its own program (absent where its shader isn't packaged) and quarter-size targets.
     private readonly bgfx.ProgramHandle? _blurProgram;
     private readonly bgfx.UniformHandle _blurUniform;
@@ -50,6 +52,8 @@ internal sealed unsafe class RenderDevice : IDisposable
         _height = height;
         _quadProgram = BgfxSupport.LoadProgram("vs_quad", "fs_quad");
         _maskProgram = BgfxSupport.LoadProgram("vs_quad", "fs_mask");
+        _lumaProgram = BgfxSupport.LoadProgram("vs_quad", "fs_luma");
+        _lumaUniform = bgfx.create_uniform("u_luma", bgfx.UniformType.Vec4, 1);
         _textureSampler = bgfx.create_uniform("s_texture", bgfx.UniformType.Sampler, 1);
         _blurUniform = bgfx.create_uniform("u_blur", bgfx.UniformType.Vec4, 1);
         try
@@ -72,13 +76,16 @@ internal sealed unsafe class RenderDevice : IDisposable
         bgfx.set_view_mode(MainView, bgfx.ViewMode.Sequential);
     }
 
-    public RenderTextureId UploadRgba8(uint width, uint height, ReadOnlySpan<byte> pixels)
+    // atlas: may share an atlas page (never drawn tiled, never updated in place).
+    public RenderTextureId UploadRgba8(uint width, uint height, ReadOnlySpan<byte> pixels, bool atlas = false)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentOutOfRangeException.ThrowIfZero(width);
         ArgumentOutOfRangeException.ThrowIfZero(height);
         if ((ulong)pixels.Length != checked((ulong)width * height * 4))
             throw new ArgumentException("RGBA8 data must contain exactly width * height * 4 bytes.", nameof(pixels));
+        if (atlas && tryAtlasRgba8(width, height, pixels) is { } atlased)
+            return atlased;
         var id = new RenderTextureId(_nextTextureId++);
         _textures.Add(id.Value, BgfxSupport.CreateRgba8(width, height, pixels));
         return id;
@@ -97,8 +104,8 @@ internal sealed unsafe class RenderDevice : IDisposable
     public void UpdateRgba8(RenderTextureId id, uint width, uint height, ReadOnlySpan<byte> pixels)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (_borrowedTextures.Contains(id.Value) || !_textures.TryGetValue(id.Value, out var texture))
-            throw new ArgumentException($"Texture {id.Value} is not owned by this render device.", nameof(id));
+        if (_borrowedTextures.Contains(id.Value) || _atlased.ContainsKey(id.Value) || !_textures.TryGetValue(id.Value, out var texture))
+            throw new ArgumentException($"Texture {id.Value} is not an owned standalone texture.", nameof(id));
         if ((ulong)pixels.Length != checked((ulong)width * height * 4))
             throw new ArgumentException("RGBA8 data must contain exactly width * height * 4 bytes.", nameof(pixels));
         bgfx.update_texture_2d(texture, 0, 0, 0, 0, (ushort)width, (ushort)height, BgfxSupport.Copy(pixels), ushort.MaxValue);
@@ -165,12 +172,14 @@ internal sealed unsafe class RenderDevice : IDisposable
     }
 
     /// <summary>A BC1 (8 bytes per 4x4 block) or BC3/BC7 (16) texture, sizes multiples of 4.</summary>
-    public RenderTextureId UploadBlocks(TextureBlockFormat format, uint width, uint height, ReadOnlySpan<byte> blocks)
+    public RenderTextureId UploadBlocks(TextureBlockFormat format, uint width, uint height, ReadOnlySpan<byte> blocks, bool atlas = false)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (width == 0 || height == 0 || width % 4 != 0 || height % 4 != 0
             || (ulong)blocks.Length != (ulong)width / 4 * (height / 4) * (format == TextureBlockFormat.Bc1 ? 8u : 16u))
             throw new ArgumentException($"{format} textures need sizes that are multiples of 4 and whole blocks.", nameof(blocks));
+        if (atlas && tryAtlasBlocks(format, width, height, blocks) is { } atlased)
+            return atlased;
         var id = new RenderTextureId(_nextTextureId++);
         _textures.Add(id.Value, BgfxSupport.CreateBlocks(format, width, height, blocks));
         return id;
@@ -188,6 +197,9 @@ internal sealed unsafe class RenderDevice : IDisposable
     private bgfx.TextureHandle drawn(uint id) =>
         ShowReplacements && _replacements.TryGetValue(id, out var replacement) ? replacement : _textures[id];
 
+    /// <summary>Textures alive here, upscaled copies included (what <see cref="ReleaseTexture"/> has not taken).</summary>
+    public int TextureCount => gpuTextureCount;
+
     public void ReleaseTexture(RenderTextureId id)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -195,7 +207,10 @@ internal sealed unsafe class RenderDevice : IDisposable
             throw new ArgumentException($"Texture {id.Value} is owned by a render prepass.", nameof(id));
         if (!_textures.Remove(id.Value, out var texture))
             throw new ArgumentException($"Texture {id.Value} is not owned by this render device.", nameof(id));
-        bgfx.destroy_texture(texture);
+        if (_atlased.Remove(id.Value, out var entry))
+            releaseAtlased(entry);
+        else
+            bgfx.destroy_texture(texture);
         if (_replacements.Remove(id.Value, out var replacement))
             bgfx.destroy_texture(replacement);
     }
@@ -245,6 +260,12 @@ internal sealed unsafe class RenderDevice : IDisposable
 
     public RenderViewport StageViewport { get; private set; }
 
+    private bool _surfaceLost;
+
+    /// <summary>The window's surface was destroyed and made again (Android, back from the background): the next
+    /// frame resets bgfx onto the new one.</summary>
+    public void SurfaceLost() => _surfaceLost = true;
+
     public RenderRectangle? StageRegion { get; set; }
 
     /// <summary>
@@ -256,8 +277,12 @@ internal sealed unsafe class RenderDevice : IDisposable
     // The stage's place inside the main view (offset, then scale, in view units): identity but for a StageBox.
     private (float X, float Y, float Width, float Height) _map = (0, 0, 1, 1);
 
+    // Draws submitted and frames presented: a line at exit (the atlas's measure).
+    private long _drawsSubmitted, _framesPresented;
+
     public RenderCapture? Present(RenderFrame frame, bool capture = false)
     {
+        _framesPresented++;
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(frame);
         validateFrame(frame);
@@ -267,7 +292,8 @@ internal sealed unsafe class RenderDevice : IDisposable
             throw new InvalidOperationException($"Failed to query the window pixel size: {SDL_GetError()}");
         var width = (uint)Math.Max(1, pixelWidth);
         var height = (uint)Math.Max(1, pixelHeight);
-        if (width != _width || height != _height || _resetFlags != BgfxSupport.ResetFlags || _frameLatency != BgfxSupport.MaxFrameLatency)
+        if (width != _width || height != _height || _resetFlags != BgfxSupport.ResetFlags || _frameLatency != BgfxSupport.MaxFrameLatency
+            || _surfaceLost)
         {
             _frameLatency = BgfxSupport.MaxFrameLatency;
             _width = width;
@@ -281,8 +307,14 @@ internal sealed unsafe class RenderDevice : IDisposable
                 formatDepthStencil = bgfx.TextureFormat.D24S8,
                 depth = BgfxSupport.InvalidTexture,
                 maxFrameLatency = BgfxSupport.MaxFrameLatency,
+                // Android made the window again (back from the background): bgfx's surface moves onto it (patched bgfx).
+                nwh = _surfaceLost && OperatingSystem.IsAndroid()
+                    ? (void*)SDL_GetPointerProperty(SDL_GetWindowProperties(_window), SDL_PROP_WINDOW_ANDROID_WINDOW_POINTER, IntPtr.Zero)
+                    : null,
             };
-            bgfx.reset(BgfxSupport.ResetFlags, &swapChain);
+            // BGFX_RESET_INTERNAL_FORCE: Android's EGL surface is made again on the window (bgfx GlContext::resize).
+            bgfx.reset(BgfxSupport.ResetFlags | (_surfaceLost ? 0x80000000u : 0), &swapChain);
+            _surfaceLost = false;
         }
 
         // A prepass draws only what this frame shows (an off-screen Don costs ~5 ms on integrated GPUs).
@@ -350,7 +382,9 @@ internal sealed unsafe class RenderDevice : IDisposable
             bgfx.set_view_rect(PresentView, (short)viewport.X, (short)viewport.Y, (ushort)viewport.Width, (ushort)viewport.Height, 0, 1);
             bgfx.set_view_scissor(PresentView, (ushort)viewport.X, (ushort)viewport.Y, (ushort)viewport.Width, (ushort)viewport.Height);
             bgfx.set_view_mode(PresentView, bgfx.ViewMode.Sequential);
-            fullscreen(PresentView, _stage!.Color, _blurProgram!.Value, 0, 0, 1, blend: false);
+            // ponytail: phones copy with the quad shader (one fetch, not the blur's five: 11.5 ms -> a few on a Mali-G57
+            // at 1920x1200); the desktop keeps the blur's copy until the two are compared there.
+            fullscreen(PresentView, _stage!.Color, PlatformInfo.IsMobile ? _quadProgram : _blurProgram!.Value, 0, 0, 1, blend: false);
         }
 
         if (ImGuiLayer is { } gui)
@@ -645,7 +679,16 @@ internal sealed unsafe class RenderDevice : IDisposable
         for (var index = 0; index < quadCount; index++)
         {
             var quad = quads[index];
+            if (atlasRect(quad.Texture.Value) is { } rect)
+                quad = quad with
+                {
+                    TopLeft = inAtlas(quad.TopLeft, rect), TopRight = inAtlas(quad.TopRight, rect),
+                    BottomRight = inAtlas(quad.BottomRight, rect), BottomLeft = inAtlas(quad.BottomLeft, rect),
+                };
             var multiply = quad.MultiplyColor;
+            // An additive quad tells fs_quad by its multiply alpha, stored as -1 - alpha (normal ones are 0..1).
+            if (quad.Blend == RenderBlend.Add && quad.LumaKey <= 0)
+                multiply = multiply with { Alpha = -1 - multiply.Alpha };
             var add = quad.AddColor;
             var corners = vertices.Slice(index * 6, 6);
             corners[0] = vertex(quad.TopLeft, multiply, add);
@@ -660,8 +703,11 @@ internal sealed unsafe class RenderDevice : IDisposable
         var start = 0;
         for (var index = 1; index <= quadCount; index++)
         {
-            if (index < quadCount && sameBatch(quads[start], quads[index]))
+            if (index < quadCount && sameBatch(quads[start], quads[index])
+                && drawn(quads[start].Texture.Value).idx == drawn(quads[index].Texture.Value).idx)
                 continue;
+            if (s_batchStats && index < quadCount)
+                countBreak(quads[start], quads[index]);
             var first = quads[start];
             bgfx.set_state(stateFor(first), 0);
             var stencilOperation = first.MaskOperation switch
@@ -675,13 +721,40 @@ internal sealed unsafe class RenderDevice : IDisposable
             bgfx.set_stencil(stencil, (uint)bgfx.StencilFlags.None);
             bgfx.set_texture(0, _textureSampler, drawn(first.Texture.Value), samplerFor(first));
             bgfx.set_transient_vertex_buffer(0, &buffer, (uint)start * 6, (uint)(index - start) * 6);
-            bgfx.submit(view, first.MaskOperation == RenderMaskOperation.Draw ? _quadProgram : _maskProgram, 0, (byte)bgfx.DiscardFlags.All);
+            var program = first.MaskOperation != RenderMaskOperation.Draw ? _maskProgram : first.LumaKey > 0 ? _lumaProgram : _quadProgram;
+            if (first.LumaKey > 0)
+            {
+                var luma = new System.Numerics.Vector4(first.LumaKey, 0, 0, 0);
+                bgfx.set_uniform(_lumaUniform, &luma, 1);
+            }
+            bgfx.submit(view, program, 0, (byte)bgfx.DiscardFlags.All);
+            _drawsSubmitted++;
             start = index;
         }
     }
 
+    private static RenderVertex inAtlas(RenderVertex corner, AtlasEntry rect) =>
+        corner with { U = rect.U + corner.U * rect.Width, V = rect.V + corner.V * rect.Height };
+
+    // The texture itself is compared by the caller (its page: atlased textures batch together).
+    // WADDAMBURO_BATCH_STATS=1: why consecutive quads went into separate draws, per frame, in the exit summary.
+    private static readonly bool s_batchStats = Environment.GetEnvironmentVariable("WADDAMBURO_BATCH_STATS") == "1";
+    private readonly Dictionary<string, int> _breaks = [];
+
+    private void countBreak(in RenderQuad a, in RenderQuad b)
+    {
+        var why = blendState(a.Blend) != blendState(b.Blend) ? "blend" : a.MaskOperation != b.MaskOperation || a.MaskDepth != b.MaskDepth ? "mask"
+            : a.Sampling != b.Sampling ? "sampling" : tiles(a) != tiles(b) ? "tiles" : a.LumaKey != b.LumaKey ? "luma"
+            : _atlased.ContainsKey(a.Texture.Value) || _atlased.ContainsKey(b.Texture.Value) ? "atlas page" : "texture";
+        _breaks[why] = _breaks.GetValueOrDefault(why) + 1;
+    }
+
+    // Add draws in the normal blend state (fs_quad writes its alpha as 0: s + d(1 - 0) = s + d), so normal and additive quads,
+    // which Lumen movies interleave, share draws.
+    private static RenderBlend blendState(RenderBlend blend) => blend == RenderBlend.Add ? RenderBlend.Normal : blend;
+
     private static bool sameBatch(in RenderQuad a, in RenderQuad b) =>
-        a.Texture == b.Texture && a.Blend == b.Blend && a.MaskOperation == b.MaskOperation
+        blendState(a.Blend) == blendState(b.Blend) && a.MaskOperation == b.MaskOperation && a.LumaKey == b.LumaKey
         && a.MaskDepth == b.MaskDepth && a.Sampling == b.Sampling && tiles(a) == tiles(b);
 
     private static ulong stateFor(in RenderQuad quad)
@@ -690,7 +763,8 @@ internal sealed unsafe class RenderDevice : IDisposable
             return 0; // stencil only: no colour writes
         // Premultiplied source: normal s + d(1 - sa), add s + d, screen s + d(1 - s), multiply sd + d(1 - sa).
         var source = quad.Blend == RenderBlend.Multiply ? bgfx.StateFlags.BlendDstColor : bgfx.StateFlags.BlendOne;
-        var destination = quad.Blend switch
+        // fs_luma has no additive flag: its quads keep their own blend.
+        var destination = (quad.LumaKey > 0 ? quad.Blend : blendState(quad.Blend)) switch
         {
             RenderBlend.Add => bgfx.StateFlags.BlendOne,
             RenderBlend.Screen => bgfx.StateFlags.BlendInvSrcColor,
@@ -766,10 +840,15 @@ internal sealed unsafe class RenderDevice : IDisposable
     {
         if (_disposed)
             return;
+        if (_framesPresented > 0)
+            Console.WriteLine(FormattableString.Invariant(
+                $"Draws: {(double)_drawsSubmitted / _framesPresented:F1} quad draws a frame over {_framesPresented} frames; {_pages.Count} atlas pages, {_atlased.Count} atlased textures.")
+                + (s_batchStats ? FormattableString.Invariant($" Breaks a frame: {string.Join(", ", _breaks.OrderByDescending(p => p.Value).Select(p => FormattableString.Invariant($"{p.Key} {(double)p.Value / _framesPresented:F1}")))}.") : ""));
         foreach (var (id, texture) in _textures)
-            if (!_borrowedTextures.Contains(id))
+            if (!_borrowedTextures.Contains(id) && !_atlased.ContainsKey(id))
                 bgfx.destroy_texture(texture);
         _textures.Clear();
+        disposeAtlas();
         foreach (var replacement in _replacements.Values)
             bgfx.destroy_texture(replacement);
         _replacements.Clear();
@@ -777,6 +856,8 @@ internal sealed unsafe class RenderDevice : IDisposable
         _prepasses.Clear();
         bgfx.destroy_program(_quadProgram);
         bgfx.destroy_program(_maskProgram);
+        bgfx.destroy_program(_lumaProgram);
+        bgfx.destroy_uniform(_lumaUniform);
         if (_blurProgram is { } blurProgram)
             bgfx.destroy_program(blurProgram);
         bgfx.destroy_uniform(_blurUniform);

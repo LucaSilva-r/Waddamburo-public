@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Waddamburo.Formats.Lmb;
 using System.Globalization;
 
@@ -40,7 +41,8 @@ internal static class Avm1Interpreter
         Avm1ExecutionContext context,
         out bool resultingPlaying)
     {
-        var registers = Enumerable.Repeat<object?>(Avm1Undefined.Instance, limits.MaxRegisters).ToArray();
+        using var registerLease = Avm1ScratchPool.RentRegisters(Math.Min(limits.MaxRegisters, facts(code).Registers));
+        var registers = registerLease.Registers;
         return tryExecute(
             code,
             strings,
@@ -70,12 +72,24 @@ internal static class Avm1Interpreter
             returnValue = Avm1Undefined.Instance;
             return Avm1ExecutionStatus.RegisterLimit;
         }
-        var registers = Enumerable.Repeat<object?>(Avm1Undefined.Instance, limits.MaxRegisters).ToArray();
+        // The register file covers what the function can touch: its declared count, its parameters' registers, the
+        // preloaded ones (this, arguments, super, _root, _parent, _global after register 0) and its body's.
+        var registerCount = Math.Max(Math.Max(definition.RegisterCount, facts(function.Body).Registers), 8);
+        foreach (var parameter in definition.Parameters)
+            if (parameter.Register is { } parameterRegister)
+                registerCount = Math.Max(registerCount, parameterRegister + 1);
+        using var registerLease = Avm1ScratchPool.RentRegisters(Math.Min(limits.MaxRegisters, registerCount));
+        var registers = registerLease.Registers;
         var nextRegister = 1;
-        var argumentArray = new Avm1ArrayObject(arguments);
-        var superValue = new Avm1SuperValue(
+        // `arguments` and `super` are built only when the function uses them: a DefineFunction2 says so in its flags
+        // (preload 0x04/0x10, or not suppressed 0x08/0x20), and most calls need neither (a list copy and an object each).
+        var flags = function.IsFunction2 ? definition.Flags : 0;
+        var wantsArguments = !function.IsFunction2 || (flags & 0x0004) != 0 || (flags & 0x0008) == 0;
+        var wantsSuper = function.IsFunction2 && ((flags & 0x0010) != 0 || (flags & 0x0020) == 0);
+        var argumentArray = wantsArguments ? new Avm1ArrayObject(arguments) : null;
+        var superValue = wantsSuper ? new Avm1SuperValue(
             thisValue,
-            function.OwnerPrototype ?? function.GetProperty("prototype").Value as Avm1Object);
+            function.OwnerPrototype ?? function.GetProperty("prototype").Value as Avm1Object) : null;
         if (function.IsFunction2 && (definition.Flags & 0x0001) != 0
             && !trySeedRegister(registers, ref nextRegister, thisValue))
         {
@@ -152,6 +166,24 @@ internal static class Avm1Interpreter
             out returnValue);
     }
 
+    // The index of the instruction at pc, or -1.
+    private static int findInstruction(ImmutableArray<Avm1Instruction> instructions, int pc)
+    {
+        int low = 0, high = instructions.Length - 1;
+        while (low <= high)
+        {
+            var middle = (low + high) >>> 1;
+            var offset = instructions[middle].Offset;
+            if (offset == pc)
+                return middle;
+            if (offset < pc)
+                low = middle + 1;
+            else
+                high = middle - 1;
+        }
+        return -1;
+    }
+
     private static Avm1ExecutionStatus tryExecute(
         Avm1CodeBlock code,
         IReadOnlyList<LmbString> strings,
@@ -167,8 +199,12 @@ internal static class Avm1Interpreter
         if (!isSupported(code))
             return Avm1ExecutionStatus.Unsupported;
 
-        var instructions = code.Instructions.ToDictionary(instruction => instruction.Offset);
-        var stack = new List<object?>();
+        // The instructions are in offset order: the next one is usually the following entry, a jump binary-searches
+        // (a dictionary built per call cost more than the script itself).
+        var instructions = code.Instructions;
+        var index = 0;
+        using var stackLease = Avm1ScratchPool.RentStack();
+        var stack = stackLease.Stack;
         var playing = initialPlaying;
         var pc = code.Offset;
         for (var remaining = limits.MaxInstructionsPerAction; remaining > 0; remaining--)
@@ -178,8 +214,13 @@ internal static class Avm1Interpreter
                 resultingPlaying = playing;
                 return Avm1ExecutionStatus.Success;
             }
-            if (!instructions.TryGetValue(pc, out var instruction))
-                return Avm1ExecutionStatus.InvalidControlFlow;
+            if (index >= instructions.Length || instructions[index].Offset != pc)
+            {
+                index = findInstruction(instructions, pc);
+                if (index < 0)
+                    return Avm1ExecutionStatus.InvalidControlFlow;
+            }
+            var instruction = instructions[index];
 
             var next = checked(pc + instruction.Length);
             context.InstructionOffset = pc;
@@ -197,39 +238,39 @@ internal static class Avm1Interpreter
                     context.PendingPlayback = false;
                     break;
                 case 0x0A: // Add
-                    if (!tryBinary(stack, (left, right) => toNumber(left) + toNumber(right)))
+                    if (!tryBinary(stack, (left, right) => Box(toNumber(left) + toNumber(right))))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x0B: // Subtract
-                    if (!tryBinary(stack, (left, right) => toNumber(left) - toNumber(right)))
+                    if (!tryBinary(stack, (left, right) => Box(toNumber(left) - toNumber(right))))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x0C: // Multiply
-                    if (!tryBinary(stack, (left, right) => toNumber(left) * toNumber(right)))
+                    if (!tryBinary(stack, (left, right) => Box(toNumber(left) * toNumber(right))))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x0D: // Divide
-                    if (!tryBinary(stack, (left, right) => toNumber(left) / toNumber(right)))
+                    if (!tryBinary(stack, (left, right) => Box(toNumber(left) / toNumber(right))))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x3F: // Modulo
-                    if (!tryBinary(stack, (left, right) => toNumber(left) % toNumber(right)))
+                    if (!tryBinary(stack, (left, right) => Box(toNumber(left) % toNumber(right))))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x0E: // Equals
                 case 0x49: // Equals2
-                    if (!tryBinary(stack, (left, right) => looseEquals(left, right)))
+                    if (!tryBinary(stack, (left, right) => Box(looseEquals(left, right))))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x0F: // Less
                 case 0x48: // Less2
-                    if (!tryBinary(stack, (left, right) => lessThan(left, right)))
+                    if (!tryBinary(stack, (left, right) => Box(lessThan(left, right))))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x12: // Not
                     if (!tryPop(stack, out var condition))
                         return Avm1ExecutionStatus.StackUnderflow;
-                    if (!tryPush(stack, !toBoolean(condition), limits.MaxStackValues))
+                    if (!tryPush(stack, Box(!toBoolean(condition)), limits.MaxStackValues))
                         return Avm1ExecutionStatus.StackLimit;
                     break;
                 case 0x17: // Pop
@@ -243,7 +284,7 @@ internal static class Avm1Interpreter
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x18: // ToInteger (truncate toward zero)
-                    if (!tryUnary(stack, value => Math.Truncate(toNumber(value))))
+                    if (!tryUnary(stack, value => Box(Math.Truncate(toNumber(value)))))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x1C: // GetVariable
@@ -408,27 +449,27 @@ internal static class Avm1Interpreter
                         return Avm1ExecutionStatus.StackLimit;
                     break;
                 case 0x60: // BitAnd
-                    if (!tryBinary(stack, (left, right) => (double)(toInt32(left) & toInt32(right))))
+                    if (!tryBinary(stack, (left, right) => Box((double)(toInt32(left) & toInt32(right)))))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x61: // BitOr
-                    if (!tryBinary(stack, (left, right) => (double)(toInt32(left) | toInt32(right))))
+                    if (!tryBinary(stack, (left, right) => Box((double)(toInt32(left) | toInt32(right)))))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x62: // BitXor
-                    if (!tryBinary(stack, (left, right) => (double)(toInt32(left) ^ toInt32(right))))
+                    if (!tryBinary(stack, (left, right) => Box((double)(toInt32(left) ^ toInt32(right)))))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x63: // BitLShift
-                    if (!tryBinary(stack, (left, right) => (double)(toInt32(left) << (toInt32(right) & 0x1f))))
+                    if (!tryBinary(stack, (left, right) => Box((double)(toInt32(left) << (toInt32(right) & 0x1f)))))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x64: // BitRShift
-                    if (!tryBinary(stack, (left, right) => (double)(toInt32(left) >> (toInt32(right) & 0x1f))))
+                    if (!tryBinary(stack, (left, right) => Box((double)(toInt32(left) >> (toInt32(right) & 0x1f)))))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x65: // BitURShift
-                    if (!tryBinary(stack, (left, right) => (double)((uint)toInt32(left) >> (toInt32(right) & 0x1f))))
+                    if (!tryBinary(stack, (left, right) => Box((double)((uint)toInt32(left) >> (toInt32(right) & 0x1f)))))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x47: // Add2
@@ -436,7 +477,7 @@ internal static class Avm1Interpreter
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x4A: // ToNumber
-                    if (!tryUnary(stack, value => toNumber(value)))
+                    if (!tryUnary(stack, value => Box(toNumber(value))))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x4B: // ToString
@@ -444,19 +485,19 @@ internal static class Avm1Interpreter
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x50: // Increment
-                    if (!tryUnary(stack, value => toNumber(value) + 1))
+                    if (!tryUnary(stack, value => Box(toNumber(value) + 1)))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x51: // Decrement
-                    if (!tryUnary(stack, value => toNumber(value) - 1))
+                    if (!tryUnary(stack, value => Box(toNumber(value) - 1)))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x66: // StrictEquals
-                    if (!tryBinary(stack, (left, right) => strictEquals(left, right)))
+                    if (!tryBinary(stack, (left, right) => Box(strictEquals(left, right))))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x67: // Greater
-                    if (!tryBinary(stack, (left, right) => lessThan(right, left)))
+                    if (!tryBinary(stack, (left, right) => Box(lessThan(right, left))))
                         return Avm1ExecutionStatus.StackUnderflow;
                     break;
                 case 0x96: // Push
@@ -533,6 +574,7 @@ internal static class Avm1Interpreter
                     break;
             }
             pc = next;
+            index++;
         }
         return Avm1ExecutionStatus.InstructionLimit;
     }
@@ -545,9 +587,30 @@ internal static class Avm1Interpreter
         return true;
     }
 
-    private static bool isSupported(Avm1CodeBlock code) =>
-        code.Instructions.Any(instruction => instruction.Opcode == 0x00)
-        && code.Instructions.All(isSupportedInstruction);
+    private static bool isSupported(Avm1CodeBlock code) => facts(code).Supported;
+
+    // What every execution of a code block would otherwise work out again: whether it runs, and the registers it
+    // can reference (StoreRegister, register pushes), so the register file is that small.
+    private sealed record CodeFacts(bool Supported, int Registers);
+
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Avm1CodeBlock, CodeFacts> s_facts = [];
+
+    private static CodeFacts facts(Avm1CodeBlock code) => s_facts.GetValue(code, static code =>
+    {
+        var registers = 0;
+        foreach (var instruction in code.Instructions)
+        {
+            if (instruction.Operand is Avm1RegisterOperand store)
+                registers = Math.Max(registers, store.Register + 1);
+            else if (instruction.Operand is Avm1PushOperand push)
+                foreach (var value in push.Values)
+                    if (value.Type == 4)
+                        registers = Math.Max(registers, value.Register + 1);
+        }
+        return new CodeFacts(
+            code.Instructions.Any(instruction => instruction.Opcode == 0x00) && code.Instructions.All(isSupportedInstruction),
+            registers);
+    });
 
     private static bool isSupportedInstruction(Avm1Instruction instruction) =>
         instruction.Opcode switch
@@ -576,43 +639,32 @@ internal static class Avm1Interpreter
     {
         foreach (var value in push.Values)
         {
-            switch (value)
+            object? pushed;
+            switch (value.Type)
             {
-                case Avm1PushStringValue text when text.StringIndex < strings.Count:
-                    if (!tryPush(stack, strings[text.StringIndex].Value, maxStackValues))
-                        return Avm1ExecutionStatus.StackLimit;
+                case 0 or 8 or 9 when value.StringIndex < strings.Count:
+                    pushed = strings[value.StringIndex].Value;
                     break;
-                case Avm1PushFloatValue number:
-                    if (!tryPush(stack, (double)number.Value, maxStackValues))
-                        return Avm1ExecutionStatus.StackLimit;
+                case 1 or 6 or 7:
+                    pushed = Box(value.Number);
                     break;
-                case Avm1PushNullValue:
-                    if (!tryPush(stack, null, maxStackValues))
-                        return Avm1ExecutionStatus.StackLimit;
+                case 2:
+                    pushed = null;
                     break;
-                case Avm1PushUndefinedValue:
-                    if (!tryPush(stack, Avm1Undefined.Instance, maxStackValues))
-                        return Avm1ExecutionStatus.StackLimit;
+                case 3:
+                    pushed = Avm1Undefined.Instance;
                     break;
-                case Avm1PushBooleanValue boolean:
-                    if (!tryPush(stack, boolean.Value, maxStackValues))
-                        return Avm1ExecutionStatus.StackLimit;
+                case 5:
+                    pushed = Box(value.Boolean);
                     break;
-                case Avm1PushDoubleValue number:
-                    if (!tryPush(stack, number.Value, maxStackValues))
-                        return Avm1ExecutionStatus.StackLimit;
-                    break;
-                case Avm1PushIntegerValue number:
-                    if (!tryPush(stack, (double)number.Value, maxStackValues))
-                        return Avm1ExecutionStatus.StackLimit;
-                    break;
-                case Avm1PushRegisterValue register when register.Register < registers.Length:
-                    if (!tryPush(stack, registers[register.Register], maxStackValues))
-                        return Avm1ExecutionStatus.StackLimit;
+                case 4 when value.Register < registers.Length:
+                    pushed = registers[value.Register];
                     break;
                 default:
                     return Avm1ExecutionStatus.RegisterLimit;
             }
+            if (!tryPush(stack, pushed, maxStackValues))
+                return Avm1ExecutionStatus.StackLimit;
         }
         return Avm1ExecutionStatus.Success;
     }
@@ -729,6 +781,17 @@ internal static class Avm1Interpreter
             modulo += 4_294_967_296d;
         return unchecked((int)(uint)modulo);
     }
+
+    // Values go on the stack as objects: a bool or a double boxes. True and false have one box each, and so have the whole
+    // numbers scripts use most (frames, depths, counters): an expression no longer allocates its result.
+    private static readonly object BoxedTrue = true, BoxedFalse = false;
+    private static readonly object[] BoxedWholes = [.. Enumerable.Range(-256, 1280).Select(static whole => (object)(double)whole)];
+
+    internal static object Box(bool value) => value ? BoxedTrue : BoxedFalse;
+
+    internal static object Box(double value) =>
+        value >= -256 && value < 1024 && value == Math.Floor(value) && !(value == 0 && double.IsNegative(value))
+            ? BoxedWholes[(int)value + 256] : value;
 
     private static bool tryBinary(List<object?> stack, Func<object?, object?, object?> operation)
     {

@@ -1,5 +1,4 @@
 using Waddamburo.Catalog;
-using Waddamburo.Game.Online;
 
 namespace Waddamburo.Game.Tests;
 

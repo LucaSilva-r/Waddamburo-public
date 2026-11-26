@@ -1,0 +1,235 @@
+{
+  "version": 2,
+  "dependencies": {
+    "net10.0-ios27.2": {
+      "Microsoft.DotNet.ILCompiler": {
+        "type": "Direct",
+        "requested": "[10.0.15, )",
+        "resolved": "10.0.15",
+        "contentHash": "MjeBT/P5YgUuXfwSbI3ms+F5DkQ2+ilynoHE2jA/Kto//MaE/wtP5EveCAL8abpxFGw9tlHNTAV1j60Wh1oLqg=="
+      },
+      "Microsoft.NET.ILLink.Tasks": {
+        "type": "Direct",
+        "requested": "[10.0.15, )",
+        "resolved": "10.0.15",
+        "contentHash": "u0WnRcZgBZYHlVFpbe/3Adpmb9rmNJ8/fmEwqc/xjB7fFppq+gfaLJd3Sdaw+J02zV0eP/T9dneQ3Dv5jWw6bw=="
+      },
+      "ppy.SDL3-CS": {
+        "type": "Direct",
+        "requested": "[2026.722.0, )",
+        "resolved": "2026.722.0",
+        "contentHash": "Sof8ihhvW7z4YTVGoSjrAEeRiddIbvb9zXbEIfBoqRw38suzo6R5V+4krRVb4JwzyahS0tGFnNOxW2hHRr18Dg=="
+      },
+      "Fody": {
+        "type": "Transitive",
+        "resolved": "6.9.1",
+        "contentHash": "Y33IOTstqsDaq2+1Cweu4s/V2iAAaRY6bPIANCre3Wlx9REc+ONyYmUdCc67Z12dy0N2Haq3t7QP4ANndsu/HA=="
+      },
+      "Microsoft.Data.Sqlite.Core": {
+        "type": "Transitive",
+        "resolved": "10.0.12",
+        "contentHash": "2aL9eL5HQr0V4b8V909SD+jQAx6qnTTl7sT/v3D8dIvmr2UGdpZIQxqm1pj2Js3e4EYTvpw0oMH7DjapJJuPPw==",
+        "dependencies": {
+          "SQLitePCLRaw.core": "2.1.12"
+        }
+      },
+      "MongoDB.Bson": {
+        "type": "Transitive",
+        "resolved": "2.21.0",
+        "contentHash": "QT+D1I3Jz6r6S6kCgJD1L9dRCLVJCKlkGRkA+tJ7uLpHRmjDNcNKy4D1T+L9gQrjl95lDN9PHdwEytdvCW/jzA=="
+      },
+      "Remotion.Linq": {
+        "type": "Transitive",
+        "resolved": "2.2.0",
+        "contentHash": "fK/76UmpC0FXBlGDFVPLJHQlDLYnGC+XY3eoDgCgbtrhi0vzbXDQ3n/IYHhqSKqXQfGw/u04A1drWs7rFVkRjw=="
+      },
+      "SQLitePCLRaw.bundle_e_sqlite3": {
+        "type": "Transitive",
+        "resolved": "2.1.12",
+        "contentHash": "mAgscpQMLw5/nfA1Q5oJVAT29yROUo1ifZGbbTpx/lwZpSxMUGoYbKfmvdm8oXER+RzxqBmmQzeBEVKfeHv2nw==",
+        "dependencies": {
+          "SQLitePCLRaw.lib.e_sqlite3.ios": "2.1.12",
+          "SQLitePCLRaw.provider.internal": "2.1.12",
+          "System.Runtime.InteropServices.NFloat.Internal": "6.0.1"
+        }
+      },
+      "SQLitePCLRaw.core": {
+        "type": "Transitive",
+        "resolved": "2.1.12",
+        "contentHash": "ETpNw9DY3ckWLgRRAeCHj+GKOuPi61aeczkXhgHexUvqoZBAYg8RYESE2J7O1M7+o6QbdSEZwrw9bfqztUVWXg=="
+      },
+      "SQLitePCLRaw.lib.e_sqlite3.ios": {
+        "type": "Transitive",
+        "resolved": "2.1.12",
+        "contentHash": "TSvmurQOphkQj2FOua2Gx6TxM8C5qT73mnJS6oduBrYMerWjSw9Xld9z8Qqugq+BU0+bI3lWweqIVD7G0olX9Q==",
+        "dependencies": {
+          "System.Runtime.InteropServices.NFloat.Internal": "6.0.1"
+        }
+      },
+      "SQLitePCLRaw.provider.internal": {
+        "type": "Transitive",
+        "resolved": "2.1.12",
+        "contentHash": "oU8ULlQLz5LYtQK+33En3AIEPAjkfmYPZHXSauLWyRdOe0bsKptHVowCjdNhAfaSaYBkcS3Lu6NcwqIoUXCGDQ==",
+        "dependencies": {
+          "SQLitePCLRaw.core": "2.1.12"
+        }
+      },
+      "System.Runtime.InteropServices.NFloat.Internal": {
+        "type": "Transitive",
+        "resolved": "6.0.1",
+        "contentHash": "vq+81ZqZz9oHV6iWgGXFnxHAyO5xA73nfvDNu5LwymIK294is5bRo3P063VToAbDRyyc0qq/YFRYjHmiD6Cv8Q=="
+      },
+      "waddamburo.app": {
+        "type": "Project",
+        "dependencies": {
+          "QRCoder": "[1.6.0, )",
+          "SharpCompress": "[0.50.4, )",
+          "Waddamburo.Catalog": "[0.0.0-dev, )",
+          "Waddamburo.Editor": "[0.0.0-dev, )",
+          "Waddamburo.Game": "[0.0.0-dev, )",
+          "Waddamburo.Platform.Sdl": "[0.0.0-dev, )",
+          "Waddamburo.Providers.OsuLazer": "[0.0.0-dev, )",
+          "Waddamburo.Providers.Stock": "[0.0.0-dev, )",
+          "Waddamburo.Providers.Tja": "[0.0.0-dev, )",
+          "Waddamburo.Services": "[0.0.0-dev, )",
+          "Waddamburo.Upscale": "[0.0.0-dev, )"
+        }
+      },
+      "waddamburo.catalog": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Data.Sqlite": "[10.0.12, )"
+        }
+      },
+      "waddamburo.editor": {
+        "type": "Project",
+        "dependencies": {
+          "Waddamburo.Catalog": "[0.0.0-dev, )",
+          "Waddamburo.Game": "[0.0.0-dev, )",
+          "Waddamburo.Lumen": "[0.0.0-dev, )",
+          "Waddamburo.Platform.Sdl": "[0.0.0-dev, )"
+        }
+      },
+      "waddamburo.formats": {
+        "type": "Project"
+      },
+      "waddamburo.game": {
+        "type": "Project",
+        "dependencies": {
+          "Waddamburo.Catalog": "[0.0.0-dev, )",
+          "Waddamburo.Formats": "[0.0.0-dev, )",
+          "Waddamburo.Lumen": "[0.0.0-dev, )"
+        }
+      },
+      "waddamburo.lumen": {
+        "type": "Project",
+        "dependencies": {
+          "Waddamburo.Formats": "[0.0.0-dev, )"
+        }
+      },
+      "waddamburo.platform.sdl": {
+        "type": "Project",
+        "dependencies": {
+          "ImGui.NET": "[1.91.6.1, )",
+          "Waddamburo.Formats": "[0.0.0-dev, )",
+          "Waddamburo.Lumen": "[0.0.0-dev, )",
+          "ppy.SDL3-CS": "[2026.722.0, )"
+        }
+      },
+      "waddamburo.providers.osulazer": {
+        "type": "Project",
+        "dependencies": {
+          "Realm": "[20.1.0, )",
+          "Waddamburo.Catalog": "[0.0.0-dev, )"
+        }
+      },
+      "waddamburo.providers.stock": {
+        "type": "Project",
+        "dependencies": {
+          "Waddamburo.Catalog": "[0.0.0-dev, )"
+        }
+      },
+      "waddamburo.providers.tja": {
+        "type": "Project",
+        "dependencies": {
+          "Waddamburo.Catalog": "[0.0.0-dev, )"
+        }
+      },
+      "waddamburo.services": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Data.Sqlite": "[10.0.12, )",
+          "Waddamburo.Game": "[0.0.0-dev, )"
+        }
+      },
+      "waddamburo.upscale": {
+        "type": "Project"
+      },
+      "ImGui.NET": {
+        "type": "CentralTransitive",
+        "requested": "[1.91.6.1, )",
+        "resolved": "1.91.6.1",
+        "contentHash": "Ph3j8pO6UM28PPJWP+5LEJSPVPkd8ivpVS8tRyY9b0IHn1HDIrMZ2o/FdiXaYW6YhNxMHmbevw6Jcfs+IDKi0Q=="
+      },
+      "Microsoft.Data.Sqlite": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.12, )",
+        "resolved": "10.0.12",
+        "contentHash": "xUq9xUc653ue7ac2rMfCaf8UQN+U3zS8poWYlugycpvJllplMM0Mk7v/+MM0CTlu9zGvbGML4BPH8YWhrUOfGw==",
+        "dependencies": {
+          "Microsoft.Data.Sqlite.Core": "10.0.12",
+          "SQLitePCLRaw.bundle_e_sqlite3": "2.1.12",
+          "SQLitePCLRaw.core": "2.1.12"
+        }
+      },
+      "QRCoder": {
+        "type": "CentralTransitive",
+        "requested": "[1.6.0, )",
+        "resolved": "1.6.0",
+        "contentHash": "XmPA81eo+oRxBuyVdswsSkTGTE1d3thfF11Z1PdD7oB56A6HU4G4AAOdySmGRMb/cljwlFTMWUtosGEnwpS6GA=="
+      },
+      "Realm": {
+        "type": "CentralTransitive",
+        "requested": "[20.1.0, )",
+        "resolved": "20.1.0",
+        "contentHash": "jDwR8r8gDZq3Mrlzx1MYtg7FodPFD4Kpku9QMh5Q0Lzia0nfTZo9/Q9ZMFGhwuZSv7T78EvMAr3LPm8iwR7wnQ==",
+        "dependencies": {
+          "Fody": "6.9.1",
+          "MongoDB.Bson": "2.21.0",
+          "Remotion.Linq": "2.2.0"
+        }
+      },
+      "SharpCompress": {
+        "type": "CentralTransitive",
+        "requested": "[0.50.4, )",
+        "resolved": "0.50.4",
+        "contentHash": "/hxjUR7DEX6mky8/LQXyrnrKioOL6D6veAID1EZpro+q4s02x5dHEYBV3qjEN6lDYYilDoQQ76BcmQj+lRx51w=="
+      }
+    },
+    "net10.0-ios27.2/ios-arm64": {
+      "ppy.SDL3-CS": {
+        "type": "Direct",
+        "requested": "[2026.722.0, )",
+        "resolved": "2026.722.0",
+        "contentHash": "Sof8ihhvW7z4YTVGoSjrAEeRiddIbvb9zXbEIfBoqRw38suzo6R5V+4krRVb4JwzyahS0tGFnNOxW2hHRr18Dg=="
+      },
+      "ImGui.NET": {
+        "type": "CentralTransitive",
+        "requested": "[1.91.6.1, )",
+        "resolved": "1.91.6.1",
+        "contentHash": "Ph3j8pO6UM28PPJWP+5LEJSPVPkd8ivpVS8tRyY9b0IHn1HDIrMZ2o/FdiXaYW6YhNxMHmbevw6Jcfs+IDKi0Q=="
+      },
+      "Realm": {
+        "type": "CentralTransitive",
+        "requested": "[20.1.0, )",
+        "resolved": "20.1.0",
+        "contentHash": "jDwR8r8gDZq3Mrlzx1MYtg7FodPFD4Kpku9QMh5Q0Lzia0nfTZo9/Q9ZMFGhwuZSv7T78EvMAr3LPm8iwR7wnQ==",
+        "dependencies": {
+          "Fody": "6.9.1",
+          "MongoDB.Bson": "2.21.0",
+          "Remotion.Linq": "2.2.0"
+        }
+      }
+    }
+  }
+}

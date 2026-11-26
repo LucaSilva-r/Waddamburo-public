@@ -1,7 +1,6 @@
 using System.Text.Json;
 using Waddamburo.Catalog;
 using Waddamburo.Game.Dan;
-using Waddamburo.Game.Scores;
 
 namespace Waddamburo.Game.Tests;
 

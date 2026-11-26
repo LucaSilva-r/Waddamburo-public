@@ -128,15 +128,54 @@ internal static class SceneTextures
     public static void UploadRest(SdlApplication application, LumenMovieContent content, RenderTextureId[] uploaded, int from)
     {
         for (var index = from; index < uploaded.Length; index++)
-            uploaded[index] = UploadOne(application, content.Textures[index]);
+            uploaded[index] = Acquire(application, content, index);
         content.ReleaseDecodedTexturePixels();
+    }
+
+    // Movie textures shared by picture: one GPU texture for every movie with the same one (the game's packages repeat
+    // ~44% of theirs, Song Select's four variants ~780 each), alive while anything holds it. Each holder (a scene's
+    // texture list, a kept copy, a prefetch, a held frame) holds one reference per entry and gives each back with
+    // Release.
+    // ponytail: static and main thread only, like Upscaler.
+    private static readonly Dictionary<UInt128, RenderTextureId> _byHash = [];
+    private static readonly Dictionary<RenderTextureId, (UInt128 Hash, int References)> _held = [];
+
+    /// <summary>Textures really uploaded so far (a shared one costs nothing): per-frame upload limits count these.</summary>
+    public static long Uploads { get; private set; }
+
+    /// <summary>A movie's texture: the GPU copy already up for the same picture, or uploaded now.</summary>
+    public static RenderTextureId Acquire(SdlApplication application, LumenMovieContent content, int index)
+    {
+        var hash = content.TextureHash(index);
+        if (_byHash.TryGetValue(hash, out var shared))
+        {
+            _held[shared] = (hash, _held[shared].References + 1);
+            return shared;
+        }
+        var id = UploadOne(application, content.Textures[index], atlas: !content.TextureTiles(index));
+        Uploads++;
+        _byHash[hash] = id;
+        _held[id] = (hash, 1);
+        return id;
+    }
+
+    /// <summary>How many of a movie's textures would really upload (none of their pictures is up yet).</summary>
+    public static int Missing(LumenMovieContent content) =>
+        Enumerable.Range(0, content.Textures.Length).Select(content.TextureHash).Distinct().Count(hash => !_byHash.ContainsKey(hash));
+
+    /// <summary>One more reference to each of these (a second holder of the same list).</summary>
+    public static void Retain(IEnumerable<RenderTextureId> textures)
+    {
+        foreach (var texture in textures)
+            if (_held.TryGetValue(texture, out var held))
+                _held[texture] = held with { References = held.References + 1 };
     }
 
     /// <summary>
     /// One texture: BC7 (an upscale) and the game's own BC1/BC3 blocks as they are, RGBA otherwise; the
-    /// originals are queued for upscaling.
+    /// originals are queued for upscaling. <c>atlas</c>: may share an atlas page (a movie texture never drawn tiled).
     /// </summary>
-    public static RenderTextureId UploadOne(SdlApplication application, LumenTextureContent texture)
+    public static RenderTextureId UploadOne(SdlApplication application, LumenTextureContent texture, bool atlas = false)
     {
         var (width, height) = (checked((uint)texture.Width), checked((uint)texture.Height));
         if (!texture.Bc7.IsEmpty)
@@ -144,7 +183,7 @@ internal static class SceneTextures
         var format = texture.BlockFormat == LumenBlockFormat.Bc1 ? TextureBlockFormat.Bc1 : TextureBlockFormat.Bc3;
         if (!texture.Blocks.IsEmpty && application.Supports(format))
         {
-            var compressed = application.UploadBlocks(format, width, height, texture.Blocks.Span);
+            var compressed = application.UploadBlocks(format, width, height, texture.Blocks.Span, atlas);
             // A queued texture keeps its own copy of the blocks (a slice would keep its whole archive alive),
             // decoded only if the upscaler gets to it.
             if (Upscaler is { } queue && queue.Wants(width, height))
@@ -155,7 +194,7 @@ internal static class SceneTextures
             return compressed;
         }
         var rgba = texture.Pixels();
-        var id = application.UploadRgba8(width, height, rgba);
+        var id = application.UploadRgba8(width, height, rgba, atlas);
         // The upscaler keeps the pixel arrays the content is about to drop.
         if (Upscaler is { } upscaler && !upscaler.IsUpscaled(rgba))
             upscaler.Enqueue(id, width, height, () => rgba, texture.UpscaleKey);
@@ -165,7 +204,7 @@ internal static class SceneTextures
     public static RenderTextureId[] Upload(SdlApplication application, LumenGameSceneInstance scene,
         Func<LumenMovieContent, RenderTextureId[]?>? uploadedAhead = null)
     {
-        var profile = Environment.GetEnvironmentVariable("WADDAMBURO_PROFILE") == "1";
+        var profile = DiagnosticSwitches.Profile;
         var start = profile ? Stopwatch.GetTimestamp() : 0;
         var rgbaBytes = scene.Textures.Sum(static texture => (long)texture.Rgba8.Length + texture.Bc7.Length + texture.Blocks.Length);
         var uploaded = scene.Layers.SelectMany(layer => uploadedAhead?.Invoke(layer.Content) ?? Upload(application, layer.Content))
@@ -183,11 +222,23 @@ internal static class SceneTextures
         return uploaded;
     }
 
+    /// <summary>Gives back one reference per entry: a shared texture goes with its last one, any other at once.</summary>
     public static void Release(SdlApplication application, IEnumerable<RenderTextureId> textures)
     {
-        // Distinct: a movie shown by two layers of a scene shares one kept copy, so its ids appear twice.
-        foreach (var texture in textures.Distinct())
+        foreach (var texture in textures)
+        {
+            if (_held.TryGetValue(texture, out var held))
+            {
+                if (held.References > 1)
+                {
+                    _held[texture] = held with { References = held.References - 1 };
+                    continue;
+                }
+                _held.Remove(texture);
+                _byHash.Remove(held.Hash);
+            }
             application.ReleaseTexture(texture);
+        }
     }
 
     public static RenderFrame Compose(LumenRenderSnapshot snapshot, RenderTextureId[] textures, string owner,

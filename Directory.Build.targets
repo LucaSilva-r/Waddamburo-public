@@ -1,0 +1,8 @@
+<Project>
+  <!-- Every project but the Android app is built once, not per RID of the app that references it: the Android app's
+       per-RID publish pass expects its references' outputs where an RID-less build puts them. A publish names its
+       RID itself (eng/package.sh: dotnet publish -r), which still applies to the project published. -->
+  <PropertyGroup Condition="'$(TargetPlatformIdentifier)' != 'android'">
+    <IsRidAgnostic>true</IsRidAgnostic>
+  </PropertyGroup>
+</Project>
