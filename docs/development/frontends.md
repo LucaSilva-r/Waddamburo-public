@@ -59,4 +59,5 @@ catalogue, saved beside the scores) and `TjaDanCourses` (the player's own `Dani`
   through the provider (timer.left), its count cues are Green's (silent on Waddamburo's frontend).
 - Waddamburo's art: every slot has a package of ours now, most with placeholder looks (boxes, plain text).
 - Waiwai, revival and tutorials stay Green's (Waddamburo has none of them yet).
-- Android: Skins.Green brings Svg.Skia (no natives there); the iOS lock file is stale.
+- Android builds (JDK 21) with Svg.Skia's natives in the APK (arm64, x86_64), not yet run on a phone; the iOS lock
+  file is stale (needs the iOS workload, on the Mac).
