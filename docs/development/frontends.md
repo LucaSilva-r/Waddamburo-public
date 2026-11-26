@@ -36,7 +36,7 @@ Dan courses come from providers like songs do from catalog providers: `OnlineDan
 catalogue, saved beside the scores) and `TjaDanCourses` (the player's own `Dani` folder in the TJA library,
 [custom-tja.md](custom-tja.md)).
 
-## Open
+## How it stands
 
 - Flows: each frontend has its own flow table. Waddamburo's has its own boot (`WaddamburoBootFlow`: to who's playing
   and the entry) and results (`WaddamburoResultFlow`: results, then the next song or the course list); the entry, Song
@@ -52,6 +52,11 @@ catalogue, saved beside the scores) and `TjaDanCourses` (the player's own `Dani`
   effects, combo, song info, name board) at the layout's places, none of Green's scenery
   (`GameplaySceneComposition.IsGreenDecoration`), no song skins. Its roles and places are still the game's gameplay
   contract (Green's composition filtered) until our movies need their own.
-- `GreenSounds` is still named in `GameShell` (composition) and by the home resume countdown.
+
+## Open
+
 - The home pause menu's resume countdown (`ResumeCountdown`) is still a Skins.Green type; it drives our time_counter
   through the provider (timer.left), its count cues are Green's (silent on Waddamburo's frontend).
+- Waddamburo's own art for the placeholder slots: dan shutter, balloon, kusudama, roll texts, synchro notes.
+- Waiwai, revival and tutorials stay Green's (Waddamburo has none of them yet).
+- Android: Skins.Green brings Svg.Skia (no natives there); the iOS lock file is stale.
