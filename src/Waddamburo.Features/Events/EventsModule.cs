@@ -1,17 +1,19 @@
 using Waddamburo.Game.SongSelect;
+using Waddamburo.Services.Scores;
 
-namespace Waddamburo.App.Online;
+namespace Waddamburo.Features.Events;
 
 /// <summary>
-/// TaikOnline's running event, for Song Select's event folder: asked at start, again once it ends, and every half hour
-/// otherwise (a failed ask keeps the last answer). Offline, or before the first answer, there is no event folder.
+/// Events: TaikOnline's running event, for Song Select's event folder (each frontend shows it its way): asked at start,
+/// again once it ends, and every half hour otherwise (a failed ask keeps the last answer). Offline, or before the first
+/// answer, there is no event.
 /// </summary>
-internal sealed class CurrentEvent
+public sealed class EventsModule
 {
     private static readonly TimeSpan Refresh = TimeSpan.FromMinutes(30);
     private volatile SongSelectEvent? _event;
 
-    public CurrentEvent(Uri? server, bool insecure)
+    public EventsModule(Uri? server, bool insecure)
     {
         if (server is not null)
             _ = Task.Run(() => refreshAsync(server, insecure));

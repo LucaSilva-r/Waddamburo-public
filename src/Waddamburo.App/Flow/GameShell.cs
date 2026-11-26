@@ -156,7 +156,8 @@ internal sealed partial class GameShell : IDisposable
     /// <summary>Hashes the whole library again (Settings > Song Libraries), then matches the dan courses again.</summary>
     public void RehashLibrary() => ChartHashes.Rehash(_libraries.Snapshot.Songs.Values, Dan.Rematch);
 
-    private readonly CurrentEvent _event;
+    /// <summary>Events: TaikOnline's running event (Song Select's event folder).</summary>
+    public Waddamburo.Features.Events.EventsModule Events { get; }
 
     /// <summary>The score database and the server side (uploads, bests, rankings, cabinet pairing).</summary>
     public ScoreSync Sync { get; }
@@ -252,7 +253,8 @@ internal sealed partial class GameShell : IDisposable
     public IScreenHosts Hosts { get; }
 
     /// <summary>Song Select's score windows from the server (null offline).</summary>
-    public SongRankings? Rankings { get; private set; }
+    /// <summary>Rankings: the online top three per course of the song under the cursor (null offline).</summary>
+    public Waddamburo.Features.Rankings.RankingsModule? Rankings { get; private set; }
 
     /// <summary>A drum's player's crowns by chart key (null: a guest, or no scores).</summary>
     public IReadOnlyDictionary<string, TaikoCrown>? Crowns(int side) => Sync.Scores is not { } scores ? null
@@ -789,7 +791,7 @@ internal sealed partial class GameShell : IDisposable
                 new Waddamburo.Features.Dan.OnlineDanCourses(options.ScoresPath is { } scores
                     ? Path.Combine(Path.GetDirectoryName(scores)!, "dan-courses.json") : null, Online.UpdateGate.Server(Arcade), Arcade.ServerInsecure),
                 new Waddamburo.Features.Dan.TjaDanCourses(Arcade.TjaFolder ?? options.TjaRoot, Waddamburo.Providers.Tja.TjaCatalogProvider.RelativeChartPath));
-            _event = new CurrentEvent(Online.UpdateGate.Server(Arcade), Arcade.ServerInsecure);
+            Events = new Waddamburo.Features.Events.EventsModule(Online.UpdateGate.Server(Arcade), Arcade.ServerInsecure);
 
             _boot.Begin("I/O");
             if (ApplyControls(warn: true) is { Count: > 0 } controls)
@@ -1032,7 +1034,7 @@ internal sealed partial class GameShell : IDisposable
                 : Arcade.Home ? scores.RecentCharts(ScoreProfile.LocalGuestBaid) : null,
             Dan = Dan,
             // Art this Green lacks: the folder's name is drawn instead (a missing art's fill would be unresolvable).
-            Event = () => _event.Current is { Art: { } art } running && !_art.HasFeatureBoard(art) ? running with { Art = null } : _event.Current,
+            Event = () => Events.Current is { Art: { } art } running && !_art.HasFeatureBoard(art) ? running with { Art = null } : Events.Current,
             OnlineAvailable = () => Room.Available,
             InOnlineRoom = () => Room.Session is not null,
             Received = ReceivedSongs.Find,
@@ -1055,7 +1057,7 @@ internal sealed partial class GameShell : IDisposable
         Func<SongDescriptor, int[]> supportCounts)
     {
         var select = Select = createSelect(snapshot);
-        var rankings = Rankings = Sync.Online ? new SongRankings(Sync.RankingClient, ChartHashes) : null;
+        var rankings = Rankings = Sync.Online ? new Waddamburo.Features.Rankings.RankingsModule(Sync.RankingClient, ChartHashes) : null;
         if (!Frontend.GameMovies)
             return new Frontends.WaddamburoScreenHosts(Credit, select.CreateSession, Players.Join, () => Options.Countdown && !Arcade.TimerFreeze);
         return new Waddamburo.Skins.Green.GreenScreenHosts(

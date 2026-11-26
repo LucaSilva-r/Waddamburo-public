@@ -1,17 +1,17 @@
-using Waddamburo.Features;
 using System.Collections.Concurrent;
 using Waddamburo.Catalog;
 using Waddamburo.Game.Scores;
 using Waddamburo.Game.SongSelect;
+using Waddamburo.Services.Scores;
 
-namespace Waddamburo.App.Online;
+namespace Waddamburo.Features.Rankings;
 
 /// <summary>
-/// Song select's score windows: the top players per course of the song under the cursor, fetched
-/// from the server as the cursor moves (the movie asks once it settles, ~0.4 s later) and kept for a
-/// minute. Chart hashes come from <see cref="ChartHashes"/>.
+/// Rankings: the online top players per course of the song under Song Select's cursor, fetched from TaikOnline as the
+/// cursor moves and kept for a minute; a play that ranks in shows at once. Chart hashes come from <see cref="ChartHashes"/>.
 /// </summary>
-internal sealed class SongRankings(Func<ScoreClient?> client, ChartHashes hashes) : IDisposable
+/// <remarks><paramref name="client"/>: the server to ask (null: offline).</remarks>
+public sealed class RankingsModule(Func<ScoreClient?> client, ChartHashes hashes) : IDisposable
 {
     private static readonly TimeSpan Fresh = TimeSpan.FromMinutes(1);
     private readonly ConcurrentDictionary<SongKey, (DateTime At, IReadOnlyList<RankingEntry>?[] Courses)> _songs = new();

@@ -24,6 +24,8 @@ Neither frontend owns a feature's rules. Those live in **`Waddamburo.Features`**
 | `RewardsModule` | Don Medals at a credit's end and home's "New rewards": asking TaikOnline, paying, telling it they were shown |
 | `AiBattleModule` | ranks and AI-don levels, each player's standing, what a battle earns, the last battle's results |
 | `DanModule` | the dojo: every `IDanCourseProvider`'s series matched against the library, the credit's course, its result, bests, keeping a passed run |
+| `EventsModule` | TaikOnline's running event (Song Select's event folder, on both frontends) |
+| `RankingsModule` | the online top three per course of the song under the cursor; ours read them as `scores.*` |
 | `ChartHashes` | chart key → canonical hash, remembered in the score store |
 
 A frontend calls a module's verbs and shows its state: Green's hosts turn the game's movie callbacks into module

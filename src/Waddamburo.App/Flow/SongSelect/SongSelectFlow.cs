@@ -522,7 +522,21 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
                 selectSongRow(loaded, host.Session, folder);
         }
         _songRows.Publish(movie);
+        publishScores(movie, host.Session, _songRows);
         movie.Publish("select.timeLeft", host.Session.TimeLeft is { } left ? LumenHostValue.FromNumber(left) : LumenHostValue.Undefined);
+    }
+
+    // The chart under the cursor's online ranks (Rankings), as scores.*: none off a chart or before they arrive.
+    private void publishScores(LumenPlayer movie, SongSelectSession session, LibraryRows rows)
+    {
+        IReadOnlyList<Waddamburo.Game.Scores.RankingEntry>? ranks = rows.Selected?.Tag is ChartTag chart && session.Catalog.TryGetSong(chart.Folder, chart.Song, out var song)
+            && Shell.Rankings?.For(song) is { } courses && (uint)chart.Course < (uint)courses.Length ? courses[chart.Course] : null;
+        movie.Publish("scores.count", ranks is null ? LumenHostValue.Undefined : LumenHostValue.FromNumber(ranks.Count));
+        for (var index = 0; index < (ranks?.Count ?? 0); index++)
+        {
+            movie.PublishItem("scores.name", index, LumenHostValue.FromString(ranks![index].Name));
+            movie.PublishItem("scores.score", index, LumenHostValue.FromNumber(ranks[index].Score));
+        }
     }
 
     private static IReadOnlyList<LibraryNode> songTree(SongSelectCatalogView catalog)

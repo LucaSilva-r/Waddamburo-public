@@ -1,4 +1,5 @@
-// Song select, bare minimum: the library as rows (folders, their songs, a song's charts) and the row under the cursor.
+// Song select, bare minimum: the library as rows (folders, their songs, a song's charts), the row under the cursor and
+// its chart's online top three.
 {
   "format": 2,
   "frameRate": 60,
@@ -119,6 +120,39 @@
               "frame": 0,
               "x": 40,
               "y": 200
+            }
+          ]
+        },
+        {
+          "character": "detail",
+          "name": "rank0",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 40,
+              "y": 290
+            }
+          ]
+        },
+        {
+          "character": "detail",
+          "name": "rank1",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 40,
+              "y": 334
+            }
+          ]
+        },
+        {
+          "character": "detail",
+          "name": "rank2",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 40,
+              "y": 378
             }
           ]
         },

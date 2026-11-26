@@ -44,6 +44,12 @@ function draw() {
     setText(self.title, title == undefined ? "" : title);
     var subtitle = row == undefined ? undefined : Wd.get("row.subtitle", row);
     setText(self.detail, subtitle == undefined ? "" : subtitle);
+    // The chart's online top three (TaikOnline), when it has any.
+    var ranks = Wd.get("scores.count");
+    for (var r = 0; r < 3; r++) {
+        setText(self["rank" + r], ranks == undefined || r >= ranks ? ""
+            : (r + 1) + ".  " + Wd.get("scores.name", r) + "   " + Wd.get("scores.score", r));
+    }
     var left = Wd.get("select.timeLeft");
     setText(self.hint, "RIM: MOVE    DON: OPEN / PLAY" + (left == undefined ? "" : "    " + left));
 }
