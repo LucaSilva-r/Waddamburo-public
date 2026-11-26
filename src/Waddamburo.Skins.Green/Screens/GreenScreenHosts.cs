@@ -389,7 +389,7 @@ public sealed class GreenScreenHosts(
     private static LumenLayerHost partHost(IndicatorParts parts, string movie) =>
         new(null, player => parts.Attach(movie, player));
 
-    // The song select movie of the mode (FlowScenes.SongSelectScene), whose patched genres the host fills.
+    // The song select movie of the mode (GreenScenes.SongSelectScene), whose patched genres the host fills.
     private string songSelectMovie => Patching.SongSelectGenrePatch.MovieNames[Credit.AiBattle ? 2 : Credit.Waiwai ? 1 : 0];
 
     private LumenLayerHost songSelectHost()

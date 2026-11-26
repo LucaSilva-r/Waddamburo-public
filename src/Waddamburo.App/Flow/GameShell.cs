@@ -1006,7 +1006,7 @@ internal sealed partial class GameShell : IDisposable
                 // Placeholder too: the benchmark puts its lane here.
                 Screens.Gameplay(FlowScenes.Benchmark, Random.Shared, EnsoLayout),
                 start is StartScene.DaniResultFail or StartScene.DaniResultClear ? Screens.DaniResults
-                    : _diagnosticWaiwai is null ? Screens.Results : FlowScenes.WaiwaiResults,
+                    : _diagnosticWaiwai is null ? Screens.Results : Waddamburo.Skins.Green.GreenScenes.WaiwaiResults,
             ]),
             // The entry's start (ours asks the same): Song Select. Waddamburo's frontend has no other way out of it.
             !Frontend.GameMovies ? [new SceneTransitionRoute(FlowScenes.Entry, new LumenSceneRequest(1, 0, 0), FlowScenes.SongSelect)] : [
@@ -1244,7 +1244,7 @@ internal sealed partial class GameShell : IDisposable
     {
         if (!Rewards.ShowPending(Players.JoinedSides))
             return;
-        Catalog.Replace(FlowScenes.HomeRewards);
+        Catalog.Replace(Waddamburo.Skins.Green.GreenScenes.HomeRewards);
         Scenes.FadeTo(FlowScenes.RewardShop);
     }
 
@@ -1278,14 +1278,14 @@ internal sealed partial class GameShell : IDisposable
             _ => throw new ArgumentOutOfRangeException(nameof(Options.StartScene)),
         };
         if (Options.StartScene == StartScene.DaniGameOver)
-            Catalog.Replace(FlowScenes.DaniGameOver);
+            Catalog.Replace(Waddamburo.Skins.Green.GreenScenes.DaniGameOver);
         if (Options.StartScene == StartScene.RewardGameOver)
         {
             // A first credit ever: 900 medals before it, every bonus.
             // Traced session-rewards-6's two kigurumi (43, 44), plus a head and a song.
             Rewards.Show(new(0, 900, Waddamburo.Game.Scores.DonMedals.ForCredit(null, DateOnly.FromDateTime(DateTime.Now)),
                 [new(3, 43, null), new(3, 44, null), new(5, 119, null), new(1, 819, "csmclr")]));
-            Catalog.Replace(FlowScenes.RewardGameOver);
+            Catalog.Replace(Waddamburo.Skins.Green.GreenScenes.RewardGameOver);
         }
         if (Options.StartScene is StartScene.RewardShop or StartScene.RewardShop2P)
         {

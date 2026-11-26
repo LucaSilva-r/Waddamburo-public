@@ -34,7 +34,7 @@ home() { # name -> the folder
     for linked in data custom_songs cache; do
         [ -e "$root/$linked" ] && ln -sfn "$root/$linked" "$home/$linked"
     done
-    printf 'mode = home\ndev_no_focus_pause = true\n' > "$home/waddamburo/config.cfg"
+    printf 'mode = home\ndev_no_focus_pause = true\nmaster_volume = 0\n' > "$home/waddamburo/config.cfg"
     echo "$home"
 }
 game() { local name=$1 ticks=$2; shift 2; run "$name" "$ticks" "$(home "$name")" "$@"; }

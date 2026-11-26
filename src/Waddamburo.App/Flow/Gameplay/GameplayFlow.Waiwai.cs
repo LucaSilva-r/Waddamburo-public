@@ -20,6 +20,6 @@ internal sealed partial class GameplayFlow
         // ponytail: Waiwai (shared voltage, its own results) is not saved until its mode is worked out.
         public override bool SavesSongs => false;
 
-        public override SceneDefinition? Results => FlowScenes.WaiwaiResults;
+        public override SceneDefinition? Results => Waddamburo.Skins.Green.GreenScenes.WaiwaiResults;
     }
 }

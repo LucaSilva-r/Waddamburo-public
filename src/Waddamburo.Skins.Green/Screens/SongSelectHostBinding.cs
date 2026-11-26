@@ -1155,7 +1155,7 @@ public sealed class SongSelectHostBinding : ILumenHostBinding, IDisposable, Wadd
         _parts?.ShowGuestNames(_shown);
     }
 
-    // The board order follows the scene's: this game's players, then the partner (FlowScenes.SongSelectScene).
+    // The board order follows the scene's: this game's players, then the partner (GreenScenes.SongSelectScene).
     private int[] shownWith(int? partner) => partner is { } other && !_sides.Contains(other) ? [.. _sides, other] : _sides;
 
     /// <summary>The list's cursor is on the Online spine (so a hit there opens the lobby before the movie decides it).</summary>

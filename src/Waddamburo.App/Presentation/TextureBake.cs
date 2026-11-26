@@ -192,11 +192,11 @@ internal sealed class TextureBake
         var gameplay = new SceneId("gameplay");
         SceneDefinition[] scenes =
         [
-            .. FlowScenes.Initial([FlowScenes.Results, FlowScenes.WaiwaiResults]),
-            FlowScenes.SongSelectScene([0]),
-            FlowScenes.SongSelectScene([0, 1], waiwai: true),
-            FlowScenes.SongSelectScene([0], aiBattle: true),
-            FlowScenes.Rainbow, FlowScenes.Shutter, FlowScenes.Fade,
+            .. Waddamburo.Skins.Green.GreenScenes.Initial([Waddamburo.Skins.Green.GreenScenes.Results, Waddamburo.Skins.Green.GreenScenes.WaiwaiResults]),
+            Waddamburo.Skins.Green.GreenScenes.SongSelectScene([0]),
+            Waddamburo.Skins.Green.GreenScenes.SongSelectScene([0, 1], waiwai: true),
+            Waddamburo.Skins.Green.GreenScenes.SongSelectScene([0], aiBattle: true),
+            Waddamburo.Skins.Green.GreenScenes.Rainbow, Waddamburo.Skins.Green.GreenScenes.Shutter, Waddamburo.Skins.Green.GreenScenes.Fade,
             .. skin.OwnScenes,
             GameplaySceneComposition.CreateWaiwai(gameplay, layout),
             .. from side in Sides

@@ -110,7 +110,7 @@ internal sealed partial class GameplayFlow
 
         public override bool ResultsCutIn => true;
 
-        public override SceneDefinition? Results => Shell.AiBattle.Outcome is not null ? FlowScenes.AiResults : null;
+        public override SceneDefinition? Results => Shell.AiBattle.Outcome is not null ? Waddamburo.Skins.Green.GreenScenes.AiResults : null;
 
         // The player's lane: its battle, and the rank points it earned on the standing before it.
         public override Waddamburo.Services.Scores.AiBattlePlay? Battle(int lane, ScoreProfile profile, ScoreStore scores, string sha,

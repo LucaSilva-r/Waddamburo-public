@@ -8,30 +8,30 @@ public sealed class GreenScreens : IScreenCompositions
 {
     public static GreenScreens Instance { get; } = new();
 
-    public IReadOnlyList<SceneDefinition> Initial(IReadOnlyList<SceneDefinition> gameplayAndResults) => FlowScenes.Initial(gameplayAndResults);
+    public IReadOnlyList<SceneDefinition> Initial(IReadOnlyList<SceneDefinition> gameplayAndResults) => GreenScenes.Initial(gameplayAndResults);
 
     public SceneDefinition SongSelect(IReadOnlyList<int> sides, bool waiwai = false, bool aiBattle = false) =>
-        FlowScenes.SongSelectScene(sides, waiwai, aiBattle);
+        GreenScenes.SongSelectScene(sides, waiwai, aiBattle);
 
-    public SceneDefinition DaniSelect(int side) => FlowScenes.DaniSelectScene(side);
+    public SceneDefinition DaniSelect(int side) => GreenScenes.DaniSelectScene(side);
 
     public SceneDefinition Gameplay(Waddamburo.Game.Flow.SceneId id, Random random, Waddamburo.Formats.Layout.EnsoLayout layout,
         GameplaySceneComposition.ThemedSkin? theme = null, int side = 0, bool twoPlayers = false, bool dojo = false) =>
         GameplaySceneComposition.Create(id, random, layout, theme, side, twoPlayers, dojo);
 
-    public SceneDefinition Results => FlowScenes.Results;
+    public SceneDefinition Results => GreenScenes.Results;
 
-    public SceneDefinition DaniResults => FlowScenes.DaniResults;
+    public SceneDefinition DaniResults => GreenScenes.DaniResults;
 
-    public SceneDefinition Rainbow => FlowScenes.Rainbow;
+    public SceneDefinition Rainbow => GreenScenes.Rainbow;
 
-    public SceneDefinition Shutter => FlowScenes.Shutter;
+    public SceneDefinition Shutter => GreenScenes.Shutter;
 
-    public SceneDefinition Fade => FlowScenes.Fade;
+    public SceneDefinition Fade => GreenScenes.Fade;
 
-    public SceneDefinition DanCover => FlowScenes.DanCover;
+    public SceneDefinition DanCover => GreenScenes.DanCover;
 
-    public SceneDefinition DanExitCover => FlowScenes.DanExitCover;
+    public SceneDefinition DanExitCover => GreenScenes.DanExitCover;
 
-    public SceneDefinition DanShutter => FlowScenes.DanShutter;
+    public SceneDefinition DanShutter => GreenScenes.DanShutter;
 }

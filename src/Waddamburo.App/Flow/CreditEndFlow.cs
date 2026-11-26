@@ -123,7 +123,7 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
             if (Shell.Rewards.Showing is not null)
             {
                 Shell.Rewards.Shown();
-                Shell.Catalog.Replace(FlowScenes.RewardShopVisit);
+                Shell.Catalog.Replace(Waddamburo.Skins.Green.GreenScenes.RewardShopVisit);
             }
             else
                 Shell.Shop.Close(); // one visit a credit
@@ -131,7 +131,7 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
         else if (scene == FlowScenes.GameOver)
         {
             Shell.Rewards.Shown();
-            Shell.Catalog.Replace(FlowScenes.NormalGameOver);
+            Shell.Catalog.Replace(Waddamburo.Skins.Green.GreenScenes.NormalGameOver);
         }
     }
 
@@ -145,7 +145,7 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
         if (Shell.Arcade.Home)
             return FlowScenes.GameOver;
         if (Shell.Rewards.PayCreditEnd(Shell.Players.JoinedSides))
-            Shell.Catalog.Replace(FlowScenes.RewardGameOver);
+            Shell.Catalog.Replace(Waddamburo.Skins.Green.GreenScenes.RewardGameOver);
         return FlowScenes.GameOver;
     }
 
@@ -207,7 +207,7 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
                 if (Shell.Dan.Result is not null)
                 {
                     if (!Shell.Arcade.Home)
-                        Shell.Catalog.Replace(FlowScenes.DaniGameOver);
+                        Shell.Catalog.Replace(Waddamburo.Skins.Green.GreenScenes.DaniGameOver);
                     Shell.Scenes.FadeTo(Shell.Arcade.Home ? FlowScenes.DaniSelect : FlowScenes.GameOver);
                 }
                 else
