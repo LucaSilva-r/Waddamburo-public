@@ -205,6 +205,17 @@ public static class GameplaySceneComposition
         ("dance", 5, 3004), ("dodai", 6, 3003), ("fever", 4, 3002), ("chibi", 7, 3000),
     ];
 
+    /// <summary>
+    /// Whether a gameplay layer is Green's decoration rather than a gameplay role: the skin parts (backgrounds, dancers,
+    /// stage, fever crowd, chibi runners, roll dancers, Don's backdrop) and Don-chan's don3d. Waddamburo's frontend leaves
+    /// them out (its movies bring their own scenery). Every note kind (hand notes, synchro and sparkling notes) is a role.
+    /// </summary>
+    public static bool IsGreenDecoration(SceneLayerDefinition layer)
+    {
+        var role = Role(Path.GetFileNameWithoutExtension(layer.MovieId));
+        return SkinRoles.Any(entry => entry.Role == role) || role == "don3d";
+    }
+
     private static readonly (string Archive, string Movie, int? Index, int Depth)[] SystemLayers =
     [
         ("enso_system/common", "don3d", 22, 3001),

@@ -15,6 +15,10 @@ public sealed class GreenScreens : IScreenCompositions
 
     public SceneDefinition DaniSelect(int side) => FlowScenes.DaniSelectScene(side);
 
+    public SceneDefinition Gameplay(Waddamburo.Game.Flow.SceneId id, Random random, Waddamburo.Formats.Layout.EnsoLayout layout,
+        GameplaySceneComposition.ThemedSkin? theme = null, int side = 0, bool twoPlayers = false, bool dojo = false) =>
+        GameplaySceneComposition.Create(id, random, layout, theme, side, twoPlayers, dojo);
+
     public SceneDefinition Results => FlowScenes.Results;
 
     public SceneDefinition DaniResults => FlowScenes.DaniResults;

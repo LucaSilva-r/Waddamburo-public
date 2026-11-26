@@ -40,6 +40,8 @@ catalogue, saved beside the scores) and `TjaDanCourses` (the player's own `Dani`
   `ArcadeSettings.WaddamburoFrontend`. Once its flow differs more than that, it gets its own flow table.
 - Screen hosts are still `GreenScreenHosts` for both frontends (they leave our movies to the provider).
 - Green's compositions still live in Game's `FlowScenes`; `GreenScreens` (Skins.Green) wraps them.
-- Gameplay's composition is still the layout's (Green's slots: backgrounds, dancers, Don, balloon notes ...), shown as
-  placeholders on Waddamburo's frontend until it has its own gameplay composition or packages.
+- Waddamburo's gameplay screen has the gameplay roles only (lane, gauge, every note kind, rolls, balloons, hit
+  effects, combo, song info, name board) at the layout's places, none of Green's scenery
+  (`GameplaySceneComposition.IsGreenDecoration`), no song skins. Its roles and places are still the game's gameplay
+  contract (Green's composition filtered) until our movies need their own.
 - `GreenSounds` is still named in `GameShell` (composition) and by the home resume countdown.

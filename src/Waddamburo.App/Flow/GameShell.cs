@@ -980,11 +980,11 @@ internal sealed partial class GameShell : IDisposable
     private SceneCatalog createSceneCatalog(StartScene start) =>
         new(
             Screens.Initial([
-                GameplaySceneComposition.Create(FlowScenes.Gameplay, Random.Shared, EnsoLayout),
+                Screens.Gameplay(FlowScenes.Gameplay, Random.Shared, EnsoLayout),
                 // Placeholder: the audio calibration replaces it with a fresh lane each time.
-                GameplaySceneComposition.Create(FlowScenes.Calibration, Random.Shared, EnsoLayout),
+                Screens.Gameplay(FlowScenes.Calibration, Random.Shared, EnsoLayout),
                 // Placeholder too: the benchmark puts its lane here.
-                GameplaySceneComposition.Create(FlowScenes.Benchmark, Random.Shared, EnsoLayout),
+                Screens.Gameplay(FlowScenes.Benchmark, Random.Shared, EnsoLayout),
                 start is StartScene.DaniResultFail or StartScene.DaniResultClear ? Screens.DaniResults
                     : _diagnosticWaiwai is null ? Screens.Results : FlowScenes.WaiwaiResults,
             ]),

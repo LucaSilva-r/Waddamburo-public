@@ -37,7 +37,7 @@ internal sealed class CalibrationFlow(GameShell shell) : FlowScene(shell)
 
     /// <summary>The lane's scene, for Song Select to load under its rainbow.</summary>
     public SceneDefinition Scene() =>
-        GameplaySceneComposition.Create(FlowScenes.Calibration, Random.Shared, Shell.EnsoLayout, null, 0, twoPlayers: false);
+        Shell.Screens.Gameplay(FlowScenes.Calibration, Random.Shared, Shell.EnsoLayout, null, 0, twoPlayers: false);
 
     public override ScreenKind ScreenFor(SceneId scene) => ScreenKind.Play;
 

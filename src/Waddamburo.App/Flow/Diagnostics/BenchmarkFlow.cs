@@ -46,7 +46,7 @@ internal sealed class BenchmarkFlow(GameShell shell) : FlowScene(shell)
 
     /// <summary>The lane's scene: the regular gameplay's parts, picked the same way every run.</summary>
     public SceneDefinition Scene() =>
-        GameplaySceneComposition.Create(FlowScenes.Benchmark, new Random(1), Shell.EnsoLayout, null, 0, twoPlayers: TwoPlayers);
+        Shell.Screens.Gameplay(FlowScenes.Benchmark, new Random(1), Shell.EnsoLayout, null, 0, twoPlayers: TwoPlayers);
 
     /// <summary>The stress chart, as the TJA reader reads it.</summary>
     public static PlayableChart Chart()

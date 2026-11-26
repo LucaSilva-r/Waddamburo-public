@@ -17,6 +17,13 @@ public interface IScreenCompositions
     /// <summary>The dan dojo's course list for the player on <paramref name="side"/>.</summary>
     SceneDefinition DaniSelect(int side);
 
+    /// <summary>
+    /// A song's gameplay screen (<paramref name="id"/>: gameplay, calibration or benchmark) at the layout's places;
+    /// <paramref name="theme"/>: the song's skin, where the frontend has skins.
+    /// </summary>
+    SceneDefinition Gameplay(SceneId id, Random random, Formats.Layout.EnsoLayout layout, GameplaySceneComposition.ThemedSkin? theme = null,
+        int side = 0, bool twoPlayers = false, bool dojo = false);
+
     SceneDefinition Results { get; }
 
     SceneDefinition DaniResults { get; }

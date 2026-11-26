@@ -103,7 +103,7 @@ internal static class ScreenGraph
         var joined = sides(shell);
         var scene = shell.Credit.AiBattle ? GameplaySceneComposition.CreateAiBattle(FlowScenes.Gameplay, shell.EnsoLayout)
             : shell.Credit.Waiwai ? GameplaySceneComposition.CreateWaiwai(FlowScenes.Gameplay, shell.EnsoLayout)
-            : GameplaySceneComposition.Create(FlowScenes.Gameplay, new Random(0), shell.EnsoLayout, side: joined[0],
+            : shell.Screens.Gameplay(FlowScenes.Gameplay, new Random(0), shell.EnsoLayout, side: joined[0],
                 twoPlayers: joined.Count > 1, dojo: dan);
         return new(SceneDefinition.CurrentVersion, scene.Id,
             scene.Layers.Where(static layer => !layer.ArchiveId.StartsWith("enso_original/", StringComparison.Ordinal)));

@@ -40,6 +40,18 @@ internal sealed class WaddamburoScreens : IScreenCompositions
     public SceneDefinition DaniSelect(int side) =>
         screen(FlowScenes.DaniSelect, movie("dani_select", "dani_select", "dani-select"), movie("indicator", "player_name", side == 1 ? "dani-board-1" : "dani-board-0", side == 1 ? 948 : 60, 638));
 
+    /// <summary>
+    /// The gameplay roles only (lane, gauge, notes, rolls, balloons, hit effects, combo, song info, name board) at the
+    /// layout's places: none of Green's scenery, no song skins. ponytail: the roles and places are still the game's
+    /// gameplay contract (Green's composition filtered); our own gameplay composition when our movies outgrow it.
+    /// </summary>
+    public SceneDefinition Gameplay(SceneId id, Random random, Formats.Layout.EnsoLayout layout, GameplaySceneComposition.ThemedSkin? theme = null,
+        int side = 0, bool twoPlayers = false, bool dojo = false)
+    {
+        var all = GameplaySceneComposition.Create(id, random, layout, null, side, twoPlayers, dojo);
+        return new(SceneDefinition.CurrentVersion, id, all.Layers.Where(static layer => !GameplaySceneComposition.IsGreenDecoration(layer)));
+    }
+
     public SceneDefinition Results { get; } = screen(FlowScenes.Result, movie("enso_result", "result", "result"));
 
     public SceneDefinition DaniResults { get; } = screen(FlowScenes.Result, movie("dani_result", "dani_result", "dani-result"));

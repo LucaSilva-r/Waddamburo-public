@@ -69,7 +69,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
     /// ahead, then shown. Safe on a worker thread.
     /// </summary>
     public SceneDefinition DemoScene(SongSelectSong song, string category, Random random) =>
-        GameplaySceneComposition.Create(FlowScenes.Gameplay, random, Shell.EnsoLayout,
+        Shell.Screens.Gameplay(FlowScenes.Gameplay, random, Shell.EnsoLayout,
             Shell.Skins.Resolve(song.Descriptor, category, Shell.Arcade.GameplaySkin), 0, twoPlayers: false);
 
     /// <summary>Starts a demo play of <paramref name="song"/> (its Normal chart) on <paramref name="scene"/>; false when it cannot load.</summary>

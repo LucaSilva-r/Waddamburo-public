@@ -91,7 +91,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             var theme = waiwai || aiBattle ? null : Shell.Skins.Resolve(song.Descriptor, category, Shell.Arcade.GameplaySkin);
             var scene = aiBattle ? GameplaySceneComposition.CreateAiBattle(FlowScenes.Gameplay, Shell.EnsoLayout)
                 : waiwai ? GameplaySceneComposition.CreateWaiwai(FlowScenes.Gameplay, Shell.EnsoLayout)
-                : GameplaySceneComposition.Create(FlowScenes.Gameplay, Random.Shared, Shell.EnsoLayout, theme, side, twoPlayers, dojo);
+                : Shell.Screens.Gameplay(FlowScenes.Gameplay, Random.Shared, Shell.EnsoLayout, theme, side, twoPlayers, dojo);
             return new Prefetched(request.Song, side, twoPlayers, waiwai, theme, scene);
         });
     }
@@ -796,7 +796,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         Shell.Catalog.Replace(Shell.Credit.AiBattle && twoPlayers ? GameplaySceneComposition.CreateAiBattle(FlowScenes.Gameplay, Shell.EnsoLayout)
             : prefetched?.Scene ?? (waiwai is not null
             ? GameplaySceneComposition.CreateWaiwai(FlowScenes.Gameplay, Shell.EnsoLayout)
-            : GameplaySceneComposition.Create(FlowScenes.Gameplay, Random.Shared, Shell.EnsoLayout, theme, side,
+            : Shell.Screens.Gameplay(FlowScenes.Gameplay, Random.Shared, Shell.EnsoLayout, theme, side,
                 twoPlayers: twoPlayers, dojo: Shell.Gameplay.Dan is not null)));
         gameplay.Prepare(charts, song, side, waiwai);
         gameplay.AiSession = _cover.AiSetup is { IsCompletedSuccessfully: true } setup ? setup.Result : null;
