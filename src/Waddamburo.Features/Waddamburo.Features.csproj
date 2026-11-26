@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!--
+    The game's features (shop, dan, AI battle, credit, events): each owns its state, its rules and its online calls,
+    and any frontend (Green's, Waddamburo's own) drives it. Never references a frontend, a movie or the platform.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="../Waddamburo.Game/Waddamburo.Game.csproj" />
+    <ProjectReference Include="../Waddamburo.Services/Waddamburo.Services.csproj" />
+  </ItemGroup>
+
+</Project>

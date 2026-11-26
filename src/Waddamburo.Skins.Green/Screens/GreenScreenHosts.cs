@@ -1,3 +1,4 @@
+using Waddamburo.Features.Shop;
 using Waddamburo.Skins.Green.Art;
 using Waddamburo.Skins.Green.Screens;
 using Waddamburo.Catalog;
@@ -20,6 +21,7 @@ namespace Waddamburo.Skins.Green;
 /// </summary>
 public sealed class GreenScreenHosts(
     CreditState credit,
+    ShopModule shop,
     Func<bool, SongSelectSession> createSelectSession,
     GameFlowSession flow,
     SongCatalogSnapshot catalog,
@@ -642,11 +644,10 @@ public sealed class GreenScreenHosts(
     /// </summary>
     private LumenLayerHost rewardShopVisitHost()
     {
-        var state = Credit.WaitForShopGoods();
+        var state = shop.WaitForGoods();
         // Each joined drum: a card whose shop came in buys with its medals; anyone else (a guest, a card the server missed)
         // only looks.
         int[] joined = Credit.TwoPlayers ? [0, 1] : [Credit.PlayerSide];
-        var shops = Credit.Shops.Select(shop => shop?.State.IsCompletedSuccessfully == true ? shop : null).ToArray();
         var view = new SongSelectCatalogView(catalog);
         var songs = view.Categories.SelectMany(category => category.Songs.Select(song => (Song: song, Category: category)))
             .Where(static entry => entry.Song.Descriptor.Key.Source == SongSourceKind.Stock)
@@ -654,31 +655,13 @@ public sealed class GreenScreenHosts(
         (SongSelectSong Song, SongSelectCategory Category)? song(int id) =>
             state.Goods.FirstOrDefault(goods => goods.Type == 1 && goods.Id == id)?.MusicId is { } musicId
             && songs.TryGetValue(musicId, out var entry) ? entry : null;
-        bool[] owned(ShopGoods item) => [.. shops.Select(shop => shop?.State.Result.Goods.Any(goods => goods.No == item.No && goods.Owned) == true)];
+        bool[] owned(ShopGoods item) => [shop.Owns(0, item.No), shop.Owns(1, item.No)];
         var goods = state.Goods.Where(item => installed(item.Type, item.Id, item.MusicId, songs.ContainsKey)).Select(item => song(item.Id) is { } entry && item.Type == 1
             ? new RewardShopGoods(item, owned(item), Array.IndexOf(ShopGenres, entry.Category.AuthoredLabel) + 1,
                 [.. new[] { TaikoCourse.Easy, TaikoCourse.Normal, TaikoCourse.Hard, TaikoCourse.Oni }.Select(course => entry.Song.Level(course) ?? 0)])
             : new RewardShopGoods(item, owned(item))).ToList();
         var dressed = new[] { true, true }; // each Don wears its player's own look
-        var visit = new RewardShopVisit(goods, joined, [.. shops.Select(shop => shop?.State.Result.Medals)],
-            async (side, no) =>
-            {
-                if (shops[side] is not { } shop)
-                    return null;
-                try
-                {
-                    var answer = await shop.Purchase(no).ConfigureAwait(false);
-                    if (answer.Result == "ok" && state.Goods.FirstOrDefault(goods => goods.No == no) is { } bought
-                        && TaikoGuest.Profiles[side] is { Locked: { } locks } profile)
-                        TaikoGuest.Profiles[side] = profile with { Locked = locks.Unlock(bought.Type, bought.Id, bought.MusicId) };
-                    return answer;
-                }
-                catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
-                {
-                    Console.Error.WriteLine($"Warning SHOP: the purchase failed ({exception.Message}).");
-                    return null;
-                }
-            },
+        var visit = new RewardShopVisit(goods, joined, [shop.Medals(0), shop.Medals(1)], shop.Purchase,
             (side, type, id) =>
             {
                 // A song plays its preview; a costume (kigurumi 3, head 5, body 4) is worn alone; -2 (the exit) and songs bring back the

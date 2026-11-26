@@ -4,9 +4,6 @@ using Waddamburo.Game.Scores;
 
 namespace Waddamburo.Game.Flow;
 
-/// <summary>A card's reward shop: this season's goods and the card's medals, and buying goods by number.</summary>
-public sealed record CreditShop(Task<ShopState> State, Func<int, Task<ShopPurchase>> Purchase);
-
 /// <summary>The credit's mode, picked at the entry (AI battle) or by the players joined (Waiwai for two).</summary>
 public enum CreditMode { Normal, Waiwai, AiBattle }
 
@@ -57,38 +54,19 @@ public class CreditState
             if (value == 0)
             {
                 (TutorialSeen, WaiwaiTutorialSeen, AiTutorialSeen) = (false, false, false);
-                NewCredit();
+                Started?.Invoke();
             }
         }
     }
 
-    /// <summary>A new credit began (<see cref="SongsPlayed"/> went back to 0): what the app keeps per credit goes.</summary>
-    private void NewCredit() => Array.Clear(Shops);
+    /// <summary>A new credit began (<see cref="SongsPlayed"/> went back to 0): what the features keep per credit goes.</summary>
+    public event Action? Started;
 
     /// <summary>
     /// An arcade credit's last results ask TaikOnline for the rewards its titles gave (a carded drum's): Green's medal
     /// screen shows them if the answer is in by then. Null: none asked.
     /// </summary>
     public Task<(int Side, List<PendingReward> Rewards)>? EndRewards { get; set; }
-
-    /// <summary>Each drum's card's reward shop (fetched at the card read; the entry offers it once one is in); null: none.</summary>
-    public CreditShop?[] Shops { get; } = new CreditShop?[2];
-
-    /// <summary>The shop's goods: a card's whose shop is in (the season's goods are the same for every card).</summary>
-    public ShopState? ShopGoods => Shops.FirstOrDefault(static shop => shop?.State.IsCompletedSuccessfully == true)?.State.Result;
-
-    /// <summary>
-    /// The reward shop scene's goods: the mode select offers the shop before a card's fetch is in, so this waits for one
-    /// still running (up to 10 s, the scene is loading anyway). ponytail: none came in (the fetch failed): an empty
-    /// shop to look at, not an error message.
-    /// </summary>
-    public ShopState WaitForShopGoods()
-    {
-        var pending = Shops.Where(static shop => shop is not null && !shop.State.IsCompleted).Select(static shop => (Task)shop!.State).ToArray();
-        if (ShopGoods is null && pending.Length > 0)
-            Task.WaitAny(pending, TimeSpan.FromSeconds(10));
-        return ShopGoods ?? new ShopState(0, "", 0, []);
-    }
 
     /// <summary>The tutorial was watched this credit: Song Select drops its folder (one flag per song select).</summary>
     public bool TutorialSeen { get; set; }

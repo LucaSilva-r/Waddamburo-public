@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/Waddamburo.App/Waddamburo.App.csproj" />
     <Project Path="src/Waddamburo.Catalog/Waddamburo.Catalog.csproj" />
+    <Project Path="src/Waddamburo.Features/Waddamburo.Features.csproj" />
     <Project Path="src/Waddamburo.Formats/Waddamburo.Formats.csproj" />
     <Project Path="src/Waddamburo.Editor/Waddamburo.Editor.csproj" />
     <Project Path="src/Waddamburo.Game/Waddamburo.Game.csproj" />

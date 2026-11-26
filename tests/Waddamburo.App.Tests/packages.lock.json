@@ -240,6 +240,7 @@
           "Svg.Skia": "[5.2.3, )",
           "Waddamburo.Catalog": "[0.0.0-dev, )",
           "Waddamburo.Editor": "[0.0.0-dev, )",
+          "Waddamburo.Features": "[0.0.0-dev, )",
           "Waddamburo.Game": "[0.0.0-dev, )",
           "Waddamburo.Platform.Sdl": "[0.0.0-dev, )",
           "Waddamburo.Providers.OsuLazer": "[0.0.0-dev, )",
@@ -263,6 +264,13 @@
           "Waddamburo.Game": "[0.0.0-dev, )",
           "Waddamburo.Lumen": "[0.0.0-dev, )",
           "Waddamburo.Platform.Sdl": "[0.0.0-dev, )"
+        }
+      },
+      "waddamburo.features": {
+        "type": "Project",
+        "dependencies": {
+          "Waddamburo.Game": "[0.0.0-dev, )",
+          "Waddamburo.Services": "[0.0.0-dev, )"
         }
       },
       "waddamburo.formats": {
@@ -320,6 +328,7 @@
       "waddamburo.skins.green": {
         "type": "Project",
         "dependencies": {
+          "Waddamburo.Features": "[0.0.0-dev, )",
           "Waddamburo.Game": "[0.0.0-dev, )",
           "Waddamburo.Platform.Sdl": "[0.0.0-dev, )"
         }

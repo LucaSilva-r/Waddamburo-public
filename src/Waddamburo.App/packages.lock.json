@@ -190,6 +190,13 @@
           "Waddamburo.Platform.Sdl": "[0.0.0-dev, )"
         }
       },
+      "waddamburo.features": {
+        "type": "Project",
+        "dependencies": {
+          "Waddamburo.Game": "[0.0.0-dev, )",
+          "Waddamburo.Services": "[0.0.0-dev, )"
+        }
+      },
       "waddamburo.formats": {
         "type": "Project"
       },
@@ -245,6 +252,7 @@
       "waddamburo.skins.green": {
         "type": "Project",
         "dependencies": {
+          "Waddamburo.Features": "[0.0.0-dev, )",
           "Waddamburo.Game": "[0.0.0-dev, )",
           "Waddamburo.Platform.Sdl": "[0.0.0-dev, )"
         }

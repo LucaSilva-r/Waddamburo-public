@@ -59,6 +59,7 @@
   <ItemGroup>
     <ProjectReference Include="../Waddamburo.Catalog/Waddamburo.Catalog.csproj" />
     <ProjectReference Include="../Waddamburo.Editor/Waddamburo.Editor.csproj" />
+    <ProjectReference Include="../Waddamburo.Features/Waddamburo.Features.csproj" />
     <ProjectReference Include="../Waddamburo.Game/Waddamburo.Game.csproj" />
     <ProjectReference Include="../Waddamburo.Platform.Sdl/Waddamburo.Platform.Sdl.csproj" />
     <ProjectReference Include="../Waddamburo.Providers.OsuLazer/Waddamburo.Providers.OsuLazer.csproj" />

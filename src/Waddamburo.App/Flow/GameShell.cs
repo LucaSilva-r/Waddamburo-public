@@ -269,6 +269,9 @@ internal sealed partial class GameShell : IDisposable
     /// <summary>The credit's mode, players and what a play hands its results (see <see cref="CreditSession"/>).</summary>
     public CreditSession Credit { get; } = new();
 
+    /// <summary>The reward shop: each drum's card's goods and medals for the credit.</summary>
+    public Waddamburo.Features.Shop.ShopModule Shop => field ??= new(Credit);
+
     /// <summary>What the next Song Select lists and where it starts.</summary>
     public SongSelectSetup Select { get; private set; } = null!;
 
@@ -1021,6 +1024,7 @@ internal sealed partial class GameShell : IDisposable
         var rankings = Rankings = Sync.Online ? new SongRankings(Sync.RankingClient, ChartHashes) : null;
         return new(
             Credit,
+            Shop,
             select.CreateSession,
             flow,
             snapshot,
@@ -1262,14 +1266,8 @@ internal sealed partial class GameShell : IDisposable
     /// </summary>
     public void FetchShop(int side, ScoreProfile player)
     {
-        // A server without the shop answers 404: the fetch fails and the entry offers no shop.
-        if (Sync.ServerFor(player) is not var (client, baid))
-            return;
-        var goods = Task.Run(() => client.ShopAsync(baid));
-        _ = goods.ContinueWith(task => Console.WriteLine(task.IsCompletedSuccessfully
-            ? $"Reward shop for side {side}: {task.Result.Goods.Count} goods."
-            : $"Reward shop for side {side} unavailable: {task.Exception?.GetBaseException().Message}"), TaskScheduler.Default);
-        Credit.Shops[side] = new(goods, no => client.PurchaseAsync(no, baid, goods.Result.Goods.FirstOrDefault(item => item.No == no)));
+        if (Sync.ServerFor(player) is var (client, baid))
+            Shop.Fetch(side, client, baid);
     }
 
     private int run()
@@ -1305,7 +1303,7 @@ internal sealed partial class GameShell : IDisposable
         {
             // Green's Winter shop (traced session-rewards-1); purchases succeed locally. 1P: 4950 medals, the first body owned;
             // 2P (reward-shop-2p): 600 medals, the first head owned.
-            Waddamburo.Game.Flow.CreditShop shop(int medals, int ownedNo)
+            Waddamburo.Features.Shop.ShopOffer shop(int medals, int ownedNo)
             {
                 List<Waddamburo.Game.Scores.ShopGoods> goods =
                 [
@@ -1317,10 +1315,10 @@ internal sealed partial class GameShell : IDisposable
                 return new(Task.FromResult(new Waddamburo.Game.Scores.ShopState(4, "Winter reward shop", medals, goods)),
                     no => Task.FromResult(new Waddamburo.Game.Scores.ShopPurchase("ok", medals -= goods[no - 1].Price)));
             }
-            Credit.Shops[0] = shop(4950, 2);
+            Shop.Offer(0, shop(4950, 2));
             if (Options.StartScene == StartScene.RewardShop2P)
             {
-                Credit.Shops[1] = shop(600, 1);
+                Shop.Offer(1, shop(600, 1));
                 Credit.TwoPlayers = true;
             }
         }

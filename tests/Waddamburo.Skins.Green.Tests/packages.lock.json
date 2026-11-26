@@ -140,6 +140,13 @@
           "Microsoft.Data.Sqlite": "[10.0.12, )"
         }
       },
+      "waddamburo.features": {
+        "type": "Project",
+        "dependencies": {
+          "Waddamburo.Game": "[0.0.0-dev, )",
+          "Waddamburo.Services": "[0.0.0-dev, )"
+        }
+      },
       "waddamburo.formats": {
         "type": "Project"
       },
@@ -166,9 +173,17 @@
           "ppy.SDL3-CS": "[2026.722.0, )"
         }
       },
+      "waddamburo.services": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Data.Sqlite": "[10.0.12, )",
+          "Waddamburo.Game": "[0.0.0-dev, )"
+        }
+      },
       "waddamburo.skins.green": {
         "type": "Project",
         "dependencies": {
+          "Waddamburo.Features": "[0.0.0-dev, )",
           "Waddamburo.Game": "[0.0.0-dev, )",
           "Waddamburo.Platform.Sdl": "[0.0.0-dev, )"
         }

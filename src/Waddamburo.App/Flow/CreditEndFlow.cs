@@ -165,7 +165,7 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
                 Shell.Catalog.Replace(FlowScenes.RewardShopVisit);
             }
             else
-                Array.Clear(Shell.Credit.Shops); // one visit a credit
+                Shell.Shop.Close(); // one visit a credit
             Shell.Loaded.RewardShop = null;
         }
         else if (scene == FlowScenes.GameOver)
