@@ -163,7 +163,7 @@ internal sealed partial class GameplayFlow
             // course; reported on Discord).
             Shell.Credit.SongInfo = Shell.Credit.SongInfo with
             {
-                Genre = Shell.Select.Dan?.Genre(song.Descriptor) ?? Shell.Credit.SongInfo.Genre,
+                Genre = Shell.Dan.Genre(song.Descriptor),
                 Stage = _song + 1,
             };
             Flow.screen.ShowNextSong(Flow.genreLabel(), Shell.Credit.SongInfo);
@@ -182,7 +182,7 @@ internal sealed partial class GameplayFlow
             var total = Shell.Gameplay.DanTotal;
             var counts = Shell.Gameplay.DanSongs(course.Songs.Count);
             return new DanCourseResult(plan, [.. course.Songs.Select((song, index) => new DanSongResult(
-                    Shell.Select.Dan?.Genre(songs[index].Descriptor) ?? 0, (int)song.Course, song.Chart.Level ?? 0, counts[index]))],
+                    Shell.Dan.Genre(songs[index].Descriptor), (int)song.Course, song.Chart.Level ?? 0, counts[index]))],
                 _song + 1, total, Shell.Gameplay.DanFailed ? 0 : DanCourseResult.LevelOf(plan, total, Shell.Gameplay.DanSongEnds))
                 { SongEnds = [.. Shell.Gameplay.DanSongEnds] };
         }

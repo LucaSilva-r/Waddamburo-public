@@ -1,3 +1,4 @@
+using Waddamburo.Features;
 using System.Collections.Concurrent;
 using System.Globalization;
 using System.Diagnostics;
@@ -147,9 +148,8 @@ internal sealed partial class GameShell : IDisposable
     public ChartHashes ChartHashes { get; }
 
     /// <summary>Hashes the whole library again (Settings > Song Libraries), then matches the dan courses again.</summary>
-    public void RehashLibrary() => ChartHashes.Rehash(_libraries.Snapshot.Songs.Values, _danCourses.Rematch);
+    public void RehashLibrary() => ChartHashes.Rehash(_libraries.Snapshot.Songs.Values, Dan.Rematch);
 
-    private readonly DanCourses _danCourses;
     private readonly CurrentEvent _event;
 
     /// <summary>The score database and the server side (uploads, bests, rankings, cabinet pairing).</summary>
@@ -275,7 +275,8 @@ internal sealed partial class GameShell : IDisposable
     public Waddamburo.Features.AiBattle.AiBattleModule AiBattle => field ??= new(Credit, () => Arcade.Home, () => Sync.Scores);
 
     /// <summary>The dan dojo's credit: series, course, run result, bests, keeping a passed run.</summary>
-    public Waddamburo.Features.Dan.DanModule Dan => field ??= new(Credit, () => Sync.Scores);
+    public Waddamburo.Features.Dan.DanModule Dan => field ??= new(Credit, () => Sync.Scores,
+        static () => Strings.Language.StartsWith("ja", StringComparison.Ordinal));
 
     /// <summary>What the next Song Select lists and where it starts.</summary>
     public SongSelectSetup Select { get; private set; } = null!;
@@ -762,14 +763,16 @@ internal sealed partial class GameShell : IDisposable
                 Arcade = Arcade with { Layout = migrated };
                 ArcadeSettings.SaveMenuSettings(config, Arcade);
             }
-            ChartHashes = new ChartHashes(Sync.Scores, Assets.LoadChartAsync) { Jobs = Sync.Jobs };
+            ChartHashes = new ChartHashes(Sync.Scores, Assets.LoadChartAsync) { Jobs = Sync.Jobs, JobName = Strings.T("job.hash_library") };
             SongCatalog = new SongSelectCatalogView(snapshot);
             // Server crowns need every chart's hash before song select lists it.
             if (Sync.Online)
                 ChartHashes.HashLibraryInBackground(snapshot.Songs.Values);
-            _danCourses = new DanCourses(snapshot, ChartHashes, options.ScoresPath is { } scores
-                ? Path.Combine(Path.GetDirectoryName(scores)!, "dan-courses.json") : null, Online.UpdateGate.Server(Arcade), Arcade.ServerInsecure,
-                Arcade.TjaFolder ?? options.TjaRoot, Assets.LoadChartAsync);
+            // The dojo's series, like the song libraries: TaikOnline's official courses, then the player's own (TJA Dani folder).
+            Dan.Load(new Waddamburo.Features.Dan.DanLibrary(snapshot, ChartHashes, Assets.LoadChartAsync),
+                new Waddamburo.Features.Dan.OnlineDanCourses(options.ScoresPath is { } scores
+                    ? Path.Combine(Path.GetDirectoryName(scores)!, "dan-courses.json") : null, Online.UpdateGate.Server(Arcade), Arcade.ServerInsecure),
+                new Waddamburo.Features.Dan.TjaDanCourses(Arcade.TjaFolder ?? options.TjaRoot, Waddamburo.Providers.Tja.TjaCatalogProvider.RelativeChartPath));
             _event = new CurrentEvent(Online.UpdateGate.Server(Arcade), Arcade.ServerInsecure);
 
             _boot.Begin("I/O");
@@ -999,7 +1002,7 @@ internal sealed partial class GameShell : IDisposable
             RecentCharts = side => Sync.Scores is not { } scores ? null
                 : TaikoGuest.Profiles[side] is { } profile ? scores.RecentCharts(profile.Baid)
                 : Arcade.Home ? scores.RecentCharts(ScoreProfile.LocalGuestBaid) : null,
-            Dan = _danCourses,
+            Dan = Dan,
             // Art this Green lacks: the folder's name is drawn instead (a missing art's fill would be unresolvable).
             Event = () => _event.Current is { Art: { } art } running && !_art.HasFeatureBoard(art) ? running with { Art = null } : _event.Current,
             OnlineAvailable = () => Room.Available,
@@ -1038,9 +1041,6 @@ internal sealed partial class GameShell : IDisposable
             Coins)
         {
             Favourites = select.Favourites,
-            DanCourses = series => select.Dan is { Ready: true } dan ? dan.Courses(series) : null,
-            DanSong = status => select.Dan?.SongOf(status),
-            DanGenre = song => select.Dan?.Genre(song) ?? 0,
             RankingWanted = rankings is null ? null : rankings.Want,
             Rankings = rankings is null ? null : rankings.For,
             SupportCounts = supportCounts,

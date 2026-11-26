@@ -180,15 +180,7 @@ public sealed class GreenScreenHosts(
     /// <summary>Song Select's favourite songs.</summary>
     public SongFavourites? Favourites { get; init; }
 
-    /// <summary>A series' dan courses against the library (null until the courses are ready).</summary>
-    // ponytail: the app's DanCourses; becomes DanModule's once ChartHashes and CustomDans leave the app.
-    public Func<string, IReadOnlyList<DanCourseStatus>?>? DanCourses { get; init; }
 
-    /// <summary>The library's song for a dan course song.</summary>
-    public Func<DanSongStatus, SongDescriptor?>? DanSong { get; init; }
-
-    /// <summary>A song's genre as the dan movies number it.</summary>
-    public Func<SongDescriptor?, int>? DanGenre { get; init; }
 
     /// <summary>The loaded entry's host (null outside the entry).</summary>
     public EntrySceneHost? Entry => _entry;
@@ -591,10 +583,11 @@ public sealed class GreenScreenHosts(
         var uids = new List<SongDescriptor?>();
         var binding = DaniSelect = new DaniSelectHostBinding(() =>
         {
-            if (DanCourses?.Invoke(dan.Series) is not { } courses || DanSong is null || DanGenre is null)
+            if (!dan.Ready)
                 return null;
+            var courses = dan.Courses(dan.Series);
             DanBoards = [null, .. courses];
-            return DaniSelectBoards.Build(dan.Series, courses, dan.Bests(), DanSong, DanGenre, uids);
+            return DaniSelectBoards.Build(dan.Series, courses, dan.Bests(), dan.SongOf, dan.Genre, uids);
         }, Credit.PlayerSide, uid =>
             uids.ElementAtOrDefault(uid) is { } song && songs.TryGetValue(song.Key, out var entry)
                 ? textures.GetSongTitle(entry.Song, entry.Category.BoardStyle, SongBoardTextureKind.Expanded) : null,

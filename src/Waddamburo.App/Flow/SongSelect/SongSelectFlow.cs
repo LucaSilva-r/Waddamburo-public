@@ -1,3 +1,4 @@
+using Waddamburo.Features;
 using Waddamburo.Skins.Green.Art;
 using Waddamburo.Catalog;
 using Waddamburo.Game.Dan;
@@ -653,7 +654,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
                 .Handle("course.start", _ => rows(startCourse))
                 .Install(Shell.Active.Player.Layers.Select(static layer => layer.Player));
         }
-        if (_danRows is null && Shell.Select.Dan is { Ready: true } dan)
+        if (_danRows is null && Shell.Dan is { Ready: true } dan)
         {
             _danTree = dan.Tree();
             _danRows = new LibraryRows(_danTree);
@@ -702,7 +703,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         var song = find(key.Song).Song.Descriptor;
         var chart = song.Charts.First(candidate => candidate.Key == key);
         Shell.Gameplay.Dan = course.Course;
-        var challenge = Shell.Dan.Challenge = Shell.Select.Dan!.ChallengeNumber(Shell.Dan.Series, course.Course);
+        var challenge = Shell.Dan.Challenge = Shell.Dan.ChallengeNumber(Shell.Dan.Series, course.Course);
         Shell.Gameplay.DanChallengeArt = challenge == 0 ? null : DanChallengeArt.Key(Shell.Dan.Series, challenge, "mini");
         var side = Shell.Credit.PlayerSide == 1 ? LocalPlayerSlot.PlayerTwo : LocalPlayerSlot.PlayerOne;
         Shell.PlayRequests.TryRequestPlay(new PlayRequest(Shell.SongCatalog.Revision, song.Key, song.AudioAsset,

@@ -44,7 +44,7 @@ internal sealed class SongSelectSetup(
     public SongFavourites? Favourites { get; init; }
 
     /// <summary>The dan dojo's courses (null: no such folder in this run).</summary>
-    public DanCourses? Dan { get; set; }
+    public Waddamburo.Features.Dan.DanModule? Dan { get; set; }
 
     /// <summary>TaikOnline's running event, for Song Select's event folder (null: none).</summary>
     public Func<SongSelectEvent?>? Event { get; init; }
@@ -87,7 +87,7 @@ internal sealed class SongSelectSetup(
             browse: memory.OsuBrowse, search: memory.Search, // As on the game: no dan dojo for two players, or without an account (it works offline once its list is saved).
             danDojo: !Credit.AiBattle && Dan?.Available == true && !Credit.TwoPlayers && TaikoGuest.Profiles[Credit.PlayerSide] is not null
                 && InOnlineRoom?.Invoke() != true,
-            danSeries: arcade.Home ? Dan?.Series : null,
+            danSeries: arcade.Home ? Dan?.AllSeries : null,
             online: !Credit.Waiwai && !Credit.AiBattle && !Credit.TwoPlayers && OnlineAvailable?.Invoke() == true, onlySong: memory.OnlineSong, received: Received,
             courseStar: memory.OnlineSong is null, rollFolder: RandomSongFolder?.Invoke() == true,
             eventFolder: memory.OnlineSong is null ? Event?.Invoke() : null, byGame: memory.WiiByGame,

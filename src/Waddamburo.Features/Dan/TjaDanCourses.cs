@@ -3,9 +3,8 @@ using System.Text;
 using System.Text.Json;
 using Waddamburo.Catalog;
 using Waddamburo.Game.Dan;
-using Waddamburo.Providers.Tja;
 
-namespace Waddamburo.App.Online;
+namespace Waddamburo.Features.Dan;
 
 /// <summary>
 /// The player's own dan courses: one series per JSON file in the TJA library's <c>Dani</c> folder (created when missing,
@@ -13,16 +12,33 @@ namespace Waddamburo.App.Online;
 /// course. They are unranked: their course hashes start with <see cref="Prefix"/> and never upload, but their bests
 /// are kept locally like any course's. Format: docs/development/custom-tja.md ("Custom dan dojo") and the example file.
 /// </summary>
-internal static class CustomDans
+/// <param name="tjaRoot">The TJA library (its Dani folder holds the series); null: none.</param>
+/// <param name="relativePath">A TJA chart asset's path relative to the library (the TJA provider's).</param>
+public sealed class TjaDanCourses(string? tjaRoot, Func<CatalogAssetKey, string?> relativePath) : IDanCourseProvider
 {
+    public IReadOnlyList<DanSeries> Saved => [];
+
+    public async Task<IReadOnlyList<DanSeries>> LoadAsync(DanLibrary library)
+    {
+        try
+        {
+            return await LoadAsync(tjaRoot, library.Snapshot, library.Hashes, library.LoadChart, relativePath).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            Console.WriteLine($"Custom dan courses not loaded: {exception.Message}");
+            return [];
+        }
+    }
+
     /// <summary>Every custom course hash and series id starts with this.</summary>
     public const string Prefix = "custom:";
 
     public const string FolderName = "Dani";
 
     /// <summary>The series in <paramref name="tjaRoot"/>/Dani, their songs matched against the library.</summary>
-    public static async Task<List<DanSeries>> LoadAsync(string? tjaRoot, SongCatalogSnapshot snapshot, ChartHashes hashes,
-        Func<ChartKey, CatalogAssetKey, CancellationToken, ValueTask<PlayableChart>> loadChart)
+    private static async Task<List<DanSeries>> LoadAsync(string? tjaRoot, SongCatalogSnapshot snapshot, ChartHashes hashes,
+        Func<ChartKey, CatalogAssetKey, CancellationToken, ValueTask<PlayableChart>> loadChart, Func<CatalogAssetKey, string?> relativePath)
     {
         if (tjaRoot is null || !Directory.Exists(tjaRoot))
             return [];
@@ -42,7 +58,7 @@ internal static class CustomDans
         var files = Directory.EnumerateFiles(folder, "*.json").Order(StringComparer.OrdinalIgnoreCase).ToList();
         if (files.Count == 0)
             return [];
-        var library = new Library(tjaRoot, snapshot, hashes, loadChart);
+        var library = new Library(tjaRoot, snapshot, hashes, loadChart, relativePath);
         var series = new List<DanSeries>();
         foreach (var file in files)
         {
@@ -104,7 +120,7 @@ internal static class CustomDans
 
     // The library's charts by TJA path and by hash, as the course files name them.
     private sealed class Library(string tjaRoot, SongCatalogSnapshot snapshot, ChartHashes hashes,
-        Func<ChartKey, CatalogAssetKey, CancellationToken, ValueTask<PlayableChart>> loadChart)
+        Func<ChartKey, CatalogAssetKey, CancellationToken, ValueTask<PlayableChart>> loadChart, Func<CatalogAssetKey, string?> relativePath)
     {
         private Dictionary<string, (SongDescriptor Song, SongChartDescriptor Chart)>? _byKey;
         private bool _hashedLibrary;
@@ -140,7 +156,7 @@ internal static class CustomDans
             var wanted = Path.GetFullPath(Path.Combine(tjaRoot, path));
             foreach (var song in snapshot.Songs.Values.Where(static song => song.Key.Source == SongSourceKind.Tja))
                 foreach (var chart in song.Charts.Where(chart => (int?)chart.Course == course))
-                    if (TjaCatalogProvider.RelativeChartPath(chart.ChartAsset) is { } relative
+                    if (relativePath(chart.ChartAsset) is { } relative
                         && string.Equals(Path.GetFullPath(Path.Combine(tjaRoot, relative)), wanted, StringComparison.OrdinalIgnoreCase))
                         return (song, chart);
             Console.WriteLine($"Custom dan: no {path} ({course}) in the TJA library.");

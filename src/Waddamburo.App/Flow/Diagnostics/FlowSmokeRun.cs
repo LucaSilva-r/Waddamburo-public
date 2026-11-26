@@ -48,7 +48,7 @@ internal sealed class FlowSmokeRun(GameShell shell, GameplayFlow gameplay, SongS
             return;
         }
         if (shell.Active.Id != FlowScenes.SongSelect || shell.Hosts.SongSelect is null
-            || mode == FlowSmokeMode.Dan && shell.Select.Dan?.Ready != true)
+            || mode == FlowSmokeMode.Dan && !shell.Dan.Ready)
         {
             if (shell.Tick > GiveUpTicks)
                 fail("Song Select (and the dan catalogue) never got ready");
@@ -59,7 +59,7 @@ internal sealed class FlowSmokeRun(GameShell shell, GameplayFlow gameplay, SongS
         _requested = true;
         if (mode == FlowSmokeMode.Dan)
         {
-            if (shell.Select.Dan!.Courses(shell.Dan.Series).FirstOrDefault() is not { } course)
+            if (shell.Dan.Courses(shell.Dan.Series).FirstOrDefault() is not { } course)
             {
                 fail("no playable dan course");
                 return;
