@@ -78,7 +78,7 @@ internal sealed class AttractFlow(GameShell shell, GameplayFlow gameplay, string
             if (Shell.Arcade.Home && (input.Skip || input.DrumSide is not null
                 || input.Keys.Presses.Any(static press => press.Key is < SdlKeyboardKey.F1 or > SdlKeyboardKey.F8))
                 || Shell.ScreenEnded)
-                Shell.Scenes.Show(FlowScenes.Logo);
+                Shell.Scenes.Show(Shell.Home());
             return;
         }
         Movie?.Advance();

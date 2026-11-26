@@ -870,7 +870,7 @@ internal sealed partial class GameShell : IDisposable
 
             // A Green from before the update that added AI battle (the web archive's): the mode select leaves it out.
             AiBattle.Installed = Cli.GreenData.HasAiBattle(Path.GetDirectoryName(dataRoot)!);
-            if (!AiBattle.Installed)
+            if (!AiBattle.Installed && !Arcade.WaddamburoFrontend)
             {
                 _boot.Begin("AI BATTLE");
                 _boot.Warn(Strings.T("boot.ai_battle_missing"));
@@ -897,7 +897,7 @@ internal sealed partial class GameShell : IDisposable
             MovieContent.PackageRoot = options.ArcadePath is { } home ? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(home))!, "movies") : null;
             MovieContent.DecodeImage = GameMovieContent.DecodeImage;
             MovieContent.BundledRoot = Path.Combine(AppContext.BaseDirectory, "movies");
-            MovieContent.PreferBundled = () => Arcade.FreeMovies;
+            MovieContent.PreferBundled = () => Arcade.OwnMovies;
             _presenter = new ScenePresenter(Application, MovieContent, () => Arcade.UpscaleTextures && Application.ShowUpscaled);
             Scenes = new SceneSwitcher(this, _presenter, flowOf, blackLoadingFrame);
             MovieContent.Reuse = _presenter.Reuse;
@@ -1090,7 +1090,7 @@ internal sealed partial class GameShell : IDisposable
     {
         var green = new GreenSoundSet(soundRoot ?? Path.Combine(AppContext.BaseDirectory, "sounds"));
         ISoundSet set = soundRoot is null ? new SilentSoundSet() : green;
-        if ((soundRoot is null || Arcade.FreeMovies) && SoundPack.Load(Path.Combine(AppContext.BaseDirectory, "sounds"), set) is { } ours)
+        if ((soundRoot is null || Arcade.OwnMovies) && SoundPack.Load(Path.Combine(AppContext.BaseDirectory, "sounds"), set) is { } ours)
             set = ours;
         if (arcadePath is not null && SoundPack.Load(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(arcadePath))!, "sounds"), set) is { } own)
             set = own;
@@ -1383,6 +1383,18 @@ internal sealed partial class GameShell : IDisposable
 
     /// <summary>Back to the attract loop now (false when a song or boot is on: nothing happens).</summary>
     public bool GoToAttract() => backToAttract(true);
+
+    /// <summary>
+    /// Where a session starts and ends: Green's attract loop, or on Waddamburo's frontend (no attract) the entry with
+    /// nobody joined yet.
+    /// </summary>
+    public SceneId Home()
+    {
+        if (!Arcade.WaddamburoFrontend)
+            return FlowScenes.Logo;
+        Credit.EntryTrigger = 3; // nobody joined: the entry waits for a drum
+        return FlowScenes.Entry;
+    }
 
     /// <summary>
     /// The dan dojo straight from the entry (its session.start "dan"): the course select opens under the dan cover, as

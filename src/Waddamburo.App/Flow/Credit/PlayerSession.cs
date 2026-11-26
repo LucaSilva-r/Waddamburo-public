@@ -146,8 +146,9 @@ internal sealed class PlayerSession(GameShell shell)
         var first = JoinedSides.Count == 0 ? 0 : JoinedSides.Min;
         shell.Credit.PlayerSide = first;
         shell.Credit.TwoPlayers = two;
-        // Two players start in Waiwai's song select (traced); one player only has the normal one.
-        shell.Credit.Waiwai = two && !shell.Credit.AiBattle;
+        // Two players start in Waiwai's song select (traced); one player only has the normal one. Waddamburo's
+        // frontend has no Waiwai: two players play side by side.
+        shell.Credit.Waiwai = two && !shell.Credit.AiBattle && !shell.Arcade.WaddamburoFrontend;
         if (shell.Indicators is { } indicators)
         {
             indicators.Side = first;

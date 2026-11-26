@@ -645,8 +645,19 @@ public sealed partial record ArcadeSettings
     /// </summary>
     public bool FreeMovies { get; init; }
 
+    /// <summary>
+    /// frontend = waddamburo: Waddamburo's own frontend instead of Taiko Green's (docs/development/frontends.md): our
+    /// movies always, home rules, no attract loop (boot, then the entry), and only the features it offers (no AI battle,
+    /// Waiwai or reward shop).
+    /// </summary>
+    public bool WaddamburoFrontend { get; init; }
+
+    /// <summary>Our movies in place of the game's: <see cref="FreeMovies"/>, or always on Waddamburo's frontend.</summary>
+    public bool OwnMovies => FreeMovies || WaddamburoFrontend;
+
     /// <summary>Home mode (a PC): free play, endless songs, no countdowns. False: arcade (the cabinet rules).</summary>
-    public bool Home { get; init; }
+    /// <remarks>ponytail: Waddamburo's frontend is home only; a cabinet runs Green's.</remarks>
+    public bool Home { get => field || WaddamburoFrontend; init; }
 
     public bool FreePlay { get; init; } = true;
 

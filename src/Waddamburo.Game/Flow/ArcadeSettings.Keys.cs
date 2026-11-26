@@ -208,6 +208,8 @@ public sealed partial record ArcadeSettings
         new("console", static (s, value, line) => s with { ShowConsole = boolean(value, line) }, null, Saved.Never),
         new("auto_update", static (s, value, line) => s with { AutoUpdate = boolean(value, line) }, null, Saved.Never),
         new("free_movies", static (s, value, line) => s with { FreeMovies = boolean(value, line) }, null, Saved.Never),
+        choice("frontend", static s => s.WaddamburoFrontend, static (s, v) => s with { WaddamburoFrontend = v },
+            [("green", false), ("waddamburo", true)], saved: Saved.Never),
         new("renderer", static (s, value, line) => s with
         {
             Renderer = value.ToLowerInvariant() switch

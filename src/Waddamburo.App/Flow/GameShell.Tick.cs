@@ -166,7 +166,7 @@ internal sealed partial class GameShell
         Don?.SetDialogDon(false);
         Players.Reset();
         Credit.SongsPlayed = 0; // a new credit starts at the first song
-        Scenes.Show(FlowScenes.Logo);
+        Scenes.Show(Home());
         return true;
     }
 
