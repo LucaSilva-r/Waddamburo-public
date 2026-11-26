@@ -1,11 +1,23 @@
-// Song select, bare minimum: the library as rows (folders, their songs, a song's charts), the row under the cursor and
-// its chart's online top three.
+// Song select: a carousel after osu!lazer's (panels on an arc, every move eased, rows opening in place slide out of
+// their parent), the selection's details and its chart's online top three on the left.
 {
   "format": 2,
   "frameRate": 60,
   "root": "main",
   "textures": {
-    "bg": "textures/bg.svg"
+    "bg": "textures/bg.svg",
+    "bar": "textures/bar.svg",
+    "card": "textures/card.svg",
+    "pill": "textures/pill.svg",
+    "panel_folder": "textures/panel_folder.svg",
+    "panel_song": "textures/panel_song.svg",
+    "panel_chart": "textures/panel_chart.svg",
+    "select": "textures/select.svg",
+    "chip_easy": "textures/chip_easy.svg",
+    "chip_normal": "textures/chip_normal.svg",
+    "chip_hard": "textures/chip_hard.svg",
+    "chip_oni": "textures/chip_oni.svg",
+    "chip_ura": "textures/chip_ura.svg"
   },
   "shapes": {
     "background": {
@@ -16,6 +28,114 @@
         1280,
         720
       ]
+    },
+    "topbar": {
+      "texture": "bar",
+      "rect": [
+        0,
+        0,
+        1280,
+        56
+      ]
+    },
+    "cardbg": {
+      "texture": "card",
+      "rect": [
+        0,
+        0,
+        560,
+        360
+      ]
+    },
+    "pillbg": {
+      "texture": "pill",
+      "rect": [
+        0,
+        0,
+        120,
+        36
+      ]
+    },
+    "bg_folder": {
+      "texture": "panel_folder",
+      "rect": [
+        0,
+        -36,
+        760,
+        72
+      ]
+    },
+    "bg_song": {
+      "texture": "panel_song",
+      "rect": [
+        0,
+        -33,
+        760,
+        66
+      ]
+    },
+    "bg_chart": {
+      "texture": "panel_chart",
+      "rect": [
+        0,
+        -23,
+        760,
+        46
+      ]
+    },
+    "selglow": {
+      "texture": "select",
+      "rect": [
+        0,
+        -36,
+        760,
+        72
+      ]
+    },
+    "chip_easy": {
+      "texture": "chip_easy",
+      "rect": [
+        0,
+        -15,
+        100,
+        30
+      ]
+    },
+    "chip_normal": {
+      "texture": "chip_normal",
+      "rect": [
+        0,
+        -15,
+        100,
+        30
+      ]
+    },
+    "chip_hard": {
+      "texture": "chip_hard",
+      "rect": [
+        0,
+        -15,
+        100,
+        30
+      ]
+    },
+    "chip_oni": {
+      "texture": "chip_oni",
+      "rect": [
+        0,
+        -15,
+        100,
+        30
+      ]
+    },
+    "chip_ura": {
+      "texture": "chip_ura",
+      "rect": [
+        0,
+        -15,
+        100,
+        30
+      ]
     }
   },
   "texts": {
@@ -23,43 +143,10 @@
       "rect": [
         0,
         0,
-        560,
-        60
-      ],
-      "size": 44,
-      "align": "left",
-      "color": "#ffffff"
-    },
-    "title": {
-      "rect": [
-        0,
-        0,
-        560,
-        56
-      ],
-      "size": 36,
-      "align": "left",
-      "color": "#ffd84a"
-    },
-    "detail": {
-      "rect": [
-        0,
-        0,
-        560,
+        400,
         40
       ],
       "size": 26,
-      "align": "left",
-      "color": "#ffffff"
-    },
-    "row": {
-      "rect": [
-        0,
-        0,
-        600,
-        40
-      ],
-      "size": 28,
       "align": "left",
       "color": "#ffffff"
     },
@@ -67,15 +154,408 @@
       "rect": [
         0,
         0,
-        1200,
+        600,
+        30
+      ],
+      "size": 18,
+      "align": "center",
+      "color": "#7f89b0"
+    },
+    "clock": {
+      "rect": [
+        0,
+        0,
+        120,
         36
       ],
       "size": 24,
+      "align": "center",
+      "color": "#ffffff"
+    },
+    "i_title": {
+      "rect": [
+        0,
+        0,
+        500,
+        56
+      ],
+      "size": 40,
       "align": "left",
-      "color": "#9fb0d8"
+      "color": "#ffffff"
+    },
+    "i_sub": {
+      "rect": [
+        0,
+        0,
+        500,
+        34
+      ],
+      "size": 22,
+      "align": "left",
+      "color": "#9aa6d8"
+    },
+    "i_meta": {
+      "rect": [
+        0,
+        0,
+        500,
+        34
+      ],
+      "size": 24,
+      "align": "left",
+      "color": "#ffd84a"
+    },
+    "i_label": {
+      "rect": [
+        0,
+        0,
+        500,
+        26
+      ],
+      "size": 16,
+      "align": "left",
+      "color": "#7f89b0"
+    },
+    "i_rank": {
+      "rect": [
+        0,
+        0,
+        500,
+        32
+      ],
+      "size": 22,
+      "align": "left",
+      "color": "#ffffff"
+    },
+    "p_title": {
+      "rect": [
+        0,
+        0,
+        600,
+        40
+      ],
+      "size": 26,
+      "align": "left",
+      "color": "#ffffff"
+    },
+    "p_sub": {
+      "rect": [
+        0,
+        0,
+        600,
+        24
+      ],
+      "size": 16,
+      "align": "left",
+      "color": "#9aa6d8"
+    },
+    "p_meta": {
+      "rect": [
+        0,
+        0,
+        130,
+        30
+      ],
+      "size": 20,
+      "align": "right",
+      "color": "#c8d0f0"
+    },
+    "p_chart": {
+      "rect": [
+        0,
+        0,
+        420,
+        30
+      ],
+      "size": 22,
+      "align": "left",
+      "color": "#ffffff"
+    },
+    "p_chip": {
+      "rect": [
+        0,
+        0,
+        76,
+        28
+      ],
+      "size": 18,
+      "align": "center",
+      "color": "#ffffff"
     }
   },
   "sprites": {
+    "chip": {
+      "frames": 1,
+      "layers": [
+        {
+          "character": "chip_easy",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 0,
+              "y": 0
+            }
+          ],
+          "name": "easy"
+        },
+        {
+          "character": "chip_normal",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 0,
+              "y": 0
+            }
+          ],
+          "name": "normal"
+        },
+        {
+          "character": "chip_hard",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 0,
+              "y": 0
+            }
+          ],
+          "name": "hard"
+        },
+        {
+          "character": "chip_oni",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 0,
+              "y": 0
+            }
+          ],
+          "name": "oni"
+        },
+        {
+          "character": "chip_ura",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 0,
+              "y": 0
+            }
+          ],
+          "name": "ura"
+        },
+        {
+          "character": "p_chip",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 18,
+              "y": -14
+            }
+          ],
+          "name": "label"
+        }
+      ]
+    },
+    "panel": {
+      "frames": 1,
+      "export": "panel",
+      "layers": [
+        {
+          "character": "bg_folder",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 0,
+              "y": 0
+            }
+          ],
+          "name": "folder"
+        },
+        {
+          "character": "bg_song",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 0,
+              "y": 0
+            }
+          ],
+          "name": "song"
+        },
+        {
+          "character": "bg_chart",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 0,
+              "y": 0
+            }
+          ],
+          "name": "chart"
+        },
+        {
+          "character": "selglow",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 0,
+              "y": 0
+            }
+          ],
+          "name": "glow"
+        },
+        {
+          "character": "p_title",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 28,
+              "y": -20
+            }
+          ],
+          "name": "title"
+        },
+        {
+          "character": "p_sub",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 28,
+              "y": 7
+            }
+          ],
+          "name": "sub"
+        },
+        {
+          "character": "p_chart",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 130,
+              "y": -15
+            }
+          ],
+          "name": "chart_title"
+        },
+        {
+          "character": "chip",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 16,
+              "y": 0
+            }
+          ],
+          "name": "chip"
+        },
+        {
+          "character": "p_meta",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 600,
+              "y": -15
+            }
+          ],
+          "name": "meta"
+        }
+      ]
+    },
+    "list": {
+      "frames": 1,
+      "layers": []
+    },
+    "info": {
+      "frames": 1,
+      "layers": [
+        {
+          "character": "cardbg",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 0,
+              "y": 0
+            }
+          ]
+        },
+        {
+          "character": "i_title",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 32,
+              "y": 28
+            }
+          ],
+          "name": "title"
+        },
+        {
+          "character": "i_sub",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 32,
+              "y": 88
+            }
+          ],
+          "name": "sub"
+        },
+        {
+          "character": "i_meta",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 32,
+              "y": 128
+            }
+          ],
+          "name": "meta"
+        },
+        {
+          "character": "i_label",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 32,
+              "y": 196
+            }
+          ],
+          "name": "label"
+        },
+        {
+          "character": "i_rank",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 32,
+              "y": 228
+            }
+          ],
+          "name": "rank0"
+        },
+        {
+          "character": "i_rank",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 32,
+              "y": 266
+            }
+          ],
+          "name": "rank1"
+        },
+        {
+          "character": "i_rank",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 32,
+              "y": 304
+            }
+          ],
+          "name": "rank2"
+        }
+      ]
+    },
     "main": {
       "frames": 1,
       "scripts": {
@@ -86,218 +566,87 @@
           "character": "background",
           "keys": [
             {
-              "frame": 0
+              "frame": 0,
+              "x": 0,
+              "y": 0
+            }
+          ]
+        },
+        {
+          "character": "list",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 0,
+              "y": 0
+            }
+          ],
+          "name": "list"
+        },
+        {
+          "character": "info",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 40,
+              "y": 96
+            }
+          ],
+          "name": "info"
+        },
+        {
+          "character": "topbar",
+          "keys": [
+            {
+              "frame": 0,
+              "x": 0,
+              "y": 0
             }
           ]
         },
         {
           "character": "heading",
-          "name": "heading",
           "keys": [
             {
               "frame": 0,
-              "x": 40,
-              "y": 30
+              "x": 150,
+              "y": 10
             }
-          ]
+          ],
+          "name": "heading"
         },
         {
-          "character": "title",
-          "name": "title",
+          "character": "pillbg",
           "keys": [
             {
               "frame": 0,
-              "x": 40,
-              "y": 130
+              "x": 1120,
+              "y": 10
             }
-          ]
+          ],
+          "name": "pill"
         },
         {
-          "character": "detail",
-          "name": "detail",
+          "character": "clock",
           "keys": [
             {
               "frame": 0,
-              "x": 40,
-              "y": 200
+              "x": 1120,
+              "y": 12
             }
-          ]
-        },
-        {
-          "character": "detail",
-          "name": "rank0",
-          "keys": [
-            {
-              "frame": 0,
-              "x": 40,
-              "y": 290
-            }
-          ]
-        },
-        {
-          "character": "detail",
-          "name": "rank1",
-          "keys": [
-            {
-              "frame": 0,
-              "x": 40,
-              "y": 334
-            }
-          ]
-        },
-        {
-          "character": "detail",
-          "name": "rank2",
-          "keys": [
-            {
-              "frame": 0,
-              "x": 40,
-              "y": 378
-            }
-          ]
+          ],
+          "name": "clock"
         },
         {
           "character": "hint",
-          "name": "hint",
           "keys": [
             {
               "frame": 0,
-              "x": 40,
-              "y": 632
+              "x": 340,
+              "y": 684
             }
-          ]
-        },
-        {
-          "character": "row",
-          "name": "row0",
-          "keys": [
-            {
-              "frame": 0,
-              "x": 640,
-              "y": 110
-            }
-          ]
-        },
-        {
-          "character": "row",
-          "name": "row1",
-          "keys": [
-            {
-              "frame": 0,
-              "x": 640,
-              "y": 154
-            }
-          ]
-        },
-        {
-          "character": "row",
-          "name": "row2",
-          "keys": [
-            {
-              "frame": 0,
-              "x": 640,
-              "y": 198
-            }
-          ]
-        },
-        {
-          "character": "row",
-          "name": "row3",
-          "keys": [
-            {
-              "frame": 0,
-              "x": 640,
-              "y": 242
-            }
-          ]
-        },
-        {
-          "character": "row",
-          "name": "row4",
-          "keys": [
-            {
-              "frame": 0,
-              "x": 640,
-              "y": 286
-            }
-          ]
-        },
-        {
-          "character": "row",
-          "name": "row5",
-          "keys": [
-            {
-              "frame": 0,
-              "x": 640,
-              "y": 330
-            }
-          ]
-        },
-        {
-          "character": "row",
-          "name": "row6",
-          "keys": [
-            {
-              "frame": 0,
-              "x": 640,
-              "y": 374
-            }
-          ]
-        },
-        {
-          "character": "row",
-          "name": "row7",
-          "keys": [
-            {
-              "frame": 0,
-              "x": 640,
-              "y": 418
-            }
-          ]
-        },
-        {
-          "character": "row",
-          "name": "row8",
-          "keys": [
-            {
-              "frame": 0,
-              "x": 640,
-              "y": 462
-            }
-          ]
-        },
-        {
-          "character": "row",
-          "name": "row9",
-          "keys": [
-            {
-              "frame": 0,
-              "x": 640,
-              "y": 506
-            }
-          ]
-        },
-        {
-          "character": "row",
-          "name": "row10",
-          "keys": [
-            {
-              "frame": 0,
-              "x": 640,
-              "y": 550
-            }
-          ]
-        },
-        {
-          "character": "row",
-          "name": "row11",
-          "keys": [
-            {
-              "frame": 0,
-              "x": 640,
-              "y": 594
-            }
-          ]
+          ],
+          "name": "hint"
         }
       ]
     }
