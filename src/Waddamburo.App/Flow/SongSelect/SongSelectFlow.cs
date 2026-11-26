@@ -703,7 +703,8 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         var chart = song.Charts.First(candidate => candidate.Key == key);
         Shell.Gameplay.Dan = course.Course;
         var challenge = Shell.Dan.Challenge = Shell.Dan.ChallengeNumber(Shell.Dan.Series, course.Course);
-        Shell.Gameplay.DanChallengeArt = challenge == 0 ? null : DanChallengeArt.Key(Shell.Dan.Series, challenge, "mini");
+        // The game's challenge plate on Green's lane; ours read dan.* from the provider.
+        Shell.Gameplay.DanChallengeArt = challenge == 0 || !Shell.Frontend.GameMovies ? null : DanChallengeArt.Key(Shell.Dan.Series, challenge, "mini");
         var side = Shell.Credit.PlayerSide == 1 ? LocalPlayerSlot.PlayerTwo : LocalPlayerSlot.PlayerOne;
         Shell.PlayRequests.TryRequestPlay(new PlayRequest(Shell.SongCatalog.Revision, song.Key, song.AudioAsset,
             [new PlayerChartRequest(side, key, chart.ChartAsset, (TaikoCourse)first.Song.Course)]));
