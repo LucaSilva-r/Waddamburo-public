@@ -60,6 +60,26 @@ public sealed class ArcadeTests
             ArcadeSettings.Parse(ArcadeSettings.DefaultFileText));
 
     [Fact]
+    public void WaddamburosFrontendRunsHomeButKeepsTheFilesMode()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(path, "mode = arcade\nfrontend = waddamburo\n");
+            var settings = ArcadeSettings.Parse(File.ReadAllText(path));
+            Assert.True(settings.WaddamburoFrontend && settings.Home && !settings.HomeMode);
+            // Switching back to Green (the service menu's switch saves with the mode): arcade again.
+            ArcadeSettings.SaveMenuSettings(path, settings with { WaddamburoFrontend = false }, mode: true);
+            var back = ArcadeSettings.Parse(File.ReadAllText(path));
+            Assert.False(back.WaddamburoFrontend || back.Home);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void UpgradeChoosesTheModeFromTheCabinetsOwnSettings()
     {
         // A free-play PC becomes home; a cabinet (coins, or a cabinet token) stays arcade.

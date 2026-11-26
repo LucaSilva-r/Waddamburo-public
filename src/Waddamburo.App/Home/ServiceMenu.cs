@@ -203,6 +203,19 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
     }
 
     // GAME MODE: a yes/no page; yes saves the settings in the other mode and restarts the game.
+    private void confirmFrontend() => _menu.Push(new OverlayPage(
+        () => S(_settings.WaddamburoFrontend ? "service.switch_to_green" : "service.switch_to_waddamburo"),
+        () =>
+        [
+            new(S("service.switch.confirm"), Cyan: true),
+            new(S("service.no"), Gap: true, Enter: _menu.Pop),
+            new(S("service.yes"), Enter: () =>
+            {
+                _menu.Close();
+                SwitchMode?.Invoke(_settings with { WaddamburoFrontend = !_settings.WaddamburoFrontend });
+            }),
+        ]));
+
     private void confirmMode() => _menu.Push(new OverlayPage(
         () => S(_home ? "service.switch_to_arcade" : "service.switch_to_home"),
         () =>
@@ -470,7 +483,14 @@ internal sealed class ServiceMenu(SdlApplication application, string fontPath, B
             ],
             new(S("service.clock"), 400, () => DateTime.Now.ToString("yyyy/MM/dd ddd HH:mm:ss", CultureInfo.InvariantCulture).ToUpperInvariant(), 560, Cyan: true),
             .. shared(LanguageSection),
-            .. SwitchMode is null || PlatformInfo.IsMobile ? (Row[])[] :
+            // The frontend: Taiko Green's screens, or Waddamburo's own (frontends.md). Restarts the game.
+            .. SwitchMode is null ? (Row[])[] :
+            [
+                new(S("service.frontend"), 400, () => $"{{{S(_settings.WaddamburoFrontend ? "service.frontend.waddamburo" : "service.frontend.green")}}}", 560,
+                    Enter: confirmFrontend, Colour: static () => OverlayMenu.Green, Hint: S("service.frontend.hint")),
+            ],
+            // Waddamburo's frontend is home only: no arcade mode to switch to.
+            .. SwitchMode is null || PlatformInfo.IsMobile || _settings.WaddamburoFrontend ? (Row[])[] :
             [
                 new(S("service.game_mode"), 400, () => $"{{{S(_home ? "service.game_mode.home" : "service.game_mode.arcade")}}}", 560, Enter: confirmMode, Colour: static () => OverlayMenu.Green,
                     Hint: S("service.game_mode.hint")),

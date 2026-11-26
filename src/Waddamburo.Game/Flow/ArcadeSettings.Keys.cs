@@ -197,7 +197,7 @@ public sealed partial record ArcadeSettings
         atLeast("credits_2p", static s => s.CreditsTwoPlayers, static (s, v) => s with { CreditsTwoPlayers = v }, 1, Saved.Cabinet),
         atLeast("songs_per_session", static s => s.SongsPerSession, static (s, v) => s with { SongsPerSession = v }, 1, Saved.Cabinet),
 
-        choice("mode", static s => s.Home, static (s, v) => s with { Home = v }, [("home", true), ("arcade", false)], saved: Saved.Mode),
+        choice("mode", static s => s.HomeMode, static (s, v) => s with { HomeMode = v }, [("home", true), ("arcade", false)], saved: Saved.Mode),
 
         // The file's own: never saved by the game.
         new("server", static (s, value, line) => s with { Server = value.Length == 0 ? null : server(value, line) }, null, Saved.Never),
@@ -209,7 +209,7 @@ public sealed partial record ArcadeSettings
         new("auto_update", static (s, value, line) => s with { AutoUpdate = boolean(value, line) }, null, Saved.Never),
         new("free_movies", static (s, value, line) => s with { FreeMovies = boolean(value, line) }, null, Saved.Never),
         choice("frontend", static s => s.WaddamburoFrontend, static (s, v) => s with { WaddamburoFrontend = v },
-            [("green", false), ("waddamburo", true)], saved: Saved.Never),
+            [("green", false), ("waddamburo", true)], saved: Saved.Mode),
         new("renderer", static (s, value, line) => s with
         {
             Renderer = value.ToLowerInvariant() switch
