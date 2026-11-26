@@ -40,12 +40,13 @@ catalogue, saved beside the scores) and `TjaDanCourses` (the player's own `Dani`
   `ArcadeSettings.WaddamburoFrontend`. Once its flow differs more than that, it gets its own flow table.
 - Screen hosts are the frontend's own: `GreenScreenHosts` (Skins.Green) for the game's movies, `WaddamburoScreenHosts`
   (App/Frontends) for ours: no bindings, only the engine's sessions (entry, Song Select) and when a screen ends.
-- Waddamburo's entry has no home player setup yet (accounts): its players are guests until it gets one.
+- Waddamburo's "who's playing?" (`AccountPicker`) is a list over the entry: Guest and each stored TaikOnline account
+  with its avatar; the left drum only, no signing in of a new account (that stays the home player setup's).
 - Green's compositions still live in Game's `FlowScenes`; `GreenScreens` (Skins.Green) wraps them.
 - Waddamburo's gameplay screen has the gameplay roles only (lane, gauge, every note kind, rolls, balloons, hit
   effects, combo, song info, name board) at the layout's places, none of Green's scenery
   (`GameplaySceneComposition.IsGreenDecoration`), no song skins. Its roles and places are still the game's gameplay
   contract (Green's composition filtered) until our movies need their own.
 - `GreenSounds` is still named in `GameShell` (composition) and by the home resume countdown.
-- The system indicators (`SystemIndicators`, credits/network/time) and the home overlays are still Skins.Green types,
-  leaving our movies to the provider.
+- The home pause menu's resume countdown (`ResumeCountdown`) is still a Skins.Green type; it drives our time_counter
+  through the provider (timer.left), its count cues are Green's (silent on Waddamburo's frontend).

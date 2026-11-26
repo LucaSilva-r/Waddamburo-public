@@ -199,6 +199,9 @@ internal sealed partial class GameShell : IDisposable
     // Home: the "who's playing?" screen before the entry (stored accounts, guests, friends, in-game login).
     private readonly PlayerSetupController? _playerSetup;
 
+    // Waddamburo's frontend: who plays (Guest or a stored account), as a session starts.
+    private readonly Frontends.AccountPicker? _accountPicker;
+
     private readonly PairingPill _pill;
     private readonly PerformanceOverlay _performance;
     private bool _performanceSetting;
@@ -896,7 +899,11 @@ internal sealed partial class GameShell : IDisposable
             Hosts = createHosts(flow, snapshot, diagnosticResult, song => song.Key.Source == SongSourceKind.Stock
                 ? support.GetValueOrDefault(song.Key.StableId) ?? [0, 0, 0, 0]
                 : [.. Enumerable.Range(0, 4).Select(course => course > 0 && song.Charts.Any(chart => chart.Course == (TaikoCourse)course) ? 3 : 0)]);
-            if (Arcade.Home && Options.Accounts is { } setupBook)
+            if (Arcade.WaddamburoFrontend)
+                _accountPicker = new Frontends.AccountPicker(Application, options.FontPath, Options.Accounts,
+                    Path.Combine(Path.GetDirectoryName(options.ScoresPath) ?? ".", "avatars"),
+                    Online.UpdateGate.Server(Arcade) is { } avatarServer ? Waddamburo.Services.Scores.ScoreClient.CreateHttp(avatarServer, Arcade.ServerInsecure) : null);
+            else if (Arcade.Home && Options.Accounts is { } setupBook)
                 _playerSetup = new PlayerSetupController(this, setupBook, options.FontPath, options.ServiceFontPath ?? options.FontPath, options.ScoresPath);
             // The settings file sits in USRDIR/waddamburo, the caches under it unless cache_folder moves them.
             var cacheRoot = options.ArcadePath is { } settings
@@ -1413,8 +1420,25 @@ internal sealed partial class GameShell : IDisposable
     {
         if (!Arcade.WaddamburoFrontend)
             return FlowScenes.Logo;
-        Credit.EntryTrigger = 3; // nobody joined: the entry waits for a drum
+        Credit.EntryTrigger = 3; // nobody joined: the entry waits for the picker's player
+        _accountPicker?.Open(seat);
         return FlowScenes.Entry;
+    }
+
+    // The picker's player takes the left drum; the entry starts again with them joined (its mode select next).
+    private void seat(Waddamburo.Game.Scores.ScoreProfile? profile)
+    {
+        Players.Reset();
+        Credit.SongsPlayed = 0;
+        TaikoGuest.Profiles[0] = profile;
+        if (profile is not null)
+        {
+            Sync.RefreshBests(profile);
+            RefreshPlayer(0);
+        }
+        Console.WriteLine($"Account picker: {(profile is null ? "guest" : $"{profile.Name} (baid {profile.Baid})")}.");
+        Credit.EntryTrigger = 0;
+        Scenes.Show(FlowScenes.Entry);
     }
 
     /// <summary>
@@ -1513,6 +1537,7 @@ internal sealed partial class GameShell : IDisposable
         }
         Editor?.Close();
         _playerSetup?.Dispose();
+        _accountPicker?.Dispose();
         _art?.Dispose();
         Painter.Dispose();
         Rankings?.Dispose();

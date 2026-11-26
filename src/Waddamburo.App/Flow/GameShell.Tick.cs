@@ -108,6 +108,9 @@ internal sealed partial class GameShell
         // Home: the player setup runs inside the entry and takes the drums; the movie only animates.
         if (_playerSetup is not null && _playerSetup.Tick(ref keys))
             return;
+        // Waddamburo's account picker takes the drums while it is up; the entry under it waits.
+        if (_accountPicker?.Tick(keys) == true)
+            keys = SdlKeyboardSnapshot.Empty;
         if (_home.QuickRestart(held))
             return;
         if (!Scenes.OnLane)

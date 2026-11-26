@@ -141,6 +141,8 @@ internal sealed partial class GameShell
             quads.AddRange(_reviewBar.Quads(review, _gameplay.Training, _gameplay.AutoplayReview && _gameplay.Training is null));
         if (_playerSetup is not null)
             quads.AddRange(_playerSetup.Quads(interpolation));
+        if (_accountPicker is not null)
+            quads.AddRange(_accountPicker.Quads());
         quads.AddRange(indicatorQuads(false));
         quads.AddRange(Overlay.Quads(interpolation, ResolveSurface));
         // The online lobby shades (frosts) Song Select, all but its Don-chans and name boards: those come again over it.

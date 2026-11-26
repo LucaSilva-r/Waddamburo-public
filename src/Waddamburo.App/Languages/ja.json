@@ -591,6 +591,7 @@
   "service.switch_to_arcade": "アーケードモードに切り替え",
   "service.switch_to_home": "ホームモードに切り替え",
   "service.switch.confirm": "ゲームが再起動します。切り替えますか？",
+  "picker.title": "だれがあそぶ？",
   "service.frontend": "フロントエンド",
   "service.frontend.green": "太鼓の達人 グリーン",
   "service.frontend.waddamburo": "WADDAMBURO",

@@ -591,6 +591,7 @@
   "service.switch_to_arcade": "SWITCH TO ARCADE MODE",
   "service.switch_to_home": "SWITCH TO HOME MODE",
   "service.switch.confirm": "THE GAME WILL RESTART. SWITCH NOW?",
+  "picker.title": "WHO IS PLAYING?",
   "service.frontend": "FRONTEND",
   "service.frontend.green": "TAIKO GREEN",
   "service.frontend.waddamburo": "WADDAMBURO",
