@@ -8,10 +8,43 @@
         "resolved": "10.0.15",
         "contentHash": "u0WnRcZgBZYHlVFpbe/3Adpmb9rmNJ8/fmEwqc/xjB7fFppq+gfaLJd3Sdaw+J02zV0eP/T9dneQ3Dv5jWw6bw=="
       },
+      "ExCSS": {
+        "type": "Transitive",
+        "resolved": "4.3.1",
+        "contentHash": "A8UtcghHQlWxPJhJF5bsfEYO7068JHGTuJ7tzyyMjd5fE/N/xY1cVOUhzuLLFwMOCJVnM4mqSQc93W9fGfZ1kA=="
+      },
       "Fody": {
         "type": "Transitive",
         "resolved": "6.9.1",
         "contentHash": "Y33IOTstqsDaq2+1Cweu4s/V2iAAaRY6bPIANCre3Wlx9REc+ONyYmUdCc67Z12dy0N2Haq3t7QP4ANndsu/HA=="
+      },
+      "HarfBuzzSharp": {
+        "type": "Transitive",
+        "resolved": "14.2.0",
+        "contentHash": "B9zczdZELTKyJoNZXJLTgq+Ho2Z6H8oFcFbelvmHixkA8/2sH9acE589KvOa951g1aN262pOU5ThhZxw33bGSg==",
+        "dependencies": {
+          "HarfBuzzSharp.NativeAssets.Android": "14.2.0"
+        }
+      },
+      "HarfBuzzSharp.NativeAssets.Android": {
+        "type": "Transitive",
+        "resolved": "14.2.0",
+        "contentHash": "gUV1lfwosWK6SJ1+CqgxqtFze97wLDJV0pucb07R2p46vkDljBxFArWvyAr/E5+vTLDpLLdPJhVkBF/z3zv/0w=="
+      },
+      "HarfBuzzSharp.NativeAssets.Linux": {
+        "type": "Transitive",
+        "resolved": "14.2.0",
+        "contentHash": "KgdkGoqCoRPAdekskR9asBbY5tzfqRcYQ0/+hz8rvPMAmbQqX1g57xr6rbGUyIVY5j5ioExZWUZ10QocUVpgwQ=="
+      },
+      "HarfBuzzSharp.NativeAssets.macOS": {
+        "type": "Transitive",
+        "resolved": "14.2.0",
+        "contentHash": "v2AfGa0Q0aNRz7glbRTvkrR8w2pipUpyRHDNjOCPXnnHE3pjY0ycTY0L7dL/AByd53aQ0AGPwIEP1H9hZPPywg=="
+      },
+      "HarfBuzzSharp.NativeAssets.Win32": {
+        "type": "Transitive",
+        "resolved": "14.2.0",
+        "contentHash": "NCqaG3bJDl66JdmHeyOpRUf4eiGVwu8OSxGv6ukofBiukVyUpWj01btr/telMQLQ+XuQ83iDpi6NRDFoRIcojA=="
       },
       "Microsoft.Data.Sqlite.Core": {
         "type": "Transitive",
@@ -30,6 +63,16 @@
         "type": "Transitive",
         "resolved": "2.2.0",
         "contentHash": "fK/76UmpC0FXBlGDFVPLJHQlDLYnGC+XY3eoDgCgbtrhi0vzbXDQ3n/IYHhqSKqXQfGw/u04A1drWs7rFVkRjw=="
+      },
+      "ShimSkiaSharp": {
+        "type": "Transitive",
+        "resolved": "5.2.3",
+        "contentHash": "BBmIvh70WduWEF8C9HeU12LmHkg6+h2SRwJzey/tmztRk4ttAxhyu9eAD/jlsNGlqquYpoCQyyTx+QynavyfVA=="
+      },
+      "SkiaSharp.NativeAssets.Android": {
+        "type": "Transitive",
+        "resolved": "4.152.0",
+        "contentHash": "tnu0Y+ySAfgHdByvvm80xsGFD91XbCdA8pA8Ev+NeMTNJjeb94fGSLYNgkjEcOHhIBNvqtUM7vb0BGpNlU5GTw=="
       },
       "SQLitePCLRaw.bundle_e_sqlite3": {
         "type": "Transitive",
@@ -58,19 +101,61 @@
           "SQLitePCLRaw.core": "2.1.12"
         }
       },
+      "Svg.Animation": {
+        "type": "Transitive",
+        "resolved": "5.2.3",
+        "contentHash": "mlbLFKzSVL2wMvDxnlMKLbdbbCbZBjDwSgmCZ7dHE4l0DtVUX5kHixngZlUP8AuBoikzqsXZt4+IXJhbeJjAdA==",
+        "dependencies": {
+          "ShimSkiaSharp": "5.2.3",
+          "SkiaSharp": "4.148.0",
+          "Svg.Custom": "5.2.3",
+          "Svg.Model": "5.2.3"
+        }
+      },
+      "Svg.Custom": {
+        "type": "Transitive",
+        "resolved": "5.2.3",
+        "contentHash": "epicuKTb55l7Y6c3f9pdP0RkoifVieS9sWvA9HsppTfYyV7RFZg89+fUA9TTPcuccqi0GUGwiPEi+9b881zlDw==",
+        "dependencies": {
+          "ExCSS": "4.3.1"
+        }
+      },
+      "Svg.Model": {
+        "type": "Transitive",
+        "resolved": "5.2.3",
+        "contentHash": "iZInP4/48rIkpFxVJNMmxDDjIBaUcGOHrzancQ3cmneHXrtH4MYkm6bzggL9hCiS2dxfLhk3JCiERoGf8j0MlA==",
+        "dependencies": {
+          "ShimSkiaSharp": "5.2.3",
+          "Svg.Custom": "5.2.3"
+        }
+      },
+      "Svg.SceneGraph": {
+        "type": "Transitive",
+        "resolved": "5.2.3",
+        "contentHash": "t9HrB1n499YCvziq+sdapDjMvgY7iSzyldEDalWnoZCP3cncu92gEktBqzhUgo8A+r9mfow2TNf0u5jgV5FvlQ==",
+        "dependencies": {
+          "ShimSkiaSharp": "5.2.3",
+          "Svg.Custom": "5.2.3",
+          "Svg.Model": "5.2.3"
+        }
+      },
       "waddamburo.app": {
         "type": "Project",
         "dependencies": {
           "QRCoder": "[1.6.0, )",
           "SharpCompress": "[0.50.4, )",
+          "SkiaSharp.NativeAssets.Linux.NoDependencies": "[4.152.0, )",
+          "Svg.Skia": "[5.2.3, )",
           "Waddamburo.Catalog": "[0.0.0-dev, )",
           "Waddamburo.Editor": "[0.0.0-dev, )",
+          "Waddamburo.Features": "[0.0.0-dev, )",
           "Waddamburo.Game": "[0.0.0-dev, )",
           "Waddamburo.Platform.Sdl": "[0.0.0-dev, )",
           "Waddamburo.Providers.OsuLazer": "[0.0.0-dev, )",
           "Waddamburo.Providers.Stock": "[0.0.0-dev, )",
           "Waddamburo.Providers.Tja": "[0.0.0-dev, )",
           "Waddamburo.Services": "[0.0.0-dev, )",
+          "Waddamburo.Skins.Green": "[0.0.0-dev, )",
           "Waddamburo.Upscale": "[0.0.0-dev, )"
         }
       },
@@ -87,6 +172,13 @@
           "Waddamburo.Game": "[0.0.0-dev, )",
           "Waddamburo.Lumen": "[0.0.0-dev, )",
           "Waddamburo.Platform.Sdl": "[0.0.0-dev, )"
+        }
+      },
+      "waddamburo.features": {
+        "type": "Project",
+        "dependencies": {
+          "Waddamburo.Game": "[0.0.0-dev, )",
+          "Waddamburo.Services": "[0.0.0-dev, )"
         }
       },
       "waddamburo.formats": {
@@ -141,6 +233,14 @@
           "Waddamburo.Game": "[0.0.0-dev, )"
         }
       },
+      "waddamburo.skins.green": {
+        "type": "Project",
+        "dependencies": {
+          "Waddamburo.Features": "[0.0.0-dev, )",
+          "Waddamburo.Game": "[0.0.0-dev, )",
+          "Waddamburo.Platform.Sdl": "[0.0.0-dev, )"
+        }
+      },
       "waddamburo.upscale": {
         "type": "Project"
       },
@@ -189,9 +289,66 @@
         "requested": "[0.50.4, )",
         "resolved": "0.50.4",
         "contentHash": "/hxjUR7DEX6mky8/LQXyrnrKioOL6D6veAID1EZpro+q4s02x5dHEYBV3qjEN6lDYYilDoQQ76BcmQj+lRx51w=="
+      },
+      "SkiaSharp": {
+        "type": "CentralTransitive",
+        "requested": "[4.152.0, )",
+        "resolved": "4.152.0",
+        "contentHash": "TfYpxUV/Ihe5WyGeddJROZA2RhfGaSEKKNDHhREUVCVihtTlcavHQEi29Q0Mtn37AYXAf7EbC+StVPmWk63tkQ==",
+        "dependencies": {
+          "SkiaSharp.NativeAssets.Android": "4.152.0"
+        }
+      },
+      "SkiaSharp.NativeAssets.Linux.NoDependencies": {
+        "type": "CentralTransitive",
+        "requested": "[4.152.0, )",
+        "resolved": "4.152.0",
+        "contentHash": "QKTenuh6rbHzX8kJSwPnB2DkLVayNMqsLXfC9P1BQEA4UviA2wOTIUQoeNtRzYHw+Uf6tn4zmdrEH6IuyJQUPg=="
+      },
+      "Svg.Skia": {
+        "type": "CentralTransitive",
+        "requested": "[5.2.3, )",
+        "resolved": "5.2.3",
+        "contentHash": "slGSy5Aje/30Ou2a5aezbGGWLZspBIBYlEzqgtaIVex4FUYAR3mxaYrvMZj1tHy+ESDFCGY7+2FjF6UzqGUZew==",
+        "dependencies": {
+          "HarfBuzzSharp": "14.2.0",
+          "HarfBuzzSharp.NativeAssets.Linux": "14.2.0",
+          "HarfBuzzSharp.NativeAssets.Win32": "14.2.0",
+          "HarfBuzzSharp.NativeAssets.macOS": "14.2.0",
+          "SkiaSharp": "4.148.0",
+          "Svg.Animation": "5.2.3",
+          "Svg.Custom": "5.2.3",
+          "Svg.Model": "5.2.3",
+          "Svg.SceneGraph": "5.2.3"
+        }
       }
     },
     "net10.0-android36.0/android-arm64": {
+      "HarfBuzzSharp.NativeAssets.Android": {
+        "type": "Transitive",
+        "resolved": "14.2.0",
+        "contentHash": "gUV1lfwosWK6SJ1+CqgxqtFze97wLDJV0pucb07R2p46vkDljBxFArWvyAr/E5+vTLDpLLdPJhVkBF/z3zv/0w=="
+      },
+      "HarfBuzzSharp.NativeAssets.Linux": {
+        "type": "Transitive",
+        "resolved": "14.2.0",
+        "contentHash": "KgdkGoqCoRPAdekskR9asBbY5tzfqRcYQ0/+hz8rvPMAmbQqX1g57xr6rbGUyIVY5j5ioExZWUZ10QocUVpgwQ=="
+      },
+      "HarfBuzzSharp.NativeAssets.macOS": {
+        "type": "Transitive",
+        "resolved": "14.2.0",
+        "contentHash": "v2AfGa0Q0aNRz7glbRTvkrR8w2pipUpyRHDNjOCPXnnHE3pjY0ycTY0L7dL/AByd53aQ0AGPwIEP1H9hZPPywg=="
+      },
+      "HarfBuzzSharp.NativeAssets.Win32": {
+        "type": "Transitive",
+        "resolved": "14.2.0",
+        "contentHash": "NCqaG3bJDl66JdmHeyOpRUf4eiGVwu8OSxGv6ukofBiukVyUpWj01btr/telMQLQ+XuQ83iDpi6NRDFoRIcojA=="
+      },
+      "SkiaSharp.NativeAssets.Android": {
+        "type": "Transitive",
+        "resolved": "4.152.0",
+        "contentHash": "tnu0Y+ySAfgHdByvvm80xsGFD91XbCdA8pA8Ev+NeMTNJjeb94fGSLYNgkjEcOHhIBNvqtUM7vb0BGpNlU5GTw=="
+      },
       "ImGui.NET": {
         "type": "CentralTransitive",
         "requested": "[1.91.6.1, )",
@@ -214,9 +371,40 @@
           "MongoDB.Bson": "2.21.0",
           "Remotion.Linq": "2.2.0"
         }
+      },
+      "SkiaSharp.NativeAssets.Linux.NoDependencies": {
+        "type": "CentralTransitive",
+        "requested": "[4.152.0, )",
+        "resolved": "4.152.0",
+        "contentHash": "QKTenuh6rbHzX8kJSwPnB2DkLVayNMqsLXfC9P1BQEA4UviA2wOTIUQoeNtRzYHw+Uf6tn4zmdrEH6IuyJQUPg=="
       }
     },
     "net10.0-android36.0/android-x64": {
+      "HarfBuzzSharp.NativeAssets.Android": {
+        "type": "Transitive",
+        "resolved": "14.2.0",
+        "contentHash": "gUV1lfwosWK6SJ1+CqgxqtFze97wLDJV0pucb07R2p46vkDljBxFArWvyAr/E5+vTLDpLLdPJhVkBF/z3zv/0w=="
+      },
+      "HarfBuzzSharp.NativeAssets.Linux": {
+        "type": "Transitive",
+        "resolved": "14.2.0",
+        "contentHash": "KgdkGoqCoRPAdekskR9asBbY5tzfqRcYQ0/+hz8rvPMAmbQqX1g57xr6rbGUyIVY5j5ioExZWUZ10QocUVpgwQ=="
+      },
+      "HarfBuzzSharp.NativeAssets.macOS": {
+        "type": "Transitive",
+        "resolved": "14.2.0",
+        "contentHash": "v2AfGa0Q0aNRz7glbRTvkrR8w2pipUpyRHDNjOCPXnnHE3pjY0ycTY0L7dL/AByd53aQ0AGPwIEP1H9hZPPywg=="
+      },
+      "HarfBuzzSharp.NativeAssets.Win32": {
+        "type": "Transitive",
+        "resolved": "14.2.0",
+        "contentHash": "NCqaG3bJDl66JdmHeyOpRUf4eiGVwu8OSxGv6ukofBiukVyUpWj01btr/telMQLQ+XuQ83iDpi6NRDFoRIcojA=="
+      },
+      "SkiaSharp.NativeAssets.Android": {
+        "type": "Transitive",
+        "resolved": "4.152.0",
+        "contentHash": "tnu0Y+ySAfgHdByvvm80xsGFD91XbCdA8pA8Ev+NeMTNJjeb94fGSLYNgkjEcOHhIBNvqtUM7vb0BGpNlU5GTw=="
+      },
       "ImGui.NET": {
         "type": "CentralTransitive",
         "requested": "[1.91.6.1, )",
@@ -239,6 +427,12 @@
           "MongoDB.Bson": "2.21.0",
           "Remotion.Linq": "2.2.0"
         }
+      },
+      "SkiaSharp.NativeAssets.Linux.NoDependencies": {
+        "type": "CentralTransitive",
+        "requested": "[4.152.0, )",
+        "resolved": "4.152.0",
+        "contentHash": "QKTenuh6rbHzX8kJSwPnB2DkLVayNMqsLXfC9P1BQEA4UviA2wOTIUQoeNtRzYHw+Uf6tn4zmdrEH6IuyJQUPg=="
       }
     }
   }
