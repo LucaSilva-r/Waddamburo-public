@@ -61,9 +61,9 @@ internal sealed partial class GameplayFlow
             // it plays the frozen online tuning. Local guests may use the installation's.
             _uploads = Flow.AiSession is not null
                 || TaikoGuest.Profiles[(int)players[0].Player] is { } signedIn && signedIn.Baid != ScoreProfile.LocalGuestBaid;
-            _prior = Flow.AiSession is { } session ? session.Timing : progress(players[0].Player).Timing;
+            _prior = Flow.AiSession is { } session ? session.Timing : Shell.AiBattle.Standing((int)players[0].Player).Timing;
             var simulation = new AiBattleSimulation(Play.Charts[0], players[0].Course, Play.Seed, _prior,
-                _uploads ? AiBattleSimulation.OnlineLevel : Shell.GhostLevels.Count > 0 ? Shell.GhostLevels[0] : null);
+                _uploads ? AiBattleSimulation.OnlineLevel : Shell.AiBattle.Levels.Count > 0 ? Shell.AiBattle.Levels[0] : null);
             Play.Lanes.AiBot = new AiDrummer(simulation, () => Shell.Gameplay.Replays[0].Inputs);
             battle.Simulation = simulation;
             Shell.Gameplay.FollowBranch(1, 0);
@@ -110,7 +110,7 @@ internal sealed partial class GameplayFlow
 
         public override bool ResultsCutIn => true;
 
-        public override SceneDefinition? Results => Shell.Credit.AiOutcome is not null ? FlowScenes.AiResults : null;
+        public override SceneDefinition? Results => Shell.AiBattle.Outcome is not null ? FlowScenes.AiResults : null;
 
         // The player's lane: its battle, and the rank points it earned on the standing before it.
         public override Waddamburo.Services.Scores.AiBattlePlay? Battle(int lane, ScoreProfile profile, ScoreStore scores, string sha,
@@ -118,31 +118,14 @@ internal sealed partial class GameplayFlow
         {
             if (lane != 0 || Play.Lanes.Battle?.Outcome is not { Sections.Count: > 0 } outcome)
                 return null;
-            var ranks = _uploads ? AiBattleRanks.Green : Shell.AiRanks;
-            var session = Flow.AiSession;
-            var before = session is { } setup ? new AiProgress(setup.Points, setup.Wins, setup.Timing) : scores.AiProgress(profile.Baid);
-            // Offline, a signed-in player's battle counts provisionally; the server verifies it on upload.
-            var ranked = session?.Ranked ?? _uploads;
-            var award = ranks.Award(before.Points, player.Course, played.Level ?? 0, outcome.Won, cleared,
-                usual: !_intermediate && ranked, firstWin: !scores.HasAiWin(profile.Baid, sha));
-            var battle = new Waddamburo.Services.Scores.AiBattlePlay(outcome.Won, string.Concat(outcome.Sections.Select(static section => section.Won ? 'W' : 'L')),
-                _supportLevel, award.Points)
+            var battle = Shell.AiBattle.Record(outcome, profile, scores, sha, cleared, player.Course, played.Level ?? 0, _uploads,
+                usual: !_intermediate, Flow.AiSession, _supportLevel) with
             {
-                SessionId = session?.Id, Ranked = ranked,
                 BaseSha256 = ChartHash.Compute(Flow._sourceCharts[lane], player.Course), Prior = _prior,
-                SectionCounts = Waddamburo.Game.Gameplay.AiSectionCounts.Format(outcome.Sections.Select(static section => section.Player)),
             };
-            Shell.Credit.AiSectionBest = scores.AiSectionBest(profile.Baid, sha);
-            var rank = ranks.RankOf(before.Points);
-            Shell.Credit.AiNumbers = new(rank, ranks.RankOf(before.Points + award.Points), ranks.PointsIntoRank(before.Points),
-                award.Points, award.FirstWin, award.HighLevel, ranks.StepSize(rank), before.Wins, AiBattleRanks.NextRewardWins(before.Wins));
-            Console.WriteLine($"AI battle saved: {(outcome.Won ? "won" : "lost")} {battle.Sections}, {award.Points} rank point(s).");
+            Console.WriteLine($"AI battle saved: {(outcome.Won ? "won" : "lost")} {battle.Sections}, {battle.Points} rank point(s).");
             return battle;
         }
 
-        /// <summary>A drum's player's AI battle standing (rank points, wins, last timing); none without a profile or store.</summary>
-        private AiProgress progress(LocalPlayerSlot slot) =>
-            (TaikoGuest.Profiles[(int)slot] ?? (Shell.Arcade.Home ? ScoreProfile.LocalGuest : null)) is { } profile
-                && Shell.Sync.Scores is { } scores ? scores.AiProgress(profile.Baid) : AiProgress.None;
     }
 }

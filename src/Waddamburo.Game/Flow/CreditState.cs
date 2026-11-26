@@ -113,15 +113,6 @@ public class CreditState
     /// <summary>Waiwai's numbers for its results screen, from the finished song.</summary>
     public Func<WaiwaiOutcome?>? WaiwaiOutcome { get; set; }
 
-    /// <summary>The AI battle song the next results show; null: not a battle.</summary>
-    public AiBattleOutcome? AiOutcome { get; set; }
-
-    /// <summary>The AI battle results' standing (rank, points, wins before and after the battle).</summary>
-    public AiResultNumbers? AiNumbers { get; set; }
-
-    /// <summary>The player's per-section bests before the battle the results show; null: a first play.</summary>
-    public IReadOnlyList<AiSectionCounts>? AiSectionBest { get; set; }
-
     /// <summary>The course play the next results show; null: a song's.</summary>
     public DanCourseResult? DanResult { get; set; }
 }

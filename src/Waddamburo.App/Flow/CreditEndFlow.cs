@@ -237,7 +237,7 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
             Shell.Hosts.Poll(scene);
             // ponytail: a course's results take a song's delay until a trace times theirs.
             if (Shell.Tick - _resultStartTick >= MusicDelayTicks) // StartMusic keeps a playing loop
-                Shell.Sounds?.StartScreenMusic(Shell.Credit.AiOutcome is not null ? "music.result.ai"
+                Shell.Sounds?.StartScreenMusic(Shell.AiBattle.Outcome is not null ? "music.result.ai"
                     : Shell.Active.Layers is [{ Definition.HostId: "waiwai-result" }, ..] ? "music.result.waiwai" : "music.result");
             if (Shell.Scenes.FinishFade()) return;
             // The movie ends itself (15-21 s traced by closing message), or ours asks.
@@ -256,7 +256,7 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
                     TaikoCreditNext.Revival => FlowScenes.Retry,
                     TaikoCreditNext.NextSong => FlowScenes.SongSelect,
                     // An AI battle credit says goodbye with the player's rank and progress first (traced remind).
-                    _ when Shell.Credit.AiOutcome is not null && !Shell.Arcade.Home => FlowScenes.AiRemind,
+                    _ when Shell.AiBattle.Outcome is not null && !Shell.Arcade.Home => FlowScenes.AiRemind,
                     _ => gameOver(),
                 });
         }

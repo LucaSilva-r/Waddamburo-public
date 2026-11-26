@@ -275,6 +275,9 @@ internal sealed partial class GameShell : IDisposable
     /// <summary>Don Medals and rewards: the credit end's medal screen, home's "New rewards".</summary>
     public Waddamburo.Features.Rewards.RewardsModule Rewards => field ??= new(Credit, Sync.ServerFor, () => Sync.Scores);
 
+    /// <summary>AI battle: ranks, AI-don levels, standings, what a battle earns, the last battle's results.</summary>
+    public Waddamburo.Features.AiBattle.AiBattleModule AiBattle => field ??= new(Credit, () => Arcade.Home, () => Sync.Scores);
+
     /// <summary>What the next Song Select lists and where it starts.</summary>
     public SongSelectSetup Select { get; private set; } = null!;
 
@@ -284,18 +287,6 @@ internal sealed partial class GameShell : IDisposable
     private readonly SongLibraries _libraries;
     private readonly LumenGameSceneLoader _loader;
 
-    /// <summary>AI battle's AI-don levels (ghosttuning.xml; empty when the data has none).</summary>
-    public IReadOnlyList<Waddamburo.Game.Gameplay.GhostLevel> GhostLevels { get; } = [];
-
-    /// <summary>The AI battle player's standing (the playing drum's player; at home a guest is this PC's).</summary>
-    public Waddamburo.Services.Scores.AiProgress AiStanding() =>
-        (TaikoGuest.Profiles[Credit.PlayerSide] ?? (Arcade.Home ? Waddamburo.Game.Scores.ScoreProfile.LocalGuest : null)) is { } profile
-            && Sync.Scores is { } scores ? scores.AiProgress(profile.Baid) : Waddamburo.Services.Scores.AiProgress.None;
-
-    private bool _aiBattleInstalled = true;
-
-    /// <summary>AI battle's rank ladder (the installation's ghostinfo.xml).</summary>
-    public Waddamburo.Game.Gameplay.AiBattleRanks AiRanks { get; } = Waddamburo.Game.Gameplay.AiBattleRanks.Green;
     // The game's own art and text in the movies' native fills.
     private readonly NativeArt _art;
     private readonly AttractFlow _attract;
@@ -822,8 +813,8 @@ internal sealed partial class GameShell : IDisposable
                 squash: () => Arcade.SquashTitles, assetRoot: assetRoot);
             _pill = new PairingPill(Application, options.FontPath);
             _art = new NativeArt(Application, options.FontPath, dataRoot);
-            GhostLevels = Waddamburo.Game.Gameplay.GhostTuning.Load(dataRoot);
-            AiRanks = Waddamburo.Game.Gameplay.AiBattleRanks.Load(dataRoot);
+            AiBattle.Levels = Waddamburo.Game.Gameplay.GhostTuning.Load(dataRoot);
+            AiBattle.Ranks = Waddamburo.Game.Gameplay.AiBattleRanks.Load(dataRoot);
             var support = Waddamburo.Game.Gameplay.SupportInfo.Load(dataRoot);
             _performance = new PerformanceOverlay(Application, () => Audio)
             {
@@ -876,8 +867,8 @@ internal sealed partial class GameShell : IDisposable
             (var diagnosticResult, _diagnosticWaiwai) = diagnosticResults(options.StartScene);
 
             // A Green from before the update that added AI battle (the web archive's): the mode select leaves it out.
-            _aiBattleInstalled = Cli.GreenData.HasAiBattle(Path.GetDirectoryName(dataRoot)!);
-            if (!_aiBattleInstalled)
+            AiBattle.Installed = Cli.GreenData.HasAiBattle(Path.GetDirectoryName(dataRoot)!);
+            if (!AiBattle.Installed)
             {
                 _boot.Begin("AI BATTLE");
                 _boot.Warn(Strings.T("boot.ai_battle_missing"));
@@ -1029,6 +1020,7 @@ internal sealed partial class GameShell : IDisposable
             Credit,
             Shop,
             Rewards,
+            AiBattle,
             select.CreateSession,
             flow,
             snapshot,
@@ -1053,9 +1045,6 @@ internal sealed partial class GameShell : IDisposable
             SupportCounts = supportCounts,
             DanBests = () => TaikoGuest.Profiles[Credit.PlayerSide] is { } player && Sync.Scores is { } scores
                 ? scores.DanBests(player.Baid) : new Dictionary<string, int>(),
-            AiPanels = () => AiStanding() is var (points, wins, _)
-                ? new(AiRanks.RankOf(points), AiRanks.PointsToNextRank(points), wins, Waddamburo.Game.Gameplay.AiBattleRanks.WinsToNextReward(wins), Waddamburo.Skins.Green.AiBattlePanels.NewPlayer.Tension)
-                : Waddamburo.Skins.Green.AiBattlePanels.NewPlayer,
             ShowOni = () => Arcade.ShowOni,
             HideArcadeHud = () => HideArcadeHud,
             TimerFreeze = () => Arcade.TimerFreeze,
@@ -1070,7 +1059,6 @@ internal sealed partial class GameShell : IDisposable
             // A card given to the drum, or the account chosen for it in the home player setup.
             PlayerLook = side => TaikoGuest.Profiles[side]?.Look,
             ServerOnline = () => Sync.Health?.State == Waddamburo.App.Online.LinkState.Online,
-            AiBattleInstalled = _aiBattleInstalled,
             // Home boards show the account's public name (or Guest), drawn by the entry overlay.
             PlayerName = side => Arcade.Home ? TaikoGuest.Profiles[side]?.DisplayName ?? Strings.T("setup.guest") : TaikoGuest.Profiles[side]?.DisplayName,
             LayerLoading = host =>

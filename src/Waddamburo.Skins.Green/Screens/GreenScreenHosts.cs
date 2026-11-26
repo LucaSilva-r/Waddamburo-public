@@ -1,3 +1,4 @@
+using Waddamburo.Features.AiBattle;
 using Waddamburo.Features.Rewards;
 using Waddamburo.Features.Shop;
 using Waddamburo.Skins.Green.Art;
@@ -24,6 +25,7 @@ public sealed class GreenScreenHosts(
     CreditState credit,
     ShopModule shop,
     RewardsModule medals,
+    AiBattleModule ai,
     Func<bool, SongSelectSession> createSelectSession,
     GameFlowSession flow,
     SongCatalogSnapshot catalog,
@@ -45,7 +47,7 @@ public sealed class GreenScreenHosts(
         if (screen == FlowScenes.Result)
             // AI battle's end with its section results (their movie calls Start); result_normal, the second layer,
             // sets _global.isAllEnd once its 面でおわり exit runs. Waiwai's reports AllFinish.
-            return Credit.AiOutcome is not null
+            return ai.Outcome is not null
                 ? AiSectionResult is { } sections && (sections.Ended || sections.Played && RetryGameHostBinding.IsEnd(movies[1]))
                 : WaiwaiResult is { } waiwai ? waiwai.Ended : RetryGameHostBinding.IsEnd(movies[0]);
         if (screen == FlowScenes.AiRemind)
@@ -136,7 +138,9 @@ public sealed class GreenScreenHosts(
     public Func<int, IReadOnlyDictionary<string, TaikoCrown>?>? Crowns { get; init; }
 
     /// <summary>AI battle's song select panels: the player's rank, points to the next, wins, wins to the next reward.</summary>
-    public Func<AiBattlePanels>? AiPanels { get; init; }
+    private AiBattlePanels aiPanels() => ai.Standing() is var (points, wins, _)
+        ? new(ai.Ranks.RankOf(points), ai.Ranks.PointsToNextRank(points), wins, AiBattleRanks.WinsToNextReward(wins), AiBattlePanels.NewPlayer.Tension)
+        : AiBattlePanels.NewPlayer;
 
     /// <summary>Song select's score windows from the server (null offline): fetch a song's, and those fetched.</summary>
     public Action<SongSelectSong>? RankingWanted { get; init; }
@@ -212,7 +216,6 @@ public sealed class GreenScreenHosts(
     public Func<bool>? ServerOnline { get; init; }
 
     /// <summary>Whether Green's AI battle movies are installed (the entry's mode select offers it only then).</summary>
-    public bool AiBattleInstalled { get; init; } = true;
 
 
     /// <summary>The reward shop on stage (the medal screen or a shopping visit).</summary>
@@ -285,7 +288,7 @@ public sealed class GreenScreenHosts(
                 // Green always offers the shop (traced IsAvailableShop 1) and greys it itself for a drum without card
                 // data. Fixed for the scene: an answer that changes rebuilds the boards (the shop popped in late).
                 ShopAvailable = ServerOnline?.Invoke() == true ? static () => true : static () => false,
-                AiBattleAvailable = AiBattleInstalled,
+                AiBattleAvailable = ai.Installed,
             };
             _entryPrevious = Credit.EntryRejoined is null ? 0 : 1; // SCENE_ATTRACT / SCENE_SONGSELECT
             Credit.EntryRejoined = null;
@@ -301,7 +304,7 @@ public sealed class GreenScreenHosts(
             _parts = new IndicatorParts(IndicatorPartsScene.SongSelect, counting)
             {
                 MusicNumber = Math.Min(next, 4),
-                AiPanels = Credit.AiBattle ? AiPanels?.Invoke() ?? AiBattlePanels.NewPlayer : AiBattlePanels.NewPlayer,
+                AiPanels = Credit.AiBattle ? aiPanels() : AiBattlePanels.NewPlayer,
                 FinalStage = !arcade.Home && next >= arcade.SongsPerSession,
                 ShowCounter = HideArcadeHud?.Invoke() != true,
             };
@@ -417,7 +420,7 @@ public sealed class GreenScreenHosts(
 
     private LumenLayerHost aiRemindHost()
     {
-        var binding = AiRemind = new AiRemindBinding(AiPanels?.Invoke() ?? AiBattlePanels.NewPlayer, sounds is null ? null : sounds.Frontend.PlayCue);
+        var binding = AiRemind = new AiRemindBinding(aiPanels(), sounds is null ? null : sounds.Frontend.PlayCue);
         return new LumenLayerHost(binding, binding.Attach);
     }
 
@@ -432,9 +435,9 @@ public sealed class GreenScreenHosts(
 
     private LumenLayerHost aiSectionResultHost()
     {
-        var outcome = Credit.AiOutcome ?? throw new InvalidOperationException("AI battle results without a battle.");
-        var binding = AiSectionResult = new AiSectionResultBinding(outcome, Credit.AiNumbers ?? AiResultNumbers.NewPlayer,
-            sounds is null ? null : sounds.Frontend.PlayCue, Credit.AiSectionBest)
+        var outcome = ai.Outcome ?? throw new InvalidOperationException("AI battle results without a battle.");
+        var binding = AiSectionResult = new AiSectionResultBinding(outcome, ai.Numbers ?? AiResultNumbers.NewPlayer,
+            sounds is null ? null : sounds.Frontend.PlayCue, ai.SectionBest)
         {
             Backdrop = () => AiResultBackground,
         };
@@ -444,7 +447,7 @@ public sealed class GreenScreenHosts(
             // Ours reads the battle's results from the provider.
             if (!player.UsesProvider)
                 return;
-            var numbers = Credit.AiNumbers ?? AiResultNumbers.NewPlayer;
+            var numbers = ai.Numbers ?? AiResultNumbers.NewPlayer;
             player.Publish("result.aiWon", LumenHostValue.FromBoolean(outcome.Won));
             for (var section = 0; section < outcome.Sections.Count; section++)
                 player.PublishItem("result.aiSectionWon", section, LumenHostValue.FromBoolean(outcome.Sections[section].Won));

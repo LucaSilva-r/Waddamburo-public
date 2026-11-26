@@ -912,8 +912,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         // Results show the last saved play's bests and rankings otherwise.
         Array.Clear(Shell.Credit.Bests);
         Array.Clear(Shell.Credit.Placements);
-        Shell.Credit.AiNumbers = null;
-        Shell.Credit.AiSectionBest = null;
+        Shell.AiBattle.Forget();
         if (finished && Shell.PlayRequests.Active is { } played)
         {
             saveScore(played, remoteLane);
@@ -928,7 +927,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
             _play.Lanes.Stop();
             return;
         }
-        Shell.Credit.AiOutcome = _play.Lanes.Battle?.Outcome;
+        Shell.AiBattle.Outcome = _play.Lanes.Battle?.Outcome;
         Shell.Catalog.Replace(_mode.Results
             ?? FlowScenes.Results);
         if (!finished) _play.Charts = [];
