@@ -1021,12 +1021,15 @@ internal sealed partial class GameShell : IDisposable
         };
 
     // The movies' hosts (the game side of every Lumen movie): what they ask the game and what it answers.
-    private Waddamburo.Skins.Green.GreenScreenHosts createHosts(GameFlowSession flow, SongCatalogSnapshot snapshot, TaikoPlayResult? diagnosticResult,
+    // The frontend's screen hosts: Green's (the game's movies, traced) or Waddamburo's (ours, on the provider).
+    private IScreenHosts createHosts(GameFlowSession flow, SongCatalogSnapshot snapshot, TaikoPlayResult? diagnosticResult,
         Func<SongDescriptor, int[]> supportCounts)
     {
         var select = Select = createSelect(snapshot);
         var rankings = Rankings = Sync.Online ? new SongRankings(Sync.RankingClient, ChartHashes) : null;
-        return new(
+        if (Arcade.WaddamburoFrontend)
+            return new Frontends.WaddamburoScreenHosts(Credit, select.CreateSession, Players.Join, () => Options.Countdown && !Arcade.TimerFreeze);
+        return new Waddamburo.Skins.Green.GreenScreenHosts(
             Credit,
             Shop,
             Rewards,

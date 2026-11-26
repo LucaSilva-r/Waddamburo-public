@@ -38,10 +38,14 @@ catalogue, saved beside the scores) and `TjaDanCourses` (the player's own `Dani`
 
 - The flows (`App/Flow`) are still shared: Waddamburo's frontend is Green's flow with its differences switched on
   `ArcadeSettings.WaddamburoFrontend`. Once its flow differs more than that, it gets its own flow table.
-- Screen hosts are still `GreenScreenHosts` for both frontends (they leave our movies to the provider).
+- Screen hosts are the frontend's own: `GreenScreenHosts` (Skins.Green) for the game's movies, `WaddamburoScreenHosts`
+  (App/Frontends) for ours: no bindings, only the engine's sessions (entry, Song Select) and when a screen ends.
+- Waddamburo's entry has no home player setup yet (accounts): its players are guests until it gets one.
 - Green's compositions still live in Game's `FlowScenes`; `GreenScreens` (Skins.Green) wraps them.
 - Waddamburo's gameplay screen has the gameplay roles only (lane, gauge, every note kind, rolls, balloons, hit
   effects, combo, song info, name board) at the layout's places, none of Green's scenery
   (`GameplaySceneComposition.IsGreenDecoration`), no song skins. Its roles and places are still the game's gameplay
   contract (Green's composition filtered) until our movies need their own.
 - `GreenSounds` is still named in `GameShell` (composition) and by the home resume countdown.
+- The system indicators (`SystemIndicators`, credits/network/time) and the home overlays are still Skins.Green types,
+  leaving our movies to the provider.
