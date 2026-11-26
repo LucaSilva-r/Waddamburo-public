@@ -1,0 +1,44 @@
+// A synchro note (Waiwai's, and 太鼓の達人Wii's sparkling notes): the note with a glow ring. Placeholder look.
+{
+  "format": 2,
+  "frameRate": 60,
+  "root": "note",
+  "textures": {
+    "note": "textures/note.svg"
+  },
+  "shapes": {
+    "face": {
+      "texture": "note",
+      "rect": [
+        -64,
+        -64,
+        128,
+        128
+      ]
+    }
+  },
+  "sprites": {
+    "note": {
+      "frames": 90,
+      "labels": {
+        "level01": 0,
+        "level02": 10,
+        "level03": 50,
+        "level04": 70
+      },
+      "scripts": {
+        "0": "scripts/main.as"
+      },
+      "layers": [
+        {
+          "character": "face",
+          "keys": [
+            {
+              "frame": 0
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

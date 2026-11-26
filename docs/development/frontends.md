@@ -57,6 +57,6 @@ catalogue, saved beside the scores) and `TjaDanCourses` (the player's own `Dani`
 
 - The home pause menu's resume countdown (`ResumeCountdown`) is still a Skins.Green type; it drives our time_counter
   through the provider (timer.left), its count cues are Green's (silent on Waddamburo's frontend).
-- Waddamburo's own art for the placeholder slots: dan shutter, balloon, kusudama, roll texts, synchro notes.
+- Waddamburo's art: every slot has a package of ours now, most with placeholder looks (boxes, plain text).
 - Waiwai, revival and tutorials stay Green's (Waddamburo has none of them yet).
 - Android: Skins.Green brings Svg.Skia (no natives there); the iOS lock file is stale.
