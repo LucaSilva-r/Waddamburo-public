@@ -55,9 +55,10 @@ catalogue, saved beside the scores) and `TjaDanCourses` (the player's own `Dani`
 
 ## Open
 
-- The home pause menu's resume countdown (`ResumeCountdown`) is still a Skins.Green type; it drives our time_counter
-  through the provider (timer.left), its count cues are Green's (silent on Waddamburo's frontend).
-- Waddamburo's art: every slot has a package of ours now, most with placeholder looks (boxes, plain text).
+- The resume countdown (`App/Home/ResumeCountdown`) is shared: Green's timer through its callbacks with Green's count
+  cues, ours through timer.left, silent (Waddamburo has no sounds of its own yet).
+- Waddamburo's art: every slot has a package of ours now, most with placeholder looks (boxes, plain text). Real art
+  waits for the Lumen editor to be finished, so packages can be drawn rather than hand-written.
 - Waiwai, revival and tutorials stay Green's (Waddamburo has none of them yet).
 - Android builds (JDK 21) with Svg.Skia's natives in the APK (arm64, x86_64), not yet run on a phone; the iOS lock
   file is stale (needs the iOS workload, on the Mac).

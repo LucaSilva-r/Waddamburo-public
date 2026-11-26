@@ -2,20 +2,18 @@ using Waddamburo.Game.Flow;
 using Waddamburo.Game.Scenes;
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
-using Waddamburo.Skins.Green.Sound;
 
-namespace Waddamburo.Skins.Green.Screens;
+namespace Waddamburo.App.Home;
 
 /// <summary>
-/// Home: Resume in the pause menu counts down on the game's own timer movie (time_counter, as the
-/// entry shows it) before the song goes on, so the player is ready (as osu! does). It ticks as the
-/// game's menu timers do (<see cref="CountdownCues"/>).
+/// Home, both frontends: Resume in the pause menu counts down on the timer movie (time_counter, as the entry shows
+/// it) before the song goes on, so the player is ready (as osu! does). Green's timer is driven by its callbacks, ours
+/// reads timer.left; the caller gets each whole second to sound it as its frontend does.
 /// </summary>
-public sealed class ResumeCountdown
+internal sealed class ResumeCountdown
 {
     public const int Seconds = 3;
     private int _ticksLeft;
-    private readonly CountdownCues _cues = new();
 
     public ResumeCountdown(LumenGameSceneInstance scene)
     {
@@ -30,7 +28,7 @@ public sealed class ResumeCountdown
 
     public static SceneDefinition Definition(SceneId id) => new(SceneDefinition.CurrentVersion, id, [
         new SceneLayerDefinition("indicator/packeddata.ddp", "time_counter/time_counter.lm", LumenMatrix.Identity,
-            SystemIndicators.HostId),
+            LayerRoles.SystemIndicators),
     ]);
 
     public LumenGameSceneInstance Scene { get; }
@@ -42,8 +40,6 @@ public sealed class ResumeCountdown
     public void Start()
     {
         _ticksLeft = Seconds * 60;
-        _cues.Reset();
-        _cues.Advance(Seconds);
         if (counter.UsesProvider)
         {
             counter.Publish("timer.left", LumenHostValue.FromNumber(Seconds));
@@ -55,16 +51,15 @@ public sealed class ResumeCountdown
 
     public void Cancel() => _ticksLeft = 0;
 
-    /// <summary>One tick, playing the count's cues; true on the tick the count reaches zero.</summary>
-    public bool Advance(Action<string, int> play)
+    /// <summary>One tick, telling <paramref name="secondsLeft"/> the whole seconds left; true on the tick the count reaches zero.</summary>
+    public bool Advance(Action<int> secondsLeft)
     {
         if (_ticksLeft == 0) return false;
         counter.Advance();
         _ticksLeft--;
         if (counter.UsesProvider)
             counter.Publish("timer.left", _ticksLeft == 0 ? LumenHostValue.Undefined : LumenHostValue.FromNumber((_ticksLeft + 59) / 60));
-        foreach (var (bank, cue) in _cues.Advance((_ticksLeft + 59) / 60))
-            play(bank, cue);
+        secondsLeft((_ticksLeft + 59) / 60);
         return _ticksLeft == 0;
     }
 

@@ -69,7 +69,6 @@ public sealed class GreenSkin : ISkin
     public IEnumerable<SceneDefinition> OwnScenes =>
     [
         SystemIndicators.Definition(new SceneId("system-indicators")),
-        ResumeCountdown.Definition(new SceneId("resume-countdown")),
     ];
 
     public Func<LumenTextureContent, LumenTextureContent>? Upscaled { set => NutData.Cached = value; }

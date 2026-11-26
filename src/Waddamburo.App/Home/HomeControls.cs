@@ -7,6 +7,7 @@ using Waddamburo.Platform.Sdl.Rendering;
 using Waddamburo.App.Flow;
 using Waddamburo.App.Gameplay;
 using Waddamburo.Skins.Green.Screens;
+using Waddamburo.Skins.Green.Sound;
 
 namespace Waddamburo.App.Home;
 
@@ -32,6 +33,7 @@ internal sealed class HomeControls : IDisposable
     /// <summary>The menu's artwork, for other panels drawn the same way.</summary>
     private ResumeCountdown? _resume;
     private RenderTextureId[] _resumeTextures = [];
+    private readonly CountdownCues _resumeCues = new(); // Green's tick sounds; silent on ours (no Green sounds)
     private readonly string _assetRoot;
     private bool _focused = true;
     private bool _focusBlip;
@@ -388,7 +390,7 @@ internal sealed class HomeControls : IDisposable
         if (_resume is not { } countdown || !show && !_timerPreview) return;
         if (!show) { _timerPreview = false; countdown.Cancel(); return; }
         if (!_timerPreview || !countdown.Running) { _timerPreview = true; countdown.Start(); }
-        countdown.Advance(static (_, _) => { });
+        countdown.Advance(static _ => { });
     }
 
     // Resume's countdown: the song stays held until it ends; Escape or leaving the window pauses again.
@@ -402,7 +404,11 @@ internal sealed class HomeControls : IDisposable
             _menu.Open(gameplay: true, replayable: _gameplay.CanInstantReplay, reviewing: _gameplay.Reviewing, reportable: _gameplay.CanReport, noResume: _gameplay.InCourse,
                 inRoom: _shell.Match.InSong, layout: _gameplay.CanEditLayout);
         }
-        else if (countdown.Advance((bank, cue) => _shell.GreenSounds?.Green.Play(bank, cue, trace: false)))
+        else if (countdown.Advance(seconds =>
+                 {
+                     foreach (var (bank, cue) in _resumeCues.Advance(seconds))
+                         _shell.GreenSounds?.Green.Play(bank, cue, trace: false);
+                 }))
             resumeSong();
         return true;
     }
@@ -506,6 +512,8 @@ internal sealed class HomeControls : IDisposable
             case HomeMenuAction.Resume when active == FlowScenes.Gameplay && !_shell.Match.InSong && _resume is { } resume && !_gameplay.Reviewing
                 && !_gameplay.Demo:
                 resume.Start();
+                _resumeCues.Reset();
+                _resumeCues.Advance(ResumeCountdown.Seconds);
                 break;
             case HomeMenuAction.Resume:
                 resumeSong();
