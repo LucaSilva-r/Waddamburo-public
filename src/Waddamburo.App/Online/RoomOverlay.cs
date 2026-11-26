@@ -456,7 +456,7 @@ internal sealed class RoomOverlay(GameShell shell, OverlayPainter painter) : IIn
         // The side the player didn't join on (a host on the right drum has their partner on the left). Set before the
         // reload: it lays Song Select out for these sides as it starts.
         shell.Credit.PartnerSide = partner is null ? null : side;
-        if (shell.Indicators is { } indicators)
+        if (shell.Indicators is Waddamburo.Skins.Green.Screens.SystemIndicators indicators)
             indicators.Partner = partner is not null;
     }
 

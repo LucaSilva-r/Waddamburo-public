@@ -134,7 +134,11 @@ internal sealed partial class GameShell : IDisposable
     public GameSounds? Sounds { get; }
 
     /// <summary>The skin the game shows (Green's, from the user's install).</summary>
-    public Waddamburo.Skins.Green.GreenSkin Skin { get; } = new();
+    /// <summary>Green's skin: the game's movies' adapters, its Don-chan.</summary>
+    public Waddamburo.Skins.Green.GreenSkin GreenSkin { get; } = new();
+
+    /// <summary>The frontend's skin: Green's, or Waddamburo's (its movies read the provider; nothing to drive).</summary>
+    public Waddamburo.Game.ISkin Skin => Arcade.WaddamburoFrontend ? field ??= new Frontends.WaddamburoSkin() : GreenSkin;
 
     /// <summary>The game's screens' sound controllers (its movies ask for bank cues); null without audio.</summary>
     public GreenScreenSounds? GreenSounds { get; private set; }
@@ -320,7 +324,7 @@ internal sealed partial class GameShell : IDisposable
     public SongSelectReload Reload { get; }
     private readonly Dictionary<SceneId, FlowScene> _scenes;
     private readonly WaiwaiOutcome? _diagnosticWaiwai;
-    private SystemIndicators? _indicators;
+    private ISystemIndicators? _indicators;
     private RenderTextureId[] _indicatorTextures = [];
     private SceneId? _indicatorScene;
     private readonly InputLatches _input = new();
@@ -785,7 +789,7 @@ internal sealed partial class GameShell : IDisposable
             // Don-chan is Green's: Waddamburo's frontend has no mascot (no renderer, no model data read).
             DonRenderer = options.DonRoot is null || Arcade.WaddamburoFrontend ? null : Application.CreateDonRenderer(options.DonRoot);
             Don = DonRenderer is null ? null : new DonPresentationController(DonRenderer);
-            Skin.Don = Don;
+            GreenSkin.Don = Don;
             // Diagnostic: WADDAMBURO_DON_COSTUME=head,body,paint (or a single whole-costume id) dresses P1 at start.
             if (Don is not null && DiagnosticSwitches.DonCostume is { } costumeSetting)
             {
@@ -1286,9 +1290,11 @@ internal sealed partial class GameShell : IDisposable
         {
             Scenes.Activate();
             Console.WriteLine($"Showing {Active.Id} at launch.");
-            _indicators = new SystemIndicators((LumenGameSceneInstance)_loader
-                .LoadAsync(SystemIndicators.Definition(new SceneId("system-indicators")), CancellationToken.None)
-                .AsTask().GetAwaiter().GetResult()) { Coins = Coins, HideCoinType = () => HideArcadeHud, AiBattle = Credit.AiBattle };
+            var indicators = (LumenGameSceneInstance)_loader.LoadAsync((Arcade.WaddamburoFrontend
+                ? Frontends.WaddamburoIndicators.Definition(new SceneId("system-indicators"))
+                : SystemIndicators.Definition(new SceneId("system-indicators"))), CancellationToken.None).AsTask().GetAwaiter().GetResult();
+            _indicators = Arcade.WaddamburoFrontend ? new Frontends.WaddamburoIndicators(indicators)
+                : new SystemIndicators(indicators) { Coins = Coins, HideCoinType = () => HideArcadeHud, AiBattle = Credit.AiBattle };
             _home.LoadResume(_loader);
             _indicators.NetworkIcon = Sync.Health is { } health ? () => health.IconType : null;
             _indicatorTextures = SceneTextures.Upload(Application, _indicators.Scene);
@@ -1382,7 +1388,7 @@ internal sealed partial class GameShell : IDisposable
 
 
     /// <summary>The system indicators (panels, coins, network), once loaded.</summary>
-    public SystemIndicators? Indicators => _indicators;
+    public ISystemIndicators? Indicators => _indicators;
 
     /// <summary>The indicators restart with the next scene (it reloads under the same id).</summary>
     public void ResetIndicatorScene() => _indicatorScene = null;

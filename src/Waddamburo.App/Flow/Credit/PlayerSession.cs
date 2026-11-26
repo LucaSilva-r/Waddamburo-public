@@ -149,7 +149,8 @@ internal sealed class PlayerSession(GameShell shell)
         // Two players start in Waiwai's song select (traced); one player only has the normal one. Waddamburo's
         // frontend has no Waiwai: two players play side by side.
         shell.Credit.Waiwai = two && !shell.Credit.AiBattle && !shell.Arcade.WaddamburoFrontend;
-        if (shell.Indicators is { } indicators)
+        // Green's indicators are told who plays; ours read player.joined from the provider.
+        if (shell.Indicators is Waddamburo.Skins.Green.Screens.SystemIndicators indicators)
         {
             indicators.Side = first;
             indicators.TwoPlayers = two;

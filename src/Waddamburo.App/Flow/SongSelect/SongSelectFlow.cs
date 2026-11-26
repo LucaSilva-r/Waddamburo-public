@@ -161,7 +161,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             {
                 Shell.Credit.EntryTrigger = joining; // SCENE_TRIGGER_DON_1P / _2P
                 Shell.Credit.EntryRejoined = first;
-                if (Shell.Indicators is { } indicators)
+                if (Shell.Indicators is Waddamburo.Skins.Green.Screens.SystemIndicators indicators)
                     indicators.Rejoin = true;
             }, FlowScenes.Entry);
             return;

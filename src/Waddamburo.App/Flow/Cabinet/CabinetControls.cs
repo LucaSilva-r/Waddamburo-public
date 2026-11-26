@@ -109,7 +109,7 @@ internal sealed class CabinetControls(GameShell shell, InputLatches input, Actio
         }
         shell.Coins = settings.FreePlay ? null : new CoinBank(settings);
         shell.Hosts.Coins = shell.Coins;
-        if (shell.Indicators is { } indicators)
+        if (shell.Indicators is Waddamburo.Skins.Green.Screens.SystemIndicators indicators)
         {
             indicators.Coins = shell.Coins;
             indicators.CoinsChanged();

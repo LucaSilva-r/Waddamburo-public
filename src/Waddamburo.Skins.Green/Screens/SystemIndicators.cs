@@ -11,7 +11,7 @@ namespace Waddamburo.Skins.Green.Screens;
 /// hides them per scene (traced, research/traces/session1.md). Depths -3000 / -950: msg_coins sits
 /// under the intermission (-2000), the other two above everything.
 /// </summary>
-public sealed class SystemIndicators
+public sealed class SystemIndicators : ISystemIndicators
 {
     public const string HostId = LayerRoles.SystemIndicators;
     private static readonly string[] IndicatorMovies = ["network_icon", "msg_banapass", "msg_coins"];
