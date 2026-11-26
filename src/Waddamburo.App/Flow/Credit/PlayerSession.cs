@@ -113,7 +113,7 @@ internal sealed class PlayerSession(GameShell shell)
         if (aiBattle)
         {
             shell.Don?.SetLook(other, null);
-            shell.Don?.SetCostume(other, Waddamburo.Game.Don.DonCostume.FromWhole(AiDonCostume));
+            shell.Don?.SetCostume(other, Waddamburo.Skins.Green.Don.DonCostume.FromWhole(AiDonCostume));
         }
         else
             shell.Don?.SetLook(other, null);

@@ -1,12 +1,12 @@
-using Waddamburo.Game.Don;
+using Waddamburo.Game.Scores;
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl.Rendering;
 
-namespace Waddamburo.App.Presentation;
+namespace Waddamburo.Skins.Green.Don;
 
 /// <summary>The Lumen hosts' view of the 3D Don renderer: player slots, cameras, motions, costumes.</summary>
-internal sealed class DonPresentationController(SdlDonRenderer renderer) : IDonPresentationController
+public sealed class DonPresentationController(SdlDonRenderer renderer) : IDonPresentationController
 {
     private readonly SdlDonRenderer _renderer = renderer;
     private readonly LumenNativeSurfaceKey[] _surfaces =

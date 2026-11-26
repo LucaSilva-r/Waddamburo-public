@@ -9,7 +9,7 @@ using Waddamburo.App.Tools;
 using Waddamburo.Catalog;
 using Waddamburo.Formats.Layout;
 using Waddamburo.Game.Dan;
-using Waddamburo.Game.Don;
+using Waddamburo.Skins.Green.Don;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Gameplay;
 using Waddamburo.Game.Scenes;
@@ -134,7 +134,7 @@ internal sealed partial class GameShell : IDisposable
     public GameSounds? Sounds { get; }
 
     /// <summary>The skin the game shows (Green's, from the user's install).</summary>
-    public Waddamburo.Game.ISkin Skin { get; } = new Waddamburo.Skins.Green.GreenSkin();
+    public Waddamburo.Skins.Green.GreenSkin Skin { get; } = new();
 
     /// <summary>The game's screens' sound controllers (its movies ask for bank cues); null without audio.</summary>
     public GreenScreenSounds? GreenSounds { get; private set; }
@@ -782,8 +782,10 @@ internal sealed partial class GameShell : IDisposable
             if (ApplyControls(warn: true) is { Count: > 0 } controls)
                 _boot.Warn(controls.Count == 1 ? "Binding not understood" : $"{controls.Count} bindings not understood", controls);
             _boot.Begin("DON-CHAN");
-            DonRenderer = options.DonRoot is null ? null : Application.CreateDonRenderer(options.DonRoot);
+            // Don-chan is Green's: Waddamburo's frontend has no mascot (no renderer, no model data read).
+            DonRenderer = options.DonRoot is null || Arcade.WaddamburoFrontend ? null : Application.CreateDonRenderer(options.DonRoot);
             Don = DonRenderer is null ? null : new DonPresentationController(DonRenderer);
+            Skin.Don = Don;
             // Diagnostic: WADDAMBURO_DON_COSTUME=head,body,paint (or a single whole-costume id) dresses P1 at start.
             if (Don is not null && DiagnosticSwitches.DonCostume is { } costumeSetting)
             {
@@ -858,7 +860,7 @@ internal sealed partial class GameShell : IDisposable
                     Sounds?.Gameplay.PlayDrum(lane, action is TaikoInputAction.LeftDon or TaikoInputAction.RightDon);
                 _rumble.Hit(lane, action);
             },
-                Don, (lane, sound, combo) =>
+                (lane, sound, combo) =>
                 {
                     Sounds?.Gameplay.Play(lane, sound, combo);
                     _rumble.Sound(lane, sound);

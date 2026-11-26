@@ -13,7 +13,12 @@ namespace Waddamburo.Skins.Green;
 /// <summary>Taiko no Tatsujin Green's movies, art and Don-chan, from the user's install.</summary>
 public sealed class GreenSkin : ISkin
 {
-    public IGameplaySkin Gameplay { get; } = new GreenGameplaySkin();
+    private readonly GreenGameplaySkin _gameplay = new();
+
+    public IGameplaySkin Gameplay => _gameplay;
+
+    /// <summary>Don-chan, Green's own: its gameplay lanes stand him on don3d (null: no Don data, no character).</summary>
+    public Waddamburo.Skins.Green.Don.IDonPresentationController? Don { get => _gameplay.Don; set => _gameplay.Don = value; }
 
     public ITransitionSkin Transitions { get; } = new GreenTransitions();
 

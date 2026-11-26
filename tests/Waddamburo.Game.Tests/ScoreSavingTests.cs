@@ -512,10 +512,8 @@ public sealed class ScoreSavingTests
         var profile = JsonSerializer.Deserialize<ScoreProfile>("""
             {"baid":24,"name":"x","look":{"costume":[32,0,0,0,0],"face":"#b3dbff","body":"#dd1400","limb":"#b9b9b9"}}
             """, ScoreClient.Json)!;
-        Assert.Equal(Waddamburo.Game.Don.DonCostume.FromWhole(32), profile.Look!.ToCostume());
+        Assert.Equal([32, 0, 0, 0, 0], profile.Look!.Costume);
         Assert.Equal((0xB3DBFFu, 0xDD1400u, 0xB9B9B9u), profile.Look.Colors);
-        Assert.Equal(new Waddamburo.Game.Don.DonCostume(null, 5, 6, 7),
-            (profile.Look with { Costume = [0, 5, 6, 7, 0] }).ToCostume());
         Assert.Equal(0, profile.Look.DanRank);
         using var pushed = JsonDocument.Parse("""
             {"baid":24,"name":"x","look":{"costume":[36,0,0,0,0],"face":"#b3dbff","body":"#dd1400","limb":"#b9b9b9","dan_rank":12}}

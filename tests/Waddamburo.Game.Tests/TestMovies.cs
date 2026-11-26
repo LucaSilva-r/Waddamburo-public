@@ -1,6 +1,5 @@
 using System.Buffers.Binary;
 using Waddamburo.Formats.Lmb;
-using Waddamburo.Game.Don;
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
 
@@ -204,17 +203,4 @@ internal static class TestMovies
         });
     }
 
-}
-
-internal sealed class SyntheticDonPresentation : IDonPresentationController
-{
-    public List<DonMotionRequest> Requests { get; } = [];
-
-    public List<DonPresentationLayout> ResetLayouts { get; } = [];
-
-    public void Reset(DonPresentationLayout layout) => ResetLayouts.Add(layout);
-
-    public LumenNativeSurfaceKey GetSurface(int playerIndex) => new($"don:{playerIndex}");
-
-    public void SetMotion(DonMotionRequest request) => Requests.Add(request);
 }

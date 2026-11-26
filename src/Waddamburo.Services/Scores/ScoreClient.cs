@@ -10,7 +10,7 @@ namespace Waddamburo.Services.Scores;
 public sealed record ScoreAccount(string Token, long Baid, string Name)
 {
     /// <summary>The Don's look (refreshed from the server at startup).</summary>
-    public Waddamburo.Game.Don.DonLook? Look { get; init; }
+    public DonLook? Look { get; init; }
 
     /// <summary>The account's custom Don-chan picture URL.</summary>
     public string? Avatar { get; init; }

@@ -1,6 +1,6 @@
 using Waddamburo.Game.Gameplay;
 using Waddamburo.Catalog;
-using Waddamburo.Game.Don;
+using Waddamburo.Skins.Green.Don;
 using Waddamburo.Skins.Green.Patching;
 using Waddamburo.Game.Scores;
 using Waddamburo.Game.SongSelect;

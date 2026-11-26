@@ -1,5 +1,5 @@
 using Waddamburo.Catalog;
-using Waddamburo.Game.Don;
+using Waddamburo.Skins.Green.Don;
 using Waddamburo.Formats.Lmb;
 using Waddamburo.Lumen.Runtime;
 using Waddamburo.Game.Gameplay;
@@ -138,5 +138,13 @@ public sealed class TaikoDonPresentationTests
         public void SetMotion(DonMotionRequest request) => Motions.Add(request);
         public List<string> Idles { get; } = [];
         public void SetIdle(int playerIndex, string loop) => Idles.Add(loop);
+    }
+
+    [Fact]
+    public void AProfilesLookDressesTheDon()
+    {
+        var look = new Waddamburo.Game.Scores.DonLook([32, 0, 0, 0, 0], "#b3dbff", "#dd1400", "#b9b9b9");
+        Assert.Equal(DonCostume.FromWhole(32), look.ToCostume());
+        Assert.Equal(new DonCostume(null, 5, 6, 7), (look with { Costume = [0, 5, 6, 7, 0] }).ToCostume());
     }
 }

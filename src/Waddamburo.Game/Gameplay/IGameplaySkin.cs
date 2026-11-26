@@ -1,5 +1,4 @@
 using Waddamburo.Catalog;
-using Waddamburo.Game.Don;
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
 
@@ -25,8 +24,9 @@ public interface IGameplaySkin
     /// <summary>
     /// A lane's character on <paramref name="layer"/> (lane 0 top, 1 the second player's); <paramref name="stage"/>: it
     /// stands in a movie the scene draws itself; <paramref name="overlays"/>: the lane's balloon and kusudama movies.
+    /// Null: the skin has no character (Green's Don-chan is Green's own).
     /// </summary>
-    ILaneCharacter Character(IDonPresentationController don, LumenSceneLayer layer, int lane, bool stage,
+    ILaneCharacter? Character(LumenSceneLayer layer, int lane, bool stage,
         (LumenPlayer Balloon, LumenPlayer? Kusudama) overlays);
 
     /// <summary>Waiwai's shared voltage starts: the skin's stage movies (the first lane's, by role) follow it.</summary>

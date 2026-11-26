@@ -1,5 +1,5 @@
 using Waddamburo.Catalog;
-using Waddamburo.Game.Don;
+using Waddamburo.Skins.Green.Don;
 using Waddamburo.Game.Gameplay;
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;

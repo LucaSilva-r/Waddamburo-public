@@ -1,6 +1,5 @@
 using Waddamburo.Catalog;
 using Waddamburo.Game;
-using Waddamburo.Game.Don;
 using Waddamburo.Game.Gameplay;
 using Waddamburo.Services.Online;
 using Waddamburo.Game.Scenes;
@@ -46,7 +45,6 @@ internal enum GameplaySoundEvent
 /// pans each player's drum and picks per-player cues), null when one player plays alone.
 /// </summary>
 internal sealed class TaikoGameplayPresentation(IGameplaySkin gameplaySkin, Action<int?, TaikoInputAction>? playHitSound = null,
-    IDonPresentationController? don = null,
     Action<int?, GameplaySoundEvent, int>? playEventSound = null, Func<TimeSpan>? drumDebounce = null)
 {
     private Lane[] _lanes = [];
@@ -151,7 +149,7 @@ internal sealed class TaikoGameplayPresentation(IGameplaySkin gameplaySkin, Acti
         {
             _shared = [];
             _lanes = [new Lane(gameplaySkin, charts[0], layers, courses[0], side, lane: 0, players: 1, null,
-                playHitSound, don, playEventSound, review: reviews?[0], options: Options.ElementAtOrDefault(0), relay: Relay, dan: Dan, danArt: DanChallengeArt, endBanner: EndBanner)];
+                playHitSound, playEventSound, review: reviews?[0], options: Options.ElementAtOrDefault(0), relay: Relay, dan: Dan, danArt: DanChallengeArt, endBanner: EndBanner)];
             return;
         }
         // The kusudama and song title belong to the first lane's layers; both lanes use the kusudama. Online only this
@@ -183,7 +181,7 @@ internal sealed class TaikoGameplayPresentation(IGameplaySkin gameplaySkin, Acti
             // The other player's drum isn't heard: only this player's own drum sounds under their hands (AI-don's
             // neither, user-asked).
             lane == RemoteLaneIndex && RemoteLane is not null || lane == 1 && aiStage is not null ? null : playHitSound,
-            don, playEventSound, stage, reviews?[lane],
+            playEventSound, stage, reviews?[lane],
             Options.ElementAtOrDefault(lane), EndBanner, remote: lane == RemoteLaneIndex ? RemoteLane : null,
             relay: lane != RemoteLaneIndex ? Relay : null,
             donStage: aiStage))];
@@ -584,7 +582,7 @@ internal sealed class TaikoGameplayPresentation(IGameplaySkin gameplaySkin, Acti
         public Lane(IGameplaySkin gameplaySkin, PlayableChart chart,
             IReadOnlyList<(SceneLayerDefinition Definition, LumenSceneLayer Layer, LumenMovieContent Content)> sceneLayers,
             TaikoCourse course, int side, int lane, int players, TaikoSharedKusudama? kusudama,
-            Action<int?, TaikoInputAction>? playHitSound, IDonPresentationController? don,
+            Action<int?, TaikoInputAction>? playHitSound,
             Action<int?, GameplaySoundEvent, int>? playEventSound, WaiwaiVoltage? stage = null, ReviewTimeline? review = null,
             TaikoPlayOptions options = default, bool endBanner = true, Waddamburo.Game.Dan.DanCourse? dan = null, LumenNativeSurfaceKey? danArt = null,
             RemoteLaneFeed? remote = null, HitRelay? relay = null, LumenSceneLayer? donStage = null)
@@ -742,9 +740,9 @@ internal sealed class TaikoGameplayPresentation(IGameplaySkin gameplaySkin, Acti
             _longNotes.Ended += (kind, popped) => emit(kind == PlayableLongNoteKind.Kusudama ? "kusudama.ended" : "balloon.ended",
                 LumenHostValue.FromBoolean(popped));
             // AI battle: both Dons stand in its hit-effect movie (no don3d of their own).
-            _character = don is null ? null : donStage is not null && !layers.ContainsKey("don3d")
-                ? gameplaySkin.Character(don, donStage, lane, stage: true, _longNotes.Overlays)
-                : gameplaySkin.Character(don, layers["don3d"], lane, stage: false, _longNotes.Overlays);
+            _character = donStage is not null && !layers.ContainsKey("don3d")
+                ? gameplaySkin.Character(donStage, lane, stage: true, _longNotes.Overlays)
+                : layers.TryGetValue("don3d", out var don3d) ? gameplaySkin.Character(don3d, lane, stage: false, _longNotes.Overlays) : null;
             _longNotes.Character = _character;
             if (stage is not null) stage.StateChanged += state => _character?.SetGauge(state);
             _animationClock = new(chart.TimingPoints);

@@ -6,7 +6,7 @@ using Waddamburo.Skins.Green.Art;
 using Waddamburo.Skins.Green.Screens;
 using Waddamburo.Catalog;
 using Waddamburo.Game.Dan;
-using Waddamburo.Game.Don;
+using Waddamburo.Skins.Green.Don;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Gameplay;
 using Waddamburo.Skins.Green.Gameplay;

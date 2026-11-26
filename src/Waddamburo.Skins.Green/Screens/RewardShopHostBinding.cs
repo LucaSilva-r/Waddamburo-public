@@ -58,7 +58,7 @@ public sealed record RewardShopVisit(
 /// <paramref name="player"/> (medal mode) and <paramref name="visit"/> (shopping) is given.
 /// </summary>
 public sealed class RewardShopHostBinding(int season, string telop, MedalScreen? player, IRewardShopSoundController? sounds = null,
-    RewardShopVisit? visit = null, Waddamburo.Game.Don.IDonPresentationController? don = null, IndicatorParts? parts = null)
+    RewardShopVisit? visit = null, Waddamburo.Skins.Green.Don.IDonPresentationController? don = null, IndicatorParts? parts = null)
     : ILumenHostBinding
 {
     // Traced: IsReady_Gameover turns 1 about 2 s after NotifyEndSequence (over_msg's TweenVisible in and out).

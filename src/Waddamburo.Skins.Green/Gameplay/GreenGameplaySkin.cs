@@ -1,5 +1,5 @@
 using Waddamburo.Game;
-using Waddamburo.Game.Don;
+using Waddamburo.Skins.Green.Don;
 using Waddamburo.Game.Gameplay;
 using Waddamburo.Lumen.Runtime;
 using Waddamburo.Skins.Green.Patching;
@@ -27,8 +27,11 @@ public sealed class GreenGameplaySkin : IGameplaySkin
     public ILaneMovies LaneMovies(IReadOnlyDictionary<string, LumenSceneLayer> layers, string gaugeRole, Func<int> gaugeSegments,
         LumenSceneLayer? kusudama) => new GreenLaneMovies(layers, gaugeRole, gaugeSegments, kusudama);
 
-    public ILaneCharacter Character(IDonPresentationController don, LumenSceneLayer layer, int lane, bool stage,
-        (LumenPlayer Balloon, LumenPlayer? Kusudama) overlays) => new TaikoDonPresentation(don, layer, lane, stage, overlays);
+    /// <summary>Don-chan's 3D presentation (null without Green's Don data: no character).</summary>
+    public IDonPresentationController? Don { get; set; }
+
+    public ILaneCharacter? Character(LumenSceneLayer layer, int lane, bool stage,
+        (LumenPlayer Balloon, LumenPlayer? Kusudama) overlays) => Don is { } don ? new TaikoDonPresentation(don, layer, lane, stage, overlays) : null;
 
     public void Waiwai(WaiwaiVoltage voltage, IReadOnlyDictionary<string, LumenPlayer> movies) => _ = new GameWaiwaiMovies(voltage, movies);
 

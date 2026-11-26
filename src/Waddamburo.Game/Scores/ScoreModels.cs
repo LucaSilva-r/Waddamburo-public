@@ -8,7 +8,7 @@ public sealed record ScoreProfile(long Baid, string Name)
 
     public static ScoreProfile LocalGuest { get; } = new(LocalGuestBaid, "");
 
-    public Don.DonLook? Look { get; init; }
+    public DonLook? Look { get; init; }
 
     /// <summary>The account's custom Don-chan picture (a transparent PNG on the server), for the picker.</summary>
     public string? Avatar { get; init; }

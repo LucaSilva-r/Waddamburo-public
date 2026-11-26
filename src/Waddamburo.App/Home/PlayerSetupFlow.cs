@@ -17,7 +17,7 @@ internal sealed record SetupChoice(SetupChoiceKind Kind, string Label, long Baid
     bool IsDefault = false)
 {
     /// <summary>The Don-chan look on the stand (an account's or a visitor's; null: the default Don).</summary>
-    public Waddamburo.Game.Don.DonLook? Look { get; init; }
+    public Waddamburo.Game.Scores.DonLook? Look { get; init; }
 
     /// <summary>The account's or visitor's profile (its title goes on the stand's name board); null: none.</summary>
     public ScoreProfile? Profile { get; init; }

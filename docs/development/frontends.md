@@ -10,7 +10,10 @@ Waddamburo is one engine with two frontends on top (user, 2026-11-26):
   players play side by side. Home only for now. **Nothing of the game's**: its own screen compositions
   (`WaddamburoScreens`: only the layers its screens show), movies from packages only (a slot without a package of
   ours is a yellow `missing: <slot>` placeholder, `LumenMovieContent.Placeholder`), and sounds from our pack only (a
-  name it lacks is silent; no game jingles, no Green screen sounds).
+  name it lacks is silent; no game jingles, no Green screen sounds). No mascot: Don-chan is Green's
+  (`Skins.Green/Don`: his presentation, costumes and motions; the player's look stays account data, `Game.Scores.DonLook`).
+  Gameplay skins give a lane character or none (`IGameplaySkin.Character`). The GPU model renderer stays in
+  `Platform.Sdl` (`SdlDonRenderer`) as a drawing capability.
 
 Neither frontend owns a feature's rules. Those live in **`Waddamburo.Features`**, which references only `Game` and
 `Services` (never a frontend, a movie or the platform; `DependencyRulesTests` checks it):

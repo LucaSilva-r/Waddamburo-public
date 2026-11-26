@@ -1,6 +1,8 @@
 using Waddamburo.Lumen.Rendering;
 
-namespace Waddamburo.Game.Don;
+using Waddamburo.Game.Scores;
+
+namespace Waddamburo.Skins.Green.Don;
 
 public readonly record struct DonMotionRequest(int PlayerIndex, string? OneShot, string? Loop);
 
@@ -18,31 +20,15 @@ public readonly record struct DonCostume(int? Whole, int Head, int Body, int Pai
     public static DonCostume FromWhole(int id) => id <= 0 ? Default : new(id, 0, 0, 0);
 }
 
-/// <summary>
-/// A player's Don as their profile has it: costume parts (kigurumi, head, body, face, puchi; 0 = none)
-/// and face/body/limb colours as #rrggbb.
-/// </summary>
-public sealed record DonLook(int[] Costume, string Face, string Body, string Limb)
+/// <summary>The Don a profile's look dresses (<see cref="DonLook"/> is the account's data).</summary>
+public static class DonLooks
 {
-    /// <summary>The entry's three costume sets, [kigurumi, head, body, puchi] each; null: none served.</summary>
-    public int[][]? Presets { get; init; }
-
-    /// <summary>The displayed dan rank (0 none, 1-25 Beginner through Tatsujin): which dan costume model to draw.</summary>
-    public int DanRank { get; init; }
-
-    public DonCostume ToCostume() => Costume switch
+    public static DonCostume ToCostume(this DonLook look) => look.Costume switch
     {
         [> 0 and var whole, ..] => DonCostume.FromWhole(whole),
         [_, var head, var body, var paint, ..] => new DonCostume(null, head, body, paint),
         _ => DonCostume.Default,
     };
-
-    /// <summary>The puchi chara (costume slot 5; 0 = none). A whole costume does not hide it.</summary>
-    public int Puchi => Costume is [_, _, _, _, var puchi, ..] ? puchi : 0;
-
-    public (uint Face, uint Body, uint Limb) Colors => (rgb(Face), rgb(Body), rgb(Limb));
-
-    private static uint rgb(string hex) => Convert.ToUInt32(hex.TrimStart('#'), 16);
 }
 
 public enum DonPresentationLayout
