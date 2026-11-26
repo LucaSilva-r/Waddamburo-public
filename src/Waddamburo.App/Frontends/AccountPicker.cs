@@ -5,7 +5,6 @@ using Waddamburo.Game.Scores;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Rendering;
 using Waddamburo.Platform.Sdl.Text;
-using Waddamburo.Services.Scores;
 
 namespace Waddamburo.App.Frontends;
 

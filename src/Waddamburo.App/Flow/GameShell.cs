@@ -17,13 +17,11 @@ using Waddamburo.Game.Scores;
 using Waddamburo.Game.SongSelect;
 using Waddamburo.Game.Sound;
 using Waddamburo.Lumen.Provider;
-using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Media;
 using Waddamburo.Platform.Sdl.Rendering;
 using Waddamburo.App.Home;
-using Waddamburo.App.Online;
 using Waddamburo.Skins.Green.Art;
 using Waddamburo.Skins.Green.Screens;
 using Waddamburo.Skins.Green.Sound;
@@ -138,7 +136,8 @@ internal sealed partial class GameShell : IDisposable
     public Waddamburo.Skins.Green.GreenSkin GreenSkin { get; } = new();
 
     /// <summary>The frontend's skin: Green's, or Waddamburo's (its movies read the provider; nothing to drive).</summary>
-    public Waddamburo.Game.ISkin Skin => Arcade.WaddamburoFrontend ? field ??= new Frontends.WaddamburoSkin() : GreenSkin;
+    public Waddamburo.Game.ISkin Skin => Arcade.WaddamburoFrontend ? _ownSkin ??= new Frontends.WaddamburoSkin() : GreenSkin;
+    private Frontends.WaddamburoSkin? _ownSkin;
 
     /// <summary>The game's screens' sound controllers (its movies ask for bank cues); null without audio.</summary>
     public GreenScreenSounds? GreenSounds { get; private set; }
@@ -272,21 +271,25 @@ internal sealed partial class GameShell : IDisposable
     /// <summary>Who is playing this credit (joined drums, songs played, a replay's player, online two-player).</summary>
     public PlayerSession Players { get; }
 
-    /// <summary>The credit's mode, players and what a play hands its results (see <see cref="CreditSession"/>).</summary>
+    /// <summary>The credit's mode, players and what a play hands its results .</summary>
     public CreditState Credit { get; } = new();
 
     /// <summary>The reward shop: each drum's card's goods and medals for the credit.</summary>
-    public Waddamburo.Features.Shop.ShopModule Shop => field ??= new(Credit);
+    public Waddamburo.Features.Shop.ShopModule Shop => _shop ??= new(Credit);
+    private Waddamburo.Features.Shop.ShopModule? _shop;
 
     /// <summary>Don Medals and rewards: the credit end's medal screen, home's "New rewards".</summary>
-    public Waddamburo.Features.Rewards.RewardsModule Rewards => field ??= new(Credit, Sync.ServerFor, () => Sync.Scores);
+    public Waddamburo.Features.Rewards.RewardsModule Rewards => _rewards ??= new(Credit, Sync.ServerFor, () => Sync.Scores);
+    private Waddamburo.Features.Rewards.RewardsModule? _rewards;
 
     /// <summary>AI battle: ranks, AI-don levels, standings, what a battle earns, the last battle's results.</summary>
-    public Waddamburo.Features.AiBattle.AiBattleModule AiBattle => field ??= new(Credit, () => Arcade.Home, () => Sync.Scores);
+    public Waddamburo.Features.AiBattle.AiBattleModule AiBattle => _aiBattle ??= new(Credit, () => Arcade.Home, () => Sync.Scores);
+    private Waddamburo.Features.AiBattle.AiBattleModule? _aiBattle;
 
     /// <summary>The dan dojo's credit: series, course, run result, bests, keeping a passed run.</summary>
-    public Waddamburo.Features.Dan.DanModule Dan => field ??= new(Credit, () => Sync.Scores,
+    public Waddamburo.Features.Dan.DanModule Dan => _dan ??= new(Credit, () => Sync.Scores,
         static () => Strings.Language.StartsWith("ja", StringComparison.Ordinal));
+    private Waddamburo.Features.Dan.DanModule? _dan;
 
     /// <summary>What the next Song Select lists and where it starts.</summary>
     public SongSelectSetup Select { get; private set; } = null!;

@@ -13,12 +13,12 @@ namespace Waddamburo.App.Frontends;
 /// kind: the hosts only keep the engine's sessions a screen runs on (the entry's joins, Song Select's list) and say when
 /// a screen has ended. Home only: no coins, cards, revival or Green's credit ends; every song leads to the next one.
 /// </summary>
-/// <param name="counting">Whether screens count down (Song Select's time limit), as on Green's.</param>
+/// <remarks><paramref name="counting"/>: Whether screens count down (Song Select's time limit), as on Green's.</remarks>
 internal sealed class WaddamburoScreenHosts(CreditState credit, Func<bool, SongSelectSession> createSelectSession,
     Action<int> playerJoined, Func<bool> counting) : IScreenHosts
 {
     private OwnEntry? _entry;
-    private OwnSongSelect? _songSelect;
+    private ISongSelectScreen? _songSelect; // the scene loader disposes it with its layer
 
     public IEntryScreen? Entry => _entry;
 
@@ -50,8 +50,9 @@ internal sealed class WaddamburoScreenHosts(CreditState credit, Func<bool, SongS
         }
         if (layer.HostId == "song-select")
         {
-            _songSelect = new OwnSongSelect(createSelectSession(counting()));
-            return new LumenLayerHost(_songSelect, _songSelect.Attach);
+            var songSelect = new OwnSongSelect(createSelectSession(counting()));
+            _songSelect = songSelect;
+            return new LumenLayerHost(songSelect, songSelect.Attach);
         }
         return new LumenLayerHost(null);
     }

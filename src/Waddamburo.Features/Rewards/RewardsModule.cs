@@ -10,15 +10,17 @@ namespace Waddamburo.Features.Rewards;
 /// A carded player's medal screen: their drum, medals before this credit and what it paid, and the rewards to hand
 /// over (Green's TYPE_SONG 1 / SUIT 3 / BODY 4 / HEAD 5).
 /// </summary>
-/// <param name="Alone">No game over with it (home's "New rewards").</param>
+/// <remarks><paramref name="Alone"/>: No game over with it (home's "New rewards").</remarks>
 public sealed record MedalScreen(int Side, int MedalsBefore, MedalCredit Credit, IReadOnlyList<PendingReward>? Rewards = null, bool Alone = false);
 
 /// <summary>
 /// Don Medals and rewards: what a credit's end pays and hands over (asked of TaikOnline while the last results play),
 /// and the rewards a player has waiting (home's "New rewards"). The server hears they were shown once the screen ends.
 /// </summary>
-/// <param name="serverFor">A player's server and baid; null: offline.</param>
-/// <param name="scores">The score store a credit's end uploads from; null: none.</param>
+/// <remarks>
+/// <paramref name="serverFor"/>: A player's server and baid; null: offline.<br/>
+/// <paramref name="scores"/>: The score store a credit's end uploads from; null: none.<br/>
+/// </remarks>
 public sealed class RewardsModule(CreditState credit, Func<ScoreProfile, (ScoreClient Client, long? Baid)?> serverFor, Func<ScoreStore?> scores)
 {
     private Task<(int Side, List<PendingReward> Rewards)>? _creditEnd;

@@ -11,7 +11,7 @@ namespace Waddamburo.Features.AiBattle;
 /// first-win and high-level bonuses) and the last battle's results. The lanes and the AI-don simulation are the
 /// engine's (<see cref="AiBattleProgress"/>, <see cref="AiBattleSimulation"/>).
 /// </summary>
-/// <param name="home">At home a drum without a player plays as this PC's guest.</param>
+/// <remarks><paramref name="home"/>: At home a drum without a player plays as this PC's guest.</remarks>
 public sealed class AiBattleModule(CreditState credit, Func<bool> home, Func<ScoreStore?> scores)
 {
     /// <summary>The rank ladder (the installation's ghostinfo.xml; Green's when it has none).</summary>
@@ -48,8 +48,10 @@ public sealed class AiBattleModule(CreditState credit, Func<bool> home, Func<Sco
     /// A finished battle on the player's lane, saved with the play: the rank points it earns on the standing before it
     /// (a server setup's, else the store's). Sets the results' numbers.
     /// </summary>
-    /// <param name="uploads">A signed-in player's battle: it uploads and plays Green's ranks (the server replays it).</param>
-    /// <param name="usual">The course's own chart, not a simplified support level.</param>
+    /// <remarks>
+    /// <paramref name="uploads"/>: A signed-in player's battle: it uploads and plays Green's ranks (the server replays it).<br/>
+    /// <paramref name="usual"/>: The course's own chart, not a simplified support level.<br/>
+    /// </remarks>
     public AiBattlePlay Record(AiBattleOutcome outcome, ScoreProfile profile, ScoreStore store, string sha, bool cleared,
         TaikoCourse course, int stars, bool uploads, bool usual, AiBattleSession? session, int supportLevel)
     {

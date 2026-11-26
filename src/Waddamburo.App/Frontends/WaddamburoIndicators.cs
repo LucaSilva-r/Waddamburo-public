@@ -11,9 +11,11 @@ namespace Waddamburo.App.Frontends;
 /// </summary>
 internal sealed class WaddamburoIndicators(LumenGameSceneInstance scene) : ISystemIndicators
 {
-    /// <summary>The three movies, in the layer order the frontends share.</summary>
+    // The three movies, in the layer order the frontends share.
+    private static readonly string[] Movies = ["network_icon", "msg_banapass", "msg_coins"];
+
     public static SceneDefinition Definition(SceneId id) => new(SceneDefinition.CurrentVersion, id,
-        new[] { "network_icon", "msg_banapass", "msg_coins" }.Select(static name => new SceneLayerDefinition(
+        Movies.Select(static name => new SceneLayerDefinition(
             "indicator/packeddata.ddp", $"{name}/{name}.lm", LumenMatrix.Identity, LayerRoles.SystemIndicators)));
 
     public LumenGameSceneInstance Scene => scene;

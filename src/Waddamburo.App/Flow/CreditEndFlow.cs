@@ -5,7 +5,6 @@ using Waddamburo.Lumen.Provider;
 using Waddamburo.Lumen.Runtime;
 using Waddamburo.Skins.Green;
 using Waddamburo.Game.Gameplay;
-using Waddamburo.Game.Scores;
 using Waddamburo.Platform.Sdl;
 
 namespace Waddamburo.App.Flow;

@@ -59,7 +59,7 @@ internal sealed class FlowSmokeRun(GameShell shell, GameplayFlow gameplay, SongS
         _requested = true;
         if (mode == FlowSmokeMode.Dan)
         {
-            if (shell.Dan.Courses(shell.Dan.Series).FirstOrDefault() is not { } course)
+            if (shell.Dan.Courses(shell.Dan.Series) is not [var course, ..])
             {
                 fail("no playable dan course");
                 return;

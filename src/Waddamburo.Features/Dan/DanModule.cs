@@ -12,7 +12,7 @@ namespace Waddamburo.Features.Dan;
 /// found), the credit's series and course, the finished run's result, each player's bests, and keeping a passed run
 /// (it uploads with the next sync; the server decides the badge).
 /// </summary>
-/// <param name="japanese">The series' names in Japanese.</param>
+/// <remarks><paramref name="japanese"/>: The series' names in Japanese.</remarks>
 public sealed class DanModule(CreditState credit, Func<ScoreStore?> scores, Func<bool> japanese)
 {
     private IReadOnlyList<IDanCourseProvider> _providers = [];

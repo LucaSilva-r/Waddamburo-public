@@ -80,10 +80,10 @@ public sealed class DonPresentationController(SdlDonRenderer renderer) : IDonPre
         _renderer.SetMotion(slot(request.PlayerIndex), request.OneShot, request.Loop);
     }
 
-    public void SetIdle(int playerIndex, string loop)
+    public void SetIdle(int playerIndex, string motionLoop)
     {
-        LumenEdgeLog.Host("don", $"SetIdle({playerIndex}, {loop})");
-        _renderer.SetIdle(slot(playerIndex), loop);
+        LumenEdgeLog.Host("don", $"SetIdle({playerIndex}, {motionLoop})");
+        _renderer.SetIdle(slot(playerIndex), motionLoop);
     }
 
     public void SetCostume(int playerIndex, DonCostume costume)

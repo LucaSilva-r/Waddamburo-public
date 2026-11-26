@@ -1,6 +1,5 @@
 using System.Buffers.Binary;
 using Waddamburo.Formats.Lmb;
-using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
 
 namespace Waddamburo.Game.Tests;

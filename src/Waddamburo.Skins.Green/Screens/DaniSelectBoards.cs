@@ -7,11 +7,13 @@ namespace Waddamburo.Skins.Green;
 /// <summary>A series' courses as dani_select's boards: the back board first, then each course with its songs and panel.</summary>
 public static class DaniSelectBoards
 {
-    /// <param name="courses">The series' courses and their status against the library.</param>
-    /// <param name="bests">The player's best result per course hash.</param>
-    /// <param name="song">The library's song for a course song.</param>
-    /// <param name="genre">A song's genre as the movie numbers it.</param>
-    /// <param name="uids">Filled with each board song's song, by its uid (the movie asks for titles by uid).</param>
+    /// <remarks>
+    /// <paramref name="courses"/>: The series' courses and their status against the library.<br/>
+    /// <paramref name="bests"/>: The player's best result per course hash.<br/>
+    /// <paramref name="song"/>: The library's song for a course song.<br/>
+    /// <paramref name="genre"/>: A song's genre as the movie numbers it.<br/>
+    /// <paramref name="uids"/>: Filled with each board song's song, by its uid (the movie asks for titles by uid).<br/>
+    /// </remarks>
     public static List<DaniSelectBoard> Build(string series, IReadOnlyList<DanCourseStatus> courses, IReadOnlyDictionary<string, int>? bests,
         Func<DanSongStatus, SongDescriptor?> song, Func<SongDescriptor?, int> genre, List<SongDescriptor?> uids)
     {
