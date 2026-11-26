@@ -312,7 +312,7 @@ public sealed class GreenScreenHosts(
                 // Green always offers the shop (traced IsAvailableShop 1) and greys it itself for a drum without card
                 // data. Fixed for the scene: an answer that changes rebuilds the boards (the shop popped in late).
                 ShopAvailable = ServerOnline?.Invoke() == true ? static () => true : static () => false,
-                AiBattleAvailable = ai.Installed && !arcade.WaddamburoFrontend,
+                AiBattleAvailable = ai.Installed,
             };
             _entryPrevious = Credit.EntryRejoined is null ? 0 : 1; // SCENE_ATTRACT / SCENE_SONGSELECT
             Credit.EntryRejoined = null;

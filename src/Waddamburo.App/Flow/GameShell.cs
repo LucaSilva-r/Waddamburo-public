@@ -132,11 +132,14 @@ internal sealed partial class GameShell : IDisposable
     public GameSounds? Sounds { get; }
 
     /// <summary>The skin the game shows (Green's, from the user's install).</summary>
+    /// <summary>The frontend running (config.cfg's frontend, read at start): what it shows and offers.</summary>
+    public Frontends.Frontend Frontend => Frontends.Frontend.For(Arcade);
+
     /// <summary>Green's skin: the game's movies' adapters, its Don-chan.</summary>
     public Waddamburo.Skins.Green.GreenSkin GreenSkin { get; } = new();
 
     /// <summary>The frontend's skin: Green's, or Waddamburo's (its movies read the provider; nothing to drive).</summary>
-    public Waddamburo.Game.ISkin Skin => Arcade.WaddamburoFrontend ? _ownSkin ??= new Frontends.WaddamburoSkin() : GreenSkin;
+    public Waddamburo.Game.ISkin Skin => Frontend.GameMovies ? GreenSkin : _ownSkin ??= new Frontends.WaddamburoSkin();
     private Frontends.WaddamburoSkin? _ownSkin;
 
     /// <summary>The game's screens' sound controllers (its movies ask for bank cues); null without audio.</summary>
@@ -245,7 +248,7 @@ internal sealed partial class GameShell : IDisposable
     public SceneCatalog Catalog { get; }
 
     /// <summary>The frontend's screens: Green's traced compositions, or Waddamburo's own movies only.</summary>
-    public IScreenCompositions Screens => Arcade.WaddamburoFrontend ? Frontends.WaddamburoScreens.Instance : Waddamburo.Skins.Green.GreenScreens.Instance;
+    public IScreenCompositions Screens => Frontend.GameMovies ? Waddamburo.Skins.Green.GreenScreens.Instance : Frontends.WaddamburoScreens.Instance;
     public IScreenHosts Hosts { get; }
 
     /// <summary>Song Select's score windows from the server (null offline).</summary>
@@ -793,7 +796,7 @@ internal sealed partial class GameShell : IDisposable
                 _boot.Warn(controls.Count == 1 ? "Binding not understood" : $"{controls.Count} bindings not understood", controls);
             _boot.Begin("DON-CHAN");
             // Don-chan is Green's: Waddamburo's frontend has no mascot (no renderer, no model data read).
-            DonRenderer = options.DonRoot is null || Arcade.WaddamburoFrontend ? null : Application.CreateDonRenderer(options.DonRoot);
+            DonRenderer = options.DonRoot is null || !Frontend.Mascot ? null : Application.CreateDonRenderer(options.DonRoot);
             Don = DonRenderer is null ? null : new DonPresentationController(DonRenderer);
             GreenSkin.Don = Don;
             // Diagnostic: WADDAMBURO_DON_COSTUME=head,body,paint (or a single whole-costume id) dresses P1 at start.
@@ -886,7 +889,7 @@ internal sealed partial class GameShell : IDisposable
 
             // A Green from before the update that added AI battle (the web archive's): the mode select leaves it out.
             AiBattle.Installed = Cli.GreenData.HasAiBattle(Path.GetDirectoryName(dataRoot)!);
-            if (!AiBattle.Installed && !Arcade.WaddamburoFrontend)
+            if (!AiBattle.Installed && Frontend.AiBattle)
             {
                 _boot.Begin("AI BATTLE");
                 _boot.Warn(Strings.T("boot.ai_battle_missing"));
@@ -903,7 +906,7 @@ internal sealed partial class GameShell : IDisposable
             Hosts = createHosts(flow, snapshot, diagnosticResult, song => song.Key.Source == SongSourceKind.Stock
                 ? support.GetValueOrDefault(song.Key.StableId) ?? [0, 0, 0, 0]
                 : [.. Enumerable.Range(0, 4).Select(course => course > 0 && song.Charts.Any(chart => chart.Course == (TaikoCourse)course) ? 3 : 0)]);
-            if (Arcade.WaddamburoFrontend)
+            if (!Frontend.Attract)
                 _accountPicker = new Frontends.AccountPicker(Application, options.FontPath, Options.Accounts,
                     Path.Combine(Path.GetDirectoryName(options.ScoresPath) ?? ".", "avatars"),
                     Online.UpdateGate.Server(Arcade) is { } avatarServer ? Waddamburo.Services.Scores.ScoreClient.CreateHttp(avatarServer, Arcade.ServerInsecure) : null);
@@ -917,9 +920,9 @@ internal sealed partial class GameShell : IDisposable
             MovieContent.PackageRoot = options.ArcadePath is { } home ? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(home))!, "movies") : null;
             MovieContent.DecodeImage = GameMovieContent.DecodeImage;
             MovieContent.BundledRoot = Path.Combine(AppContext.BaseDirectory, "movies");
-            MovieContent.PreferBundled = () => Arcade.OwnMovies;
+            MovieContent.PreferBundled = () => Arcade.FreeMovies || !Frontend.GameMovies;
             // Waddamburo's frontend never shows a movie of the game's: a slot without one of ours shows a placeholder.
-            MovieContent.PackagesOnly = () => Arcade.WaddamburoFrontend;
+            MovieContent.PackagesOnly = () => !Frontend.GameMovies;
             _presenter = new ScenePresenter(Application, MovieContent, () => Arcade.UpscaleTextures && Application.ShowUpscaled);
             Scenes = new SceneSwitcher(this, _presenter, flowOf, blackLoadingFrame);
             MovieContent.Reuse = _presenter.Reuse;
@@ -959,7 +962,7 @@ internal sealed partial class GameShell : IDisposable
             var entry = new EntryFlow(this);
             var ending = new CreditEndFlow(this, _gameplay);
             var songSelect = SongSelectFlow = new SongSelectFlow(this, _gameplay, calibration);
-            _scenes = Arcade.WaddamburoFrontend
+            _scenes = !Frontend.Attract
                 ? waddamburoFlows(entry, songSelect, _gameplay, calibration, benchmarkSong)
                 : flowTable(_attract, entry, songSelect, _gameplay, calibration, benchmarkSong, ending);
             if (options.FlowSmoke != FlowSmokeMode.Off)
@@ -1006,7 +1009,7 @@ internal sealed partial class GameShell : IDisposable
                     : _diagnosticWaiwai is null ? Screens.Results : FlowScenes.WaiwaiResults,
             ]),
             // The entry's start (ours asks the same): Song Select. Waddamburo's frontend has no other way out of it.
-            Arcade.WaddamburoFrontend ? [new SceneTransitionRoute(FlowScenes.Entry, new LumenSceneRequest(1, 0, 0), FlowScenes.SongSelect)] : [
+            !Frontend.GameMovies ? [new SceneTransitionRoute(FlowScenes.Entry, new LumenSceneRequest(1, 0, 0), FlowScenes.SongSelect)] : [
                 new SceneTransitionRoute(FlowScenes.Entry, new LumenSceneRequest(1, 0, 0), FlowScenes.SongSelect),
                 // Mode select's AI battle (traced SetNextScene(10, 0, 0)): its own song select (Players.ChooseMode).
                 new SceneTransitionRoute(FlowScenes.Entry, new LumenSceneRequest(10, 0, 0), FlowScenes.SongSelect),
@@ -1053,7 +1056,7 @@ internal sealed partial class GameShell : IDisposable
     {
         var select = Select = createSelect(snapshot);
         var rankings = Rankings = Sync.Online ? new SongRankings(Sync.RankingClient, ChartHashes) : null;
-        if (Arcade.WaddamburoFrontend)
+        if (!Frontend.GameMovies)
             return new Frontends.WaddamburoScreenHosts(Credit, select.CreateSession, Players.Join, () => Options.Countdown && !Arcade.TimerFreeze);
         return new Waddamburo.Skins.Green.GreenScreenHosts(
             Credit,
@@ -1124,13 +1127,13 @@ internal sealed partial class GameShell : IDisposable
     {
         var green = new GreenSoundSet(soundRoot ?? Path.Combine(AppContext.BaseDirectory, "sounds"));
         // Waddamburo's frontend never plays the game's sounds: a name no pack has is silent.
-        ISoundSet set = soundRoot is null || Arcade.WaddamburoFrontend ? new SilentSoundSet() : green;
-        if ((soundRoot is null || Arcade.OwnMovies) && SoundPack.Load(Path.Combine(AppContext.BaseDirectory, "sounds"), set) is { } ours)
+        ISoundSet set = soundRoot is null || !Frontend.GameSounds ? new SilentSoundSet() : green;
+        if ((soundRoot is null || Arcade.FreeMovies || !Frontend.GameSounds) && SoundPack.Load(Path.Combine(AppContext.BaseDirectory, "sounds"), set) is { } ours)
             set = ours;
         if (arcadePath is not null && SoundPack.Load(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(arcadePath))!, "sounds"), set) is { } own)
             set = own;
         var sounds = new GameSounds(audio, set);
-        GreenSounds = Arcade.WaddamburoFrontend ? null
+        GreenSounds = !Frontend.GameSounds ? null
             : new GreenScreenSounds(new Waddamburo.Skins.Green.Sound.GreenSounds(green, sounds.Bank), sounds.StopAll);
         // Any movie of ours may ask for a sound by name, for a drum's side and tone or centred.
         WdRequests.App = new WdRequests("app").Handle("sound.play", arguments =>
@@ -1188,7 +1191,7 @@ internal sealed partial class GameShell : IDisposable
     public string? FindJingle(string fileName)
     {
         // The game's jingles are Green's frontend's; Waddamburo's plays none of the game's sounds.
-        if (Options.SoundRoot is null || Arcade.WaddamburoFrontend)
+        if (Options.SoundRoot is null || !Frontend.GameSounds)
             return null;
         var path = Path.Combine(Path.GetFullPath(Options.SoundRoot), "bgm", "nub", fileName);
         return File.Exists(path) ? path : null;
@@ -1323,10 +1326,10 @@ internal sealed partial class GameShell : IDisposable
         {
             Scenes.Activate();
             Console.WriteLine($"Showing {Active.Id} at launch.");
-            var indicators = (LumenGameSceneInstance)_loader.LoadAsync((Arcade.WaddamburoFrontend
+            var indicators = (LumenGameSceneInstance)_loader.LoadAsync((!Frontend.GameMovies
                 ? Frontends.WaddamburoIndicators.Definition(new SceneId("system-indicators"))
                 : SystemIndicators.Definition(new SceneId("system-indicators"))), CancellationToken.None).AsTask().GetAwaiter().GetResult();
-            _indicators = Arcade.WaddamburoFrontend ? new Frontends.WaddamburoIndicators(indicators)
+            _indicators = !Frontend.GameMovies ? new Frontends.WaddamburoIndicators(indicators)
                 : new SystemIndicators(indicators) { Coins = Coins, HideCoinType = () => HideArcadeHud, AiBattle = Credit.AiBattle };
             _home.LoadResume(_loader);
             _indicators.NetworkIcon = Sync.Health is { } health ? () => health.IconType : null;
@@ -1444,7 +1447,7 @@ internal sealed partial class GameShell : IDisposable
     /// </summary>
     public SceneId Home()
     {
-        if (!Arcade.WaddamburoFrontend)
+        if (Frontend.Attract)
             return FlowScenes.Logo;
         Credit.EntryTrigger = 3; // nobody joined: the entry waits for the picker's player
         _accountPicker?.Open(seat);

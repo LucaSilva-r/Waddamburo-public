@@ -652,9 +652,6 @@ public sealed partial record ArcadeSettings
     /// </summary>
     public bool WaddamburoFrontend { get; init; }
 
-    /// <summary>Our movies in place of the game's: <see cref="FreeMovies"/>, or always on Waddamburo's frontend.</summary>
-    public bool OwnMovies => FreeMovies || WaddamburoFrontend;
-
     /// <summary>Home mode (a PC): free play, endless songs, no countdowns. False: arcade (the cabinet rules).</summary>
     /// <remarks>ponytail: Waddamburo's frontend is home only; a cabinet runs Green's. Setting it sets <see cref="HomeMode"/>.</remarks>
     public bool Home { get => HomeMode || WaddamburoFrontend; init => HomeMode = value; }

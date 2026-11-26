@@ -159,7 +159,7 @@ public static class Boot
         var arcadePath = Path.Combine(layout.Shared, Waddamburo.Game.Flow.ArcadeSettings.FileName);
         var arcade = earlyArcade ?? Waddamburo.Game.Flow.ArcadeSettings.LoadOrCreate(arcadePath);
         // The game's own font is Green's frontend's; Waddamburo's draws with the bundled one.
-        layout = layout.ForFrontend(arcade.WaddamburoFrontend);
+        layout = layout.ForFrontend(!Frontends.Frontend.For(arcade).GameMovies);
         Console.WriteLine($"Title font: {layout.FontPath}");
         Waddamburo.Platform.Sdl.Text.NativeVerticalTextRasterizer.FallbackFonts = layout.FallbackFonts;
         // The cache defaults to this PC's user cache (a game on a USB stick must not decode onto it).

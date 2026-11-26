@@ -38,8 +38,7 @@ internal static class ScreenGraph
     public static IEnumerable<SceneDefinition> Next(SceneId from, GameShell shell)
     {
         // Only what the frontend's catalog has: Waddamburo's has no attract loop, revival or game over.
-        return next(from, shell).Where(scene => shell.Catalog.Contains(scene.Id)
-            && (scene.Id != FlowScenes.GameOver && scene.Id != FlowScenes.RewardShop || !shell.Arcade.WaddamburoFrontend));
+        return next(from, shell).Where(scene => shell.Catalog.Contains(scene.Id));
     }
 
     private static IEnumerable<SceneDefinition> next(SceneId from, GameShell shell)
@@ -77,7 +76,7 @@ internal static class ScreenGraph
             return [gameplayParts(shell, dan: false), .. afterSong(),
                 initial(credit.AiBattle ? FlowScenes.AiTutorial : credit.Waiwai ? FlowScenes.WaiwaiTutorial : FlowScenes.Tutorial),
                 .. credit.AiBattle || credit.Waiwai ? Array.Empty<SceneDefinition>() : [shell.Screens.DaniSelect(credit.PlayerSide)],
-                .. shell.Arcade.Home && !shell.Arcade.WaddamburoFrontend ? [FlowScenes.HomeRewards] : Array.Empty<SceneDefinition>()];
+                .. shell.Arcade.Home && shell.Frontend.Rewards ? [FlowScenes.HomeRewards] : Array.Empty<SceneDefinition>()];
         if (from == FlowScenes.DaniSelect)
             return [gameplayParts(shell, dan: true), .. afterDan(), songSelect()];
         if (from == FlowScenes.Gameplay)

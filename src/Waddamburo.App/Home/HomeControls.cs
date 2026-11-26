@@ -460,7 +460,7 @@ internal sealed class HomeControls : IDisposable
         _pauseInterpolation = _lastInterpolation;
         _menu.Open(gameplay: false, attract: AttractScenes.Contains(active), songSelect: active == FlowScenes.SongSelect,
             inRoom: active == FlowScenes.SongSelect && _shell.Room.Session is not null, quit: home,
-            rewards: active == FlowScenes.SongSelect && !_shell.Arcade.WaddamburoFrontend && _shell.Rewards.PendingSide(_shell.Players.JoinedSides) is not null);
+            rewards: active == FlowScenes.SongSelect && _shell.Frontend.Rewards && _shell.Rewards.PendingSide(_shell.Players.JoinedSides) is not null);
         // The attract goes on muted under the menu; the entry's and Song Select's music hold.
         if (AttractScenes.Contains(active))
             _audio.MuteAttract(true);
