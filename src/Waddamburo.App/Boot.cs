@@ -155,11 +155,13 @@ public static class Boot
         ReleaseConsole.CrashFolder = Path.Combine(layout.Shared, "logs");
         ReleaseConsole.LogToFile();
         Console.WriteLine($"Game data: {layout.Root}");
-        Console.WriteLine($"Title font: {layout.FontPath}");
-        Waddamburo.Platform.Sdl.Text.NativeVerticalTextRasterizer.FallbackFonts = layout.FallbackFonts;
         // Cabinet settings (free play, credits, songs per session) beside the game data.
         var arcadePath = Path.Combine(layout.Shared, Waddamburo.Game.Flow.ArcadeSettings.FileName);
         var arcade = earlyArcade ?? Waddamburo.Game.Flow.ArcadeSettings.LoadOrCreate(arcadePath);
+        // The game's own font is Green's frontend's; Waddamburo's draws with the bundled one.
+        layout = layout.ForFrontend(arcade.WaddamburoFrontend);
+        Console.WriteLine($"Title font: {layout.FontPath}");
+        Waddamburo.Platform.Sdl.Text.NativeVerticalTextRasterizer.FallbackFonts = layout.FallbackFonts;
         // The cache defaults to this PC's user cache (a game on a USB stick must not decode onto it).
         layout.MoveGameCacheTo(layout.Cache(arcade.CacheFolder));
         Console.WriteLine($"Cache: {layout.Cache(arcade.CacheFolder)}");

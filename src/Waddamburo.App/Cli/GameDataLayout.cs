@@ -23,6 +23,19 @@ internal sealed record GameDataLayout(
     /// <summary>The stable build's home (the cache's default place, shared with a nightly).</summary>
     public string CacheHome { get; init; } = Home;
 
+    /// <summary>The title font is the game data's own (Green's), not the bundled one or the user's.</summary>
+    public bool GameFont { get; init; }
+
+    /// <summary>The bundled title font and its fallbacks (Waddamburo's own text).</summary>
+    public (string Font, IReadOnlyList<string> Fallbacks) Bundled { get; init; } = (FontPath, FallbackFonts);
+
+    /// <summary>
+    /// The fonts a frontend draws its text with: Green's frontend the game data's font when it has one, Waddamburo's
+    /// always the bundled one (nothing of the game's).
+    /// </summary>
+    public GameDataLayout ForFrontend(bool waddamburo) =>
+        waddamburo && GameFont ? this with { FontPath = Bundled.Font, FallbackFonts = Bundled.Fallbacks, GameFont = false } : this;
+
     /// <summary>Where config.cfg, the crash logs and screenshots go: <see cref="Boot.UserHome"/> (a phone's folder the
     /// player can open), else <see cref="Home"/>.</summary>
     public string Shared { get; init; } = Home;
@@ -59,7 +72,8 @@ internal sealed record GameDataLayout(
         Directory.CreateDirectory(home);
         // The user's font when they supplied one, else the bundled one; the bundled fonts draw what it lacks.
         var bundled = BundledFonts.Extract(Path.Combine(home, "fonts"));
-        var font = fontOverride is null ? findTitleFont(fullRoot) ?? bundled.Title : Path.GetFullPath(fontOverride);
+        var gameFont = fontOverride is null ? findTitleFont(fullRoot) : null;
+        var font = fontOverride is null ? gameFont ?? bundled.Title : Path.GetFullPath(fontOverride);
         if (!File.Exists(font))
             throw new FileNotFoundException($"The title font does not exist: {font}", font);
         string[] fallbacks = font == bundled.Title ? [bundled.Hangul, bundled.Fallback] : [bundled.Title, bundled.Hangul, bundled.Fallback];
@@ -72,7 +86,11 @@ internal sealed record GameDataLayout(
             if (File.Exists(settings) && !File.Exists(Path.Combine(shared, Waddamburo.Game.Flow.ArcadeSettings.FileName)))
                 File.Move(settings, Path.Combine(shared, Waddamburo.Game.Flow.ArcadeSettings.FileName));
         }
-        return new GameDataLayout(fullRoot, home, lumen, donRoot, tja, soundRoot, font, fallbacks, bundled.Service) { CacheHome = stableHome, Shared = shared };
+        return new GameDataLayout(fullRoot, home, lumen, donRoot, tja, soundRoot, font, fallbacks, bundled.Service)
+        {
+            CacheHome = stableHome, Shared = shared, GameFont = gameFont is not null,
+            Bundled = (bundled.Title, [bundled.Hangul, bundled.Fallback]),
+        };
     }
 
     // Not copied into a nightly's home: what it makes for itself, and the shared cache.
