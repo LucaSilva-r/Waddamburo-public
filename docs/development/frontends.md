@@ -36,8 +36,11 @@ catalogue, saved beside the scores) and `TjaDanCourses` (the player's own `Dani`
 
 ## Open
 
-- The flows (`App/Flow`) are still shared: Waddamburo's frontend is Green's flow with its differences switched on
-  `ArcadeSettings.WaddamburoFrontend`. Once its flow differs more than that, it gets its own flow table.
+- Flows: each frontend has its own flow table. Waddamburo's has its own boot (`WaddamburoBootFlow`: to who's playing
+  and the entry) and results (`WaddamburoResultFlow`: results, then the next song or the course list); the entry, Song
+  Select and gameplay flows are the engine's and shared. What differs is asked of `Shell.Frontend` (`Frontend`: game
+  movies, game sounds, mascot, attract loop, Waiwai, AI battle, rewards), never of the setting. The results' provider
+  names are the engine's (`Game.Flow.ResultNames`).
 - Screen hosts are the frontend's own: `GreenScreenHosts` (Skins.Green) for the game's movies, `WaddamburoScreenHosts`
   (App/Frontends) for ours: no bindings, only the engine's sessions (entry, Song Select) and when a screen ends.
 - Waddamburo's "who's playing?" (`AccountPicker`) is a list over the entry: Guest and each stored TaikOnline account
