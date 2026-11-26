@@ -37,20 +37,27 @@ internal static class ScreenGraph
     /// <summary>The screens <paramref name="from"/> leads to, the likeliest first.</summary>
     public static IEnumerable<SceneDefinition> Next(SceneId from, GameShell shell)
     {
+        // Only what the frontend's catalog has: Waddamburo's has no attract loop, revival or game over.
+        return next(from, shell).Where(scene => shell.Catalog.Contains(scene.Id)
+            && (scene.Id != FlowScenes.GameOver && scene.Id != FlowScenes.RewardShop || !shell.Arcade.WaddamburoFrontend));
+    }
+
+    private static IEnumerable<SceneDefinition> next(SceneId from, GameShell shell)
+    {
         var credit = shell.Credit;
-        SceneDefinition initial(SceneId id) => shell.Catalog.GetDefinition(id);
-        SceneDefinition songSelect() => FlowScenes.SongSelectScene(sides(shell), credit.Waiwai, credit.AiBattle);
+        SceneDefinition initial(SceneId id) => shell.Catalog.Contains(id) ? shell.Catalog.GetDefinition(id) : new(SceneDefinition.CurrentVersion, id, []);
+        SceneDefinition songSelect() => shell.Screens.SongSelect(sides(shell), credit.Waiwai, credit.AiBattle);
         IEnumerable<SceneDefinition> attract(SceneId next) => [initial(FlowScenes.Entry), initial(next)];
         // What a play goes through after its song: loaded before the song starts (nothing loads during one).
         IEnumerable<SceneDefinition> afterSong() =>
         [
-            credit.AiBattle ? FlowScenes.AiResults : credit.Waiwai ? FlowScenes.WaiwaiResults : FlowScenes.Results,
+            credit.AiBattle ? FlowScenes.AiResults : credit.Waiwai ? FlowScenes.WaiwaiResults : shell.Screens.Results,
             initial(FlowScenes.Retry),
             shell.Arcade.Home ? FlowScenes.NormalGameOver : FlowScenes.RewardGameOver,
             .. credit.AiBattle && !shell.Arcade.Home ? [initial(FlowScenes.AiRemind)] : Array.Empty<SceneDefinition>(),
         ];
         IEnumerable<SceneDefinition> afterDan() =>
-            [FlowScenes.DaniResults, shell.Arcade.Home ? FlowScenes.DaniSelectScene(credit.PlayerSide) : FlowScenes.DaniGameOver];
+            [shell.Screens.DaniResults, shell.Arcade.Home ? shell.Screens.DaniSelect(credit.PlayerSide) : FlowScenes.DaniGameOver];
 
         if (from == FlowScenes.Boot)
             return [initial(FlowScenes.Logo)];
@@ -64,13 +71,13 @@ internal static class ScreenGraph
             return attract(FlowScenes.Logo);
         // Entry's mode select picks the credit's Song Select (they share most of their textures).
         if (from == FlowScenes.Entry)
-            return [FlowScenes.SongSelectScene([0]), FlowScenes.RewardShopVisit, FlowScenes.SongSelectScene([0], waiwai: true),
+            return [shell.Screens.SongSelect([0]), FlowScenes.RewardShopVisit, FlowScenes.SongSelectScene([0], waiwai: true),
                 FlowScenes.SongSelectScene([0], aiBattle: true)];
         if (from == FlowScenes.SongSelect)
             return [gameplayParts(shell, dan: false), .. afterSong(),
                 initial(credit.AiBattle ? FlowScenes.AiTutorial : credit.Waiwai ? FlowScenes.WaiwaiTutorial : FlowScenes.Tutorial),
-                .. credit.AiBattle || credit.Waiwai ? Array.Empty<SceneDefinition>() : [FlowScenes.DaniSelectScene(credit.PlayerSide)],
-                .. shell.Arcade.Home ? [FlowScenes.HomeRewards] : Array.Empty<SceneDefinition>()];
+                .. credit.AiBattle || credit.Waiwai ? Array.Empty<SceneDefinition>() : [shell.Screens.DaniSelect(credit.PlayerSide)],
+                .. shell.Arcade.Home && !shell.Arcade.WaddamburoFrontend ? [FlowScenes.HomeRewards] : Array.Empty<SceneDefinition>()];
         if (from == FlowScenes.DaniSelect)
             return [gameplayParts(shell, dan: true), .. afterDan(), songSelect()];
         if (from == FlowScenes.Gameplay)

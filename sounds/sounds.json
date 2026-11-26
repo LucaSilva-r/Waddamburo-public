@@ -1,5 +1,5 @@
 // The engine's own sounds (free-movies.md, Sounds): placeholders made by tools/sounds/placeholder_sounds.py.
-// A name missing here plays the game's sound when there is game sound data, else nothing.
+// A name missing here plays the game's sound when there is game sound data (Green's frontend only), else nothing.
 {
   "tones": ["Taiko", "High taiko"],
   "sounds": {

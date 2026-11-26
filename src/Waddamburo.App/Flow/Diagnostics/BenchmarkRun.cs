@@ -46,12 +46,12 @@ internal sealed class BenchmarkRun(GameShell shell, BenchmarkFlow song, bool res
             // screen change takes the loading slot back (it loads Entry), so the request repeats until ready.
             case Step.Attract when _inStep.Elapsed >= AttractTime && shell.Active.Id != FlowScenes.Gameplay:
                 begin(Step.LoadingSongSelect);
-                shell.Scenes.Prefetch(FlowScenes.SongSelectScene([0]));
+                shell.Scenes.Prefetch(shell.Screens.SongSelect([0]));
                 break;
             case Step.LoadingSongSelect when shell.Active.Id == FlowScenes.Gameplay:
                 break;
             case Step.LoadingSongSelect when shell.Scenes.Prefetched != FlowScenes.SongSelect && _inStep.Elapsed <= GiveUp:
-                shell.Scenes.Prefetch(FlowScenes.SongSelectScene([0]));
+                shell.Scenes.Prefetch(shell.Screens.SongSelect([0]));
                 break;
             case Step.LoadingSongSelect when shell.Scenes.PrefetchReady || _inStep.Elapsed > GiveUp:
                 begin(Step.SongSelect);
@@ -100,7 +100,7 @@ internal sealed class BenchmarkRun(GameShell shell, BenchmarkFlow song, bool res
                 break;
             case Step.TwoPlayerSong when song.Done:
                 begin(Step.Results);
-                shell.Catalog.Replace(FlowScenes.Results);
+                shell.Catalog.Replace(shell.Screens.Results);
                 shell.Scenes.Show(FlowScenes.Result);
                 break;
             case Step.Results when _inStep.Elapsed >= ResultsTime:

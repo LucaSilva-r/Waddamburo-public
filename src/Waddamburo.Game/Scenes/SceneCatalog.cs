@@ -51,6 +51,9 @@ public sealed class SceneCatalog
         _definitions = _definitions.SetItem(definition.Id, definition);
     }
 
+    /// <summary>Whether the catalog has that scene (a frontend's catalog holds only the screens it shows).</summary>
+    public bool Contains(SceneId id) => _definitions.ContainsKey(id);
+
     public SceneDefinition GetDefinition(SceneId id)
     {
         ArgumentNullException.ThrowIfNull(id);

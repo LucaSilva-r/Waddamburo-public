@@ -37,7 +37,7 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
         if (scene == FlowScenes.AiRemind)
             Shell.Sounds?.StartScreenMusic("music.remind");
         if (scene == FlowScenes.RewardShop)
-            Shell.Scenes.Prefetch(FlowScenes.SongSelectScene([.. Shell.Players.JoinedSides]));
+            Shell.Scenes.Prefetch(Shell.Screens.SongSelect([.. Shell.Players.JoinedSides]));
         // Screens of ours ask the engine (WdNames scopes retry and gameover); the game's end themselves.
         _revival = null;
         _ending = false;
@@ -58,7 +58,7 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
             Shell.Rewards.AskCreditEnd(Shell.Players.JoinedSides);
         // The next song's Song Select loads in the background while the results play.
         if (Shell.Hosts.CreditNext == Waddamburo.Game.Flow.TaikoCreditNext.NextSong)
-            Shell.Scenes.Prefetch(FlowScenes.SongSelectScene([.. Shell.Players.JoinedSides], Shell.Credit.Waiwai, Shell.Credit.AiBattle));
+            Shell.Scenes.Prefetch(Shell.Screens.SongSelect([.. Shell.Players.JoinedSides], Shell.Credit.Waiwai, Shell.Credit.AiBattle));
         // The game's results show the song titles in slots.
         if (Shell.Dan.Result is not null)
         {

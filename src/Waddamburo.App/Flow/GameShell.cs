@@ -237,6 +237,9 @@ internal sealed partial class GameShell : IDisposable
     public EnsoLayout EnsoLayout { get; }
     public PlayRequestState PlayRequests { get; } = new();
     public SceneCatalog Catalog { get; }
+
+    /// <summary>The frontend's screens: Green's traced compositions, or Waddamburo's own movies only.</summary>
+    public IScreenCompositions Screens => Arcade.WaddamburoFrontend ? Frontends.WaddamburoScreens.Instance : Waddamburo.Skins.Green.GreenScreens.Instance;
     public IScreenHosts Hosts { get; }
 
     /// <summary>Song Select's score windows from the server (null offline).</summary>
@@ -898,6 +901,8 @@ internal sealed partial class GameShell : IDisposable
             MovieContent.DecodeImage = GameMovieContent.DecodeImage;
             MovieContent.BundledRoot = Path.Combine(AppContext.BaseDirectory, "movies");
             MovieContent.PreferBundled = () => Arcade.OwnMovies;
+            // Waddamburo's frontend never shows a movie of the game's: a slot without one of ours shows a placeholder.
+            MovieContent.PackagesOnly = () => Arcade.WaddamburoFrontend;
             _presenter = new ScenePresenter(Application, MovieContent, () => Arcade.UpscaleTextures && Application.ShowUpscaled);
             Scenes = new SceneSwitcher(this, _presenter, flowOf, blackLoadingFrame);
             MovieContent.Reuse = _presenter.Reuse;
@@ -906,7 +911,7 @@ internal sealed partial class GameShell : IDisposable
             Coordinator = new GameFlowCoordinator(Catalog, _loader, flow);
             Overlay = new IntermissionOverlay(Application, _loader, Skin);
             // The intermissions are loaded once, up front: the rainbow must never stall a song's start.
-            foreach (var intermission in new[] { FlowScenes.Rainbow, FlowScenes.Shutter, FlowScenes.Fade, FlowScenes.DanCover, FlowScenes.DanExitCover, FlowScenes.DanShutter })
+            foreach (var intermission in new[] { Screens.Rainbow, Screens.Shutter, Screens.Fade, Screens.DanCover, Screens.DanExitCover, Screens.DanShutter })
                 Overlay.Preload(intermission);
             Sounds?.PreloadMusic();
 
@@ -972,16 +977,17 @@ internal sealed partial class GameShell : IDisposable
     // The scenes the flows show, and the routes the movies' own scene requests take.
     private SceneCatalog createSceneCatalog(StartScene start) =>
         new(
-            FlowScenes.Initial([
+            Screens.Initial([
                 GameplaySceneComposition.Create(FlowScenes.Gameplay, Random.Shared, EnsoLayout),
                 // Placeholder: the audio calibration replaces it with a fresh lane each time.
                 GameplaySceneComposition.Create(FlowScenes.Calibration, Random.Shared, EnsoLayout),
                 // Placeholder too: the benchmark puts its lane here.
                 GameplaySceneComposition.Create(FlowScenes.Benchmark, Random.Shared, EnsoLayout),
-                start is StartScene.DaniResultFail or StartScene.DaniResultClear ? FlowScenes.DaniResults
-                    : _diagnosticWaiwai is null ? FlowScenes.Results : FlowScenes.WaiwaiResults,
+                start is StartScene.DaniResultFail or StartScene.DaniResultClear ? Screens.DaniResults
+                    : _diagnosticWaiwai is null ? Screens.Results : FlowScenes.WaiwaiResults,
             ]),
-            [
+            // The entry's start (ours asks the same): Song Select. Waddamburo's frontend has no other way out of it.
+            Arcade.WaddamburoFrontend ? [new SceneTransitionRoute(FlowScenes.Entry, new LumenSceneRequest(1, 0, 0), FlowScenes.SongSelect)] : [
                 new SceneTransitionRoute(FlowScenes.Entry, new LumenSceneRequest(1, 0, 0), FlowScenes.SongSelect),
                 // Mode select's AI battle (traced SetNextScene(10, 0, 0)): its own song select (Players.ChooseMode).
                 new SceneTransitionRoute(FlowScenes.Entry, new LumenSceneRequest(10, 0, 0), FlowScenes.SongSelect),
@@ -1084,18 +1090,21 @@ internal sealed partial class GameShell : IDisposable
     }
 
     // The sounds the engine's names play, the first that has one: the user's pack (USRDIR/waddamburo/sounds), ours
-    // (sounds/ beside the executable) when free_movies is on or there is no game sound data, then the game's.
+    // (sounds/ beside the executable) when free_movies is on or there is no game sound data, then the game's (never on
+    // Waddamburo's frontend).
     // ponytail: free_movies is read once, at start.
     private GameSounds createSounds(AudioEngine audio, string? soundRoot, string? arcadePath)
     {
         var green = new GreenSoundSet(soundRoot ?? Path.Combine(AppContext.BaseDirectory, "sounds"));
-        ISoundSet set = soundRoot is null ? new SilentSoundSet() : green;
+        // Waddamburo's frontend never plays the game's sounds: a name no pack has is silent.
+        ISoundSet set = soundRoot is null || Arcade.WaddamburoFrontend ? new SilentSoundSet() : green;
         if ((soundRoot is null || Arcade.OwnMovies) && SoundPack.Load(Path.Combine(AppContext.BaseDirectory, "sounds"), set) is { } ours)
             set = ours;
         if (arcadePath is not null && SoundPack.Load(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(arcadePath))!, "sounds"), set) is { } own)
             set = own;
         var sounds = new GameSounds(audio, set);
-        GreenSounds = new GreenScreenSounds(new Waddamburo.Skins.Green.Sound.GreenSounds(green, sounds.Bank), sounds.StopAll);
+        GreenSounds = Arcade.WaddamburoFrontend ? null
+            : new GreenScreenSounds(new Waddamburo.Skins.Green.Sound.GreenSounds(green, sounds.Bank), sounds.StopAll);
         // Any movie of ours may ask for a sound by name, for a drum's side and tone or centred.
         WdRequests.App = new WdRequests("app").Handle("sound.play", arguments =>
         {
@@ -1136,7 +1145,8 @@ internal sealed partial class GameShell : IDisposable
 
     public string? FindJingle(string fileName)
     {
-        if (Options.SoundRoot is null)
+        // The game's jingles are Green's frontend's; Waddamburo's plays none of the game's sounds.
+        if (Options.SoundRoot is null || Arcade.WaddamburoFrontend)
             return null;
         var path = Path.Combine(Path.GetFullPath(Options.SoundRoot), "bgm", "nub", fileName);
         return File.Exists(path) ? path : null;
@@ -1406,8 +1416,8 @@ internal sealed partial class GameShell : IDisposable
             return "the screen is already changing";
         Players.ChooseMode(aiBattle: false);
         Dan.Series = Arcade.DanSeries;
-        Catalog.Replace(FlowScenes.DaniSelectScene(Credit.PlayerSide));
-        Reload.Start(static () => { }, FlowScenes.DaniSelect, FlowScenes.DanCover);
+        Catalog.Replace(Screens.DaniSelect(Credit.PlayerSide));
+        Reload.Start(static () => { }, FlowScenes.DaniSelect, Screens.DanCover);
         return null;
     }
 

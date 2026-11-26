@@ -99,7 +99,7 @@ internal sealed partial class GameplayFlow
 
         public override TimeSpan? EndsAt => _endsAt;
 
-        public override SceneDefinition? Shutter => FlowScenes.DanShutter;
+        public override SceneDefinition? Shutter => Shell.Screens.DanShutter;
 
         // Traced sessions 30 and 31, as the course's shutter closes.
         public override void ShutterClosing() => Shell.Sounds?.Play("dan.finished");
@@ -227,7 +227,7 @@ internal sealed partial class GameplayFlow
             }
         }
 
-        public override SceneDefinition? Results => Shell.Dan.Result is not null ? FlowScenes.DaniResults : null;
+        public override SceneDefinition? Results => Shell.Dan.Result is not null ? Shell.Screens.DaniResults : null;
 
         // A course starts over from its first song, also from its results.
         public override void Restarting() => Shell.Dan.Result = null;

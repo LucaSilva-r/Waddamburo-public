@@ -139,7 +139,7 @@ internal sealed partial class GameplayFlow
         public virtual TimeSpan? EndsAt => null;
 
         /// <summary>The shutter that closes on the play (null: none).</summary>
-        public virtual SceneDefinition? Shutter => FlowScenes.Shutter;
+        public virtual SceneDefinition? Shutter => Shell.Screens.Shutter;
 
         /// <summary>The shutter starts closing.</summary>
         public virtual void ShutterClosing()

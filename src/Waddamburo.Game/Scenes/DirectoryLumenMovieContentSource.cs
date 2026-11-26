@@ -57,6 +57,12 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
     /// </summary>
     public bool EmptyWhenMissing => !Directory.Exists(_assetRoot);
 
+    /// <summary>
+    /// Packages only, never the game's archives (Waddamburo's own frontend, read live): a movie without a package is a
+    /// labelled <see cref="LumenMovieContent.Placeholder"/>. Each is named once.
+    /// </summary>
+    public Func<bool>? PackagesOnly { get; set; }
+
     private readonly ConcurrentDictionary<string, bool> _reportedMissing = new(StringComparer.Ordinal);
 
     private string? packageDirectory(string archiveId, string movieId, bool archiveMissing = false)
@@ -109,6 +115,8 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
     /// </summary>
     public void Prefetch(IEnumerable<(string ArchiveId, string MovieId)> movies)
     {
+        if (PackagesOnly?.Invoke() == true)
+            return; // packages load on demand; there is no archive to open ahead
         var fresh = new ConcurrentDictionary<(string ArchiveId, string MovieId), Task<LumenMovieContent>>();
         foreach (var archive in movies.Distinct().GroupBy(static movie => movie.ArchiveId))
         {
@@ -179,6 +187,13 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
             // ponytail: read and decoded here on every load; cache with the prefetches if a package gets heavy.
             if (owner.packageDirectory(archiveId, movieId) is { } package)
                 return LumenMovieContent.LoadPackage(package, owner.DecodeImage!, owner._limits);
+            if (owner.PackagesOnly?.Invoke() == true)
+            {
+                var slot = $"{Path.GetDirectoryName(archiveId)}/{Path.GetFileNameWithoutExtension(movieId)}";
+                if (owner._reportedMissing.TryAdd(movieId, true))
+                    Console.WriteLine($"Movie '{slot}': no package of ours yet, shown as a placeholder.");
+                return LumenMovieContent.Placeholder(movieId, slot);
+            }
             owner.Loaded?.Invoke(archiveId, movieId);
             if (owner._prefetched.TryRemove((archiveId, movieId), out var ready))
             {

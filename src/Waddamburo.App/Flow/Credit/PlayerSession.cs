@@ -157,6 +157,6 @@ internal sealed class PlayerSession(GameShell shell)
             indicators.AiBattle = shell.Credit.AiBattle;
         }
         if (shell.Don is not null) shell.Don.GameplaySide = first;
-        shell.Catalog.Replace(FlowScenes.SongSelectScene(SongSelectSides, shell.Credit.Waiwai, shell.Credit.AiBattle));
+        shell.Catalog.Replace(shell.Screens.SongSelect(SongSelectSides, shell.Credit.Waiwai, shell.Credit.AiBattle));
     }
 }

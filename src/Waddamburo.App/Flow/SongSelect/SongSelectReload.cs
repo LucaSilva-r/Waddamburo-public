@@ -33,10 +33,10 @@ internal sealed class SongSelectReload(GameShell shell)
         _change = change;
         _next = next;
         // The movies decode and upload on worker threads while the rainbow covers (the reload's cost).
-        _scene = FlowScenes.SongSelectScene(shell.Players.SongSelectSides, shell.Credit.Waiwai, shell.Credit.AiBattle);
+        _scene = shell.Screens.SongSelect(shell.Players.SongSelectSides, shell.Credit.Waiwai, shell.Credit.AiBattle);
         if (next is null)
             shell.Scenes.Prefetch(_scene);
-        shell.Overlay.Show(cover ?? FlowScenes.Rainbow);
+        shell.Overlay.Show(cover ?? shell.Screens.Rainbow);
         shell.Overlay.Cover();
         // The rainbow hurries here; another cover plays as authored.
         shell.Overlay.Speed = cover is null ? Speed : 1;

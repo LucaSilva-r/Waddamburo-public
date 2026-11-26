@@ -138,6 +138,23 @@ public sealed class LumenMovieContent
         return new LumenMovieContent(name, semantic.Value, [], semantic.Diagnostics) { IsStandIn = true };
     }
 
+    /// <summary>
+    /// A movie of ours that does not exist yet, on a frontend that never shows the game's: a small yellow label naming the
+    /// slot, so it is plain what is missing. Takes every call like <see cref="Empty"/>.
+    /// </summary>
+    public static LumenMovieContent Placeholder(string name, string label)
+    {
+        var assembled = Formats.Package.MoviePackage.Assemble("""
+            { "format": 2, "root": "main",
+              "texts": { "label": { "rect": [0, 0, 600, 24], "size": 18, "align": "left", "color": "#ffd23c" } },
+              "sprites": { "main": { "frames": 1,
+                "layers": [{ "character": "label", "name": "label", "keys": [{ "frame": 0, "x": 8, "y": 8 }] }],
+                "scripts": { "0": "label.as" } } } }
+            """, _ => $"label.text = \"missing: {label.Replace("\\", "/").Replace("\"", "'")}\";\nstop();");
+        var semantic = LmbSemanticReader.Read(LmbFile.Parse(assembled.Lmb), validationContext: new LmbSemanticValidationContext(0));
+        return new LumenMovieContent(name, semantic.Value, [], semantic.Diagnostics) { IsStandIn = true };
+    }
+
     /// <summary>Whether the movie has semantic errors (it would not load), without decoding its textures.</summary>
     public static bool HasErrors(DdpMovieView movie, ParserLimits? limits = null)
     {

@@ -929,7 +929,7 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         }
         Shell.AiBattle.Outcome = _play.Lanes.Battle?.Outcome;
         Shell.Catalog.Replace(_mode.Results
-            ?? FlowScenes.Results);
+            ?? Shell.Screens.Results);
         if (!finished) _play.Charts = [];
         _play.Lanes.Stop();
         Shell.Scenes.Show(finished ? FlowScenes.Result : FlowScenes.SongSelect);

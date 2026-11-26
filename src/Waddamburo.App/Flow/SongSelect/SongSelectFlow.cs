@@ -132,7 +132,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
                 tellDanSelect(ours);
             if (input.Escape || Shell.Hosts.DanSelectChoice is { Back: true })
             {
-                Shell.Reload.Start(static () => { }, FlowScenes.SongSelect, FlowScenes.DanExitCover); // traced session31
+                Shell.Reload.Start(static () => { }, FlowScenes.SongSelect, Shell.Screens.DanExitCover); // traced session31
                 return;
             }
             if (Shell.Hosts.DanSelectChoice is { Board: { } board } && Shell.PlayRequests.Pending is null)
@@ -192,8 +192,8 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             Shell.Sounds?.Play("select.dan");
             // The series spine picked at home; a cabinet has only the one its operator set, and no spines.
             Shell.Dan.Series = Shell.Hosts.SongSelect!.Session.DanSeriesPicked ?? Shell.Arcade.DanSeries;
-            Shell.Catalog.Replace(FlowScenes.DaniSelectScene(Shell.Credit.PlayerSide));
-            Shell.Reload.Start(static () => { }, FlowScenes.DaniSelect, FlowScenes.DanCover);
+            Shell.Catalog.Replace(Shell.Screens.DaniSelect(Shell.Credit.PlayerSide));
+            Shell.Reload.Start(static () => { }, FlowScenes.DaniSelect, Shell.Screens.DanCover);
             return;
         }
         // The rainbow's song title rasterizes in the background (large at 4K): started as the
@@ -329,7 +329,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         }
         if (rainbow.ShouldStartCover(Shell.Tick))
         {
-            var player = Shell.Overlay.Show(FlowScenes.Rainbow);
+            var player = Shell.Overlay.Show(Shell.Screens.Rainbow);
             var song = find(request.Song).Song.Descriptor;
             player.Publish("song.title", LumenHostValue.FromString(song.Title.English ?? song.Title.Primary));
             player.Publish("song.subtitle", song.Subtitle is { Length: > 0 } subtitle ? LumenHostValue.FromString(subtitle) : LumenHostValue.Undefined);
@@ -440,7 +440,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             _coveringForCalibration = true;
             Shell.Audio?.Mixer.StopBus(AudioBus.Preview, TimeSpan.FromMilliseconds(20));
             Shell.Audio?.Mixer.StopBus(AudioBus.Bgm, TimeSpan.FromMilliseconds(300));
-            Shell.Overlay.Show(FlowScenes.Rainbow);
+            Shell.Overlay.Show(Shell.Screens.Rainbow);
             Shell.Overlay.Cover();
             return true;
         }
@@ -456,7 +456,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
     private void showSongSelect()
     {
         // A launch straight into Song Select joined nobody: keep the player's own board.
-        Shell.Catalog.Replace(FlowScenes.SongSelectScene(
+        Shell.Catalog.Replace(Shell.Screens.SongSelect(
             Shell.Players.JoinedSides.Count > 0 ? [.. Shell.Players.JoinedSides] : [Shell.Credit.PlayerSide], Shell.Credit.Waiwai, Shell.Credit.AiBattle));
         Shell.Scenes.Show(FlowScenes.SongSelect);
     }

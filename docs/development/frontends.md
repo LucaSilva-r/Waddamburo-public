@@ -5,9 +5,12 @@ Waddamburo is one engine with two frontends on top (user, 2026-11-26):
 - **Green's frontend**: Taiko Green's screens and flow, faithful to the game (attract, entry, credit, revival, game
   over, AI battle, Waiwai, the reward shop). Its movies are the game's (`Waddamburo.Skins.Green` drives them), or
   ours in their slots with `free_movies = true`.
-- **Waddamburo's frontend** (`frontend = waddamburo` in `waddamburo/config.cfg`): our movies always, home rules, no
-  attract loop (boot, then the entry with nobody joined), and only the features it offers: no AI battle, Waiwai or
-  reward shop. Two players play side by side. Home only for now.
+- **Waddamburo's frontend** (`frontend = waddamburo` in `waddamburo/config.cfg`): home rules, no attract loop (boot,
+  then the entry with nobody joined), and only the features it offers: no AI battle, Waiwai or reward shop. Two
+  players play side by side. Home only for now. **Nothing of the game's**: its own screen compositions
+  (`WaddamburoScreens`: only the layers its screens show), movies from packages only (a slot without a package of
+  ours is a yellow `missing: <slot>` placeholder, `LumenMovieContent.Placeholder`), and sounds from our pack only (a
+  name it lacks is silent; no game jingles, no Green screen sounds).
 
 Neither frontend owns a feature's rules. Those live in **`Waddamburo.Features`**, which references only `Game` and
 `Services` (never a frontend, a movie or the platform; `DependencyRulesTests` checks it):
@@ -33,5 +36,7 @@ catalogue, saved beside the scores) and `TjaDanCourses` (the player's own `Dani`
 - The flows (`App/Flow`) are still shared: Waddamburo's frontend is Green's flow with its differences switched on
   `ArcadeSettings.WaddamburoFrontend`. Once its flow differs more than that, it gets its own flow table.
 - Screen hosts are still `GreenScreenHosts` for both frontends (they leave our movies to the provider).
-- The game's indicator legend still shows over our song select (no movie of ours for that slot yet).
+- Green's compositions still live in Game's `FlowScenes`; `GreenScreens` (Skins.Green) wraps them.
+- Gameplay's composition is still the layout's (Green's slots: backgrounds, dancers, Don, balloon notes ...), shown as
+  placeholders on Waddamburo's frontend until it has its own gameplay composition or packages.
 - `GreenSounds` is still named in `GameShell` (composition) and by the home resume countdown.
