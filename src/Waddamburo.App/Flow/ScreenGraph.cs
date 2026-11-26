@@ -76,7 +76,7 @@ internal static class ScreenGraph
         if (from == FlowScenes.Gameplay)
             return shell.Gameplay.Dan is not null ? [.. afterDan(), songSelect()] : [.. afterSong(), songSelect()];
         if (from == FlowScenes.Result)
-            return shell.Credit.DanResult is not null ? [.. afterDan(), songSelect()] : [songSelect(), .. afterSong().Skip(1)];
+            return shell.Dan.Result is not null ? [.. afterDan(), songSelect()] : [songSelect(), .. afterSong().Skip(1)];
         if (from == FlowScenes.Retry || from == FlowScenes.AiRemind)
             return [songSelect(), .. afterSong().Skip(2)];
         if (from == FlowScenes.GameOver)

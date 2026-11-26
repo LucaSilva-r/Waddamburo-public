@@ -54,23 +54,23 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
         _resultStartTick = Shell.Tick;
         _continued = false;
         // An arcade credit ending after these results: the rewards its titles give are asked for now, for the medal screen.
-        if (!Shell.Arcade.Home && Shell.Credit.DanResult is null && Shell.Hosts.CreditNext == Waddamburo.Game.Flow.TaikoCreditNext.End)
+        if (!Shell.Arcade.Home && Shell.Dan.Result is null && Shell.Hosts.CreditNext == Waddamburo.Game.Flow.TaikoCreditNext.End)
             Shell.Rewards.AskCreditEnd(Shell.Players.JoinedSides);
         // The next song's Song Select loads in the background while the results play.
         if (Shell.Hosts.CreditNext == Waddamburo.Game.Flow.TaikoCreditNext.NextSong)
             Shell.Scenes.Prefetch(FlowScenes.SongSelectScene([.. Shell.Players.JoinedSides], Shell.Credit.Waiwai, Shell.Credit.AiBattle));
         // The game's results show the song titles in slots.
-        if (Shell.Credit.DanResult is not null)
+        if (Shell.Dan.Result is not null)
         {
             var titles = gameplay.CourseSongs.Select(Shell.Titles.GetGameplayTitle).ToArray();
             foreach (var title in titles)
                 _ = Shell.Titles.Resolve(title);
-            DaniResultHostBinding.FillBoards(Shell.Active.Player.Layers[0].Player, titles, Shell.Credit.DanChallenge > 0
-                ? DanChallengeArt.Key(Shell.Credit.DanSeries, Shell.Credit.DanChallenge, "short") : null);
+            DaniResultHostBinding.FillBoards(Shell.Active.Player.Layers[0].Player, titles, Shell.Dan.Challenge > 0
+                ? DanChallengeArt.Key(Shell.Dan.Series, Shell.Dan.Challenge, "short") : null);
         }
         if (gameplay.Song is { } song)
             ResultHostBinding.FillTitle(Shell.Active, Shell.Titles.GetGameplayTitle(song));
-        if (Shell.Credit.DanResult is { } dan && ours() is { } movies)
+        if (Shell.Dan.Result is { } dan && ours() is { } movies)
             publishDanResult(dan, movies);
     }
 
@@ -146,7 +146,7 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
         if (scene == FlowScenes.Result || scene == FlowScenes.AiRemind)
         {
             Shell.Sounds?.StopScreenMusic();
-            Shell.Credit.DanResult = null;
+            Shell.Dan.Result = null;
         }
         else if (scene == FlowScenes.RewardShop)
         {
@@ -244,7 +244,7 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
             if (input.Escape || _continued || Shell.ScreenEnded)
                 // A course ends the credit however many songs it had left (the coins inserted stay); at home,
                 // the course list again.
-                if (Shell.Credit.DanResult is not null)
+                if (Shell.Dan.Result is not null)
                 {
                     if (!Shell.Arcade.Home)
                         Shell.Catalog.Replace(FlowScenes.DaniGameOver);

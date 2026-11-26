@@ -87,14 +87,6 @@ public class CreditState
     /// <summary>A card rejected in the attract loop: the entry about to load shows the red band.</summary>
     public bool EntryCardRejected { get; set; }
 
-    // --- Dan ---
-
-    /// <summary>The series dani_select lists.</summary>
-    public string DanSeries { get; set; } = "green";
-
-    /// <summary>The challenge course being played: its number in <see cref="DanSeries"/>; 0: a rank.</summary>
-    public int DanChallenge { get; set; }
-
     // --- What a finished play hands its results ---
 
     /// <summary>The song's genre and stage (the results and song_info show them).</summary>
@@ -113,6 +105,4 @@ public class CreditState
     /// <summary>Waiwai's numbers for its results screen, from the finished song.</summary>
     public Func<WaiwaiOutcome?>? WaiwaiOutcome { get; set; }
 
-    /// <summary>The course play the next results show; null: a song's.</summary>
-    public DanCourseResult? DanResult { get; set; }
 }

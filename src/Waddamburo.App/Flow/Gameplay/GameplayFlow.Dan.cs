@@ -172,7 +172,7 @@ internal sealed partial class GameplayFlow
 
         public override void End(bool finished)
         {
-            Shell.Credit.DanResult = finished ? result() : null;
+            Shell.Dan.Result = finished ? result() : null;
             Flow.CourseSongs = finished ? songs : [];
             dropNextAudio();
         }
@@ -191,25 +191,17 @@ internal sealed partial class GameplayFlow
         public override void Save(PlayRequest played)
         {
             // Failed runs aren't kept, here or on the server.
-            if (Shell.Credit.DanResult is not { } result || result.Level == 0 || Shell.Autoplay || Shell.DevAutoplay
-                || Shell.Sync.Scores is not { } scores || TaikoGuest.Profiles[(int)played.Players[0].Player] is not { } profile)
+            if (Shell.Dan.Result is not { } result || result.Level == 0 || Shell.Autoplay || Shell.DevAutoplay
+                || Shell.Sync.Scores is null || TaikoGuest.Profiles[(int)played.Players[0].Player] is not { } profile)
                 return;
             var replays = course.Split(Shell.Gameplay.Replays[0]);
-            try
+            Shell.Dan.Keep(new DanPlayRecord(Guid.NewGuid(), profile.Baid, result,
+                [.. course.Authored.Select(static song => (string?)ChartHash.Compute(song.Chart, song.Course))], DateTimeOffset.UtcNow,
+                [.. replays.Select(static replay => replay.Encode())])
             {
-                scores.SaveDan(new DanPlayRecord(Guid.NewGuid(), profile.Baid, result,
-                    [.. course.Authored.Select(static song => (string?)ChartHash.Compute(song.Chart, song.Course))], DateTimeOffset.UtcNow,
-                    [.. replays.Select(static replay => replay.Encode())])
-                {
-                    AudioOffsetMs = (int)Play.AudioOffset.TotalMilliseconds,
-                    InputOffsetMs = (int)Play.InputOffset.TotalMilliseconds,
-                });
-            }
-            catch (Exception exception) when (exception is Microsoft.Data.Sqlite.SqliteException or IOException)
-            {
-                // A lost score must not end the credit.
-                Console.Error.WriteLine($"Error SCORE_SAVE: {exception.Message}");
-            }
+                AudioOffsetMs = (int)Play.AudioOffset.TotalMilliseconds,
+                InputOffsetMs = (int)Play.InputOffset.TotalMilliseconds,
+            });
             var encoded = replays.Select(static replay => replay.Encode()).ToList();
             _ = Task.Run(() => checkScore(result, course, encoded));
             Shell.Sync.Upload(profile);
@@ -235,9 +227,9 @@ internal sealed partial class GameplayFlow
             }
         }
 
-        public override SceneDefinition? Results => Shell.Credit.DanResult is not null ? FlowScenes.DaniResults : null;
+        public override SceneDefinition? Results => Shell.Dan.Result is not null ? FlowScenes.DaniResults : null;
 
         // A course starts over from its first song, also from its results.
-        public override void Restarting() => Shell.Credit.DanResult = null;
+        public override void Restarting() => Shell.Dan.Result = null;
     }
 }

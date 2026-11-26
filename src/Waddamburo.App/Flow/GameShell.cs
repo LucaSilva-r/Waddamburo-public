@@ -278,6 +278,9 @@ internal sealed partial class GameShell : IDisposable
     /// <summary>AI battle: ranks, AI-don levels, standings, what a battle earns, the last battle's results.</summary>
     public Waddamburo.Features.AiBattle.AiBattleModule AiBattle => field ??= new(Credit, () => Arcade.Home, () => Sync.Scores);
 
+    /// <summary>The dan dojo's credit: series, course, run result, bests, keeping a passed run.</summary>
+    public Waddamburo.Features.Dan.DanModule Dan => field ??= new(Credit, () => Sync.Scores);
+
     /// <summary>What the next Song Select lists and where it starts.</summary>
     public SongSelectSetup Select { get; private set; } = null!;
 
@@ -879,7 +882,7 @@ internal sealed partial class GameShell : IDisposable
             Catalog = createSceneCatalog(options.StartScene);
             Credit.WaiwaiOutcome = () => Gameplay.WaiwaiOutcome ?? _diagnosticWaiwai;
             if (Options.StartScene is StartScene.DaniResultFail or StartScene.DaniResultClear)
-                Credit.DanResult = diagnosticDan(Options.StartScene == StartScene.DaniResultClear);
+                Dan.Result = diagnosticDan(Options.StartScene == StartScene.DaniResultClear);
             // Stock songs as supportinfo.xml lists them; any other song three steps below each course it has.
             // ponytail: three everywhere for custom songs, whether or not simplifying changes their charts.
             Hosts = Loaded = createHosts(flow, snapshot, diagnosticResult, song => song.Key.Source == SongSourceKind.Stock
@@ -1021,6 +1024,7 @@ internal sealed partial class GameShell : IDisposable
             Shop,
             Rewards,
             AiBattle,
+            Dan,
             select.CreateSession,
             flow,
             snapshot,
@@ -1038,13 +1042,12 @@ internal sealed partial class GameShell : IDisposable
             Coins)
         {
             Favourites = select.Favourites,
-            DanCourseBoards = (series, bests) => select.Dan is { Ready: true } dan ? dan.Boards(series, bests) : null,
-            DanSong = uid => select.Dan?.Song(uid),
+            DanCourses = series => select.Dan is { Ready: true } dan ? dan.Courses(series) : null,
+            DanSong = status => select.Dan?.SongOf(status),
+            DanGenre = song => select.Dan?.Genre(song) ?? 0,
             RankingWanted = rankings is null ? null : rankings.Want,
             Rankings = rankings is null ? null : rankings.For,
             SupportCounts = supportCounts,
-            DanBests = () => TaikoGuest.Profiles[Credit.PlayerSide] is { } player && Sync.Scores is { } scores
-                ? scores.DanBests(player.Baid) : new Dictionary<string, int>(),
             ShowOni = () => Arcade.ShowOni,
             HideArcadeHud = () => HideArcadeHud,
             TimerFreeze = () => Arcade.TimerFreeze,
@@ -1394,7 +1397,7 @@ internal sealed partial class GameShell : IDisposable
         if (Reload.Busy || Coordinator.Flow.State != GameFlowState.Active)
             return "the screen is already changing";
         Players.ChooseMode(aiBattle: false);
-        Credit.DanSeries = Arcade.DanSeries;
+        Dan.Series = Arcade.DanSeries;
         Catalog.Replace(FlowScenes.DaniSelectScene(Credit.PlayerSide));
         Reload.Start(static () => { }, FlowScenes.DaniSelect, FlowScenes.DanCover);
         return null;

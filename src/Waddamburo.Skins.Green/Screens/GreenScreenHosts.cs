@@ -1,3 +1,4 @@
+using Waddamburo.Features.Dan;
 using Waddamburo.Features.AiBattle;
 using Waddamburo.Features.Rewards;
 using Waddamburo.Features.Shop;
@@ -26,6 +27,7 @@ public sealed class GreenScreenHosts(
     ShopModule shop,
     RewardsModule medals,
     AiBattleModule ai,
+    DanModule dan,
     Func<bool, SongSelectSession> createSelectSession,
     GameFlowSession flow,
     SongCatalogSnapshot catalog,
@@ -71,7 +73,7 @@ public sealed class GreenScreenHosts(
             _entry?.Advance();
         else if (screen == FlowScenes.Result)
         {
-            if (Credit.DanResult is not null)
+            if (dan.Result is not null)
                 DaniResult?.Poll();
             AiSectionResult?.Poll();
         }
@@ -150,11 +152,15 @@ public sealed class GreenScreenHosts(
     /// <summary>Song Select's favourite songs.</summary>
     public SongFavourites? Favourites { get; init; }
 
-    /// <summary>The dan dojo's boards for a series and the player's bests (null until the courses are ready).</summary>
-    public Func<string, IReadOnlyDictionary<string, int>?, (IReadOnlyList<DaniSelectBoard> Boards, IReadOnlyList<DanCourseStatus?> Courses)?>? DanCourseBoards { get; init; }
+    /// <summary>A series' dan courses against the library (null until the courses are ready).</summary>
+    // ponytail: the app's DanCourses; becomes DanModule's once ChartHashes and CustomDans leave the app.
+    public Func<string, IReadOnlyList<DanCourseStatus>?>? DanCourses { get; init; }
 
-    /// <summary>The song behind a dan board's song uid.</summary>
-    public Func<int, SongDescriptor?>? DanSong { get; init; }
+    /// <summary>The library's song for a dan course song.</summary>
+    public Func<DanSongStatus, SongDescriptor?>? DanSong { get; init; }
+
+    /// <summary>A song's genre as the dan movies number it.</summary>
+    public Func<SongDescriptor?, int>? DanGenre { get; init; }
 
     /// <summary>The loaded entry's host (null outside the entry).</summary>
     public EntrySceneHost? Entry => _entry;
@@ -189,8 +195,6 @@ public sealed class GreenScreenHosts(
 
     public ModeTutorialHostBinding? ModeTutorial { get; private set; }
 
-    /// <summary>The player's best result per course hash, for the course list's stamps.</summary>
-    public Func<IReadOnlyDictionary<string, int>>? DanBests { get; init; }
 
     /// <summary>The course list on screen.</summary>
     public DaniSelectHostBinding? DaniSelect { get; private set; }
@@ -505,7 +509,7 @@ public sealed class GreenScreenHosts(
 
     private LumenLayerHost daniResultHost()
     {
-        var binding = DaniResult = new DaniResultHostBinding(Credit.DanResult ?? throw new InvalidOperationException("Dan results loaded without a course play."),
+        var binding = DaniResult = new DaniResultHostBinding(dan.Result ?? throw new InvalidOperationException("Dan results loaded without a course play."),
             don, sounds is null ? null : sounds.Frontend.PlayCue);
         return new LumenLayerHost(binding, binding.Attach);
     }
@@ -556,16 +560,17 @@ public sealed class GreenScreenHosts(
         var view = new SongSelectCatalogView(catalog);
         var songs = view.Categories.SelectMany(category => category.Songs.Select(song => (Song: song, Category: category)))
             .GroupBy(static entry => entry.Song.Descriptor.Key).ToDictionary(static group => group.Key, static group => group.First());
+        var uids = new List<SongDescriptor?>();
         var binding = DaniSelect = new DaniSelectHostBinding(() =>
         {
-            if (DanCourseBoards?.Invoke(Credit.DanSeries, DanBests?.Invoke()) is not var (boards, courses))
+            if (DanCourses?.Invoke(dan.Series) is not { } courses || DanSong is null || DanGenre is null)
                 return null;
-            DanBoards = courses;
-            return boards;
+            DanBoards = [null, .. courses];
+            return DaniSelectBoards.Build(dan.Series, courses, dan.Bests(), DanSong, DanGenre, uids);
         }, Credit.PlayerSide, uid =>
-            DanSong?.Invoke(uid) is { } song && songs.TryGetValue(song.Key, out var entry)
+            uids.ElementAtOrDefault(uid) is { } song && songs.TryGetValue(song.Key, out var entry)
                 ? textures.GetSongTitle(entry.Song, entry.Category.BoardStyle, SongBoardTextureKind.Expanded) : null,
-            (challenge, kind) => DanChallengeArt.Key(Credit.DanSeries, challenge, kind),
+            (challenge, kind) => DanChallengeArt.Key(dan.Series, challenge, kind),
             songSelectSounds, don, sounds is null ? null : sounds.Frontend.PlayCue);
         return new LumenLayerHost(binding, binding.Attach);
     }

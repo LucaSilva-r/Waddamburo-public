@@ -1,7 +1,6 @@
 using Waddamburo.Catalog;
 using Waddamburo.Game.Dan;
 using Waddamburo.Game.Library;
-using Waddamburo.Skins.Green;
 using Waddamburo.Game.Scores;
 
 namespace Waddamburo.App.Online;
@@ -45,38 +44,16 @@ internal sealed class DanCourses
 
     private volatile bool _ready;
 
-    /// <summary>The song a board's uid stands for, to draw its title.</summary>
-    public SongDescriptor? Song(int uid) => (uint)uid < (uint)_uids.Count ? _uids[uid] : null;
-
-    private readonly List<SongDescriptor> _uids = [];
-
-    /// <summary>A series' ranks as dani_select's boards, the back board first, with each course's status.</summary>
-    /// <param name="series">The series' id.</param>
-    /// <param name="bests">The player's best result per course hash (see <see cref="ScoreStore.DanBests"/>).</param>
-    public (IReadOnlyList<DaniSelectBoard> Boards, IReadOnlyList<DanCourseStatus?> Courses) Boards(string series,
-        IReadOnlyDictionary<string, int>? bests = null)
+    /// <summary>A series' courses (the server's or the player's own) with each one's status against the library.</summary>
+    public IReadOnlyList<DanCourseStatus> Courses(string series)
     {
-        var boards = new List<DaniSelectBoard> { new(DaniSelectHostBinding.BackId, true, []) };
-        var courses = new List<DanCourseStatus?> { null };
-        _uids.Clear();
-        var challenges = 0;
         var library = _library;
-        foreach (var course in this.series().FirstOrDefault(candidate => candidate.Id == series)?.Courses ?? [])
-        {
-            var status = DanCourseStatus.Of(course, library);
-            boards.Add(new DaniSelectBoard(course.Rank, status.Playable, [.. status.Songs.Select(board)],
-                course.Songs.Sum(static song => song.Notes), conditions(course),
-                // The movie's history labels (traced): 0 none, 1 played (no art), 2 success, 3 perfect.
-                bests is not null && bests.TryGetValue(course.Hash, out var best) ? best + 1 : 0)
-            {
-                Challenge = course.Rank == DanRanks.Challenge ? ++challenges : null,
-            });
-            courses.Add(status);
-            if (course.Rank == DanRanks.Challenge)
-                Waddamburo.Skins.Green.Art.DanChallengeArt.Names[(series, challenges)] = course.Name;
-        }
-        return (boards, courses);
+        return [.. this.series().FirstOrDefault(candidate => candidate.Id == series)?.Courses.Select(course => DanCourseStatus.Of(course, library)) ?? []];
     }
+
+    /// <summary>The library's song a course song stands for; null: not in the library.</summary>
+    public SongDescriptor? SongOf(DanSongStatus status) =>
+        _snapshot.Songs.Values.FirstOrDefault(candidate => candidate.Key.StableId == status.Song.SongKey);
 
     /// <summary>
     /// The dojo as the library tree shows it (free-movies.md, Song select): a folder per series, its courses
@@ -160,35 +137,12 @@ internal sealed class DanCourses
         _ => id,
     };
 
-    // The board's panel holds one value per requirement, the red one (a value only gold asks for has none).
-    private static List<DaniSelectCondition> conditions(DanCourse course) => [.. new DanExams(course).Requirements
-        .Where(static requirement => requirement.Red.Length == 1)
-        .Select(static requirement => new DaniSelectCondition(requirement.Type switch
-        {
-            "soul_gauge" => 0,
-            "goods" => 1,
-            "oks" => 2,
-            "bads" => 3,
-            "combo" => 4,
-            "hits" => 5,
-            "score" => 6,
-            _ => 7,
-        }, requirement.Red[0]))];
-
-    private DaniSelectSong board(DanSongStatus status)
-    {
-        var song = _snapshot.Songs.Values.FirstOrDefault(candidate => candidate.Key.StableId == status.Song.SongKey);
-        var chart = song?.Charts.FirstOrDefault(candidate => (int?)candidate.Course == status.Song.Course);
-        _uids.Add(song!);
-        return new DaniSelectSong(_uids.Count - 1, genre(song), status.Song.Course, chart?.Level ?? 0);
-    }
-
     /// <summary>
     /// The song's genre as dani_select, dani_result and song_info number it (GENRE_JPOP 0 … GENRE_ORIGINAL 7): its
     /// folder's genre, a stock one first. It was the stock folder's position, which follows musicinfo's order, so
     /// the select screen and the songs disagreed (reported on Discord).
     /// </summary>
-    public int Genre(SongDescriptor song) => genre(song);
+    public int Genre(SongDescriptor? song) => genre(song);
 
     private int genre(SongDescriptor? song) => song is null ? 0
         : _snapshot.Categories.Where(category => category.Songs.Contains(song.Key))

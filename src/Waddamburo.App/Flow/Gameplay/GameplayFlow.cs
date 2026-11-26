@@ -894,15 +894,15 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         ResetRainbow();
         Shell.ReportDiagnostics();
         Shell.Gameplay.ReportDiagnostics();
-        Shell.Credit.DanResult = null;
+        Shell.Dan.Result = null;
         CourseSongs = [];
         _mode.End(finished);
-        var dan = Shell.Credit.DanResult is not null;
+        var dan = Shell.Dan.Result is not null;
         // eng/flow-smoke.sh compares these lines between builds.
         if (finished)
             Console.WriteLine("Play results: " + string.Join(" | ", Shell.Gameplay.Results.Select(static result =>
                     $"{result.Course} {result.Score} {result.Great}/{result.Good}/{result.Miss} combo {result.MaxCombo} rolls {result.Rolls} gauge {result.GaugeSegments}{(result.Cleared ? " clear" : "")}"))
-                + (Shell.Credit.DanResult is { } danShown ? $" | dan level {danShown.Level}" : "")
+                + (Shell.Dan.Result is { } danShown ? $" | dan level {danShown.Level}" : "")
                 + (_play.Lanes.Battle?.Outcome is { } battle ? $" | AI {battle.SectionsWon}/{battle.Sections.Count}" : ""));
         Shell.Gameplay.Stop();
         Shell.Gameplay.Dan = null;

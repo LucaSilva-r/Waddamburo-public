@@ -190,7 +190,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         {
             Shell.Sounds?.Play("select.dan");
             // The series spine picked at home; a cabinet has only the one its operator set, and no spines.
-            Shell.Credit.DanSeries = Shell.Hosts.SongSelect!.Session.DanSeriesPicked ?? Shell.Arcade.DanSeries;
+            Shell.Dan.Series = Shell.Hosts.SongSelect!.Session.DanSeriesPicked ?? Shell.Arcade.DanSeries;
             Shell.Catalog.Replace(FlowScenes.DaniSelectScene(Shell.Credit.PlayerSide));
             Shell.Reload.Start(static () => { }, FlowScenes.DaniSelect, FlowScenes.DanCover);
             return;
@@ -673,7 +673,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
             return $"{course.Title} has songs that are not in the library";
         if (Shell.PlayRequests.Pending is not null)
             return "a course is already starting";
-        Shell.Credit.DanSeries = _danTree.First(folder => folder.Children.Contains(course)).Tag as string ?? Shell.Credit.DanSeries;
+        Shell.Dan.Series = _danTree.First(folder => folder.Children.Contains(course)).Tag as string ?? Shell.Dan.Series;
         PlayCourse(status);
         return null;
     }
@@ -702,8 +702,8 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         var song = find(key.Song).Song.Descriptor;
         var chart = song.Charts.First(candidate => candidate.Key == key);
         Shell.Gameplay.Dan = course.Course;
-        var challenge = Shell.Credit.DanChallenge = Shell.Select.Dan!.ChallengeNumber(Shell.Credit.DanSeries, course.Course);
-        Shell.Gameplay.DanChallengeArt = challenge == 0 ? null : DanChallengeArt.Key(Shell.Credit.DanSeries, challenge, "mini");
+        var challenge = Shell.Dan.Challenge = Shell.Select.Dan!.ChallengeNumber(Shell.Dan.Series, course.Course);
+        Shell.Gameplay.DanChallengeArt = challenge == 0 ? null : DanChallengeArt.Key(Shell.Dan.Series, challenge, "mini");
         var side = Shell.Credit.PlayerSide == 1 ? LocalPlayerSlot.PlayerTwo : LocalPlayerSlot.PlayerOne;
         Shell.PlayRequests.TryRequestPlay(new PlayRequest(Shell.SongCatalog.Revision, song.Key, song.AudioAsset,
             [new PlayerChartRequest(side, key, chart.ChartAsset, (TaikoCourse)first.Song.Course)]));
