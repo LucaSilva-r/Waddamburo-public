@@ -72,7 +72,7 @@ internal sealed class PlayerSetupController : IDisposable
         else if (_signIn.IsOpen)
             _signIn.Close();
         _flow.Tick(open ? keys : SdlKeyboardSnapshot.Empty);
-        if (open && _flow.IsOpen && shell.Active.Id == FlowScenes.Entry && shell.Loaded.Entry is { SetupMode: true } entry)
+        if (open && _flow.IsOpen && shell.Active.Id == FlowScenes.Entry && shell.Hosts.Entry is { SetupMode: true } entry)
         {
             applySetup(entry, _flow.Columns());
             setupArrows().Advance();
@@ -83,7 +83,7 @@ internal sealed class PlayerSetupController : IDisposable
             _flow.InputEnabled = _setupShownTicks >= SetupIntroTicks;
         }
         if (open && shell.Tick % 10 == 0 && DiagnosticSwitches.SetupTrace)
-            Console.WriteLine("[setup] " + shell.Tick + " entry=" + (shell.Loaded.Entry?.Ticks ?? -1) + ": " + string.Join(" | ", _flow.Columns().Select(c => c.Choice.Kind + " " + c.Choice.Label + " ready=" + c.Ready)));
+            Console.WriteLine("[setup] " + shell.Tick + " entry=" + (shell.Hosts.Entry?.Ticks ?? -1) + ": " + string.Join(" | ", _flow.Columns().Select(c => c.Choice.Kind + " " + c.Choice.Label + " ready=" + c.Ready)));
         if (open)
             keys = SdlKeyboardSnapshot.Empty;
         return false;
@@ -191,7 +191,7 @@ internal sealed class PlayerSetupController : IDisposable
         _shownChoice[side] = choice;
         if (choice.HasDon)
             shell.Don?.SetLook(side, choice.Look);
-        shell.Loaded.Entry?.SetSetupProfile(side, choice.Profile);
+        shell.Hosts.Entry?.SetSetupProfile(side, choice.Profile);
     }
 
     // Two choices look the same on the stand: the same Don look, or the same option text.
@@ -319,7 +319,7 @@ internal sealed class PlayerSetupController : IDisposable
     // The setup's players join the entry already on screen (its music and Don motions carry on).
     private void joinSetupPlayers(ScoreProfile?[] profiles, bool[] playing)
     {
-        if (shell.Loaded.Entry is not { SetupMode: true } entry || shell.Active.Id != FlowScenes.Entry)
+        if (shell.Hosts.Entry is not { SetupMode: true } entry || shell.Active.Id != FlowScenes.Entry)
         {
             startWithPlayers(profiles, playing);
             return;

@@ -71,7 +71,7 @@ internal sealed class SongSelectReload(GameShell shell)
         }
         if (_stage == Stage.Covering)
         {
-            if (shell.Loaded.SongSelect is { } leaving)
+            if (shell.Hosts.SongSelect is { } leaving)
                 leaving.Reloading = true;
             _change?.Invoke();
             _change = null;

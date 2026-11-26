@@ -239,10 +239,6 @@ internal sealed partial class GameShell : IDisposable
     public SceneCatalog Catalog { get; }
     public IScreenHosts Hosts { get; }
 
-    /// <summary>The game's hosts of the movies on stage, as Green's screens (master's features reach them directly).</summary>
-    // ponytail: App code that still names Green's hosts; each moves behind IScreenHosts as its screen goes skin-neutral.
-    public Waddamburo.Skins.Green.GreenScreenHosts Loaded { get; }
-
     /// <summary>Song Select's score windows from the server (null offline).</summary>
     public SongRankings? Rankings { get; private set; }
 
@@ -885,7 +881,7 @@ internal sealed partial class GameShell : IDisposable
                 Dan.Result = diagnosticDan(Options.StartScene == StartScene.DaniResultClear);
             // Stock songs as supportinfo.xml lists them; any other song three steps below each course it has.
             // ponytail: three everywhere for custom songs, whether or not simplifying changes their charts.
-            Hosts = Loaded = createHosts(flow, snapshot, diagnosticResult, song => song.Key.Source == SongSourceKind.Stock
+            Hosts = createHosts(flow, snapshot, diagnosticResult, song => song.Key.Source == SongSourceKind.Stock
                 ? support.GetValueOrDefault(song.Key.StableId) ?? [0, 0, 0, 0]
                 : [.. Enumerable.Range(0, 4).Select(course => course > 0 && song.Charts.Any(chart => chart.Course == (TaikoCourse)course) ? 3 : 0)]);
             if (Arcade.Home && Options.Accounts is { } setupBook)

@@ -150,28 +150,23 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
         }
         else if (scene == FlowScenes.RewardShop)
         {
-            // The shop's music and previews stop; the Don wears the player's own look again.
-            Shell.GreenSounds?.RewardShop.StopMusic();
+            // The shop's previews stop (its music is the screen's); the Don wears the player's own look again.
             Shell.Previews?.Silence();
             foreach (var side in Shell.Players.JoinedSides)
                 Shell.Don?.SetLook(side, TaikoGuest.Profiles[side]?.Look);
             // Home's reward animation (Song Select's "New rewards") leaves the credit's shop alone.
             if (Shell.Rewards.Showing is not null)
             {
-                Shell.GreenSounds?.GameOver.StopGameOverMusic();
                 Shell.Rewards.Shown();
                 Shell.Catalog.Replace(FlowScenes.RewardShopVisit);
             }
             else
                 Shell.Shop.Close(); // one visit a credit
-            Shell.Loaded.RewardShop = null;
         }
         else if (scene == FlowScenes.GameOver)
         {
-            Shell.GreenSounds?.GameOver.StopGameOverMusic();
             Shell.Rewards.Shown();
             Shell.Catalog.Replace(FlowScenes.NormalGameOver);
-            Shell.Loaded.RewardShop = null;
         }
     }
 
@@ -273,15 +268,10 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
         else if (scene == FlowScenes.RewardShop)
         {
             if (Shell.Scenes.FinishFade()) return;
-            Shell.Loaded.RewardShop?.Tick();
-            // NotifyEndSequence (exit, or the 100 s are up): Song Select (traced scene 22).
-            if (Shell.Loaded.RewardShop?.Ended == true)
-            {
-                // Home's reward animation: its medal music fades out with the picture (the fade takes a second).
-                if (Shell.Rewards.Showing is not null)
-                    Shell.GreenSounds?.GameOver.StopGameOverMusic(TimeSpan.FromSeconds(1));
+            Shell.Hosts.Poll(scene);
+            // The shop ends (exit, or its time is up): Song Select (traced scene 22).
+            if (Shell.ScreenEnded)
                 Shell.Scenes.FadeTo(FlowScenes.SongSelect);
-            }
         }
         else if (scene == FlowScenes.Retry)
         {
@@ -295,7 +285,7 @@ internal sealed class CreditEndFlow(GameShell shell, GameplayFlow gameplay) : Fl
                 Shell.Scenes.FadeTo(Shell.Hosts.RevivalSucceeded ? FlowScenes.SongSelect : gameOver());
         }
         else if (scene == FlowScenes.GameOver && !(_ending || Shell.ScreenEnded))
-            Shell.Loaded.RewardShop?.Tick();
+            Shell.Hosts.Poll(scene);
         else if (_ending || Shell.ScreenEnded)
         {
             if (_gameOverEndTick < 0)

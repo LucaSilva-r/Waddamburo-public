@@ -64,6 +64,9 @@ public sealed class GreenScreenHosts(
             return AttractHostBinding.IsBootEnd(movies.Single());
         if (screen == FlowScenes.Logo || screen == FlowScenes.Title || screen == FlowScenes.Caution || screen == FlowScenes.Movie)
             return Attract?.Finished == true;
+        // reward_shop's NotifyEndSequence (exit, or the 100 s are up).
+        if (screen == FlowScenes.RewardShop)
+            return RewardShop?.Ended == true;
         return GameOver?.Ended == true; // the credit's last screens
     }
 
@@ -79,6 +82,18 @@ public sealed class GreenScreenHosts(
         }
         else if (screen == FlowScenes.AiRemind)
             AiRemind?.Poll();
+        else if (screen == FlowScenes.GameOver)
+            RewardShop?.Tick(); // the medal screen over it
+        else if (screen == FlowScenes.RewardShop)
+        {
+            RewardShop?.Tick();
+            // Home's reward animation: its medal music fades out with the picture (the fade takes a second).
+            if (RewardShop?.Ended == true && medals.Showing is not null && !_medalMusicFading)
+            {
+                _medalMusicFading = true;
+                sounds?.GameOver.StopGameOverMusic(TimeSpan.FromSeconds(1));
+            }
+        }
         else
         {
             // Song Select's flow: its tutorials and the course list too.
@@ -96,8 +111,21 @@ public sealed class GreenScreenHosts(
         if (screen == FlowScenes.Title)
             sounds?.Attract.StopAttractStream();
         else if (screen == FlowScenes.GameOver)
+        {
             sounds?.GameOver.StopGameOverMusic();
+            RewardShop = null;
+        }
+        else if (screen == FlowScenes.RewardShop)
+        {
+            sounds?.RewardShop.StopMusic();
+            if (medals.Showing is not null)
+                sounds?.GameOver.StopGameOverMusic();
+            RewardShop = null;
+            _medalMusicFading = false;
+        }
     }
+
+    private bool _medalMusicFading;
 
     private Gameplay.GreenGameplayScreen? _gameplay;
 

@@ -46,7 +46,7 @@ internal sealed class SongSearch(GameShell shell, SongCatalogSnapshot catalog) :
             // Not during a scene switch (entry -> Song Select): the reload's restart needs an active scene.
             if (!GameActions.Down(keys, GameAction.Search) || shell.Active.Id != FlowScenes.SongSelect
                 || shell.Coordinator.Flow.State != Waddamburo.Game.Flow.GameFlowState.Active
-                || shell.Loaded.SongSelect is null || shell.PlayRequests.Pending is not null)
+                || shell.Hosts.SongSelect is null || shell.PlayRequests.Pending is not null)
                 return false;
             open();
             return true;
