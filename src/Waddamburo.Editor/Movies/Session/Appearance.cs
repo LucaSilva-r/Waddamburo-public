@@ -33,6 +33,18 @@ public sealed partial class MovieInspectorSession
                     attempt(() => _document!.SetBlend(spriteName, index, option));
             ImGui.EndCombo();
         }
+        // Where it holds on a screen narrower or wider than 16:9 (LumenStage): anchored clips move with that edge.
+        var anchor = (string?)layer["anchor"] ?? "center";
+        fieldLabel("Anchor", "Where it holds when the screen is narrower or wider than 16:9 (4:3, 21:9, a phone): with the middle,\n"
+            + "the left or right edge, or stretched across (backgrounds, bars). See it in the skin's scene view at another width.");
+        ImGui.SetNextItemWidth(-1);
+        if (ImGui.BeginCombo("##anchor", anchor))
+        {
+            foreach (var option in (string[])["center", "left", "right", "stretch"])
+                if (ImGui.Selectable(option, option == anchor))
+                    attempt(() => _document!.Edit(_ => { if (option == "center") layer.Remove("anchor"); else layer["anchor"] = option; }));
+            ImGui.EndCombo();
+        }
     }
 
     private (string Sprite, JsonArray Layers, int Index)? spriteOf(JsonObject layer) =>

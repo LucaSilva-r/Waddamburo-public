@@ -417,6 +417,21 @@ A skin folder (`movies/`, or `USRDIR/waddamburo/movies` over it) holds, beside i
   (`waddamburo_text_context_render_styled_rgba8`, native/text/README.md); `--skin-dev` draws everything again when
   text.json or a font changes. Checked by the problems panel (unknown style, a bind that is no state, a missing font).
 
+## Screen shapes and anchors (2026-11-27)
+
+Waddamburo's frontend is always 720 units tall and as wide as the window's shape asks: 960 at 4:3, 1280 at 16:9,
+1680 at 21:9 (`Lumen/Rendering/LumenStage.cs`; past those, letterboxed). Everything is still made and placed on the
+1280 stage: the game's frame is widened at the end (`GameShell.widen`: that box centred), touches mapped back
+(`SdlApplication.stagePoint`). What should hold an edge says so with an anchor, `"anchor": "left" | "center" |
+"right" | "stretch"` (height never changes, so only these): on a scenes.json layer or gameplay place (the whole movie;
+`LumenScenePlayer` moves it) or on a movie.json sprite layer (that clip and what it holds; the assembler records it by
+sprite and depth, `LumenPlayer` moves its world transform). Unanchored is centre: what was made for 1280 stays in the
+middle. Gameplay's own movies hug the left edge (the song's title the right) unless a place anchors them; the notes
+follow the lane. Note visibility follows osu!taiko: a narrower screen shows fewer notes, a wider one no more than 16:9
+(they fade in at the 16:9 distance, `NoteGeometry.Place`). Green's frontend, and a player's squeezed 4:3 layout, stay
+1280. The skin editor's scene view shows any width (its stage width picker) and edits a layer's anchor; the component
+editor sets a clip's. ponytail: engine-drawn overlays (menus, pause, setup) are still the centred 1280 box.
+
 ## Contracts (the game's side, private lab)
 
 What crosses a game movie's edge (callbacks in, `Lumen.X()` calls out, clips / labels / fill slots the host
