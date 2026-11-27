@@ -16,9 +16,13 @@ commercial fonts outside the source checkout.
 Install Git, then clone the repository:
 
 ```sh
-git clone https://github.com/LucaSilva-r/Waddamburo-public.git
+git clone --recurse-submodules https://github.com/LucaSilva-r/Waddamburo-public.git
 cd Waddamburo-public
 ```
+
+`movies/` is Waddamburo's own screens, a separate repository
+([waddamburo-skin](https://github.com/LucaSilva-r/waddamburo-skin)) included as a submodule. In a checkout made
+without `--recurse-submodules`, run `git submodule update --init` once.
 
 Run the commands below from this checkout unless a step changes the directory.
 

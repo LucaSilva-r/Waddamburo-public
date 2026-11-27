@@ -1,7 +1,8 @@
 # Free movies: the engine as provider, movies as presentation
 
 Waddamburo must run with no Bandai file, scripts included (user, 2026-11-10). Every screen is a movie; the game's
-movies are the user's Lumen files, ours are **packages** (JSON, PNG/SVG, ActionScript 2) in the repository's `movies/`.
+movies are the user's Lumen files, ours are **packages** (JSON, PNG/SVG, ActionScript 2) in `movies/`, the
+[waddamburo-skin](https://github.com/LucaSilva-r/waddamburo-skin) repository as a submodule.
 Our movies are not drop-in copies of the game's: they read the engine through a **provider** (`Wd`), and the game's
 movies are driven from the same data by an **adapter** in `Waddamburo.Skins.Green`. This is the final design (user,
 2026-11-12, confirmed 2026-11-14). The movie editor has its own page: [movie-editor.md](movie-editor.md).

@@ -47,6 +47,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+        with:
+          submodules: true # movies/: Waddamburo's own screens (waddamburo-skin)
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
@@ -102,6 +104,8 @@ jobs:
         password: ${{ github.token }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          submodules: true # movies/: Waddamburo's own screens (waddamburo-skin)
 
       - uses: actions/setup-dotnet@v6
         with:
