@@ -231,6 +231,8 @@ public sealed partial class MovieInspectorSession
         var corner = origin + area / 2 + _scenePan - size / 2;
         var list = ImGui.GetWindowDrawList();
         ImGui.InvisibleButton("##stage", Vector2.Max(area, Vector2.One));
+        // Outlines and handles stay on the canvas, off the tool bar above it.
+        list.PushClipRect(origin, origin + Vector2.Max(area, Vector2.One), true);
         var io = ImGui.GetIO();
         var mouse = ImGui.GetMousePos();
         var over = ImGui.IsItemHovered();
@@ -259,10 +261,21 @@ public sealed partial class MovieInspectorSession
             var extentSize = Vector2.Max(high - low, new(8));
             _sceneZoom = Math.Clamp(Math.Min(area.X * .6f / (extentSize.X * fit), area.Y * .6f / (extentSize.Y * fit)), .1f, 16);
             _scenePan = (new Vector2(640, 360) - (low + high) / 2) * fit * _sceneZoom;
+            list.PopClipRect();
             return; // drawn framed from the next frame
         }
-        if (liveScene(key) is { } texture)
-            list.AddImage(texture, corner, corner + size);
+        // The whole canvas is drawn (a layer past the screen's edges shows), darkened outside the screen.
+        var panelSize = Vector2.Max(area, Vector2.One);
+        if (liveScene(key, ((origin.X - corner.X) / scale, (origin.Y - corner.Y) / scale, panelSize.X / scale, panelSize.Y / scale),
+            panelSize * io.DisplayFramebufferScale) is { } texture)
+            list.AddImage(texture, origin, origin + panelSize);
+        var shade = color(0, 0, 0, .55f);
+        var (left, right) = (Math.Clamp(corner.X, origin.X, origin.X + panelSize.X), Math.Clamp(corner.X + size.X, origin.X, origin.X + panelSize.X));
+        var (topEdge, bottomEdge) = (Math.Clamp(corner.Y, origin.Y, origin.Y + panelSize.Y), Math.Clamp(corner.Y + size.Y, origin.Y, origin.Y + panelSize.Y));
+        list.AddRectFilled(origin, new(origin.X + panelSize.X, topEdge), shade);
+        list.AddRectFilled(new(origin.X, bottomEdge), origin + panelSize, shade);
+        list.AddRectFilled(new(origin.X, topEdge), new(left, bottomEdge), shade);
+        list.AddRectFilled(new(right, topEdge), new(origin.X + panelSize.X, bottomEdge), shade);
         list.AddRect(corner - Vector2.One, corner + size + Vector2.One, color(.55f, .6f, .66f), 0, ImDrawFlags.None, 1);
         var stagePoint = (mouse - corner) / scale;
         var snapping = _snap && !io.KeyCtrl;
@@ -370,6 +383,7 @@ public sealed partial class MovieInspectorSession
             list.AddLine(screen(a), screen(b), color(.3f, .85f, 1, .9f), 1);
         if (_dragPackage is not null && over)
             list.AddRect(corner, corner + size, Accent, 0, ImDrawFlags.None, 3);
+        list.PopClipRect();
         if (handleUnder() >= 0) ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeAll);
         else if (turnZone()) ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
     }

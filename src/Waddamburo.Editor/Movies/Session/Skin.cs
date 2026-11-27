@@ -31,6 +31,7 @@ public sealed partial class MovieInspectorSession
     private int _thumbBudget;
     private readonly Dictionary<string, (RenderTextureId Texture, int Version)> _thumbs = new(StringComparer.Ordinal);
     private RenderTextureId? _sceneTexture;
+    private Vector2 _sceneTextureSize;
     private SkinStage.Scene? _liveScene;
     private (string Key, int Version, string Text)? _liveBuilt;
     private double _liveClock;
@@ -127,8 +128,9 @@ public sealed partial class MovieInspectorSession
     }
 
     // The screen playing live (scene view, live window): rebuilt when the skin or the screen changes, its unchanged
-    // players carrying on; drawn into one 1280x720 texture each frame.
-    private nint? liveScene(string key)
+    // players carrying on; drawn each frame into a texture of the given pixel size showing the given part of the stage
+    // (null: the screen), so what a layer draws past the screen's edges shows too.
+    private nint? liveScene(string key, (float X, float Y, float Width, float Height)? view = null, Vector2? pixels = null)
     {
         if (_liveBuilt is not { } built || built.Key != key || built.Version != Skin!.Version || built.Text != Scenes!.Text)
         {
@@ -138,8 +140,15 @@ public sealed partial class MovieInspectorSession
         _liveClock = Math.Min(_liveClock + ImGui.GetIO().DeltaTime * 60, 4);
         for (; _liveClock >= 1; _liveClock--)
             _liveScene!.Advance();
-        _sceneTexture ??= _application.CreatePreview(2560, 1440); // twice the screen: sharp when zoomed in
-        _application.DrawPreview(_sceneTexture.Value, _liveScene!.Frame());
+        var size = Vector2.Clamp(Vector2.Round(pixels ?? new(1280, 720)), new(16), new(4096));
+        if (_sceneTextureSize != size && _sceneTexture is { } old)
+        {
+            _application.ReleasePreview(old);
+            _sceneTexture = null;
+        }
+        _sceneTexture ??= _application.CreatePreview((int)size.X, (int)size.Y);
+        _sceneTextureSize = size;
+        _application.DrawPreview(_sceneTexture.Value, _liveScene!.Frame(view: view));
         return (nint)_sceneTexture.Value.Value;
     }
 

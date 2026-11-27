@@ -178,8 +178,23 @@ public sealed class SkinStage
             return layer >= 0 && layer < _made.Length && _made[layer].Player.TryInspectBounds("", out box);
         }
 
-        public RenderFrame Frame(RenderColor? clear = null) => LumenRenderFrameAdapter.Compose(
-            _player.CreateRenderSnapshot(1), clear ?? new RenderColor(.08f, .09f, .1f, 1),
-            index => index < _textures.Length ? _textures[index] : _textures.FirstOrDefault(), _stage._native);
+        /// <summary>A frame of the screen; <paramref name="view"/>: the part of the stage it shows (null: the 1280x720 screen).</summary>
+        public RenderFrame Frame(RenderColor? clear = null, (float X, float Y, float Width, float Height)? view = null)
+        {
+            var frame = LumenRenderFrameAdapter.Compose(
+                _player.CreateRenderSnapshot(1), clear ?? new RenderColor(.08f, .09f, .1f, 1),
+                index => index < _textures.Length ? _textures[index] : _textures.FirstOrDefault(), _stage._native);
+            if (view is not { } part)
+                return frame;
+            RenderVertex at(RenderVertex vertex) => vertex with
+            {
+                X = (vertex.X * 1280 - part.X) / part.Width,
+                Y = (vertex.Y * 720 - part.Y) / part.Height,
+            };
+            return new RenderFrame(frame.ClearColor, frame.Quads.Select(quad => quad with
+            {
+                TopLeft = at(quad.TopLeft), TopRight = at(quad.TopRight), BottomRight = at(quad.BottomRight), BottomLeft = at(quad.BottomLeft),
+            }), part.Width / part.Height);
+        }
     }
 }
