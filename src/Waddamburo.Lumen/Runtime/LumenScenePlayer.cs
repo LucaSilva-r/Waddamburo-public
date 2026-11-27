@@ -11,6 +11,9 @@ public sealed record LumenSceneLayer(
 {
     /// <summary>The whole movie's opacity on the stage (a host fade, e.g. a modchart's), over its own.</summary>
     public float Alpha { get; init; } = 1;
+
+    /// <summary>Where it holds on a stage wider or narrower than 1280 (LumenStage).</summary>
+    public Rendering.LumenAnchor Anchor { get; init; }
 }
 
 /// <summary>
@@ -86,6 +89,7 @@ public sealed class LumenScenePlayer
         {
             // Each player appends to the scene's builder (no snapshot of its own), then its quads are placed in it.
             var start = quads.Count;
+            var placed = Rendering.LumenStage.Anchored(layer.Transform, layer.Anchor);
             layer.Player.AppendRenderQuads(playerInterpolation?.Invoke(layer.Player) ?? interpolationFraction, quads);
             for (var index = start; index < quads.Count; index++)
             {
@@ -102,10 +106,10 @@ public sealed class LumenScenePlayer
                     TextureIndex = quad.NativeSurface is null
                         ? checked(layer.TextureOffset + quad.TextureIndex)
                         : 0,
-                    TopLeft = transform(quad.TopLeft, layer.Transform),
-                    TopRight = transform(quad.TopRight, layer.Transform),
-                    BottomRight = transform(quad.BottomRight, layer.Transform),
-                    BottomLeft = transform(quad.BottomLeft, layer.Transform),
+                    TopLeft = transform(quad.TopLeft, placed),
+                    TopRight = transform(quad.TopRight, placed),
+                    BottomRight = transform(quad.BottomRight, placed),
+                    BottomLeft = transform(quad.BottomLeft, placed),
                 };
             }
         }

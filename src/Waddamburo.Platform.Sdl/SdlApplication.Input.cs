@@ -466,7 +466,11 @@ public sealed unsafe partial class SdlApplication
         var stage = _renderer!.StageViewport;
         if (!SDL_GetWindowSizeInPixels(_window, &width, &height) || stage.Width <= 0 || stage.Height <= 0)
             return (x, y, 16f / 9);
-        return ((x * width - stage.X) / stage.Width, (y * height - stage.Y) / stage.Height, (float)stage.Width / stage.Height);
+        // A stage wider or narrower than 1280 (LumenStage): the point on the 1280 stage everything is made on.
+        var stageX = (x * width - stage.X) / stage.Width;
+        if (Waddamburo.Lumen.Rendering.LumenStage.Width != Waddamburo.Lumen.Rendering.LumenStage.BaseWidth)
+            return (Waddamburo.Lumen.Rendering.LumenStage.FromStage(stageX) / Waddamburo.Lumen.Rendering.LumenStage.BaseWidth, (y * height - stage.Y) / stage.Height, 16f / 9);
+        return (stageX, (y * height - stage.Y) / stage.Height, (float)stage.Width / stage.Height);
     }
 
     // Editing the split touch drum: a finger (or the mouse, finger MouseFinger) went down, moved or came up. The back

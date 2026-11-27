@@ -174,7 +174,7 @@ public sealed class LumenGameSceneLoader : IGameSceneLoader
                 host.Initialize?.Invoke(player);
                 var textureCount = checked((uint)content.Textures.Length);
                 loaded.Add(new LoadedLumenLayer(layer, content, textureOffset, textureCount));
-                players.Add(new LumenSceneLayer(player, layer.Transform, textureOffset, textureCount));
+                players.Add(new LumenSceneLayer(player, layer.Transform, textureOffset, textureCount) { Anchor = layer.Anchor });
                 textureOffset = checked(textureOffset + textureCount);
             }
 

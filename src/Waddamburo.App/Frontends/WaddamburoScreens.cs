@@ -84,7 +84,7 @@ internal sealed class WaddamburoScreens : IScreenCompositions
             .Where(static layer => !GameplaySceneComposition.IsGreenDecoration(layer))
             // ponytail: the first lane only; the second player's (two players) keeps the layout's places.
             .Select(layer => layer.HostId != GameplaySceneComposition.PlayerTwoHostId && Skin?.Places.GetValueOrDefault(GameplaySceneComposition.PlaceName(Path.GetFileNameWithoutExtension(layer.MovieId)) ?? "")
-                is { } place ? new SceneLayerDefinition(layer.ArchiveId, layer.MovieId, place.Transform, layer.HostId, layer.AnchorId) : layer)];
+                is { } place ? new SceneLayerDefinition(layer.ArchiveId, layer.MovieId, place.Transform, layer.HostId, layer.AnchorId) { Anchor = place.Anchor } : layer)];
 
     public SceneDefinition Results => skin("result", BuiltInResults);
 

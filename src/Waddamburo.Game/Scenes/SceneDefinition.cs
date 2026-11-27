@@ -72,6 +72,9 @@ public sealed record SceneLayerDefinition
 
     public string? AnchorId { get; }
 
+    /// <summary>Where it holds on a stage wider or narrower than 1280 (LumenStage).</summary>
+    public Waddamburo.Lumen.Rendering.LumenAnchor Anchor { get; init; }
+
     private static bool isFinite(LumenMatrix value) =>
         float.IsFinite(value.M11)
         && float.IsFinite(value.M12)

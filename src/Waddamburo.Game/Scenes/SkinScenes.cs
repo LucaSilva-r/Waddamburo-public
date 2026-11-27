@@ -42,7 +42,9 @@ public sealed class SkinScenes
     };
 
     /// <summary>One layer as the skin wrote it: placed at (x, y), scaled, then turned by <paramref name="Rotation"/> degrees (clockwise) about that point.</summary>
-    public sealed record Layer(string Movie, string Role, float X, float Y, int? Side, float ScaleX = 1, float ScaleY = 1, float Rotation = 0)
+    /// <param name="Anchor">Where it holds on a stage wider or narrower than 1280 (<c>"anchor": "left|center|right|stretch"</c>).</param>
+    public sealed record Layer(string Movie, string Role, float X, float Y, int? Side, float ScaleX = 1, float ScaleY = 1, float Rotation = 0,
+        Waddamburo.Lumen.Rendering.LumenAnchor Anchor = Waddamburo.Lumen.Rendering.LumenAnchor.Center)
     {
         /// <summary>Where the layer's movie goes on the stage.</summary>
         public LumenMatrix Transform
@@ -68,7 +70,7 @@ public sealed class SkinScenes
         {
             var cut = Movie.LastIndexOf('/');
             var name = Movie[(cut + 1)..];
-            return new($"{Movie[..cut]}/packeddata.ddp", $"{name}/{name}.lm", Transform, Role);
+            return new($"{Movie[..cut]}/packeddata.ddp", $"{name}/{name}.lm", Transform, Role) { Anchor = Anchor };
         }
     }
 
@@ -184,6 +186,15 @@ public sealed class SkinScenes
         var (scaleX, scaleY) = (number("scaleX", 1), number("scaleY", 1));
         if (scaleX == 0 || scaleY == 0)
             throw new InvalidDataException($"{where}: a scale of 0 hides the layer; remove the layer instead.");
-        return new(movie, place is null ? text("role") : "place", number("x"), number("y"), side, scaleX, scaleY, number("rotation"));
+        Waddamburo.Lumen.Rendering.LumenAnchor anchor;
+        try
+        {
+            anchor = Waddamburo.Lumen.Rendering.LumenStage.Parse(layer.TryGetProperty("anchor", out var anchorValue) ? anchorValue.GetString() : null);
+        }
+        catch (FormatException error)
+        {
+            throw new InvalidDataException($"{where}: {error.Message}");
+        }
+        return new(movie, place is null ? text("role") : "place", number("x"), number("y"), side, scaleX, scaleY, number("rotation"), anchor);
     }
 }

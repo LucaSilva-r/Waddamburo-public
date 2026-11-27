@@ -1597,10 +1597,31 @@ internal sealed partial class GameShell : IDisposable
         var start = System.Diagnostics.Stopwatch.GetTimestamp();
         if (_firstFrameAt == 0)
             _firstFrameAt = start;
-        var frame = onTop(createFrame(interpolation));
+        // The stage as wide as the window's shape asks (Waddamburo's frontend; Green's movies are 16:9 art, and a player's
+        // squeezed 4:3 layout is made for the 1280 stage): everything made on the 1280 stage, centred in it.
+        var (pixelWidth, pixelHeight) = Application.GetPixelSize();
+        Waddamburo.Lumen.Rendering.LumenStage.Width = Frontend.GameMovies || Application.Squeeze43 || pixelHeight <= 0
+            ? Waddamburo.Lumen.Rendering.LumenStage.BaseWidth : Waddamburo.Lumen.Rendering.LumenStage.Fit((double)pixelWidth / pixelHeight);
+        var frame = widen(onTop(createFrame(interpolation)));
         _frameBuildTicks += System.Diagnostics.Stopwatch.GetTimestamp() - start;
         _framesBuilt++;
         return frame;
+    }
+
+    // The frame made on the 1280 stage, centred on the real one (its anchored layers already moved to its edges), in a
+    // list reused every frame (as the window's frame is: a frame kept longer is Detached).
+    private readonly List<RenderQuad> _widened = [];
+
+    private RenderFrame widen(RenderFrame frame)
+    {
+        var width = Waddamburo.Lumen.Rendering.LumenStage.Width;
+        if (width == Waddamburo.Lumen.Rendering.LumenStage.BaseWidth || frame.ContentAspectRatio is not { } aspect || Math.Abs(aspect - 16d / 9) > .01)
+            return frame;
+        static RenderVertex at(RenderVertex vertex) => vertex with { X = Waddamburo.Lumen.Rendering.LumenStage.ToStage(vertex.X * Waddamburo.Lumen.Rendering.LumenStage.BaseWidth) };
+        _widened.Clear();
+        foreach (var quad in frame.QuadSpan)
+            _widened.Add(quad with { TopLeft = at(quad.TopLeft), TopRight = at(quad.TopRight), BottomRight = at(quad.BottomRight), BottomLeft = at(quad.BottomLeft) });
+        return RenderFrame.Shared(frame.ClearColor, _widened, width / Waddamburo.Lumen.Rendering.LumenStage.Height, frame.BlurredQuads, frame.BackdropBrightness);
     }
 
     public void Dispose()

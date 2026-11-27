@@ -186,6 +186,7 @@ public sealed class SceneDocument
         if (layer.ScaleX != 1) node["scaleX"] = Math.Round(layer.ScaleX, 4);
         if (layer.ScaleY != 1) node["scaleY"] = Math.Round(layer.ScaleY, 4);
         if (layer.Rotation != 0) node["rotation"] = Math.Round(layer.Rotation, 2);
+        if (layer.Anchor != Waddamburo.Lumen.Rendering.LumenAnchor.Center) node["anchor"] = Waddamburo.Lumen.Rendering.LumenStage.Name(layer.Anchor);
         return node;
     }
 
