@@ -39,7 +39,14 @@ from the current folder). `--inspect=scene:<screen>` starts on a scene view (for
   tick (its last value) and events in order; the editor takes them in for at most 4 ms a tick, so a song never holds
   it up. While the editor runs (`GameShell.SkinEditing`): plays are voided (not saved, not sent) with the
   "Scores not saved: skin editor open" banner, and the game does not pause when it loses focus. Closing the editor
-  restarts the game from boot (`RequestRestart`): nothing of the session stays. `--skin-dev=<folder>` alone gives the
+  restarts the game from boot (`RequestRestart`): nothing of the session stays. Batches keep the order things were
+  given in (`ProvidedBatch`: an older value of a state dropped, nothing reordered): scripts react to it (Song Select
+  shifts its panels on a count that follows its own open).
+- **A saved package swaps in place** (`SkinDevReload` → `LumenGameSceneInstance.Swap`): its movie on the shown screen
+  is replaced, the screen going on: the engine's states and lists, request handler, editor tap and host carried over,
+  its textures appended (`ScenePresenter.AddSceneTextures`). Song Select keeps its list and cursor (its flow restarts
+  them only for another showing). scenes.json reloads the screen as before; during a song the screen reloads after
+  it (the lane holds its movies). A script's own state (a timer mid-way) starts over. `--skin-dev=<folder>` alone gives the
   reload without the editor. ponytail: unsaved edits reach the game on save only; the editor's movies send no
   requests to the game.
 - The component editor's player gets the same data as its part in the skin (live, else the example data); its Wd

@@ -346,6 +346,9 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
     // No longer kept: what nothing else holds goes now.
     private void unkeep(RenderTextureId[] textures) => SceneTextures.Release(application, textures);
 
+    /// <summary>A movie swapped into the shown scene (<see cref="LumenGameSceneInstance.Swap"/>): its textures after the scene's.</summary>
+    public void AddSceneTextures(LumenMovieContent content) => _textures = [.. _textures, .. SceneTextures.Upload(application, content)];
+
     /// <summary>The new scene's textures: its prefetched uploads where there are any, the rest now.</summary>
     public void Activate(LumenGameSceneInstance scene)
     {

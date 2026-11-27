@@ -341,6 +341,13 @@ internal sealed partial class GameShell : IDisposable
     private SkinDevReload? _skinDev;
     private SkinEditorLink? _editorLink;
 
+    // A saved package's movie in its layer's place on the shown screen (SkinDevReload), its textures after the scene's.
+    private void swapMovie(int index, Waddamburo.Game.LumenMovieContent content)
+    {
+        _presenter.AddSceneTextures(content);
+        Active.Swap(index, content);
+    }
+
     // F7 (Waddamburo's frontend): the skin editor beside the game, on the skin folder the game now plays from.
     private void openSkinEditor()
     {
@@ -352,7 +359,7 @@ internal sealed partial class GameShell : IDisposable
             if (_skinDev is null)
             {
                 MovieContent.PackageRoot = root;
-                _skinDev = new SkinDevReload(this, root, _presenter.ForgetKept);
+                _skinDev = new SkinDevReload(this, root, _presenter.ForgetKept, swapMovie);
                 _skinDev.ReloadNow(scenes: true);
             }
             _editorLink = new SkinEditorLink(this, root);
@@ -995,7 +1002,7 @@ internal sealed partial class GameShell : IDisposable
             Reload = new SongSelectReload(this);
             Application.SkinEditorKey = openSkinEditor;
             if (SkinDevReload.Folder is { } developed)
-                _skinDev = new SkinDevReload(this, developed, _presenter.ForgetKept);
+                _skinDev = new SkinDevReload(this, developed, _presenter.ForgetKept, swapMovie);
             var entry = new EntryFlow(this);
             var ending = new CreditEndFlow(this, _gameplay);
             var songSelect = SongSelectFlow = new SongSelectFlow(this, _gameplay, calibration);

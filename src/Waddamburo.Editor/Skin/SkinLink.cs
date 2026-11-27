@@ -249,8 +249,7 @@ public sealed class SkinLive : IDisposable
     public void Drain()
     {
         var budget = System.Diagnostics.Stopwatch.StartNew();
-        var states = new Dictionary<(string Movie, WdKind Kind, string Name, int Drum, int Index), LumenProvided>();
-        var events = new List<(string Movie, LumenProvided Provided)>();
+        var batch = new ProvidedBatch();
         while (budget.Elapsed.TotalMilliseconds < 4 && _incoming.TryDequeue(out var line))
         {
             if (SkinLinkWire.Command(line) is ("notice", var text))
@@ -262,26 +261,14 @@ public sealed class SkinLive : IDisposable
                 continue;
             if (screen is not null)
             {
-                deliver(states, events);
+                foreach (var (each, given) in batch.Take()) take(each, given);
                 Screen = screen;
                 ScreenChanged?.Invoke(screen);
                 continue;
             }
-            if (provided.Kind == WdKind.Event) events.Add((movie!, provided));
-            else states[(movie!, provided.Kind, provided.Name, provided.Drum, provided.Index)] = provided;
+            batch.Add(movie!, provided);
         }
-        deliver(states, events);
-    }
-
-    private void deliver(Dictionary<(string Movie, WdKind Kind, string Name, int Drum, int Index), LumenProvided> states,
-        List<(string Movie, LumenProvided Provided)> events)
-    {
-        foreach (var (key, provided) in states)
-            take(key.Movie, provided);
-        foreach (var (movie, provided) in events)
-            take(movie, provided);
-        states.Clear();
-        events.Clear();
+        foreach (var (each, given) in batch.Take()) take(each, given);
     }
 
     private void take(string movie, LumenProvided provided)
@@ -323,4 +310,38 @@ public sealed class SkinLive : IDisposable
     }
 
     public void Dispose() => _client.Dispose();
+}
+
+/// <summary>
+/// What movies were given over a moment, in the order given, a state or list place kept only where it was last given
+/// (a song changes some every tick): scripts react to that order (a count before its rows), so it is kept.
+/// </summary>
+public sealed class ProvidedBatch
+{
+    private readonly List<(string Movie, LumenProvided Provided)> _items = [];
+    private readonly Dictionary<(string Movie, WdKind Kind, string Name, int Drum, int Index), int> _last = [];
+
+    public int Count => _items.Count;
+
+    public void Add(string movie, LumenProvided provided)
+    {
+        if (provided.Kind != WdKind.Event)
+            _last[(movie, provided.Kind, provided.Name, provided.Drum, provided.Index)] = _items.Count;
+        _items.Add((movie, provided));
+    }
+
+    /// <summary>Everything in order, an older value of a state left out; the batch is then empty.</summary>
+    public List<(string Movie, LumenProvided Provided)> Take()
+    {
+        var taken = new List<(string, LumenProvided)>(_last.Count);
+        for (var index = 0; index < _items.Count; index++)
+        {
+            var (movie, provided) = _items[index];
+            if (provided.Kind == WdKind.Event || _last[(movie, provided.Kind, provided.Name, provided.Drum, provided.Index)] == index)
+                taken.Add((movie, provided));
+        }
+        _items.Clear();
+        _last.Clear();
+        return taken;
+    }
 }

@@ -44,6 +44,22 @@ public sealed class SkinLinkTests
         Assert.Equal(("show", "song-select"), SkinLinkWire.Command(line!));
     }
 
+    // A count given after its rows reaches the editor after them too (scripts rebuild a list on the count); only an
+    // older value of the same state is left out.
+    [Fact]
+    public void ABatchKeepsTheOrderValuesWereGivenIn()
+    {
+        var batch = new ProvidedBatch();
+        LumenProvided state(string name, double value, int index = 0) =>
+            new(name.Contains("row.", StringComparison.Ordinal) ? WdKind.List : WdKind.State, name, 0, index, [LumenHostValue.FromNumber(value)]);
+        batch.Add("m", state("rows.count", 10));
+        batch.Add("m", state("row.depth", 1, 7));
+        batch.Add("m", state("rows.count", 12));
+        batch.Add("m", new(WdKind.Event, "combo.milestone", 0, 0, [LumenHostValue.FromNumber(100)]));
+        Assert.Equal(["row.depth", "rows.count", "combo.milestone"], batch.Take().Select(static each => each.Provided.Name));
+        Assert.Equal(0, batch.Count);
+    }
+
     [Fact]
     public void ValuesKeepTheirKindOnTheWire()
     {

@@ -42,16 +42,13 @@ internal sealed class SkinEditorLink(GameShell shell, string root) : IDisposable
     private int? _revealAt;       // a transition shown for the editor: when it opens again, then goes
     private bool _revealed;
 
-    // What the movies were given since the last tick: a state or list place by its last value (a song changes some
-    // every tick, for ~30 movies), events in order. Sent once a tick.
-    private readonly Dictionary<(string Movie, Waddamburo.Lumen.Provider.WdKind Kind, string Name, int Drum, int Index), Waddamburo.Lumen.Runtime.LumenProvided> _states = [];
-    private readonly List<(string Movie, Waddamburo.Lumen.Runtime.LumenProvided Provided)> _events = [];
+    // What the movies were given since the last tick, in order, a state by its last value only (a song changes some
+    // every tick, for ~30 movies). Sent once a tick.
+    private readonly ProvidedBatch _batch = new();
 
     private void held(string movie, Waddamburo.Lumen.Runtime.LumenProvided provided)
     {
-        if (!_server.Connected) return;
-        if (provided.Kind == Waddamburo.Lumen.Provider.WdKind.Event) _events.Add((movie, provided));
-        else _states[(movie, provided.Kind, provided.Name, provided.Drum, provided.Index)] = provided;
+        if (_server.Connected) _batch.Add(movie, provided);
     }
 
     /// <summary>An editor session runs (from F7 until the editor closes): plays are not saved, the window may lose focus.</summary>
@@ -59,12 +56,8 @@ internal sealed class SkinEditorLink(GameShell shell, string root) : IDisposable
 
     public void Tick()
     {
-        foreach (var (state, provided) in _states)
-            _server.Send(SkinLinkWire.Provided(state.Movie, provided));
-        _states.Clear();
-        foreach (var (movie, provided) in _events)
+        foreach (var (movie, provided) in _batch.Take())
             _server.Send(SkinLinkWire.Provided(movie, provided));
-        _events.Clear();
         // The editor closed: the game starts again from the beginning, as it was before the session (nothing of it kept).
         if (_editor is { HasExited: true } && !_restarting)
         {

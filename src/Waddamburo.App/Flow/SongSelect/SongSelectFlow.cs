@@ -482,11 +482,17 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
         return null;
     }
 
+    private LumenGameSceneInstance? _songScene;
+
     private void tellSongSelect(LumenPlayer movie, ISongSelectScreen host)
     {
         if (movie != _songMovie)
         {
-            (_songMovie, _songRows) = (movie, null);
+            // Another showing of the screen starts its list again; the same one with its movie swapped (a skin's
+            // package saved while it is up) keeps it: the new movie has the rows already (LumenGameSceneInstance.Swap).
+            if (!ReferenceEquals(_songScene, Shell.Active))
+                _songRows = null;
+            (_songMovie, _songScene) = (movie, Shell.Active);
             string? rows(Func<LibraryRows, string?> act) => _songRows is { } loaded ? act(loaded) : "the list is not set up yet";
             static int? at(LumenHostValue[] arguments, int index) =>
                 arguments.Length > index && arguments[index].Kind == LumenHostValueKind.Number ? (int)arguments[index].AsNumber() : null;

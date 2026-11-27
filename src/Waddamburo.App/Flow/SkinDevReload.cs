@@ -1,3 +1,4 @@
+using Waddamburo.Game;
 using Waddamburo.Game.Flow;
 using Waddamburo.Game.Scenes;
 
@@ -10,8 +11,9 @@ namespace Waddamburo.App.Flow;
 /// reloads under its quick rainbow, its music playing on; during a song the reload waits for the lane to be left.
 /// ponytail: the whole folder is listed every half second; a watcher if a skin grows past a few thousand files.
 /// </summary>
-internal sealed class SkinDevReload(GameShell shell, string root, Action forgetKept)
+internal sealed class SkinDevReload(GameShell shell, string root, Action forgetKept, Action<int, LumenMovieContent>? swap = null)
 {
+    private readonly HashSet<string> _swaps = new(StringComparer.Ordinal); // packages saved, their movies to swap on screen
     private const int Every = 30;
     private Dictionary<string, DateTime> _stamps = list(root);
     private bool _pending;
@@ -30,6 +32,9 @@ internal sealed class SkinDevReload(GameShell shell, string root, Action forgetK
     {
         if (shell.Tick % Every == 0)
             look();
+        if (_swaps.Count > 0 && !shell.Scenes.OnLane && !shell.Reload.Busy && !shell.Scenes.FadePending
+            && shell.Coordinator.Flow.State == GameFlowState.Active)
+            swapSaved();
         if (!_pending || shell.Scenes.OnLane || shell.Reload.Busy || shell.Scenes.FadePending
             || shell.Coordinator.Flow.State != GameFlowState.Active)
             return;
@@ -70,6 +75,46 @@ internal sealed class SkinDevReload(GameShell shell, string root, Action forgetK
             Frontends.WaddamburoScreens.Instance.Skin = SkinScenes.Find([root, Path.Combine(AppContext.BaseDirectory, "movies")],
                 static problem => Console.Error.WriteLine($"Skin scenes ignored: {problem}"));
         forgetKept();
-        _pending = true;
+        // Packages only (no scenes.json): their movies on the screen are swapped in place, the screen going on. A song's
+        // lane holds its movies itself: then the whole screen again, once the song is over.
+        var packages = changed.Select(packageOf).OfType<string>().ToHashSet(StringComparer.Ordinal);
+        if (swap is null || changed.Any(static file => Path.GetFileName(file) == SkinScenes.FileName))
+            _pending = true;
+        else if (shell.Scenes.OnLane)
+            _pending = packages.Count > 0;
+        else
+            _swaps.UnionWith(packages);
+    }
+
+    // The package a file belongs to (its folder with a movie.json, up from the file), from the root; null for none.
+    private string? packageOf(string file)
+    {
+        for (var folder = Path.GetDirectoryName(file); folder is not null && folder.Length > root.Length; folder = Path.GetDirectoryName(folder))
+            if (File.Exists(Path.Combine(folder, Formats.Package.MoviePackage.FileName)))
+                return Path.GetRelativePath(root, folder).Replace('\\', '/');
+        return null;
+    }
+
+    private void swapSaved()
+    {
+        var scene = shell.Active;
+        for (var index = 0; index < scene.Layers.Length; index++)
+        {
+            var definition = scene.Layers[index].Definition;
+            if (DirectoryLumenMovieContentSource.PackageFolder(root, definition.ArchiveId, definition.MovieId) is not { } folder
+                || !_swaps.Contains(Path.GetRelativePath(root, folder).Replace('\\', '/')))
+                continue;
+            try
+            {
+                var content = shell.MovieContent.LoadAsync(definition.ArchiveId, definition.MovieId, CancellationToken.None).AsTask().GetAwaiter().GetResult();
+                swap!(index, content);
+                Console.WriteLine($"Skin dev: {definition.MovieId} swapped in place.");
+            }
+            catch (Exception error) when (error is InvalidDataException or FormatException or IOException or InvalidOperationException)
+            {
+                Console.Error.WriteLine($"Skin dev: {definition.MovieId} not swapped: {error.Message}");
+            }
+        }
+        _swaps.Clear();
     }
 }

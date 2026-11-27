@@ -19,7 +19,7 @@ public sealed record LumenSceneLayer(
 /// </summary>
 public sealed class LumenScenePlayer
 {
-    private readonly ImmutableArray<LumenSceneLayer> _layers;
+    private ImmutableArray<LumenSceneLayer> _layers;
 
     public LumenScenePlayer(
         float stageWidth,
@@ -50,6 +50,15 @@ public sealed class LumenScenePlayer
     public float StageHeight { get; }
 
     public ImmutableArray<LumenSceneLayer> Layers => _layers;
+
+    /// <summary>Puts another movie in a layer's place (a skin's package saved while its screen is up).</summary>
+    public void ReplaceLayer(int index, LumenSceneLayer layer)
+    {
+        ArgumentNullException.ThrowIfNull(layer);
+        if (layer.Player.StageWidth != StageWidth || layer.Player.StageHeight != StageHeight)
+            throw new ArgumentException("The player must use the scene's logical stage size.", nameof(layer));
+        _layers = _layers.SetItem(index, layer);
+    }
 
     public void Advance()
     {

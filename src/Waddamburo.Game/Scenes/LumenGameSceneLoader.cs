@@ -46,9 +46,11 @@ public sealed class LumenGameSceneInstance : IGameSceneInstance
         SceneId id,
         LumenScenePlayer player,
         ImmutableArray<LoadedLumenLayer> layers,
-        ImmutableArray<object> hostLifetimes)
+        ImmutableArray<object> hostLifetimes,
+        ImmutableArray<LumenLayerHost> hosts = default)
     {
         Id = id;
+        _hosts = hosts.IsDefault ? [] : hosts;
         Player = player;
         Layers = layers;
         Textures = [.. layers.SelectMany(static layer => layer.Content.Textures)];
@@ -59,7 +61,36 @@ public sealed class LumenGameSceneInstance : IGameSceneInstance
 
     public LumenScenePlayer Player { get; }
 
-    public ImmutableArray<LoadedLumenLayer> Layers { get; }
+    public ImmutableArray<LoadedLumenLayer> Layers { get; private set; }
+
+    private readonly ImmutableArray<LumenLayerHost> _hosts;
+
+    /// <summary>
+    /// Puts a new version of a layer's movie in its place, the screen going on (a skin's package saved while it is up):
+    /// the same host, everything the engine gave the old movie (its states and lists), its request handler and tap; its
+    /// textures after the scene's (<see cref="Textures"/> grows by them). Returns the new movie.
+    /// </summary>
+    public LumenPlayer Swap(int index, LumenMovieContent content)
+    {
+        var old = Player.Layers[index];
+        var host = index < _hosts.Length ? _hosts[index] : new LumenLayerHost(null);
+        var player = content.CreatePlayer(Player.StageWidth, Player.StageHeight, new InGameBinding(host.Binding));
+        player.Name = old.Player.Name;
+        foreach (var provided in old.Player.ProvidedNow())
+        {
+            if (provided.Kind == Lumen.Provider.WdKind.List) player.PublishItem(provided.Name, provided.Index, provided.Values[0], provided.Drum);
+            else player.Publish(provided.Name, provided.Values[0], provided.Drum);
+        }
+        player.RequestHandler = old.Player.RequestHandler;
+        player.ProviderTap = old.Player.ProviderTap;
+        host.Initialize?.Invoke(player);
+        var offset = (uint)Textures.Length;
+        var count = (uint)content.Textures.Length;
+        Player.ReplaceLayer(index, old with { Player = player, TextureOffset = offset, TextureCount = count });
+        Layers = Layers.SetItem(index, new LoadedLumenLayer(Layers[index].Definition, content, offset, count));
+        Textures = Textures.AddRange(content.Textures);
+        return player;
+    }
 
     public ImmutableArray<LumenTextureContent> Textures { get; private set; }
 
@@ -118,6 +149,7 @@ public sealed class LumenGameSceneLoader : IGameSceneLoader
         var loaded = ImmutableArray.CreateBuilder<LoadedLumenLayer>(definition.Layers.Length);
         var players = ImmutableArray.CreateBuilder<LumenSceneLayer>(definition.Layers.Length);
         var lifetimes = ImmutableArray.CreateBuilder<object>(definition.Layers.Length);
+        var hosts = ImmutableArray.CreateBuilder<LumenLayerHost>(definition.Layers.Length);
         uint textureOffset = 0;
         using var scope = (_contentSource as IScopedLumenMovieContentSource)?.CreateSceneScope();
         var contentSource = (ILumenMovieContentSource?)scope ?? _contentSource;
@@ -136,6 +168,7 @@ public sealed class LumenGameSceneLoader : IGameSceneLoader
                     ?? throw new InvalidOperationException($"Host factory returned null for '{layer.HostId}'.");
                 if (host.Binding is IDisposable or IAsyncDisposable)
                     lifetimes.Add(host.Binding);
+                hosts.Add(host);
                 var player = content.CreatePlayer(_stageWidth, _stageHeight, new InGameBinding(host.Binding));
                 player.Name = layer.MovieId;
                 host.Initialize?.Invoke(player);
@@ -149,7 +182,8 @@ public sealed class LumenGameSceneLoader : IGameSceneLoader
                 definition.Id,
                 new LumenScenePlayer(_stageWidth, _stageHeight, players.MoveToImmutable()),
                 loaded.MoveToImmutable(),
-                lifetimes.ToImmutable());
+                lifetimes.ToImmutable(),
+                hosts.MoveToImmutable());
         }
         catch
         {
