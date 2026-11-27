@@ -2,6 +2,8 @@ using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 using Waddamburo.Game.Scores;
+using Waddamburo.Lumen.Rendering;
+using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Rendering;
 using Waddamburo.Platform.Sdl.Text;
@@ -12,6 +14,8 @@ namespace Waddamburo.App.Frontends;
 /// Waddamburo's "who's playing?": Guest and each stored TaikOnline account, with the account's avatar (downloaded once
 /// into the avatars folder, as the home player setup keeps them) and name. Rims move, a centre hit picks; Escape plays as
 /// a guest. ponytail: the left drum only; signing in a new account stays the home player setup's (Green's frontend).
+/// An entry movie that listens to account.picking shows the choice itself (<see cref="Feed"/>, account.pick); then this
+/// draws nothing and leaves the drums to the movie.
 /// </summary>
 internal sealed class AccountPicker(SdlApplication application, string fontPath, AccountBook? book, string avatarDirectory,
     HttpClient? avatars) : IDisposable
@@ -21,6 +25,9 @@ internal sealed class AccountPicker(SdlApplication application, string fontPath,
     private static readonly (byte R, byte G, byte B) Panel = (24, 28, 44), Row = (44, 52, 80), Picked = (238, 92, 60);
 
     private readonly ConcurrentDictionary<string, RgbaTextSurface?> _avatars = new();
+    private readonly ConcurrentDictionary<string, string> _avatarFiles = new();
+    private LumenPlayer? _fed;
+    private readonly HashSet<int> _filled = [];
     private Action<ScoreProfile?>? _picked;
     private int _cursor;
     private string? _drawn;
@@ -28,6 +35,9 @@ internal sealed class AccountPicker(SdlApplication application, string fontPath,
     private RenderTextureId? _texture;
 
     public bool IsOpen => _picked is not null;
+
+    /// <summary>The entry movie shows the choice (it listens to account.picking): nothing drawn here, no keys taken.</summary>
+    public bool Delegated { get; private set; }
 
     private IReadOnlyList<ScoreAccount> accounts => book?.Accounts ?? [];
 
@@ -43,10 +53,57 @@ internal sealed class AccountPicker(SdlApplication application, string fontPath,
 
     public void Close() => _picked = null;
 
+    /// <summary>
+    /// Gives our entry movie the choice (account.*) and the avatars as they arrive (acct&lt;i&gt;/avatar fills), once a
+    /// frame. A movie that does not listen to account.picking is left alone: the list here is drawn instead.
+    /// </summary>
+    public void Feed(LumenPlayer movie, Func<string, LumenNativeSurfaceKey> image)
+    {
+        if (movie != _fed)
+        {
+            (_fed, Delegated) = (movie, false);
+            _filled.Clear();
+        }
+        if (!movie.ProviderNames.Contains("account.picking"))
+            return;
+        Delegated = true;
+        movie.Publish("account.picking", LumenHostValue.FromBoolean(IsOpen));
+        var list = accounts;
+        movie.Publish("account.count", LumenHostValue.FromNumber(list.Count));
+        for (var index = 0; index < list.Count; index++)
+        {
+            movie.PublishItem("account.name", index, LumenHostValue.FromString(list[index].Profile.DisplayName ?? list[index].Name));
+            if (!_filled.Contains(index) && list[index].Avatar is { } url && _avatarFiles.TryGetValue(url, out var file))
+            {
+                movie.SetNativeFill($"acct{index}/avatar", image(file));
+                _filled.Add(index);
+            }
+        }
+        movie.Publish("account.default", book?.DefaultBaid is { } baid && list.ToList().FindIndex(account => account.Baid == baid) is var at and >= 0
+            ? LumenHostValue.FromNumber(at) : default);
+    }
+
+    /// <summary>The avatar picture of <paramref name="profile"/> on disk, once it has been loaded; null for none (a guest).</summary>
+    public string? AvatarFile(ScoreProfile? profile) =>
+        profile?.Avatar is { } url && _avatarFiles.TryGetValue(url, out var file) ? file : null;
+
+    /// <summary>account.pick(i): account i plays on the left drum (-1: a guest). Null when taken, else why not.</summary>
+    public string? Pick(LumenHostValue[] arguments)
+    {
+        if (_picked is not { } picked)
+            return "the choice is not up";
+        if (arguments is not [{ Kind: LumenHostValueKind.Number } value] || value.AsNumber() is var at && (at != Math.Floor(at) || at < -1 || at >= accounts.Count))
+            return "account.pick takes an account's index, or -1 for a guest";
+        var profile = at < 0 ? null : accounts[(int)at].Profile;
+        Close();
+        picked(profile);
+        return null;
+    }
+
     /// <summary>One tick: the left drum (D/K rims, F/J centres) and the arrows move and pick. True: it took the keys.</summary>
     public bool Tick(SdlKeyboardSnapshot keys)
     {
-        if (_picked is not { } picked)
+        if (_picked is not { } picked || Delegated)
             return false;
         var count = accounts.Count + 1;
         if (keys.IsDown(SdlKeyboardKey.D) || keys.IsDown(SdlKeyboardKey.Left) || keys.IsDown(SdlKeyboardKey.Up))
@@ -64,7 +121,7 @@ internal sealed class AccountPicker(SdlApplication application, string fontPath,
 
     public IEnumerable<RenderQuad> Quads()
     {
-        if (!IsOpen)
+        if (!IsOpen || Delegated)
             return [];
         var rows = Math.Min(accounts.Count + 1, VisibleRows);
         var height = Top - 40 + rows * RowHeight + Margin;
@@ -122,6 +179,7 @@ internal sealed class AccountPicker(SdlApplication application, string fontPath,
                     await File.WriteAllBytesAsync(file, bytes).ConfigureAwait(false);
                 }
                 _avatars[url] = SdlPng.Decode(await File.ReadAllBytesAsync(file).ConfigureAwait(false));
+                _avatarFiles[url] = file;
             }
             catch (Exception exception) when (exception is HttpRequestException or IOException or TaskCanceledException)
             {

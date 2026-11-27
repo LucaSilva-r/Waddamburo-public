@@ -85,9 +85,10 @@ public sealed class FreeTimeCounterTests
         board.Advance();
         board.Publish("player.name", LumenHostValue.FromString("Don-chan"));
         board.Publish("player.joined", LumenHostValue.FromBoolean(true));
-        Assert.Equal("Don-chan", board.ReadScriptValue("label.text"));
+        Assert.Equal("Don-chan", board.ReadScriptValue("plate.label.text"));
+        Assert.Equal("D", board.ReadScriptValue("plate.initial.text"));
         board.Publish("player.joined", LumenHostValue.FromBoolean(false));
-        Assert.Equal("", board.ReadScriptValue("label.text"));
+        Assert.Equal("", board.ReadScriptValue("plate.label.text"));
 
         var card = load("indicator/msg_banapass");
         card.Advance();
@@ -308,6 +309,36 @@ public sealed class FreeTimeCounterTests
         Assert.True(entry.TryGetInstanceBounds("i0", out _));
         entry.Publish("entry.timeLeft", n(0)); // the countdown ran out: the mode shown starts
         Assert.Equal(["session.start normal"], asked);
+        Assert.Empty(entry.Diagnostics);
+    }
+
+    [Fact]
+    public void TheEntryChoosesWhoPlaysFromTheAccounts()
+    {
+        static LumenHostValue text(string value) => LumenHostValue.FromString(value);
+        var entry = load("entry/entry");
+        var asked = new List<string>();
+        entry.RequestHandler = (name, arguments) =>
+        {
+            asked.Add($"{name} {string.Join(" ", arguments.Select(static value => value.AsNumber().ToString(System.Globalization.CultureInfo.InvariantCulture)))}");
+            return null;
+        };
+        advance(entry, 2);
+        Assert.Contains("account.picking", entry.ProviderNames); // the engine leaves the choice to this movie
+        entry.Publish("account.count", n(2));
+        entry.PublishItem("account.name", 0, text("[LAWN] Red"));
+        entry.PublishItem("account.name", 1, text("Firestorm"));
+        entry.Publish("account.default", n(1));
+        entry.Publish("account.picking", LumenHostValue.FromBoolean(true));
+        Assert.Equal("Firestorm", entry.ReadScriptValue("label.text"));
+        Assert.Equal("L", entry.ReadScriptValue("acct0.glyph.text"));
+        entry.EmitFor(1, "drum.hit", text("left"), text("ka")); // back one: [LAWN] Red
+        entry.EmitFor(1, "drum.hit", text("left"), text("ka")); // and Guest
+        Assert.Equal("Guest", entry.ReadScriptValue("label.text"));
+        entry.EmitFor(1, "drum.hit", text("left"), text("don"));
+        Assert.Equal(["account.pick -1", "player.join 1"], asked); // the guest takes the left drum on this screen
+        entry.Publish("player.joined", LumenHostValue.FromBoolean(true), 1);
+        Assert.Equal("Play", entry.ReadScriptValue("label.text")); // in: straight to the modes
         Assert.Empty(entry.Diagnostics);
     }
 

@@ -85,10 +85,13 @@ internal sealed class EntryFlow(GameShell shell) : FlowScene(shell)
         var movies = Shell.Active.Player.Layers.Select(static layer => layer.Player).ToArray();
         if (!movies.SequenceEqual(_asking))
         {
-            new WdRequests("entry").Handle("session.start", startMode).Handle("player.join", join).Install(movies);
+            new WdRequests("entry").Handle("session.start", startMode).Handle("player.join", join)
+                .Handle("account.pick", arguments => Shell.AccountPicker is { } picker ? picker.Pick(arguments) : "this frontend has no account choice").Install(movies);
             _asking = movies;
         }
         tellOurs();
+        if (Shell.AccountPicker is { } picker && Shell.Hosts.Entry is { Movie: { UsesProvider: true } entryMovie })
+            picker.Feed(entryMovie, Shell.Titles.GetImage);
         Shell.Active.Player.Advance(input);
         Shell.Hosts.Poll(FlowScenes.Entry);
         Shell.DonRenderer?.Advance();

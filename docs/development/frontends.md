@@ -45,8 +45,11 @@ catalogue, saved beside the scores) and `TjaDanCourses` (the player's own `Dani`
   names are the engine's (`Game.Flow.ResultNames`).
 - Screen hosts are the frontend's own: `GreenScreenHosts` (Skins.Green) for the game's movies, `WaddamburoScreenHosts`
   (App/Frontends) for ours: no bindings, only the engine's sessions (entry, Song Select) and when a screen ends.
-- Waddamburo's "who's playing?" (`AccountPicker`) is a list over the entry: Guest and each stored TaikOnline account
-  with its avatar; the left drum only, no signing in of a new account (that stays the home player setup's).
+- Waddamburo's "who's playing?" (`AccountPicker`): Guest and each stored TaikOnline account with its avatar; the left
+  drum only, no signing in of a new account (that stays the home player setup's). An entry movie that listens to
+  `account.picking` shows it itself (`account.count`, `account.name`, `account.default`, avatars filled into
+  `acct<i>/avatar`, the choice through `account.pick`): ours puts the faces on the menu's dial. Any other entry movie
+  gets the engine's list drawn over it.
 - Green's traced compositions are `GreenScenes` (Skins.Green); Game's `FlowScenes` keeps the shared screen ids.
 - Waddamburo's gameplay screen has the gameplay roles only (lane, gauge, every note kind, rolls, balloons, hit
   effects, combo, song info, name board) at the layout's places, none of Green's scenery

@@ -834,6 +834,46 @@
       "sample": "false"
     },
     {
+      "name": "account.picking",
+      "kind": "state",
+      "type": "bool",
+      "scope": "entry",
+      "description": "Waddamburo's \"who's playing?\" is up: the left drum's player is chosen from Guest and the stored accounts (account.pick). A movie that listens to it shows the choice itself; else the engine draws its own list over the entry. The avatar of account i fills the clip acct<i>/avatar (a shape without a texture inside a clip named acct0, acct1, ...).",
+      "sample": "true"
+    },
+    {
+      "name": "account.count",
+      "kind": "state",
+      "type": "number",
+      "scope": "entry",
+      "description": "How many stored accounts there are (Guest not counted): the length of account.name.",
+      "sample": "2"
+    },
+    {
+      "name": "account.name",
+      "kind": "list",
+      "type": "text",
+      "scope": "entry",
+      "description": "A stored account's name, for the choice.",
+      "sample": "Don"
+    },
+    {
+      "name": "account.default",
+      "kind": "state",
+      "type": "number",
+      "scope": "entry",
+      "description": "The account to start the choice on; no value: Guest.",
+      "sample": "0"
+    },
+    {
+      "name": "account.pick",
+      "kind": "request",
+      "type": "account: number (-1 Guest)",
+      "scope": "entry",
+      "description": "The left drum's player is this account (or a guest): the choice closes; the movie then joins them (player.join 1).",
+      "sample": "0"
+    },
+    {
       "name": "session.start",
       "kind": "request",
       "type": "mode: text (normal, dan)",

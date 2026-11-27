@@ -208,6 +208,9 @@ internal sealed partial class GameShell : IDisposable
     // Waddamburo's frontend: who plays (Guest or a stored account), as a session starts.
     private readonly Frontends.AccountPicker? _accountPicker;
 
+    /// <summary>Waddamburo's "who's playing?" (none on Green's frontend).</summary>
+    internal Frontends.AccountPicker? AccountPicker => _accountPicker;
+
     private readonly PairingPill _pill;
     private readonly PerformanceOverlay _performance;
     private bool _performanceSetting;
@@ -510,6 +513,9 @@ internal sealed partial class GameShell : IDisposable
                     : cardBoard && (card?.Player ?? Hosts.Entry?.Session?.Card?.DisplayName) is not null));
                 var waiting = card?.Player ?? Hosts.Entry?.Session?.Card?.DisplayName;
                 movie.Publish("player.name", side is { } own ? names[own] : cardBoard ? text(waiting) : LumenHostValue.Undefined);
+                // Our boards show the player's avatar in their "avatar" slot (Waddamburo's accounts; a guest has none).
+                if (side is { } player && joined.Contains(player) && _accountPicker?.AvatarFile(TaikoGuest.Profiles[player]) is { } avatar)
+                    movie.SetNativeFill("avatar", Titles.GetImage(avatar));
             }
         }
     }
@@ -1500,7 +1506,7 @@ internal sealed partial class GameShell : IDisposable
         return FlowScenes.Entry;
     }
 
-    // The picker's player takes the left drum; the entry starts again with them joined (its mode select next).
+    // The picker's player takes the left drum; they join (its mode select next).
     private void seat(Waddamburo.Game.Scores.ScoreProfile? profile)
     {
         Players.Reset();
@@ -1512,6 +1518,10 @@ internal sealed partial class GameShell : IDisposable
             RefreshPlayer(0);
         }
         Console.WriteLine($"Account picker: {(profile is null ? "guest" : $"{profile.Name} (baid {profile.Baid})")}.");
+        // A movie that showed the choice joins the player itself (player.join), on the screen as it is; the engine's list
+        // starts the entry again with them in (reloading the screen: a stutter ours avoids).
+        if (_accountPicker?.Delegated == true)
+            return;
         Credit.EntryTrigger = 0;
         Scenes.Show(FlowScenes.Entry);
     }

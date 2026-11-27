@@ -125,7 +125,8 @@ resume count), `song.stage` / `song.finalStage` (session scope) for song select'
 `codeSeconds` / `player` (a cabinet's website pairing). Our `time_counter` (rewritten on these), `msg_banapass` (the
 pairing code or the paired player; the engine's own pill steps aside for it) and `player_name`: the engine tells each
 front-end board its own drum's `player.name` / `player.joined` (it laid the boards out: `FlowScenes.BoardSide`; the
-entry's centre board shows a paired card's player); in a song the lane does. The game's code leaves all three alone
+entry's centre board shows a paired card's player, and on Waddamburo's frontend a board's `avatar` fill slot gets the
+account's avatar); in a song the lane does. The game's code leaves all three alone
 (`GuestNameBoard`, `ResumeCountdown`). Fix on the way: an app-scope name no longer makes a movie a drum's own, and
 reads of app names never redirect to player 1.
 
