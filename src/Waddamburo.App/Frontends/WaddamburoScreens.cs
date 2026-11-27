@@ -13,6 +13,28 @@ internal sealed class WaddamburoScreens : IScreenCompositions
 {
     public static WaddamburoScreens Instance { get; } = new();
 
+    /// <summary>The skin's scenes.json (null: none, every screen as below). A screen the file has replaces the one here.</summary>
+    public SkinScenes? Skin
+    {
+        get;
+        set
+        {
+            field = value;
+            _made.Clear();
+        }
+    }
+
+    // A screen stays the same object while the skin does (overlays and the catalog may hold on to one); per drum ones are new each time.
+    private readonly Dictionary<string, SceneDefinition> _made = new(StringComparer.Ordinal);
+
+    private SceneDefinition skin(string key, SceneDefinition builtIn, IReadOnlyList<int>? sides = null)
+    {
+        if (sides is not null)
+            return Skin?.Scene(key, sides) ?? builtIn;
+        lock (_made)
+            return _made.TryGetValue(key, out var made) ? made : _made[key] = Skin?.Scene(key) ?? builtIn;
+    }
+
     // Packages keep the folder layout the movie editor and free_movies use (<area>/<movie>).
     private static SceneLayerDefinition movie(string area, string name, string host, float x = 0, float y = 0) =>
         new($"{area}/packeddata.ddp", $"{name}/{name}.lm", LumenMatrix.Identity with { X = x, Y = y }, host);
@@ -24,21 +46,21 @@ internal sealed class WaddamburoScreens : IScreenCompositions
 
     public IReadOnlyList<SceneDefinition> Initial(IReadOnlyList<SceneDefinition> gameplayAndResults) =>
     [
-        screen(FlowScenes.Boot, movie("attract/kidou", "kidou", "boot")),
+        skin("boot", screen(FlowScenes.Boot, movie("attract/kidou", "kidou", "boot"))),
         // The entry: who plays, and the mode (normal or dan). Its boards show each drum's player.
-        screen(FlowScenes.Entry, movie("entry", "entry", "player-entry"), board(0), board(1)),
+        skin("entry", screen(FlowScenes.Entry, movie("entry", "entry", "player-entry"), board(0), board(1))),
         SongSelect([0]),
         .. gameplayAndResults,
-        screen(FlowScenes.Tutorial, movie("tutorial", "tutorial", "tutorial")),
+        skin("tutorial", screen(FlowScenes.Tutorial, movie("tutorial", "tutorial", "tutorial"))),
         DaniSelect(0),
     ];
 
     // ponytail: one Song Select; Waddamburo's frontend has no Waiwai or AI battle one.
     public SceneDefinition SongSelect(IReadOnlyList<int> sides, bool waiwai = false, bool aiBattle = false) =>
-        screen(FlowScenes.SongSelect, [movie("song_select", "song_select", "song-select"), .. sides.Select(board)]);
+        skin("song-select", screen(FlowScenes.SongSelect, [movie("song_select", "song_select", "song-select"), .. sides.Select(board)]), sides);
 
-    public SceneDefinition DaniSelect(int side) =>
-        screen(FlowScenes.DaniSelect, movie("dani_select", "dani_select", "dani-select"), movie("indicator", "player_name", side == 1 ? "dani-board-1" : "dani-board-0", side == 1 ? 948 : 60, 638));
+    public SceneDefinition DaniSelect(int side) => skin("dani-select",
+        screen(FlowScenes.DaniSelect, movie("dani_select", "dani_select", "dani-select"), movie("indicator", "player_name", side == 1 ? "dani-board-1" : "dani-board-0", side == 1 ? 948 : 60, 638)), [side]);
 
     /// <summary>
     /// The gameplay roles only (lane, gauge, notes, rolls, balloons, hit effects, combo, song info, name board) at the
@@ -49,24 +71,30 @@ internal sealed class WaddamburoScreens : IScreenCompositions
         int side = 0, bool twoPlayers = false, bool dojo = false)
     {
         var all = GameplaySceneComposition.Create(id, random, layout, null, side, twoPlayers, dojo);
-        return new(SceneDefinition.CurrentVersion, id, all.Layers.Where(static layer => !GameplaySceneComposition.IsGreenDecoration(layer)));
+        // The skin's gameplay entry adds layers over the layout's (decoration): the roles above stay the layout's.
+        return new(SceneDefinition.CurrentVersion, id, [.. all.Layers.Where(static layer => !GameplaySceneComposition.IsGreenDecoration(layer)),
+            .. (Skin?.Layers("gameplay") ?? []).Select(static layer => layer.Definition())]);
     }
 
-    public SceneDefinition Results { get; } = screen(FlowScenes.Result, movie("enso_result", "result", "result"));
+    public SceneDefinition Results => skin("result", BuiltInResults);
 
-    public SceneDefinition DaniResults { get; } = screen(FlowScenes.Result, movie("dani_result", "dani_result", "dani-result"));
+    private static readonly SceneDefinition BuiltInResults = screen(FlowScenes.Result, movie("enso_result", "result", "result"));
 
-    public SceneDefinition Rainbow { get; } = RainbowTransitionComposition.Create(new SceneId("rainbow-transition"));
+    public SceneDefinition DaniResults => skin("dani-result", BuiltInDaniResults);
 
-    public SceneDefinition Shutter { get; } = transition("shutter", "shutter");
+    private static readonly SceneDefinition BuiltInDaniResults = screen(FlowScenes.Result, movie("dani_result", "dani_result", "dani-result"));
 
-    public SceneDefinition Fade { get; } = transition("fade", "scene_change_fade");
+    public SceneDefinition Rainbow => skin("rainbow", RainbowTransitionComposition.Create(new SceneId("rainbow-transition")));
 
-    public SceneDefinition DanCover { get; } = transition("dan-cover", "scene_change_dani1");
+    public SceneDefinition Shutter => skin("shutter", transition("shutter", "shutter"));
 
-    public SceneDefinition DanExitCover { get; } = transition("dan-exit-cover", "scene_change_dani2");
+    public SceneDefinition Fade => skin("fade", transition("fade", "scene_change_fade"));
 
-    public SceneDefinition DanShutter { get; } = transition("dan-shutter", "dani_shutter");
+    public SceneDefinition DanCover => skin("dan-cover", transition("dan-cover", "scene_change_dani1"));
+
+    public SceneDefinition DanExitCover => skin("dan-exit-cover", transition("dan-exit-cover", "scene_change_dani2"));
+
+    public SceneDefinition DanShutter => skin("dan-shutter", transition("dan-shutter", "dani_shutter"));
 
     private static SceneDefinition transition(string id, string name) =>
         screen(new SceneId(id), movie("intermission", name, RainbowTransitionComposition.StaticHostId));

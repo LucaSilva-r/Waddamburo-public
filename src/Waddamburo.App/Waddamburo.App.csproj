@@ -31,7 +31,7 @@
 
   <!-- Waddamburo's own movies (movies/<archive>/<movie>: docs/development/free-movies.md), beside the executable. -->
   <ItemGroup>
-    <Content Include="../../movies/**/*" Exclude="../../movies/.git;../../movies/README.md;../../movies/LICENSE" LinkBase="movies" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../movies/**/*" Exclude="../../movies/.git;../../movies/.editor/**;../../movies/README.md;../../movies/LICENSE" LinkBase="movies" CopyToOutputDirectory="PreserveNewest" />
     <!-- Waddamburo's own sounds (sounds.json and its files: docs/development/free-movies.md, Sounds), beside the executable. -->
     <Content Include="../../sounds/**/*" LinkBase="sounds" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

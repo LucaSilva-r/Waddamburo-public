@@ -377,6 +377,23 @@ movie needs it. As in Flash, call arguments evaluate last to first; in a class, 
 `this.name`. Errors are `file(line,column): message`; the editor's lenient compile leaves failing scripts out and
 lists them. Viewer: `--package=<folder>` reloads on save. ponytail: no optimisation (locals by name).
 
+## Skin files (2026-11-27)
+
+A skin folder (`movies/`, or `USRDIR/waddamburo/movies` over it) holds, beside its packages:
+
+- `skin.json`: `format`, `name`, `author`, `version`, `contract` (the engine contract it was made for). Read by the
+  editor and the planned skin fetch; the engine does not need it to play.
+- `scenes.json` (`Game/Scenes/SkinScenes.cs`): Waddamburo's frontend's screens as data, which movies make each screen
+  and where. `{"format": 1, "scenes": {"<screen>": {"layers": [{"movie": "entry/entry", "role": "player-entry",
+  "x": 0, "y": 0, "side": 0}]}}}`. `movie` is the package folder under the skin; `role` is the host that drives it
+  (any other role is plain decoration, a movie nothing drives); `side` keeps a layer to the drum on that side where a
+  screen is built per drum (Song Select, the dan list). The engine keeps each screen's required roles
+  (`SkinScenes.Screens`): a screen missing one is refused with its name. Screens: boot, entry, song-select, tutorial,
+  dani-select, result, dani-result, rainbow, shutter, fade, dan-cover, dan-exit-cover, dan-shutter, and gameplay, whose
+  layers only go over the layout's (the lane, notes and gauge stay the layout's). A screen the file leaves out, or a
+  file that does not read (printed at boot), is the built-in one (`WaddamburoScreens`). The user's folder's file wins
+  whole over the bundled one. Green's frontend ignores it.
+
 ## Contracts (the game's side, private lab)
 
 What crosses a game movie's edge (callbacks in, `Lumen.X()` calls out, clips / labels / fill slots the host
