@@ -28,7 +28,8 @@ public sealed class LumenStageTests
             Assert.Equal(640, LumenStage.FromStage(.5f));
             LumenStage.Width = LumenStage.Fit(4d / 3);
             Assert.Equal((960f, 1040f), (LumenStage.Width, LumenStage.Anchored(at, LumenAnchor.Right).X)); // the right edge at 1120: 80 in
-            Assert.Equal(LumenStage.MaxWidth, LumenStage.Fit(32d / 9));
+            Assert.Equal(2560, LumenStage.Fit(32d / 9)); // any wider screen is filled
+            Assert.Equal(LumenStage.MinWidth, LumenStage.Fit(9d / 16)); // a portrait one letterboxed
         }
         finally
         {

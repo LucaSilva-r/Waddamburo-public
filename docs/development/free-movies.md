@@ -420,7 +420,7 @@ A skin folder (`movies/`, or `USRDIR/waddamburo/movies` over it) holds, beside i
 ## Screen shapes and anchors (2026-11-27)
 
 Waddamburo's frontend is always 720 units tall and as wide as the window's shape asks: 960 at 4:3, 1280 at 16:9,
-1680 at 21:9 (`Lumen/Rendering/LumenStage.cs`; past those, letterboxed). Everything is still made and placed on the
+1680 at 21:9, any wider screen filled as osu! does (`Lumen/Rendering/LumenStage.cs`; narrower than 4:3, letterboxed). Everything is still made and placed on the
 1280 stage: the game's frame is widened at the end (`GameShell.widen`: that box centred), touches mapped back
 (`SdlApplication.stagePoint`). What should hold an edge says so with an anchor, `"anchor": "left" | "center" |
 "right" | "stretch"` (height never changes, so only these): on a scenes.json layer or gameplay place (the whole movie;

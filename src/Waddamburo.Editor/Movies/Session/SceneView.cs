@@ -216,7 +216,7 @@ public sealed partial class MovieInspectorSession
     private float _sceneStageWidth = Lumen.Rendering.LumenStage.BaseWidth;
 
     /// <summary>The stage width the scene view shows (LumenStage: 960 at 4:3 to 1680 at 21:9).</summary>
-    public float SceneStageWidth { get => _sceneStageWidth; set => _sceneStageWidth = Math.Clamp(value, Lumen.Rendering.LumenStage.MinWidth, Lumen.Rendering.LumenStage.MaxWidth); }
+    public float SceneStageWidth { get => _sceneStageWidth; set => _sceneStageWidth = Math.Clamp(value, Lumen.Rendering.LumenStage.MinWidth, 2560); }
 
     // Who plays (and, in gameplay, a dan course's lane): the screen as that credit sees it.
     private void variantPicker(string key)
