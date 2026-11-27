@@ -31,6 +31,43 @@ public sealed partial class MovieInspectorSession
         Paused = true;
     }
 
+    private bool nested => _timelineContext.Path.Length > 0 || _trail.Count > 0;
+
+    /// <summary>One level up: out of the instance timeline being edited (to its parent's), else out of the sprite entered.</summary>
+    private void goUp()
+    {
+        if (_timelineContext.Path.Length > 0)
+        {
+            var path = _timelineContext.Path;
+            var parent = path.LastIndexOf('/') is >= 0 and var cut ? path[..cut] : "";
+            if (parent.Length > 0) openInstanceTimeline(parent);
+            else
+            {
+                _timelineContext.Reset();
+                _timelineAssetId = null;
+                _key = null;
+            }
+        }
+        else if (_trail.Count > 0)
+            leaveTo(_trail.Count - 1);
+    }
+
+    // The way back on the stage itself, while inside a nested movie (the Timeline tab has the same; it may be hidden).
+    private void stageBreadcrumb(EditorPanel area, IReadOnlyList<LumenInstanceInfo> clips)
+    {
+        if (!ImGui.GetIO().WantTextInput && ImGui.GetIO().KeyAlt && ImGui.IsKeyPressed(ImGuiKey.UpArrow, false) && nested)
+            goUp();
+        if (!nested)
+            return;
+        ImGui.SetCursorScreenPos(area.Position + new System.Numerics.Vector2(RulerSize + 8, RulerSize + 8));
+        ImGui.PushStyleColor(ImGuiCol.Button, new System.Numerics.Vector4(.15f, .16f, .19f, .92f));
+        if (ImGui.SmallButton("Up")) goUp();
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("One level up (Alt+Up)");
+        ImGui.SameLine();
+        timelineNavigation(clips);
+        ImGui.PopStyleColor();
+    }
+
     private void timelineNavigation(IReadOnlyList<LumenInstanceInfo> clips)
     {
         ImGui.TextDisabled("Editing timeline:");
@@ -48,6 +85,12 @@ public sealed partial class MovieInspectorSession
             ImGui.EndDisabled();
             if (ImGui.IsItemHovered()) ImGui.SetTooltip("This sprite's own frame counter. Click to edit this timeline.");
         }
-        if (_timelineContext.Path.Length == 0) breadcrumb();
+        if (_timelineContext.Path.Length == 0 && _trail.Count > 0)
+        {
+            ImGui.SameLine(0, 16);
+            ImGui.TextDisabled("Entered:");
+            ImGui.SameLine();
+            breadcrumb();
+        }
     }
 }

@@ -168,6 +168,7 @@ public sealed partial class MovieInspectorSession
             | ImGuiWindowFlags.NoScrollWithMouse | ImGuiWindowFlags.NoNav | ImGuiWindowFlags.NoBringToFrontOnFocus))
         {
             stageTools(area);
+            stageBreadcrumb(area, clips);
             var overTools = ImGui.IsAnyItemHovered() || ImGui.IsAnyItemActive();
             stageNavigation(area, player, ImGui.GetIO().MousePos, overTools);
             if (_dragAsset is { } dropped && inArea(area, ImGui.GetIO().MousePos) && ImGui.IsMouseReleased(ImGuiMouseButton.Left))

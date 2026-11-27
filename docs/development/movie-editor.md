@@ -231,6 +231,10 @@ without source, while authored package source stays in Code. Library/asset actio
 previews. If an instance disappears or its depth is reused for a different sprite, its context is retained rather
 than silently switching to another timeline. Package contexts follow stable editor asset IDs across reindexing.
 
+Way back up (2026-11-27): while inside a nested movie (an instance's timeline opened, or a sprite entered), the
+stage shows the same breadcrumb as the Timeline tab at its top left, with Up (Alt+Up): out of the instance timeline
+to its parent's, else out of the sprite entered.
+
 Scripts on the timeline (2026-11-12): keys say how a frame looks; what happens next (stop, loop, jump, a child sent
 to one of its frames) is frame scripts, which the timeline did not show. Each script now has a mark on a "scripts"
 track (a square where it stops, an arrow with the label it jumps to), a child it sends somewhere shows "→ frame" on
