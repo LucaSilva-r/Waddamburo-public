@@ -46,6 +46,7 @@ internal sealed class TextFieldTextures : IDisposable
     private long _uses;
     private int _version = SkinText.Version;
     private bool _failed;
+    private int _scale = 1;
 
     public RenderTextureId? Resolve(LumenNativeSurfaceKey key)
     {
@@ -57,7 +58,10 @@ internal sealed class TextFieldTextures : IDisposable
             _version = SkinText.Version;
             release();
         }
-        var scale = Math.Clamp((application.GetPixelSize().Height + 719) / 720, 1, 3);
+        // The sharpest the window has asked for so far: resizing across a step (720, 1440 pixels tall) back and forth would
+        // draw every text again at each crossing (a hitch of tens of milliseconds on a busy screen).
+        _scale = Math.Max(_scale, Math.Clamp((application.GetPixelSize().Height + 719) / 720, 1, 3));
+        var scale = _scale;
         if (_uploaded.TryGetValue((key, scale), out var kept))
         {
             _uploaded[(key, scale)] = kept with { Used = ++_uses };
