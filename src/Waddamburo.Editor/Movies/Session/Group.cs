@@ -43,20 +43,7 @@ public sealed partial class MovieInspectorSession
 
     private void transformGroup(StageMove move, Vector2 point, Vector2 delta, Vector2 anchor)
     {
-        var change = Matrix3x2.Identity;
-        if (move.Op == 0)
-            change = Matrix3x2.CreateTranslation(delta);
-        else if (move.Op == 1)
-        {
-            var angle = (float)EffectGizmo.Rotation(move.Start - move.Pivot, point - move.Pivot);
-            if (ImGuiNET.ImGui.GetIO().KeyShift) angle = MathF.Round(angle / 15) * 15;
-            change = Matrix3x2.CreateRotation(angle * MathF.PI / 180, anchor);
-        }
-        else
-        {
-            var factors = MovieTransform.ScaleFactors(move.Handle, move.Start, point, anchor, ImGuiNET.ImGui.GetIO().KeyShift);
-            change = Matrix3x2.CreateScale(factors, anchor);
-        }
+        var change = MovieTransform.Change(move.Op, move.Handle, move.Start, point, delta, move.Pivot, anchor, ImGuiNET.ImGui.GetIO().KeyShift);
         var updates = new List<(GroupMember Member, Vector2 Position, float Angle, Vector2 Scale)>();
         foreach (var member in _groupDrag)
         {

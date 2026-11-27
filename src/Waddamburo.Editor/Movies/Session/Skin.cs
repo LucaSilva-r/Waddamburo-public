@@ -156,7 +156,7 @@ public sealed partial class MovieInspectorSession
     private void openScene(string key)
     {
         _sceneKey = key;
-        _sceneLayer = -1;
+        select(-1, 0);
         _page = Page.Scene;
     }
 

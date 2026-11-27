@@ -71,7 +71,25 @@ public sealed class SceneDocument
     public IReadOnlyDictionary<string, SkinScenes.Layer> Places => Parsed?.Places ?? new Dictionary<string, SkinScenes.Layer>();
 
     /// <summary>Places one of gameplay's own movies (null: back at the layout's place), as <see cref="Edit"/> does a layer.</summary>
-    public void EditPlace(string name, SkinScenes.Layer? place, bool continues = false) => write("gameplay", scene =>
+    public void EditPlace(string name, SkinScenes.Layer? place, bool continues = false) =>
+        write("gameplay", scene => setPlace(scene, name, place), continues);
+
+    /// <summary>
+    /// Several changes as one step (a gesture on a selection): the screen's layers changed, and gameplay's own movies
+    /// placed (<paramref name="places"/> by name; null: back at the layout's place).
+    /// </summary>
+    public void EditMany(string key, Action<List<SkinScenes.Layer>>? change, IReadOnlyDictionary<string, SkinScenes.Layer?> places, bool continues = false)
+    {
+        var layers = Layers(key).ToList();
+        change?.Invoke(layers);
+        write(key, scene =>
+        {
+            if (change is not null) scene["layers"] = new JsonArray([.. layers.Select(write)]);
+            foreach (var (name, place) in places) setPlace(scene, name, place);
+        }, continues);
+    }
+
+    private void setPlace(JsonObject scene, string name, SkinScenes.Layer? place)
     {
         var places = scene["places"] as JsonObject ?? new JsonObject();
         if (place is { } at)
@@ -93,7 +111,7 @@ public sealed class SceneDocument
         if (sorted.Count == 0) scene.Remove("places");
         else scene["places"] = sorted;
         scene["layers"] ??= new JsonArray([.. Layers("gameplay").Select(write)]);
-    }, continues);
+    }
 
     // Changes one screen's entry of the file (made when the file leaves it out), checked as the engine reads it.
     private void write(string key, Action<JsonObject> change, bool continues)

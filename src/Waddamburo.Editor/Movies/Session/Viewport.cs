@@ -202,7 +202,7 @@ public sealed partial class MovieInspectorSession
                     captureGroup(player, clips);
                     _move = new(point, false, handle, view.ToStage(centre), new(box.X, box.Y), new(box.X + box.Width, box.Y + box.Height))
                     {
-                        Op = _stageTool != 3 ? _stageTool : handle == RotateHandle ? 1 : handle >= 3 ? 2 : 0,
+                        Op = StageHandles.Operation(_stageTool, handle),
                     };
                 }
                 else

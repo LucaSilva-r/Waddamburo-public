@@ -16,12 +16,14 @@ from the current folder). `--inspect=scene:<screen>` starts on a scene view (for
 - **Home**: Scenes, every screen of `scenes.json` as a flow map (boot, entry, song select, rainbow, gameplay, results;
   the dan dojo below; transitions in their own row) with live thumbnails; Components, every package by area with a
   thumbnail and the screens using it, a slot without a package made on click.
-- **Scene view**: the screen playing; layers listed back to front (gameplay's layout layers greyed under the skin's);
-  Move / Rotate / Scale / Transform tools (W/E/R/T; a handle scales about the opposite one, Alt about the origin;
-  Transform: inside moves, handles scale, just outside a corner turns); a canvas (wheel zooms about the pointer,
-  middle drag moves, Home fits, F frames the selection; the screen fitted with a margin); snapping to the stage, other layers' edges and a grid
-  (Ctrl held: off), 15° and 0.05 steps; arrows nudge; drag a component onto the stage to add it; one gesture is one
-  undo step. Saves `scenes.json` (Ctrl+S).
+- **Scene view**: the screen playing; layers listed back to front (gameplay's own movies first). The stage works as
+  the component editor's, on the same code: the tools and handles (`StageHandles`: Q free transform, W move, E
+  rotate, R scale), the group change (`MovieTransform.Change` / `TryApply`, each layer read back as place, turn,
+  scale), the snapping (`EffectGizmo.Snap`, plus a grid) and the keys. Several layers are selected at once:
+  Ctrl+click adds or drops one, Shift+drag draws a box, a click again on the same spot reaches the layer under;
+  Ctrl/Shift in the list too. Arrows nudge the selection, Delete removes the skin's selected layers, F frames it; a
+  canvas (wheel zooms about the pointer, middle drag moves, Home fits; the screen fitted with a margin). One gesture
+  is one undo step (`SceneDocument.EditMany`). Drag a component onto the stage to add it. Saves `scenes.json` (Ctrl+S).
 - **Gameplay's own movies** (lane, hit target, gauge, song info, combo...) are listed first and placed with the same
   tools as the skin's layers, written as scenes.json gameplay `places`; Back to the layout's place drops one. The
   notes follow `lane_hit` (the hit target); the engine's note templates are not shown.

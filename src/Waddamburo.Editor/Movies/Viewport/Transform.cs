@@ -33,6 +33,23 @@ public static class MovieTransform
         return axis switch { 1 => new(delta.X, 0), 2 => new(0, delta.Y), _ => delta };
     }
 
+    /// <summary>
+    /// The stage-space change a drag makes: <paramref name="op"/> 0 moves by <paramref name="delta"/>, 1 turns about
+    /// <paramref name="anchor"/> (<paramref name="shift"/>: 15 degree steps), 2 scales about it by the handle taken.
+    /// </summary>
+    public static Matrix3x2 Change(int op, int handle, Vector2 start, Vector2 point, Vector2 delta, Vector2 pivot, Vector2 anchor, bool shift)
+    {
+        if (op == 0)
+            return Matrix3x2.CreateTranslation(delta);
+        if (op == 1)
+        {
+            var angle = (float)EffectGizmo.Rotation(start - pivot, point - pivot);
+            if (shift) angle = MathF.Round(angle / 15) * 15;
+            return Matrix3x2.CreateRotation(angle * MathF.PI / 180, anchor);
+        }
+        return Matrix3x2.CreateScale(ScaleFactors(handle, start, point, anchor, shift), anchor);
+    }
+
     public static bool HasSelectedAncestor(string path, IEnumerable<string> selected) =>
         selected.Any(parent => parent != path && (parent.Length == 0 || path.StartsWith(parent + "/", StringComparison.Ordinal)));
 

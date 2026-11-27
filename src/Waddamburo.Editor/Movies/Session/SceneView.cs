@@ -6,52 +6,86 @@ using Waddamburo.Lumen.Runtime;
 namespace Waddamburo.Editor;
 
 /// <summary>
-/// The scene view: a screen's layers listed, the screen playing in the middle, the selected layer's place, scale,
-/// turn, role and drum on the right. Gameplay's own movies (the lane, gauge, song info...) are listed first and placed
-/// the same way, written as the skin's places (scenes.json gameplay places). On the stage: Move (W), Rotate (E),
-/// Scale (R) and Transform (T) tools, snapping to the stage's edges and middle, the other layers' edges and a grid
-/// (Ctrl held: no snapping). One gesture is one undo step.
+/// The scene view: a screen's layers listed, the screen playing in the middle, the active layer's place, scale, turn,
+/// role and drum on the right. Gameplay's own movies (the lane, hit target, gauge...) are listed first and placed the
+/// same way, written as the skin's places (scenes.json gameplay places). The stage works as the component editor's:
+/// the same tools (Q free transform, W move, E rotate, R scale: <see cref="StageHandles"/>), a selection of several
+/// layers (Ctrl+click adds or drops one, Shift+drag draws a box, a click again on the same spot reaches the layer
+/// under), moved, turned and scaled together (<see cref="MovieTransform"/>), snapping to the stage, the other layers
+/// and a grid (Ctrl held: free). One gesture is one undo step.
 /// </summary>
 public sealed partial class MovieInspectorSession
 {
-    private enum SceneTool { Move, Rotate, Scale, Transform }
-
-    private SceneTool _sceneTool = SceneTool.Move;
     private bool _snap = true;
     private int _grid = 4; // an index of GridSteps: 8 px
-    // The gesture under way on the stage: what it does, where it started, the layer as it was then.
-    private (SceneTool Tool, Vector2 From, SkinScenes.Layer Start, int Handle, Vector2 Anchor)? _gesture2;
-    private bool _gestureEdited, _fieldEdited;
-    private readonly List<(Vector2 A, Vector2 B)> _sceneGuides = [];
+    private bool _fieldEdited;
+    private (float? X, float? Y) _sceneGuides;
     private float _sceneZoom = 1;   // 1: the screen fitted to the panel with a margin
     private Vector2 _scenePan;
     private bool _scenePanning;
-    // The selection: a layer of the skin's (_sceneLayer) or one of the screen's own (_layoutLayer, gameplay's), not both.
+    // The selection, by index of the whole screen (the screen's own layers first, then the skin's); the active one is
+    // _layoutLayer (one of the screen's own) or _sceneLayer (one of the skin's), whose fields the inspector shows.
+    private readonly HashSet<int> _sceneSelection = [];
     private int _layoutLayer = -1;
+    private Vector2? _sceneBox;
+    private Vector2? _scenePickPoint;
+    private int[] _scenePickCycle = [];
+    private int _scenePickIndex;
+
+    // A drag on the stage: what it does (0 move, 1 rotate, 2 scale), the handle taken, the selection's box and the
+    // layers as they were when it started.
+    private sealed record SceneMove(int Op, int Handle, Vector2 Start, Vector2 Pivot, Vector2 Min, Vector2 Max,
+        (int Index, SkinScenes.Layer Layer)[] Members)
+    {
+        public bool Moved { get; init; }
+        public bool Edited { get; init; }
+    }
+
+    private SceneMove? _sceneMove;
 
     // The name a screen's own movie is placed by (null: placed by the engine, not by the skin).
     private static string? placeName(SkinScenes.Layer layer) => GameplaySceneComposition.PlaceName(layer.Movie[(layer.Movie.LastIndexOf('/') + 1)..]);
 
-    // The selection as an index of the whole screen (the screen's own layers first, then the skin's), and back.
+    // The active layer as an index of the whole screen.
     private int selectedIndex(int ownCount, int skinCount) => _layoutLayer >= 0 && _layoutLayer < ownCount ? _layoutLayer
         : _sceneLayer >= 0 && _sceneLayer < skinCount ? ownCount + _sceneLayer : -1;
 
-    private void select(int index, int ownCount) => (_layoutLayer, _sceneLayer) = index < 0 ? (-1, -1) : index < ownCount ? (index, -1) : (-1, index - ownCount);
+    private void activate(int index, int ownCount) =>
+        (_layoutLayer, _sceneLayer) = index < 0 ? (-1, -1) : index < ownCount ? (index, -1) : (-1, index - ownCount);
 
-    // A layer changed: the skin's in its list, the screen's own as a place of the skin's.
-    private void commit(int index, IReadOnlyList<SkinScenes.Layer> own, SkinScenes.Layer next, bool continues)
+    // Only this layer (or none).
+    private void select(int index, int ownCount)
     {
-        if (index >= own.Count)
+        _sceneSelection.Clear();
+        if (index >= 0) _sceneSelection.Add(index);
+        activate(index, ownCount);
+    }
+
+    // Adds a layer to the selection, or drops it (the active one moves to the last left).
+    private void toggleScene(int index, int ownCount)
+    {
+        if (index < 0) return;
+        if (_sceneSelection.Add(index)) activate(index, ownCount);
+        else
         {
-            var at = index - own.Count;
-            editScene(each => each[at] = next, continues);
-            return;
+            _sceneSelection.Remove(index);
+            if (selectedIndex(ownCount, int.MaxValue) == index) activate(_sceneSelection.Count == 0 ? -1 : _sceneSelection.Last(), ownCount);
         }
-        if (placeName(own[index]) is not { } name)
-            return;
+    }
+
+    // Layers changed as one step: the skin's in its list, the screen's own as places of the skin's.
+    private void commit(string key, IReadOnlyList<SkinScenes.Layer> own, IEnumerable<(int Index, SkinScenes.Layer Layer)> changes, bool continues)
+    {
+        var mine = new List<(int At, SkinScenes.Layer Layer)>();
+        var places = new Dictionary<string, SkinScenes.Layer?>(StringComparer.Ordinal);
+        foreach (var (index, layer) in changes)
+        {
+            if (index >= own.Count) mine.Add((index - own.Count, layer));
+            else if (placeName(own[index]) is { } name) places[name] = layer;
+        }
         try
         {
-            Scenes!.EditPlace(name, next, continues);
+            Scenes!.EditMany(key, mine.Count == 0 ? null : list => { foreach (var (at, layer) in mine) list[at] = layer; }, places, continues);
             _notice = null;
         }
         catch (InvalidOperationException refused)
@@ -65,10 +99,27 @@ public sealed partial class MovieInspectorSession
         var key = _sceneKey!;
         var layers = Scenes!.Layers(key);
         var own = Skin!.Fixed?.Invoke(key) ?? [];
-        if (_sceneLayer >= layers.Count) _sceneLayer = layers.Count - 1;
+        var all = (IReadOnlyList<SkinScenes.Layer>)[.. own, .. layers];
+        _sceneSelection.RemoveWhere(index => index >= all.Count);
+        if (_sceneLayer >= layers.Count) _sceneLayer = -1;
         if (_layoutLayer >= own.Count) _layoutLayer = -1;
         const float side = 290;
         var height = size.Y - top;
+        // A click in the list: alone, Ctrl adds or drops it, Shift takes the run from the active one.
+        void listClick(int index, string movie)
+        {
+            var io = ImGui.GetIO();
+            var from = selectedIndex(own.Count, layers.Count);
+            if (io.KeyShift && from >= 0)
+            {
+                if (!io.KeyCtrl) _sceneSelection.Clear();
+                for (var each = Math.Min(from, index); each <= Math.Max(from, index); each++) _sceneSelection.Add(each);
+                activate(index, own.Count);
+            }
+            else if (io.KeyCtrl) toggleScene(index, own.Count);
+            else select(index, own.Count);
+            if (ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left) && Skin.Exists(movie)) openPackage(movie);
+        }
         if (panel("##scene layers", new(0, top, side, height), ImGuiWindowFlags.NoTitleBar))
         {
             if (ImGui.Button("< Home")) _page = Page.Home;
@@ -90,12 +141,9 @@ public sealed partial class MovieInspectorSession
                     var name = placeName(layer);
                     ImGui.PushID(1000 + index);
                     if (ImGui.Selectable($"  {layer.Movie[(layer.Movie.LastIndexOf('/') + 1)..]}{(name is not null && Scenes.Places.ContainsKey(name) ? "  · placed" : "")}",
-                        _layoutLayer == index, ImGuiSelectableFlags.AllowDoubleClick))
-                    {
-                        select(index, own.Count);
-                        if (ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left) && Skin.Exists(layer.Movie)) openPackage(layer.Movie);
-                    }
-                    if (ImGui.IsItemHovered()) ImGui.SetTooltip($"{layer.Movie} ({layer.Role})\nDouble-click to edit it.");
+                        _sceneSelection.Contains(index), ImGuiSelectableFlags.AllowDoubleClick))
+                        listClick(index, layer.Movie);
+                    if (ImGui.IsItemHovered()) ImGui.SetTooltip($"{layer.Movie} ({layer.Role})\nDouble-click to edit it. Ctrl: add to the selection, Shift: a run.");
                     ImGui.PopID();
                 }
                 ImGui.Spacing();
@@ -105,23 +153,20 @@ public sealed partial class MovieInspectorSession
                 var layer = layers[index];
                 ImGui.PushID(index);
                 if (ImGui.Selectable($"{layer.Movie[(layer.Movie.LastIndexOf('/') + 1)..]}  ({layer.Role}){(layer.Side is { } drum ? drum == 0 ? " left" : " right" : "")}",
-                    _sceneLayer == index, ImGuiSelectableFlags.AllowDoubleClick))
-                {
-                    select(own.Count + index, own.Count);
-                    if (ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left)) openPackage(layer.Movie);
-                }
-                if (ImGui.IsItemHovered()) ImGui.SetTooltip($"{layer.Movie}\nDouble-click to edit it.");
+                    _sceneSelection.Contains(own.Count + index), ImGuiSelectableFlags.AllowDoubleClick))
+                    listClick(own.Count + index, layer.Movie);
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip($"{layer.Movie}\nDouble-click to edit it. Ctrl: add to the selection, Shift: a run.");
                 ImGui.PopID();
             }
             if (layers.Count == 0)
                 ImGui.TextDisabled("None of the skin's: drag a component onto the stage.");
             var chosen = _sceneLayer;
             ImGui.BeginDisabled(chosen < 0);
-            if (ImGui.Button("Up") && chosen > 0) { editScene(list => (list[chosen - 1], list[chosen]) = (list[chosen], list[chosen - 1])); _sceneLayer--; }
+            if (ImGui.Button("Up") && chosen > 0) { editScene(list => (list[chosen - 1], list[chosen]) = (list[chosen], list[chosen - 1])); select(own.Count + chosen - 1, own.Count); }
             ImGui.SameLine();
-            if (ImGui.Button("Down") && chosen >= 0 && chosen < layers.Count - 1) { editScene(list => (list[chosen + 1], list[chosen]) = (list[chosen], list[chosen + 1])); _sceneLayer++; }
+            if (ImGui.Button("Down") && chosen >= 0 && chosen < layers.Count - 1) { editScene(list => (list[chosen + 1], list[chosen]) = (list[chosen], list[chosen + 1])); select(own.Count + chosen + 1, own.Count); }
             ImGui.SameLine();
-            if (ImGui.Button("Remove") && chosen >= 0) { editScene(list => list.RemoveAt(chosen)); _sceneLayer = -1; }
+            if (ImGui.Button("Remove") && chosen >= 0) removeSelected(own.Count);
             ImGui.SameLine();
             if (ImGui.Button("Edit") && chosen >= 0) openPackage(layers[chosen].Movie);
             ImGui.EndDisabled();
@@ -131,10 +176,11 @@ public sealed partial class MovieInspectorSession
         ImGui.End();
         if (panel("##scene layer", new(size.X - side, top, side, height), ImGuiWindowFlags.NoTitleBar))
         {
-            if (_sceneLayer >= 0 && _sceneLayer < layers.Count)
-                layerInspector(key, layers[_sceneLayer], own);
-            else if (_layoutLayer >= 0 && _layoutLayer < own.Count)
-                layerInspector(key, own[_layoutLayer], own);
+            if (_sceneSelection.Count > 1)
+                ImGui.TextDisabled($"{_sceneSelection.Count} selected: the fields edit the active one.");
+            var active = selectedIndex(own.Count, layers.Count);
+            if (active >= 0)
+                layerInspector(key, all[active], own, active);
             else
                 ImGui.TextDisabled("Select a layer: in the list, or on the stage.");
             ImGui.Separator();
@@ -145,46 +191,43 @@ public sealed partial class MovieInspectorSession
         ImGui.End();
         if (panel("##scene stage", new(side, top, size.X - side * 2, height), ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoTitleBar))
         {
-            stageTools();
+            sceneTools();
             scenarioPicker(key);
-            sceneStage(key, [.. own, .. layers], own);
+            sceneStage(key, all, own);
         }
         ImGui.End();
     }
 
-    private void stageTools()
+    // The skin's selected layers removed (the screen's own stay: they are the engine's).
+    private void removeSelected(int ownCount)
     {
-        void tool(string name, SceneTool which, string keyName)
-        {
-            var on = _sceneTool == which;
-            if (on) ImGui.PushStyleColor(ImGuiCol.Button, ImGui.GetStyle().Colors[(int)ImGuiCol.ButtonActive]);
-            if (ImGui.Button(name)) _sceneTool = which;
-            if (on) ImGui.PopStyleColor();
-            if (ImGui.IsItemHovered()) ImGui.SetTooltip($"{name} ({keyName})");
-            ImGui.SameLine();
-        }
-        tool("Move", SceneTool.Move, "W");
-        tool("Rotate", SceneTool.Rotate, "E");
-        tool("Scale", SceneTool.Scale, "R");
-        tool("Transform", SceneTool.Transform, "T: drag inside to move, a handle to scale, just outside a corner to turn");
+        var gone = _sceneSelection.Where(index => index >= ownCount).Select(index => index - ownCount).OrderDescending().ToArray();
+        if (gone.Length == 0) return;
+        editScene(list => { foreach (var at in gone) list.RemoveAt(at); });
+        select(-1, ownCount);
+    }
+
+    private void sceneTools()
+    {
+        transformToolButtons(_sceneMove is not null);
         ImGui.SameLine(0, 24);
         ImGui.Checkbox("Snap", ref _snap);
-        if (ImGui.IsItemHovered()) ImGui.SetTooltip("To the stage's edges and middle, the other layers' edges, the grid; 15° turns, 0.05 scale steps.\nHold Ctrl to turn it off for a moment.");
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("To the stage's edges and middle, the other layers' edges, else the grid.\nHold Ctrl to turn it off for a moment.");
         ImGui.SameLine();
         ImGui.SetNextItemWidth(90);
         ImGui.Combo("##grid", ref _grid, GridNames, GridNames.Length);
         ImGui.SameLine(0, 24);
+        ImGui.AlignTextToFramePadding();
         ImGui.TextDisabled($"zoom {_sceneZoom * 100:0}%%");
-        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Wheel zooms, middle drag moves, Home fits the screen, F frames the selection.\nArrows nudge (Shift: 10). Delete removes.");
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Wheel zooms, middle drag moves, Home fits the screen, F frames the selection.\nCtrl+click adds to the selection, Shift+drag draws a box, a click again reaches the layer under.\nArrows nudge (Shift: 10). Delete removes.");
     }
 
     private static readonly int[] GridSteps = [0, 1, 2, 4, 8, 16, 32, 64];
     private static readonly string[] GridNames = [.. GridSteps.Select(static step => step == 0 ? "no grid" : $"grid {step}")];
 
-    private void layerInspector(string key, SkinScenes.Layer layer, IReadOnlyList<SkinScenes.Layer> own)
+    private void layerInspector(string key, SkinScenes.Layer layer, IReadOnlyList<SkinScenes.Layer> own, int index)
     {
-        var mine = _layoutLayer < 0; // the skin's layer (else one of the screen's own)
-        var index = mine ? own.Count + _sceneLayer : _layoutLayer;
+        var mine = index >= own.Count; // the skin's layer (else one of the screen's own)
         ImGui.TextUnformatted(layer.Movie);
         if (!Skin!.Exists(layer.Movie)) ImGui.TextColored(ImGui.ColorConvertU32ToFloat4(Bad), "No package yet (shown as a label).");
         if (ImGui.Button("Edit this component")) openPackage(layer.Movie);
@@ -192,7 +235,7 @@ public sealed partial class MovieInspectorSession
         if (mine)
         {
             var role = layer.Role;
-            var at = _sceneLayer;
+            var at = index - own.Count;
             ImGui.SetNextItemWidth(-1);
             if (ImGui.BeginCombo("##role", $"Role: {role}"))
             {
@@ -224,7 +267,7 @@ public sealed partial class MovieInspectorSession
             if (ImGui.IsItemActivated()) _fieldEdited = false;
             if (changed)
             {
-                commit(index, own, change(layer), _fieldEdited);
+                commit(key, own, [(index, change(layer))], _fieldEdited);
                 _fieldEdited = true;
             }
         }
@@ -243,7 +286,7 @@ public sealed partial class MovieInspectorSession
                 each => each with { Side = drum == 0 ? null : drum - 1 });
         }
         if (ImGui.Button("Reset scale and rotation"))
-            commit(index, own, layer with { ScaleX = 1, ScaleY = 1, Rotation = 0 }, false);
+            commit(key, own, [(index, layer with { ScaleX = 1, ScaleY = 1, Rotation = 0 })], false);
     }
 
     // Stage space: the 1280x720 screen. A layer's box: its movie's bounds (layer = its index in the whole screen)
@@ -274,14 +317,20 @@ public sealed partial class MovieInspectorSession
         return true;
     }
 
-    // A point in the layer's own space as its transform was at the gesture's start.
-    private static Vector2 local(SkinScenes.Layer layer, Vector2 stage)
+    /// <summary>A layer under a stage-space change (a group drag): its place, turn and scale read back; null when that would need skew.</summary>
+    internal static SkinScenes.Layer? Transformed(SkinScenes.Layer layer, Matrix3x2 change, int op)
     {
-        var m = layer.Transform;
-        var determinant = m.M11 * m.M22 - m.M21 * m.M12;
-        if (Math.Abs(determinant) < 1e-6f) return Vector2.Zero;
-        var (x, y) = (stage.X - m.X, stage.Y - m.Y);
-        return new((m.M22 * x - m.M21 * y) / determinant, (-m.M12 * x + m.M11 * y) / determinant);
+        var local = Matrix3x2.CreateScale(layer.ScaleX, layer.ScaleY) * Matrix3x2.CreateRotation(layer.Rotation * MathF.PI / 180)
+            * Matrix3x2.CreateTranslation(layer.X, layer.Y);
+        if (!MovieTransform.TryApply(local, Matrix3x2.Identity, change, out var position, out var angle, out var scale))
+            return null;
+        return op == 0
+            ? layer with { X = MathF.Round(position.X, 2), Y = MathF.Round(position.Y, 2) }
+            : layer with
+            {
+                X = MathF.Round(position.X, 2), Y = MathF.Round(position.Y, 2), Rotation = MathF.Round(angle, 2),
+                ScaleX = MathF.Round(scale.X, 4), ScaleY = MathF.Round(scale.Y, 4),
+            };
     }
 
     // all: the screen's own layers, then the skin's (an index of it is the live scene's layer index).
@@ -302,8 +351,19 @@ public sealed partial class MovieInspectorSession
         var io = ImGui.GetIO();
         var mouse = ImGui.GetMousePos();
         var over = ImGui.IsItemHovered();
-        var selection = selectedIndex(own.Count, all.Count - own.Count);
-        if (over && io.MouseWheel != 0 && _gesture2 is null)
+        // The selection's box (what the handles hold): every selected layer's box together.
+        (Vector2 Min, Vector2 Max)? selectionBox()
+        {
+            (Vector2 Min, Vector2 Max)? box = null;
+            foreach (var index in _sceneSelection)
+                if (layerCorners(index, all[index]) is { } quad)
+                {
+                    var (low, high) = extent(quad);
+                    box = box is { } was ? (Vector2.Min(was.Min, low), Vector2.Max(was.Max, high)) : (low, high);
+                }
+            return box;
+        }
+        if (over && io.MouseWheel != 0 && _sceneMove is null)
         {
             var held = (mouse - corner) / scale;
             _sceneZoom = Math.Clamp(_sceneZoom * MathF.Pow(1.15f, io.MouseWheel), .1f, 16);
@@ -321,10 +381,8 @@ public sealed partial class MovieInspectorSession
         }
         if (over && !io.WantTextInput && !io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.Home, false))
             (_sceneZoom, _scenePan) = (1, Vector2.Zero);
-        if (over && !io.WantTextInput && !io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.F, false)
-            && selection >= 0 && layerCorners(selection, all[selection]) is { } framed)
+        if (over && !io.WantTextInput && !io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.F, false) && selectionBox() is var (low, high))
         {
-            var (low, high) = extent(framed);
             var extentSize = Vector2.Max(high - low, new(8));
             _sceneZoom = Math.Clamp(Math.Min(area.X * .6f / (extentSize.X * fit), area.Y * .6f / (extentSize.Y * fit)), .1f, 16);
             _scenePan = (new Vector2(640, 360) - (low + high) / 2) * fit * _sceneZoom;
@@ -344,211 +402,154 @@ public sealed partial class MovieInspectorSession
         list.AddRectFilled(new(origin.X, topEdge), new(left, bottomEdge), shade);
         list.AddRectFilled(new(right, topEdge), new(origin.X + panelSize.X, bottomEdge), shade);
         list.AddRect(corner - Vector2.One, corner + size + Vector2.One, color(.55f, .6f, .66f), 0, ImDrawFlags.None, 1);
-        var stagePoint = (mouse - corner) / scale;
-        var snapping = _snap && !io.KeyCtrl;
-        Vector2 screen(Vector2 point) => corner + point * scale;
-        if (over && !io.WantTextInput && !io.KeyCtrl)
+        var point = (mouse - corner) / scale;
+        Vector2 screen(Vector2 at) => corner + at * scale;
+        if (over && _sceneMove is null) transformToolKeys();
+        // The layers under a point that can be placed (the engine's notes cannot), top first.
+        int[] hits(Vector2 at) => [.. Enumerable.Range(0, all.Count).Reverse()
+            .Where(index => (index >= own.Count || placeName(all[index]) is not null) && layerCorners(index, all[index]) is { } quad && inside(quad, at))];
+        // A click picks the top layer there; another click on the same spot the one under it, and so on.
+        void pick(Vector2 at)
         {
-            if (ImGui.IsKeyPressed(ImGuiKey.W, false)) _sceneTool = SceneTool.Move;
-            if (ImGui.IsKeyPressed(ImGuiKey.E, false)) _sceneTool = SceneTool.Rotate;
-            if (ImGui.IsKeyPressed(ImGuiKey.R, false)) _sceneTool = SceneTool.Scale;
-            if (ImGui.IsKeyPressed(ImGuiKey.T, false)) _sceneTool = SceneTool.Transform;
+            var found = hits(at);
+            if (_scenePickPoint is { } last && Vector2.Distance(last, at) * scale < 6 && found.SequenceEqual(_scenePickCycle))
+                _scenePickIndex = (_scenePickIndex + 1) % Math.Max(1, found.Length);
+            else
+                (_scenePickCycle, _scenePickIndex) = (found, 0);
+            _scenePickPoint = at;
+            select(found.Length == 0 ? -1 : found[_scenePickIndex], own.Count);
         }
-        // The topmost layer under the pointer that can be placed (the engine's notes cannot).
-        int hit()
-        {
-            for (var index = all.Count - 1; index >= 0; index--)
-                if ((index >= own.Count || placeName(all[index]) is not null) && layerCorners(index, all[index]) is { } quad && inside(quad, stagePoint))
-                    return index;
-            return -1;
-        }
-        var selected = selection >= 0 ? layerCorners(selection, all[selection]) : null;
-        // Scale handles: the box's corners (0-3) and the middles of its sides (4-7), on the screen.
-        Vector2[] handles = selected is null ? [] :
-            [.. selected, .. Enumerable.Range(0, 4).Select(index => (selected[index] + selected[(index + 1) % 4]) / 2)];
-        var scaling = _sceneTool is SceneTool.Scale or SceneTool.Transform;
-        int handleUnder() => !scaling ? -1 : Array.FindIndex(handles, handle => Vector2.Distance(screen(handle), mouse) <= 7);
-        // Free transform: just outside a corner turns the layer.
-        bool turnZone() => _sceneTool == SceneTool.Transform && selected is not null && handleUnder() < 0 && !inside(selected, stagePoint)
-            && selected.Any(at => Vector2.Distance(screen(at), mouse) <= 28);
-        var under = over ? hit() : -1;
+        var box = selectionBox();
+        var handle = box is var (boxMin, boxMax) ? StageHandles.Draw(list, screen, _stageTool, boxMin, boxMax, new(.5f), mouse, Text, Outline) : -1;
         // A component dropped on the stage: a new layer of the skin's there, on top.
         if (_dragPackage is { } dropped && over && !ImGui.IsMouseDown(ImGuiMouseButton.Left))
         {
-            var at = new Vector2(MathF.Round(stagePoint.X), MathF.Round(stagePoint.Y));
+            var at = new Vector2(MathF.Round(point.X), MathF.Round(point.Y));
             editScene(each => each.Add(new SkinScenes.Layer(dropped, Decoration, at.X, at.Y, null)));
             select(own.Count + Scenes!.Layers(key).Count - 1, own.Count);
             _dragPackage = null;
         }
-        if (ImGui.IsItemClicked(ImGuiMouseButton.Left))
+        if (over && ImGui.IsMouseClicked(ImGuiMouseButton.Left) && _dragPackage is null)
         {
-            var handle = handleUnder();
-            var turn = turnZone();
-            var keep = handle >= 0 || turn || (_sceneTool == SceneTool.Rotate && selected is not null && (under == selection || under < 0));
-            if (!keep)
+            var onSelected = box is var (min, max) && point.X >= min.X && point.Y >= min.Y && point.X <= max.X && point.Y <= max.Y;
+            if (io.KeyShift && handle < 0)
+                _sceneBox = point;
+            else if (io.KeyCtrl && handle < 0)
+                toggleScene(hits(point).FirstOrDefault(-1), own.Count);
+            else if ((handle >= 0 || onSelected && _stageTool is 0 or 3) && box is var (from, to))
             {
-                select(under, own.Count);
-                selection = under;
+                _lockedAxis = 0;
+                _sceneMove = new(StageHandles.Operation(_stageTool, handle), handle, point, (from + to) / 2, from, to,
+                    [.. _sceneSelection.Order().Select(index => (index, all[index]))]);
             }
-            // A handle scales about the opposite one (Alt: about the layer's origin), which stays where it is.
-            var anchor = handle < 0 || io.KeyAlt || localHandles(selection) is not { } corners ? Vector2.Zero
-                : corners[handle < 4 ? (handle + 2) % 4 : 4 + (handle - 2) % 4];
-            _gesture2 = selection < 0 ? null : (handle >= 0 ? SceneTool.Scale : turn || _sceneTool == SceneTool.Rotate && keep ? SceneTool.Rotate : SceneTool.Move,
-                stagePoint, all[selection], handle, anchor);
-            _gestureEdited = false;
+            else
+                pick(point);
         }
-        _sceneGuides.Clear();
-        if (_gesture2 is { } gesture && selection >= 0)
+        // The box drawn with Shift: what it touches joins the selection (a click without dragging: the layer there).
+        if (_sceneBox is { } start)
         {
-            if (!ImGui.IsMouseDown(ImGuiMouseButton.Left)) _gesture2 = null;
-            else if (stagePoint != gesture.From)
+            var (low2, high2) = (Vector2.Min(start, point), Vector2.Max(start, point));
+            list.AddRectFilled(screen(low2), screen(high2), color(.3f, .6f, 1, .15f));
+            list.AddRect(screen(low2), screen(high2), Outline);
+            if (!ImGui.IsMouseDown(ImGuiMouseButton.Left))
             {
-                var next = gesture.Tool switch
+                if (Vector2.Distance(start, point) * scale < 4)
+                    toggleScene(hits(point).FirstOrDefault(-1), own.Count);
+                else
+                    for (var index = 0; index < all.Count; index++)
+                        if ((index >= own.Count || placeName(all[index]) is not null) && layerCorners(index, all[index]) is { } quad
+                            && extent(quad) is var (qMin, qMax) && qMin.X <= high2.X && qMin.Y <= high2.Y && qMax.X >= low2.X && qMax.Y >= low2.Y)
+                        {
+                            _sceneSelection.Add(index);
+                            activate(index, own.Count);
+                        }
+                _sceneBox = null;
+            }
+        }
+        if (_sceneMove is { } move)
+        {
+            if (!ImGui.IsMouseDown(ImGuiMouseButton.Left))
+            {
+                if (!move.Moved && move.Handle < 0)
+                    pick(move.Start); // a plain click on the selection reaches the layer there (or under it)
+                _sceneMove = null;
+                _sceneGuides = (null, null);
+            }
+            else
+            {
+                var delta = point - move.Start;
+                if (move.Op == 0)
                 {
-                    SceneTool.Rotate => rotated(gesture.Start, gesture.From, stagePoint, snapping),
-                    SceneTool.Scale => scaled(gesture.Start, gesture.From, stagePoint, gesture.Handle, gesture.Anchor, io.KeyShift, snapping),
-                    _ => moved(gesture.Start, stagePoint - gesture.From, all, selection, snapping, scale),
-                };
-                if (next != all[selection])
+                    delta = MovieTransform.ConstrainMove(delta, move.Handle, io.KeyShift, ref _lockedAxis);
+                    _sceneGuides = (null, null);
+                    if (_snap && !io.KeyCtrl)
+                        delta = sceneSnap(move, delta, all, 6 / scale);
+                }
+                if (move.Moved || delta.Length() * scale > 3)
                 {
-                    commit(selection, own, next, _gestureEdited);
-                    _gestureEdited = true;
+                    var anchor = move.Op == 2 ? MovieTransform.ScaleAnchor(move.Handle, move.Min, move.Max, move.Pivot, io.KeyAlt) : move.Pivot;
+                    var change = MovieTransform.Change(move.Op, move.Handle, move.Start, point, delta, move.Pivot, anchor, io.KeyShift);
+                    var changed = move.Members.Select(member => (member.Index, Layer: Transformed(member.Layer, change, move.Op))).ToArray();
+                    if (changed.Any(static member => member.Layer is null))
+                        _notice = "This transform needs skew: scale turned layers with Shift (proportions kept), or one at a time.";
+                    else
+                    {
+                        commit(key, own, changed.Select(static member => (member.Index, member.Layer!)), move.Edited);
+                        _sceneMove = move with { Moved = true, Edited = true };
+                    }
                 }
             }
         }
-        if (over && !io.WantTextInput && selection >= 0)
+        if (over && !io.WantTextInput && _sceneSelection.Count > 0)
         {
             var step = io.KeyShift ? 10 : 1;
             var nudge = new Vector2(ImGui.IsKeyPressed(ImGuiKey.RightArrow) ? step : ImGui.IsKeyPressed(ImGuiKey.LeftArrow) ? -step : 0,
                 ImGui.IsKeyPressed(ImGuiKey.DownArrow) ? step : ImGui.IsKeyPressed(ImGuiKey.UpArrow) ? -step : 0);
             if (nudge != Vector2.Zero)
-                commit(selection, own, all[selection] with { X = all[selection].X + nudge.X, Y = all[selection].Y + nudge.Y }, false);
-            if (selection >= own.Count && (ImGui.IsKeyPressed(ImGuiKey.Delete, false) || ImGui.IsKeyPressed(ImGuiKey.Backspace, false)))
-            {
-                var at = selection - own.Count;
-                editScene(each => each.RemoveAt(at));
-                select(-1, own.Count);
-            }
+                commit(key, own, _sceneSelection.Select(index => (index, all[index] with { X = all[index].X + nudge.X, Y = all[index].Y + nudge.Y })), false);
+            if (ImGui.IsKeyPressed(ImGuiKey.Delete, false) || ImGui.IsKeyPressed(ImGuiKey.Backspace, false))
+                removeSelected(own.Count);
         }
-        // What the pointer is over, the selection with its tool's handles, the snapping guides.
-        if (under >= 0 && under != selection && layerCorners(under, all[under]) is { } hovered)
+        // What the pointer is over, each selected layer's own box, the selection's box, the snapping guides.
+        if (over && _sceneMove is null && _sceneBox is null && handle < 0 && hits(point) is [var under, ..] && !_sceneSelection.Contains(under)
+            && layerCorners(under, all[under]) is { } hovered)
             list.AddPolyline(ref hovered.Select(screen).ToArray()[0], 4, color(1, 1, 1, .5f), ImDrawFlags.Closed, 1);
-        if (selection >= 0 && layerCorners(selection, all[selection]) is { } box)
-        {
-            var points = box.Select(screen).ToArray();
-            list.AddPolyline(ref points[0], 4, Accent, ImDrawFlags.Closed, 2);
-            list.AddText(points[0] - new Vector2(0, 17), Accent, all[selection].Movie);
-            var pivot = screen(new(all[selection].X, all[selection].Y));
-            list.AddCircleFilled(pivot, 4, Accent);
-            if (scaling)
-                foreach (var handle in handles)
-                    list.AddRectFilled(screen(handle) - new Vector2(4), screen(handle) + new Vector2(4), Accent);
-            if (_sceneTool == SceneTool.Rotate)
+        foreach (var index in _sceneSelection)
+            if (layerCorners(index, all[index]) is { } quad)
             {
-                list.AddCircle(pivot, 48, Accent, 48, 1.5f);
-                var (sin, cos) = MathF.SinCos(all[selection].Rotation * MathF.PI / 180);
-                list.AddLine(pivot, pivot + new Vector2(cos, sin) * 48, Accent, 2);
+                var points = quad.Select(screen).ToArray();
+                list.AddPolyline(ref points[0], 4, Accent, ImDrawFlags.Closed, 1.5f);
+                if (_sceneSelection.Count == 1) list.AddText(points[0] - new Vector2(0, 17), Accent, all[index].Movie);
             }
-        }
-        foreach (var (a, b) in _sceneGuides)
-            list.AddLine(screen(a), screen(b), color(.3f, .85f, 1, .9f), 1);
+        if (_sceneSelection.Count > 1 && selectionBox() is var (selMin, selMax))
+            list.AddRect(screen(selMin), screen(selMax), Outline, 0, ImDrawFlags.None, 2);
+        if (_sceneGuides.X is { } guideX)
+            list.AddLine(new(screen(new(guideX, 0)).X, origin.Y), new(screen(new(guideX, 0)).X, origin.Y + panelSize.Y), color(1, .2f, .75f));
+        if (_sceneGuides.Y is { } guideY)
+            list.AddLine(new(origin.X, screen(new(0, guideY)).Y), new(origin.X + panelSize.X, screen(new(0, guideY)).Y), color(1, .2f, .75f));
         if (_dragPackage is not null && over)
             list.AddRect(corner, corner + size, Accent, 0, ImDrawFlags.None, 3);
         list.PopClipRect();
-        if (handleUnder() >= 0) ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeAll);
-        else if (turnZone()) ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
     }
 
-    private SkinScenes.Layer rotated(SkinScenes.Layer start, Vector2 from, Vector2 to, bool snapping)
+    // A move snaps the selection's edges and middle to the stage's and to the other layers' (as the component editor's
+    // does), within a few pixels on screen; an axis that finds nothing goes to the grid.
+    private Vector2 sceneSnap(SceneMove move, Vector2 delta, IReadOnlyList<SkinScenes.Layer> all, float threshold)
     {
-        var pivot = new Vector2(start.X, start.Y);
-        var turn = (MathF.Atan2(to.Y - pivot.Y, to.X - pivot.X) - MathF.Atan2(from.Y - pivot.Y, from.X - pivot.X)) * 180 / MathF.PI;
-        var angle = start.Rotation + turn;
-        angle = snapping ? MathF.Round(angle / 15) * 15 : MathF.Round(angle, 1);
-        angle = ((angle + 180) % 360 + 360) % 360 - 180;
-        return start with { Rotation = angle };
-    }
-
-    // The selected layer's handles in its own movie's space: corners 0-3 (top left, clockwise), side middles 4-7.
-    private Vector2[]? localHandles(int index)
-    {
-        if (index < 0 || _liveScene is null || !_liveScene.Bounds(index, out var bounds)) return null;
-        Vector2[] corners = [new(bounds.X, bounds.Y), new(bounds.X + bounds.Width, bounds.Y),
-            new(bounds.X + bounds.Width, bounds.Y + bounds.Height), new(bounds.X, bounds.Y + bounds.Height)];
-        return [.. corners, .. Enumerable.Range(0, 4).Select(at => (corners[at] + corners[(at + 1) % 4]) / 2)];
-    }
-
-    // Scaled about the anchor (in the layer's own space), along the handle's axes (a side: one axis); Shift keeps the
-    // proportions. The layer moves so the anchor stays where it was on the stage.
-    internal static SkinScenes.Layer scaled(SkinScenes.Layer start, Vector2 from, Vector2 to, int handle, Vector2 anchor, bool proportional, bool snapping)
-    {
-        var (a, b) = (local(start, from) - anchor, local(start, to) - anchor);
-        var useX = handle is < 4 or 5 or 7;
-        var useY = handle is < 4 or 4 or 6;
-        float ratio(float was, float now) => Math.Abs(was) < 1 ? 1 : now / was;
-        var (rx, ry) = (useX ? ratio(a.X, b.X) : 1, useY ? ratio(a.Y, b.Y) : 1);
-        if (proportional)
-        {
-            var both = a.LengthSquared() < 1 ? 1 : Vector2.Dot(a, b) / a.LengthSquared();
-            (rx, ry) = (both, both);
-        }
-        float step(float value) => value == 0 ? .001f : snapping ? MathF.Round(value / .05f) * .05f is var rounded && rounded != 0 ? rounded : .05f : MathF.Round(value, 3);
-        var next = start with { ScaleX = step(start.ScaleX * rx), ScaleY = step(start.ScaleY * ry) };
-        var (wasX, wasY) = start.Transform.Transform(anchor.X, anchor.Y);
-        var (nowX, nowY) = (next with { X = 0, Y = 0 }).Transform.Transform(anchor.X, anchor.Y);
-        return next with { X = MathF.Round(wasX - nowX, 2), Y = MathF.Round(wasY - nowY, 2) };
-    }
-
-    // Moved by the pointer; snapping puts the layer's box edges or middle on the stage's, another layer's, or the grid.
-    private SkinScenes.Layer moved(SkinScenes.Layer start, Vector2 delta, IReadOnlyList<SkinScenes.Layer> layers, int index, bool snapping, float scale)
-    {
-        var place = new Vector2(start.X, start.Y) + delta;
-        var moved = start with { X = MathF.Round(place.X), Y = MathF.Round(place.Y) };
-        if (!snapping)
-            return moved;
-        var corners = layerCorners(index, layers[index]);
-        if (corners is null)
-            return grid(moved);
-        // The box where the move puts it.
-        var shift = new Vector2(moved.X - layers[index].X, moved.Y - layers[index].Y);
-        var (min, max) = extent(corners);
-        (min, max) = (min + shift, max + shift);
-        var xs = new List<float> { 0, 640, 1280 };
-        var ys = new List<float> { 0, 360, 720 };
-        for (var other = 0; other < layers.Count; other++)
-            if (other != index && layerCorners(other, layers[other]) is { } box)
+        var (min, max) = (move.Min + delta, move.Max + delta);
+        List<float> xs = [0, 640, 1280], ys = [0, 360, 720];
+        for (var index = 0; index < all.Count; index++)
+            if (!_sceneSelection.Contains(index) && layerCorners(index, all[index]) is { } quad)
             {
-                var (otherMin, otherMax) = extent(box);
-                xs.AddRange([otherMin.X, (otherMin.X + otherMax.X) / 2, otherMax.X]);
-                ys.AddRange([otherMin.Y, (otherMin.Y + otherMax.Y) / 2, otherMax.Y]);
+                var (low, high) = extent(quad);
+                xs.AddRange([low.X, (low.X + high.X) / 2, high.X]);
+                ys.AddRange([low.Y, (low.Y + high.Y) / 2, high.Y]);
             }
-        var reach = 8 / scale;
-        float? best(float[] mine, List<float> targets, out float target)
-        {
-            (float Distance, float Offset, float Target)? found = null;
-            foreach (var at in mine)
-                foreach (var candidate in targets)
-                    if (Math.Abs(candidate - at) <= reach && (found is null || Math.Abs(candidate - at) < found.Value.Distance))
-                        found = (Math.Abs(candidate - at), candidate - at, candidate);
-            target = found?.Target ?? 0;
-            return found?.Offset;
-        }
-        var snapX = best([min.X, (min.X + max.X) / 2, max.X], xs, out var lineX);
-        var snapY = best([min.Y, (min.Y + max.Y) / 2, max.Y], ys, out var lineY);
-        var gridded = grid(moved);
-        var result = moved with
-        {
-            X = snapX is { } dx ? MathF.Round(moved.X + dx) : gridded.X,
-            Y = snapY is { } dy ? MathF.Round(moved.Y + dy) : gridded.Y,
-        };
-        if (snapX is not null) _sceneGuides.Add((new(lineX, 0), new(lineX, 720)));
-        if (snapY is not null) _sceneGuides.Add((new(0, lineY), new(1280, lineY)));
-        return result;
-    }
-
-    private SkinScenes.Layer grid(SkinScenes.Layer layer)
-    {
+        var (shiftX, guideX) = delta.X == 0 ? (0, null) : EffectGizmo.Snap([min.X, (min.X + max.X) / 2, max.X], xs, threshold);
+        var (shiftY, guideY) = delta.Y == 0 ? (0, null) : EffectGizmo.Snap([min.Y, (min.Y + max.Y) / 2, max.Y], ys, threshold);
+        _sceneGuides = (guideX, guideY);
         var step = GridSteps[Math.Clamp(_grid, 0, GridSteps.Length - 1)];
-        return step <= 1 ? layer : layer with { X = MathF.Round(layer.X / step) * step, Y = MathF.Round(layer.Y / step) * step };
+        float gridded(float edge, float moved) => step <= 1 || moved == 0 ? 0 : MathF.Round(edge / step) * step - edge;
+        return delta + new Vector2(guideX is null ? gridded(min.X, delta.X) : shiftX, guideY is null ? gridded(min.Y, delta.Y) : shiftY);
     }
 }

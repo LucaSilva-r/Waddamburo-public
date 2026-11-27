@@ -48,22 +48,23 @@ public sealed class SceneDocumentTests
 
 public sealed class SceneScaleTests
 {
-    // A 100x100 movie with its origin at its top left. Dragging the bottom left corner 100 px further left doubles the
-    // width about the opposite (top right) corner, which stays put: the layer moves left by 100.
+    // The scene view's drags go through the component editor's transform (MovieTransform): a 100x100 layer, its
+    // bottom left square (9) pulled 100 px left, doubles in width about its top right corner, which stays put.
     [Fact]
-    public void ACornerScalesAboutTheOppositeOne()
+    public void ACornerScalesAboutTheOppositeOneAndAGroupTurnsTogether()
     {
         var layer = new SkinScenes.Layer("a/b", "decoration", 0, 0, null);
-        var scaled = MovieInspectorSession.scaled(layer, new(0, 100), new(-100, 100), handle: 3, anchor: new(100, 0), proportional: false, snapping: false);
+        var (min, max) = (new System.Numerics.Vector2(0, 0), new System.Numerics.Vector2(100, 100));
+        var anchor = MovieTransform.ScaleAnchor(9, min, max, (min + max) / 2, alt: false);
+        var change = MovieTransform.Change(2, 9, new(0, 100), new(-100, 100), new(-100, 0), (min + max) / 2, anchor, shift: false);
+        var scaled = MovieInspectorSession.Transformed(layer, change, 2)!;
         Assert.Equal((2f, 1f, -100f, 0f), (scaled.ScaleX, scaled.ScaleY, scaled.X, scaled.Y));
-        // Turned 90°, the same corner pulled the same way along the layer's own x: the anchor still stays.
-        var turned = layer with { X = 200, Rotation = 90 };
-        var anchorBefore = turned.Transform.Transform(100, 0);
-        var grown = MovieInspectorSession.scaled(turned, new(100, 0), new(100, -100), handle: 3, anchor: new(100, 0), proportional: false, snapping: false);
-        var anchorAfter = grown.Transform.Transform(100, 0);
-        Assert.Equal(2, grown.ScaleX, 3);
-        Assert.Equal(anchorBefore.X, anchorAfter.X, 1);
-        Assert.Equal(anchorBefore.Y, anchorAfter.Y, 1);
+        // Two layers turned 90 degrees about the middle between them: they swap sides and turn too.
+        var turn = MovieTransform.Change(1, StageHandles.Rotate, new(100, 0), new(0, 100), default, new(0, 0), new(0, 0), shift: false);
+        var a = MovieInspectorSession.Transformed(layer with { X = 100 }, turn, 1)!;
+        Assert.Equal(0, a.X, 2);
+        Assert.Equal(100, a.Y, 2);
+        Assert.Equal(90, a.Rotation, 2);
     }
 }
 

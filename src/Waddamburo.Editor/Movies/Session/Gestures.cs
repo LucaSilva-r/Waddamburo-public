@@ -13,7 +13,6 @@ public sealed partial class MovieInspectorSession
         public int Op { get; init; }
     }
 
-    private const int RotateHandle = 11;
     private bool _autoKey = true;
 
     /// <summary>
