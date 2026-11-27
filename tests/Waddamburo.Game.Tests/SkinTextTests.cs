@@ -10,7 +10,8 @@ public sealed class SkinTextTests
           "fonts": { "pop": "fonts/pop.ttf" },
           "styles": {
             "title": { "font": "pop", "size": 64, "fit": "squeeze",
-              "layers": [ { "grow": 9, "offset": [2, 3], "color": "#e01818" }, { "color": ["#ffffff", "#c8c8d0"] } ] } } }
+              "layers": [ { "grow": 9, "offset": [2, 3], "color": "#e01818" },
+                          { "color": ["#ffffff", "#c8c8d0"], "gradient": { "angle": 45, "from": 0.25, "to": 0.75, "over": "text" } } ] } } }
         """;
 
     [Fact]
@@ -32,6 +33,7 @@ public sealed class SkinTextTests
         Assert.Equal((40f, TextAlign.Center, TextFit.Squeeze, 2), (styled.Size, styled.Align, styled.Fit, styled.Layers.Length));
         Assert.Equal((0xe01818ffu, 0x00ff00ffu, 0x00ff00ffu), (styled.Layers[0].Top, styled.Layers[1].Top, styled.Layers[1].Bottom));
         Assert.Equal(9 + 3, styled.Reach);
+        Assert.Equal((45f, .25f, .75f, true), (styled.Layers[1].Angle, styled.Layers[1].From, styled.Layers[1].To, styled.Layers[1].OverText));
         // Its own layers bring their own colours; an unknown style is just its own settings.
         var (own, _) = text.Resolve("""{"style":"nope","layers":[{"color":"#123456"}]}""", 20, 'l', 0);
         Assert.Equal(0x123456ffu, own.Layers.Single().Top);

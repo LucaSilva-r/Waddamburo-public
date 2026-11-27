@@ -26,7 +26,7 @@ public enum SongTitleTextProfile : uint
 public static unsafe partial class NativeVerticalTextRasterizer
 {
     // The oldest library each call works with: one of the same major version, this minor or later.
-    private const uint AbiVersion = 0x0001_0007, StyledAbiVersion = 0x0001_0008;
+    private const uint AbiVersion = 0x0001_0007, StyledAbiVersion = 0x0001_0009;
 
     private static bool compatible(uint needed) => GetAbiVersion() is var version && version >> 16 == needed >> 16 && version >= needed;
     private const uint SquashFlag = 1; // WADDAMBURO_TEXT_SONG_TITLE_SQUASH
@@ -239,6 +239,7 @@ public static unsafe partial class NativeVerticalTextRasterizer
                 {
                     Grow = layers[i].Grow, OffsetX = layers[i].OffsetX, OffsetY = layers[i].OffsetY, Blur = layers[i].Blur,
                     TopRgba = layers[i].Top, BottomRgba = layers[i].Bottom,
+                    GradientAngle = layers[i].Angle, GradientFrom = layers[i].From, GradientTo = layers[i].To, GradientOver = layers[i].OverText ? 1U : 0U,
                 };
             var nativeStyle = new NativeTextStyle
             {
@@ -315,6 +316,10 @@ public static unsafe partial class NativeVerticalTextRasterizer
         public float Blur;
         public uint TopRgba;
         public uint BottomRgba;
+        public float GradientAngle;
+        public float GradientFrom;
+        public float GradientTo;
+        public uint GradientOver;
     }
 
     [StructLayout(LayoutKind.Sequential)]

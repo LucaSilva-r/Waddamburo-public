@@ -20,11 +20,13 @@ public enum TextFit
 
 /// <summary>
 /// One layer of a text's look: its shape grown outwards by <see cref="Grow"/> (0: the glyphs themselves), moved,
-/// blurred, and painted from <see cref="Top"/> to <see cref="Bottom"/> over each line (0xRRGGBBAA). A title with a
-/// shadow, a black border, a red border and a white fill is four layers, back to front.
+/// blurred, and painted from <see cref="Top"/> to <see cref="Bottom"/> (0xRRGGBBAA) along <see cref="Angle"/> degrees
+/// (0: top to bottom, 90: left to right), <see cref="Top"/> up to <see cref="From"/> and <see cref="Bottom"/> from
+/// <see cref="To"/> (0..1 across each line, or the whole text with <see cref="OverText"/>). A title with a shadow, a
+/// black border, a red border and a white fill is four layers, back to front.
 /// </summary>
 public sealed record TextLayer(float Grow = 0, float OffsetX = 0, float OffsetY = 0, float Blur = 0,
-    uint Top = 0xffffffff, uint Bottom = 0xffffffff)
+    uint Top = 0xffffffff, uint Bottom = 0xffffffff, float Angle = 0, float From = 0, float To = 1, bool OverText = false)
 {
     public static TextLayer Solid(uint rgba, float grow = 0) => new(grow, Top: rgba, Bottom: rgba);
 }

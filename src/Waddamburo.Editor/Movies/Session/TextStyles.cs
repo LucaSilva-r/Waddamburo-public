@@ -64,6 +64,8 @@ public sealed partial class MovieInspectorSession
             ImGui.TextDisabled("No skin folder.");
             return;
         }
+        if (!ImGui.IsAnyItemActive())
+            _styleGesture = 0; // a new drag is a new undo step
         var styles = document.Json["styles"] as JsonObject;
         if (_textStyle is not null && styles?[_textStyle] is null)
             _textStyle = null;
@@ -366,10 +368,33 @@ public sealed partial class MovieInspectorSession
                     edit(() => layer["color"] = gradient ? new JsonArray(hex(top), hex(bottom)) : hex(top), false);
                 if (gradient)
                 {
-                    ImGui.SameLine();
-                    ImGui.SetNextItemWidth(-1);
                     if (ImGui.ColorEdit4("Bottom", ref bottom, ImGuiColorEditFlags.AlphaBar))
                         edit(() => layer["color"] = new JsonArray(hex(top), hex(bottom)), styleContinues());
+                    // Its direction and where it changes: { angle, from, to, over } (left out while all default).
+                    var settingsOf = layer["gradient"] as JsonObject;
+                    var angle = (float)(TextStyleJson.Number(settingsOf?["angle"]) ?? 0);
+                    var from = (float)(TextStyleJson.Number(settingsOf?["from"]) ?? 0);
+                    var to = (float)(TextStyleJson.Number(settingsOf?["to"]) ?? 1);
+                    var overText = (string?)settingsOf?["over"] == "text";
+                    void gradientSet(Action<JsonObject> change, bool continues) => edit(() =>
+                    {
+                        var made = layer["gradient"] as JsonObject ?? new JsonObject();
+                        change(made);
+                        layer["gradient"] = made.Count > 0 ? made : null;
+                        if (made.Count == 0) layer.Remove("gradient");
+                    }, continues);
+                    if (ImGui.SliderFloat("Angle", ref angle, -180, 180, "%.0f deg"))
+                        gradientSet(g => { if (angle == 0) g.Remove("angle"); else g["angle"] = MathF.Round(angle); }, styleContinues());
+                    if (ImGui.IsItemHovered()) ImGui.SetTooltip("0: top to bottom. 90: left to right. Ctrl+click to type.");
+                    if (ImGui.DragFloatRange2("From / to", ref from, ref to, .005f, 0, 1, "%.2f", "%.2f"))
+                        gradientSet(g =>
+                        {
+                            if (from == 0) g.Remove("from"); else g["from"] = Math.Round(from, 3);
+                            if (to == 1) g.Remove("to"); else g["to"] = Math.Round(to, 3);
+                        }, styleContinues());
+                    if (ImGui.IsItemHovered()) ImGui.SetTooltip("Where the top colour ends and the bottom one begins, across the line (0 to 1).\nThe same for both: a hard edge.");
+                    if (ImGui.Checkbox("Over the whole text (not each line)", ref overText))
+                        gradientSet(g => { if (overText) g["over"] = "text"; else g.Remove("over"); }, false);
                 }
                 ImGui.TreePop();
             }
@@ -427,6 +452,8 @@ public sealed partial class MovieInspectorSession
     // The text field section of the asset inspector: what it shows, in which style, from which Wd name, and its own look.
     private void textFieldSettings(JsonObject entry)
     {
+        if (!ImGui.IsAnyItemActive())
+            _styleGesture = 0;
         var own = (JsonObject)entry.DeepClone();
         own.Remove("rect");
         var rect = entry["rect"] as JsonArray;

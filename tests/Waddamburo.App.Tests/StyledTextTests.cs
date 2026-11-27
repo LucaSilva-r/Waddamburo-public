@@ -31,6 +31,21 @@ public sealed class StyledTextTests
         Assert.Equal(0, at(surface, 0, 0).A);
     }
 
+    // A gradient at 90 degrees runs left to right; from = to makes a hard edge at that place.
+    [Fact]
+    public void GradientsTurnAndMove()
+    {
+        static TextStyle style(float angle, float from, float to) => new("plain", 60,
+            [new(Top: 0xff0000ff, Bottom: 0x0000ffff, Angle: angle, From: from, To: to)], Align: TextAlign.Center);
+        var across = NativeVerticalTextRasterizer.RenderStyled(Font, "ーーーー", style(90, 0, 1), 1, 300, 80);
+        var inked = Enumerable.Range(0, 300).Select(x => at(across, x, 40)).Where(static p => p.A == 255).ToArray();
+        Assert.True(inked[0].R > 200 && inked[0].B < 60, $"left {inked[0]}");
+        Assert.True(inked[^1].B > 200 && inked[^1].R < 60, $"right {inked[^1]}");
+        // Straight down with a hard edge at the very top: all bottom colour.
+        var edge = NativeVerticalTextRasterizer.RenderStyled(Font, "ーーーー", style(0, 0, 0.001f), 1, 300, 80);
+        Assert.All(Enumerable.Range(0, 300).Select(x => at(edge, x, 40)).Where(static p => p.A == 255), static p => Assert.True(p.B > 240 && p.R < 15));
+    }
+
     [Fact]
     public void EmptyTextIsTransparent() =>
         Assert.All(NativeVerticalTextRasterizer.RenderStyled(Font, "", Title, 1, 40, 20).Pixels, static b => Assert.Equal(0, b));

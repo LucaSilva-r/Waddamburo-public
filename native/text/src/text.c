@@ -614,7 +614,7 @@ static waddamburo_text_result render_title_row(
 
 uint32_t WADDAMBURO_TEXT_CALL waddamburo_text_get_abi_version(void)
 {
-    return WADDAMBURO_TEXT_ABI_VERSION_1_8;
+    return WADDAMBURO_TEXT_ABI_VERSION_1_9;
 }
 
 waddamburo_text_context *WADDAMBURO_TEXT_CALL waddamburo_text_context_create(
@@ -1280,7 +1280,8 @@ waddamburo_text_result WADDAMBURO_TEXT_CALL waddamburo_text_context_render_style
 {
     waddamburo_text_result result = WADDAMBURO_TEXT_OK;
     styled_glyph *glyphs = NULL;
-    float *line_length = NULL, *band_top = NULL, *band_bottom = NULL, *row_t = NULL;
+    float *line_length = NULL, *band_top = NULL, *band_bottom = NULL, *band_left = NULL, *band_right = NULL;
+    uint32_t *row_band = NULL;
     float *distance = NULL, *cover = NULL, *scratch = NULL;
     uint8_t *mask = NULL, *ink = NULL;
     uint32_t count = 0U, lines = 0U, bands = 0U;
@@ -1396,9 +1397,11 @@ waddamburo_text_result WADDAMBURO_TEXT_CALL waddamburo_text_context_render_style
     }
 
     mask = (uint8_t *)calloc((size_t)pixel_count, 1U);
-    band_top = (float *)calloc((size_t)count + 1U, sizeof(*band_top));
-    band_bottom = (float *)calloc((size_t)count + 1U, sizeof(*band_bottom));
-    if (mask == NULL || band_top == NULL || band_bottom == NULL) {
+    band_top = (float *)calloc((size_t)count + 2U, sizeof(*band_top));
+    band_bottom = (float *)calloc((size_t)count + 2U, sizeof(*band_bottom));
+    band_left = (float *)calloc((size_t)count + 2U, sizeof(*band_left));
+    band_right = (float *)calloc((size_t)count + 2U, sizeof(*band_right));
+    if (mask == NULL || band_top == NULL || band_bottom == NULL || band_left == NULL || band_right == NULL) {
         result = set_error(error, WADDAMBURO_TEXT_ERROR_MEMORY, 0, "Unable to allocate the styled text surface.");
         goto done;
     }
@@ -1416,6 +1419,8 @@ waddamburo_text_result WADDAMBURO_TEXT_CALL waddamburo_text_context_render_style
         matrix.yy = 0x10000;
         for (uint32_t l = 0U; l < lines; ++l) {
             float baseline = top + (float)l * line_advance + ascender;
+            band_left[bands] = pad + (avail_w - line_length[l] * squeeze) * 0.5f * (float)style->align;
+            band_right[bands] = band_left[bands] + line_length[l] * squeeze;
             band_top[bands] = baseline - ascender;
             band_bottom[bands++] = baseline - descender;
         }
@@ -1450,6 +1455,8 @@ waddamburo_text_result WADDAMBURO_TEXT_CALL waddamburo_text_context_render_style
                 members++;
             centre = right - (float)g->line * line_advance - font_px * 0.5f;
             cell_top = pad + (avail_h - line_length[g->line] * squeeze) * 0.5f * (float)style->align + g->x * squeeze;
+            band_left[bands] = centre - font_px * 0.5f;
+            band_right[bands] = centre + font_px * 0.5f;
             band_top[bands] = cell_top;
             band_bottom[bands++] = cell_top + font_px * squeeze;
             if (g->rotate) {
@@ -1511,28 +1518,35 @@ waddamburo_text_result WADDAMBURO_TEXT_CALL waddamburo_text_context_render_style
     }
     region_count = (size_t)region_width * region_height;
     ink = (uint8_t *)malloc(region_count);
-    row_t = (float *)malloc((size_t)region_height * sizeof(*row_t));
+    row_band = (uint32_t *)malloc((size_t)region_height * sizeof(*row_band));
     cover = (float *)malloc(region_count * sizeof(*cover));
     scratch = (float *)malloc(region_count * sizeof(*scratch));
     distance = need_distance ? (float *)malloc(region_count * sizeof(*distance)) : NULL;
-    if (ink == NULL || row_t == NULL || cover == NULL || scratch == NULL || (need_distance && distance == NULL)) {
+    if (ink == NULL || row_band == NULL || cover == NULL || scratch == NULL || (need_distance && distance == NULL)) {
         result = set_error(error, WADDAMBURO_TEXT_ERROR_MEMORY, 0, "Unable to allocate the text layers.");
         goto done;
     }
     for (uint32_t y = 0U; y < region_height; ++y)
         memcpy(ink + (size_t)y * region_width, mask + (size_t)(region_top + y) * width + region_left, region_width);
-    /* Each row's place in its line's gradient (the nearest line's band). */
+    /* Each row's line (the nearest band), and after the lines one band around them all (a gradient over the text). */
     for (uint32_t y = 0U; y < region_height; ++y) {
-        float row = (float)(region_top + y) + 0.5f, best = STYLED_FAR, t = 0.0f;
+        float row = (float)(region_top + y) + 0.5f, best = STYLED_FAR;
+        row_band[y] = 0U;
         for (uint32_t b = 0U; b < bands; ++b) {
-            float middle = (band_top[b] + band_bottom[b]) * 0.5f, gap = fabsf(row - middle);
+            float gap = fabsf(row - (band_top[b] + band_bottom[b]) * 0.5f);
             if (gap < best) {
-                float span = band_bottom[b] - band_top[b];
                 best = gap;
-                t = span > 0.0f ? (row - band_top[b]) / span : 0.0f;
+                row_band[y] = b;
             }
         }
-        row_t[y] = t < 0.0f ? 0.0f : t > 1.0f ? 1.0f : t;
+    }
+    band_left[bands] = band_top[bands] = STYLED_FAR;
+    band_right[bands] = band_bottom[bands] = -STYLED_FAR;
+    for (uint32_t b = 0U; b < bands; ++b) {
+        if (band_left[b] < band_left[bands]) band_left[bands] = band_left[b];
+        if (band_top[b] < band_top[bands]) band_top[bands] = band_top[b];
+        if (band_right[b] > band_right[bands]) band_right[bands] = band_right[b];
+        if (band_bottom[b] > band_bottom[bands]) band_bottom[bands] = band_bottom[b];
     }
     if (need_distance && !styled_distance(ink, distance, region_width, region_height, (uint32_t)(reach * scale) + 2U)) {
         result = set_error(error, WADDAMBURO_TEXT_ERROR_MEMORY, 0, "Unable to outline the text.");
@@ -1545,6 +1559,12 @@ waddamburo_text_result WADDAMBURO_TEXT_CALL waddamburo_text_context_render_style
         int offset_x = (int)floorf(layer->offset_x * scale + 0.5f), offset_y = (int)floorf(layer->offset_y * scale + 0.5f);
         int blurred = blur >= 0.5f;
         float top[4], bottom[4];
+        /* The gradient: u runs 0..1 across the band along the angle; t is u between from and to. */
+        float angle = layer->gradient_angle * 0.017453292f, along_x = sinf(angle), along_y = cosf(angle);
+        float from = layer->gradient_from, to = layer->gradient_to;
+        int flat = layer->top_rgba == layer->bottom_rgba;
+        if (from == 0.0f && to == 0.0f)
+            to = 1.0f;
         for (int k = 0; k < 4; ++k) {
             top[k] = styled_channel(layer->top_rgba, 24 - 8 * k);
             bottom[k] = styled_channel(layer->bottom_rgba, 24 - 8 * k);
@@ -1568,17 +1588,25 @@ waddamburo_text_result WADDAMBURO_TEXT_CALL waddamburo_text_context_render_style
         }
         for (uint32_t y = 0U; y < region_height; ++y) {
             int source_y = (int)y - offset_y;
-            float t, colour[4];
+            float colour[4], u_row = 0.0f, u_step = 0.0f;
             int x_from, x_to;
             const uint8_t *ink_row;
             const float *cover_row, *distance_row;
             uint8_t *pixel;
             if (source_y < 0 || source_y >= (int)region_height)
                 continue;
-            t = row_t[source_y];
+            if (!flat) {
+                /* u along the row is linear in x: its value at the region's left and its step per pixel. */
+                uint32_t b = layer->gradient_over == WADDAMBURO_TEXT_GRADIENT_TEXT ? bands : row_band[source_y];
+                float centre_x = (band_left[b] + band_right[b]) * 0.5f, centre_y = (band_top[b] + band_bottom[b]) * 0.5f;
+                float extent = fabsf((band_right[b] - band_left[b]) * along_x) + fabsf((band_bottom[b] - band_top[b]) * along_y);
+                if (extent < 1.0f) extent = 1.0f;
+                u_step = along_x / extent;
+                u_row = 0.5f + (((float)region_left + 0.5f - (float)offset_x - centre_x) * along_x
+                    + ((float)(region_top + (uint32_t)source_y) + 0.5f - centre_y) * along_y) / extent;
+            }
             for (int k = 0; k < 4; ++k)
-                colour[k] = top[k] + (bottom[k] - top[k]) * t;
-            /* Premultiplied, scaled to bytes. */
+                colour[k] = top[k];
             colour[0] *= colour[3] * 255.0f;
             colour[1] *= colour[3] * 255.0f;
             colour[2] *= colour[3] * 255.0f;
@@ -1601,6 +1629,17 @@ waddamburo_text_result WADDAMBURO_TEXT_CALL waddamburo_text_context_render_style
                 }
                 if (a <= 0.0f)
                     continue;
+                if (!flat) {
+                    float u = u_row + u_step * (float)x;
+                    float t = to > from ? (u - from) / (to - from) : (u < from ? 0.0f : 1.0f);
+                    t = t < 0.0f ? 0.0f : t > 1.0f ? 1.0f : t;
+                    for (int k = 0; k < 4; ++k)
+                        colour[k] = top[k] + (bottom[k] - top[k]) * t;
+                    /* Premultiplied, scaled to bytes. */
+                    colour[0] *= colour[3] * 255.0f;
+                    colour[1] *= colour[3] * 255.0f;
+                    colour[2] *= colour[3] * 255.0f;
+                }
                 {
                     float keep = 1.0f - a * colour[3];
                     /* Premultiplied "over". */
@@ -1615,7 +1654,7 @@ waddamburo_text_result WADDAMBURO_TEXT_CALL waddamburo_text_context_render_style
 
 done:
     transform_faces(context, NULL);
-    free(glyphs); free(line_length); free(band_top); free(band_bottom); free(row_t);
+    free(glyphs); free(line_length); free(band_top); free(band_bottom); free(band_left); free(band_right); free(row_band);
     free(distance); free(cover); free(scratch); free(mask); free(ink);
     if (result == WADDAMBURO_TEXT_OK)
         set_error(error, WADDAMBURO_TEXT_OK, 0, "");

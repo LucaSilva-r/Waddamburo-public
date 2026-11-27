@@ -88,6 +88,16 @@ public sealed partial class MovieInspectorSession
     }
 
     private bool _openTextTab;
+    private bool _textTabOpen; // the home page's Text tab is the one shown (as of the last frame)
+
+    private bool textTabShown => _page == Page.Home && _textTabOpen && _textStyles is not null;
+
+    private void undoRedo(bool text, bool redo)
+    {
+        if (text) { if (redo) _textStyles!.Redo(); else _textStyles!.Undo(); }
+        else if (redo) Scenes?.Redo();
+        else Scenes?.Undo();
+    }
 
     private int previewVersion => HashCode.Combine(Skin!.Version, Scenes?.Text, _scenarioVersion);
 
@@ -238,9 +248,11 @@ public sealed partial class MovieInspectorSession
         _application.StageRegion = new RenderRectangle(0, 0, .0001f, .0001f); // the package's own stage hides under the page
         if (!io.WantTextInput)
         {
-            if (io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.S, false)) saveScenes();
-            if (io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.Z, false)) { if (io.KeyShift) Scenes?.Redo(); else Scenes?.Undo(); }
-            if (io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.Y, false)) Scenes?.Redo();
+            // On the Text tab the keys work on text.json, elsewhere on scenes.json.
+            var text = textTabShown;
+            if (io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.S, false)) { if (text) _textStyles?.Save(); else saveScenes(); }
+            if (io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.Z, false)) undoRedo(text, io.KeyShift);
+            if (io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.Y, false)) undoRedo(text, true);
         }
         var top = skinMenuBar();
         movieDialogs();
@@ -266,8 +278,9 @@ public sealed partial class MovieInspectorSession
         }
         if (ImGui.BeginMenu("Edit"))
         {
-            if (ImGui.MenuItem("Undo", "Ctrl+Z", false, Scenes?.CanUndo == true)) Scenes!.Undo();
-            if (ImGui.MenuItem("Redo", "Ctrl+Shift+Z", false, Scenes?.CanRedo == true)) Scenes!.Redo();
+            var text = textTabShown;
+            if (ImGui.MenuItem(text ? "Undo (text.json)" : "Undo", "Ctrl+Z", false, text ? _textStyles?.CanUndo == true : Scenes?.CanUndo == true)) undoRedo(text, false);
+            if (ImGui.MenuItem(text ? "Redo (text.json)" : "Redo", "Ctrl+Shift+Z", false, text ? _textStyles?.CanRedo == true : Scenes?.CanRedo == true)) undoRedo(text, true);
             ImGui.EndMenu();
         }
         if (relativeFolder() is not null && ImGui.MenuItem($"Back to {_title}")) _page = Page.Component;
@@ -328,8 +341,10 @@ public sealed partial class MovieInspectorSession
                 var always = true;
                 var textLabel = _textStyles?.IsDirty == true ? "Text*###text" : "Text###text";
                 // Selected from outside (--inspect=text) through the overload that takes flags, for that one frame.
+                _textTabOpen = false;
                 if (openText ? ImGui.BeginTabItem(textLabel, ref always, ImGuiTabItemFlags.SetSelected) : ImGui.BeginTabItem(textLabel))
                 {
+                    _textTabOpen = true;
                     textTab();
                     ImGui.EndTabItem();
                 }

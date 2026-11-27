@@ -11,7 +11,7 @@ namespace Waddamburo.Formats.Text;
 ///   "align": "center", "valign": "center", "fit": "squeeze", "vertical": false,
 ///   "layers": [ { "grow": 17, "offset": [4, 5], "blur": 6, "color": "#000000b0" },
 ///               { "grow": 9, "color": "#e01818" },
-///               { "color": ["#ffffff", "#c8c8d0"] } ] }
+///               { "color": ["#ffffff", "#c8c8d0"], "gradient": { "angle": 20, "from": 0.3, "to": 0.7, "over": "line" } } ] }
 /// </code>
 /// Colours are "#rrggbb" or "#rrggbbaa", or [top, bottom] for a gradient over each line. "color" outside the layers
 /// sets the front layer's (the fill). Settings merge: a field's own over its style's over the defaults.
@@ -92,8 +92,8 @@ public static class TextStyleJson
     private static TextLayer parseLayer(JsonObject layer, int index)
     {
         foreach (var (key, _) in layer)
-            if (key is not ("grow" or "offset" or "blur" or "color"))
-                throw new FormatException($"layers[{index}]: \"{key}\" is no layer setting (grow, offset, blur, color).");
+            if (key is not ("grow" or "offset" or "blur" or "color" or "gradient"))
+                throw new FormatException($"layers[{index}]: \"{key}\" is no layer setting (grow, offset, blur, color, gradient).");
         float x = 0, y = 0;
         if (layer["offset"] is JsonArray { Count: 2 } offset && Number(offset[0]) is { } ox && Number(offset[1]) is { } oy)
             (x, y) = ((float)ox, (float)oy);
@@ -104,7 +104,29 @@ public static class TextStyleJson
         var blur = number(layer, "blur", 0);
         if (grow is < 0 or > 128 || blur is < 0 or > 128)
             throw new FormatException($"layers[{index}]: \"grow\" and \"blur\" are 0 to 128.");
-        return new TextLayer(grow, x, y, blur, top, bottom);
+        // "gradient": { "angle": 0, "from": 0, "to": 1, "over": "line" | "text" } (how a [top, bottom] colour runs).
+        float angle = 0, from = 0, to = 1;
+        var overText = false;
+        if (layer["gradient"] is JsonObject gradient)
+        {
+            foreach (var (key, _) in gradient)
+                if (key is not ("angle" or "from" or "to" or "over"))
+                    throw new FormatException($"layers[{index}].gradient: \"{key}\" is no gradient setting (angle, from, to, over).");
+            angle = number(gradient, "angle", 0);
+            from = number(gradient, "from", 0);
+            to = number(gradient, "to", 1);
+            if (from is < 0 or > 1 || to is < 0 or > 1)
+                throw new FormatException($"layers[{index}].gradient: \"from\" and \"to\" are 0 to 1.");
+            overText = gradient["over"]?.GetValue<string>() switch
+            {
+                null or "line" => false,
+                "text" => true,
+                var other => throw new FormatException($"layers[{index}].gradient: \"over\" is line or text, not \"{other}\"."),
+            };
+        }
+        else if (layer["gradient"] is not null)
+            throw new FormatException($"layers[{index}]: \"gradient\" is an object (angle, from, to, over).");
+        return new TextLayer(grow, x, y, blur, top, bottom, angle, from, to, overText);
     }
 
     private static (uint Top, uint Bottom) colours(JsonNode node, string what) => node switch

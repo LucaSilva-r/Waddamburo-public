@@ -25,6 +25,7 @@ extern "C" {
 #define WADDAMBURO_TEXT_ABI_VERSION_1_6 UINT32_C(0x00010006)
 #define WADDAMBURO_TEXT_ABI_VERSION_1_7 UINT32_C(0x00010007)
 #define WADDAMBURO_TEXT_ABI_VERSION_1_8 UINT32_C(0x00010008)
+#define WADDAMBURO_TEXT_ABI_VERSION_1_9 UINT32_C(0x00010009)
 
 /* Song-title flags (ABI 1.5): a column too long for its slot keeps its font size and is squashed
  * vertically (as the arcade does), instead of the whole font shrinking. Compact and expanded only. */
@@ -166,7 +167,16 @@ typedef struct waddamburo_text_layer {
     float blur;
     uint32_t top_rgba;
     uint32_t bottom_rgba;
+    /* The gradient (ABI 1.9): its direction in degrees (0: top to bottom, 90: left to right), where along it
+     * top_rgba ends and bottom_rgba begins (0..1; both 0: 0 and 1), over each line (0) or the whole text (1). */
+    float gradient_angle;
+    float gradient_from;
+    float gradient_to;
+    uint32_t gradient_over;
 } waddamburo_text_layer;
+
+#define WADDAMBURO_TEXT_GRADIENT_LINE UINT32_C(0)
+#define WADDAMBURO_TEXT_GRADIENT_TEXT UINT32_C(1)
 
 #define WADDAMBURO_TEXT_ALIGN_START UINT32_C(0)   /* left, or top */
 #define WADDAMBURO_TEXT_ALIGN_CENTER UINT32_C(1)
