@@ -45,3 +45,24 @@ public sealed class SceneDocumentTests
         }
     }
 }
+
+public sealed class SceneScaleTests
+{
+    // A 100x100 movie with its origin at its top left. Dragging the bottom left corner 100 px further left doubles the
+    // width about the opposite (top right) corner, which stays put: the layer moves left by 100.
+    [Fact]
+    public void ACornerScalesAboutTheOppositeOne()
+    {
+        var layer = new SkinScenes.Layer("a/b", "decoration", 0, 0, null);
+        var scaled = MovieInspectorSession.scaled(layer, new(0, 100), new(-100, 100), handle: 3, anchor: new(100, 0), proportional: false, snapping: false);
+        Assert.Equal((2f, 1f, -100f, 0f), (scaled.ScaleX, scaled.ScaleY, scaled.X, scaled.Y));
+        // Turned 90°, the same corner pulled the same way along the layer's own x: the anchor still stays.
+        var turned = layer with { X = 200, Rotation = 90 };
+        var anchorBefore = turned.Transform.Transform(100, 0);
+        var grown = MovieInspectorSession.scaled(turned, new(100, 0), new(100, -100), handle: 3, anchor: new(100, 0), proportional: false, snapping: false);
+        var anchorAfter = grown.Transform.Transform(100, 0);
+        Assert.Equal(2, grown.ScaleX, 3);
+        Assert.Equal(anchorBefore.X, anchorAfter.X, 1);
+        Assert.Equal(anchorBefore.Y, anchorAfter.Y, 1);
+    }
+}

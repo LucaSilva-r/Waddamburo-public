@@ -13,13 +13,13 @@ namespace Waddamburo.Editor;
 /// </summary>
 public sealed partial class MovieInspectorSession
 {
-    private enum SceneTool { Move, Rotate, Scale }
+    private enum SceneTool { Move, Rotate, Scale, Transform }
 
     private SceneTool _sceneTool = SceneTool.Move;
     private bool _snap = true;
     private int _grid = 4; // an index of GridSteps: 8 px
     // The gesture under way on the stage: what it does, where it started, the layer as it was then.
-    private (SceneTool Tool, Vector2 From, SkinScenes.Layer Start, int Handle)? _gesture2;
+    private (SceneTool Tool, Vector2 From, SkinScenes.Layer Start, int Handle, Vector2 Anchor)? _gesture2;
     private bool _gestureEdited, _fieldEdited;
     private readonly List<(Vector2 A, Vector2 B)> _sceneGuides = [];
 
@@ -117,6 +117,7 @@ public sealed partial class MovieInspectorSession
         tool("Move", SceneTool.Move, "W");
         tool("Rotate", SceneTool.Rotate, "E");
         tool("Scale", SceneTool.Scale, "R");
+        tool("Transform", SceneTool.Transform, "T: drag inside to move, a handle to scale, just outside a corner to turn");
         ImGui.SameLine(0, 24);
         ImGui.Checkbox("Snap", ref _snap);
         if (ImGui.IsItemHovered()) ImGui.SetTooltip("To the stage's edges and middle, the other layers' edges, the grid; 15° turns, 0.05 scale steps.\nHold Ctrl to turn it off for a moment.");
@@ -237,6 +238,7 @@ public sealed partial class MovieInspectorSession
             if (ImGui.IsKeyPressed(ImGuiKey.W, false)) _sceneTool = SceneTool.Move;
             if (ImGui.IsKeyPressed(ImGuiKey.E, false)) _sceneTool = SceneTool.Rotate;
             if (ImGui.IsKeyPressed(ImGuiKey.R, false)) _sceneTool = SceneTool.Scale;
+            if (ImGui.IsKeyPressed(ImGuiKey.T, false)) _sceneTool = SceneTool.Transform;
         }
         int hit()
         {
@@ -249,8 +251,11 @@ public sealed partial class MovieInspectorSession
         // Scale handles: the box's corners (0-3) and the middles of its sides (4-7), on the screen.
         Vector2[] handles = selected is null ? [] :
             [.. selected, .. Enumerable.Range(0, 4).Select(index => (selected[index] + selected[(index + 1) % 4]) / 2)];
-        int handleUnder() => _sceneTool != SceneTool.Scale ? -1
-            : Array.FindIndex(handles, handle => Vector2.Distance(screen(handle), mouse) <= 7);
+        var scaling = _sceneTool is SceneTool.Scale or SceneTool.Transform;
+        int handleUnder() => !scaling ? -1 : Array.FindIndex(handles, handle => Vector2.Distance(screen(handle), mouse) <= 7);
+        // Free transform: just outside a corner turns the layer.
+        bool turnZone() => _sceneTool == SceneTool.Transform && selected is not null && handleUnder() < 0 && !inside(selected, stagePoint)
+            && selected.Any(at => Vector2.Distance(screen(at), mouse) <= 28);
         var under = over ? hit() : -1;
         // A component dropped on the stage: a new layer there, on top.
         if (_dragPackage is { } dropped && over && !ImGui.IsMouseDown(ImGuiMouseButton.Left))
@@ -263,10 +268,14 @@ public sealed partial class MovieInspectorSession
         if (ImGui.IsItemClicked(ImGuiMouseButton.Left))
         {
             var handle = handleUnder();
-            var keep = handle >= 0 || (_sceneTool == SceneTool.Rotate && selected is not null && (under == _sceneLayer || under < 0));
+            var turn = turnZone();
+            var keep = handle >= 0 || turn || (_sceneTool == SceneTool.Rotate && selected is not null && (under == _sceneLayer || under < 0));
             if (!keep) _sceneLayer = under;
-            _gesture2 = _sceneLayer < 0 ? null : (handle >= 0 ? SceneTool.Scale : _sceneTool == SceneTool.Rotate && keep ? SceneTool.Rotate : SceneTool.Move,
-                stagePoint, layers[_sceneLayer], handle);
+            // A handle scales about the opposite one (Alt: about the layer's origin), which stays where it is.
+            var anchor = handle < 0 || io.KeyAlt || localHandles(_sceneLayer) is not { } own ? Vector2.Zero
+                : own[handle < 4 ? (handle + 2) % 4 : 4 + (handle - 2) % 4];
+            _gesture2 = _sceneLayer < 0 ? null : (handle >= 0 ? SceneTool.Scale : turn || _sceneTool == SceneTool.Rotate && keep ? SceneTool.Rotate : SceneTool.Move,
+                stagePoint, layers[_sceneLayer], handle, anchor);
             _gestureEdited = false;
         }
         _sceneGuides.Clear();
@@ -278,7 +287,7 @@ public sealed partial class MovieInspectorSession
                 var next = gesture.Tool switch
                 {
                     SceneTool.Rotate => rotated(gesture.Start, gesture.From, stagePoint, snapping),
-                    SceneTool.Scale => scaled(gesture.Start, gesture.From, stagePoint, gesture.Handle, io.KeyShift, snapping),
+                    SceneTool.Scale => scaled(gesture.Start, gesture.From, stagePoint, gesture.Handle, gesture.Anchor, io.KeyShift, snapping),
                     _ => moved(gesture.Start, stagePoint - gesture.From, layers, snapping, scale),
                 };
                 var index = _sceneLayer;
@@ -313,7 +322,7 @@ public sealed partial class MovieInspectorSession
             list.AddText(points[0] - new Vector2(0, 17), Accent, layers[_sceneLayer].Movie);
             var pivot = screen(new(layers[_sceneLayer].X, layers[_sceneLayer].Y));
             list.AddCircleFilled(pivot, 4, Accent);
-            if (_sceneTool == SceneTool.Scale)
+            if (scaling)
                 foreach (var handle in handles)
                     list.AddRectFilled(screen(handle) - new Vector2(4), screen(handle) + new Vector2(4), Accent);
             if (_sceneTool == SceneTool.Rotate)
@@ -328,6 +337,7 @@ public sealed partial class MovieInspectorSession
         if (_dragPackage is not null && over)
             list.AddRect(corner, corner + size, Accent, 0, ImDrawFlags.None, 3);
         if (handleUnder() >= 0) ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeAll);
+        else if (turnZone()) ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
     }
 
     private SkinScenes.Layer rotated(SkinScenes.Layer start, Vector2 from, Vector2 to, bool snapping)
@@ -340,10 +350,20 @@ public sealed partial class MovieInspectorSession
         return start with { Rotation = angle };
     }
 
-    // Scaled about the layer's origin, along the handle's axes (a side: one axis); Shift keeps the proportions.
-    private static SkinScenes.Layer scaled(SkinScenes.Layer start, Vector2 from, Vector2 to, int handle, bool proportional, bool snapping)
+    // The selected layer's handles in its own movie's space: corners 0-3 (top left, clockwise), side middles 4-7.
+    private Vector2[]? localHandles(int index)
     {
-        var (a, b) = (local(start, from), local(start, to));
+        if (index < 0 || _liveScene is null || !_liveScene.Bounds(_liveScene.FixedCount + index, out var bounds)) return null;
+        Vector2[] corners = [new(bounds.X, bounds.Y), new(bounds.X + bounds.Width, bounds.Y),
+            new(bounds.X + bounds.Width, bounds.Y + bounds.Height), new(bounds.X, bounds.Y + bounds.Height)];
+        return [.. corners, .. Enumerable.Range(0, 4).Select(at => (corners[at] + corners[(at + 1) % 4]) / 2)];
+    }
+
+    // Scaled about the anchor (in the layer's own space), along the handle's axes (a side: one axis); Shift keeps the
+    // proportions. The layer moves so the anchor stays where it was on the stage.
+    internal static SkinScenes.Layer scaled(SkinScenes.Layer start, Vector2 from, Vector2 to, int handle, Vector2 anchor, bool proportional, bool snapping)
+    {
+        var (a, b) = (local(start, from) - anchor, local(start, to) - anchor);
         var useX = handle is < 4 or 5 or 7;
         var useY = handle is < 4 or 4 or 6;
         float ratio(float was, float now) => Math.Abs(was) < 1 ? 1 : now / was;
@@ -354,7 +374,10 @@ public sealed partial class MovieInspectorSession
             (rx, ry) = (both, both);
         }
         float step(float value) => value == 0 ? .001f : snapping ? MathF.Round(value / .05f) * .05f is var rounded && rounded != 0 ? rounded : .05f : MathF.Round(value, 3);
-        return start with { ScaleX = step(start.ScaleX * rx), ScaleY = step(start.ScaleY * ry) };
+        var next = start with { ScaleX = step(start.ScaleX * rx), ScaleY = step(start.ScaleY * ry) };
+        var (wasX, wasY) = start.Transform.Transform(anchor.X, anchor.Y);
+        var (nowX, nowY) = (next with { X = 0, Y = 0 }).Transform.Transform(anchor.X, anchor.Y);
+        return next with { X = MathF.Round(wasX - nowX, 2), Y = MathF.Round(wasY - nowY, 2) };
     }
 
     // Moved by the pointer; snapping puts the layer's box edges or middle on the stage's, another layer's, or the grid.

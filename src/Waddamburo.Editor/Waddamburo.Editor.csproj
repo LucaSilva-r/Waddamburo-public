@@ -6,4 +6,7 @@
     <ProjectReference Include="../Waddamburo.Lumen/Waddamburo.Lumen.csproj" />
     <ProjectReference Include="../Waddamburo.Platform.Sdl/Waddamburo.Platform.Sdl.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Waddamburo.Editor.Tests" />
+  </ItemGroup>
 </Project>
