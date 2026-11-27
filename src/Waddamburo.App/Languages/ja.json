@@ -108,6 +108,7 @@
   "settings.upload_custom_songs": "カスタム曲のアップロード",
   "settings.upload_custom_songs.hint": "新しくプレイするTJA・osu!曲のスコア、リプレイ、譜面を送信します。オフ中のプレイは、再びオンにしても送信されません。どちらでもローカルのリプレイを再生できます。",
   "custom_upload.banner_auto": "オート使用でスコア送信は無効です",
+  "custom_upload.banner_skin": "スキン編集中はスコアが保存されません",
   "song_select.hashes_copied": "{0}の譜面ハッシュをコピーしました（Daniフォルダのカスタム段位道場用）。",
   "favourites.added": "お気に入りに追加しました：{0}",
   "favourites.removed": "お気に入りから外しました：{0}",

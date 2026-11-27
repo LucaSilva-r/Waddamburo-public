@@ -35,7 +35,11 @@ from the current folder). `--inspect=scene:<screen>` starts on a scene view (for
   message) the game tells the editor its screen (the scene view follows) and everything its provider gives each movie
   on it (`LumenPlayer.ProviderTap`, `ProvidedNow` for a late join); the editor's players of those movies follow it
   (`SkinLive.Follow`), shown as "Live from the game" in the scenario picker: the real song list, the real play. F7 is
-  caught by the window loop before ImGui (`SdlApplication.SkinEditorKey`). `--skin-dev=<folder>` alone gives the
+  caught by the window loop before ImGui (`SdlApplication.SkinEditorKey`). The game sends each state at most once a
+  tick (its last value) and events in order; the editor takes them in for at most 4 ms a tick, so a song never holds
+  it up. While the editor runs (`GameShell.SkinEditing`): plays are voided (not saved, not sent) with the
+  "Scores not saved: skin editor open" banner, and the game does not pause when it loses focus. Closing the editor
+  restarts the game from boot (`RequestRestart`): nothing of the session stays. `--skin-dev=<folder>` alone gives the
   reload without the editor. ponytail: unsaved edits reach the game on save only; the editor's movies send no
   requests to the game.
 - The component editor's player gets the same data as its part in the skin (live, else the example data); its Wd

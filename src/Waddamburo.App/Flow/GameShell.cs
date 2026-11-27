@@ -179,6 +179,7 @@ internal sealed partial class GameShell : IDisposable
             .. gameplay?.Demo == true ? ["attract demo"] : Array.Empty<string>(),
             .. gameplay is not null && Autoplay ? ["autoplay"] : Array.Empty<string>(),
             .. gameplay is not null && DevAutoplay ? ["dev autoplay"] : Array.Empty<string>(),
+            .. SkinEditing ? ["skin editor"] : Array.Empty<string>(),
         ];
         return $"{active.Id} ({string.Join(", ", modes)})";
     }
@@ -187,6 +188,9 @@ internal sealed partial class GameShell : IDisposable
 
     /// <summary>Development builds: the player's lane is drummed live by the bot (Settings > Developer).</summary>
     public bool DevAutoplay => BuildInfo.Dev && Arcade.DevAutoplay;
+
+    /// <summary>The skin editor runs beside the game (F7): plays count for nothing, the window may lose focus.</summary>
+    public bool SkinEditing => _editorLink?.Editing == true;
 
     public bool Autoplay => Options.Autoplay || (Arcade.Home && Arcade.Autoplay && Match?.InSong != true);
 
@@ -1591,6 +1595,7 @@ internal sealed partial class GameShell : IDisposable
 
     public void Dispose()
     {
+        _editorLink?.Dispose();
         if (_framesBuilt > 0)
         {
             var seconds = System.Diagnostics.Stopwatch.GetElapsedTime(_firstFrameAt).TotalSeconds;

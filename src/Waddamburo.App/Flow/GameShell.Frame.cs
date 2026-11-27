@@ -329,13 +329,15 @@ internal sealed partial class GameShell
             ? Hosts.SongSelect?.Session.CourseSelectSong ?? Hosts.SongSelect?.SongUnderCursor : null;
         var request = Active.Id == FlowScenes.Gameplay || Active.Id == FlowScenes.Result ? _gameplay.CurrentRequest : null;
         var auto = (Autoplay || DevAutoplay) && (Active.Id == FlowScenes.SongSelect || Active.Id == FlowScenes.Gameplay || Active.Id == FlowScenes.Result);
-        var context = $"{Active.Id}:{song?.Descriptor.Key}:{request?.Song}:{Arcade.UploadCustomSongs}:{Arcade.UploadBanner}:{auto}:{_gameplay.Demo}";
+        var context = $"{Active.Id}:{song?.Descriptor.Key}:{request?.Song}:{Arcade.UploadCustomSongs}:{Arcade.UploadBanner}:{auto}:{_gameplay.Demo}:{SkinEditing}";
         // Marker checks touch the filesystem; refresh once a second and immediately when the context changes.
         if (_uploadBannerContext == context && Tick - _uploadBannerTick < 60) return _uploadBanner;
         (_uploadBannerContext, _uploadBannerTick) = (context, Tick);
         // The attract's demo play uploads nothing and says nothing about it.
         if (!Arcade.UploadBanner || _gameplay.Demo) return _uploadBanner = null;
         if (auto) return _uploadBanner = "custom_upload.banner_auto";
+        if (SkinEditing && (Active.Id == FlowScenes.SongSelect || Active.Id == FlowScenes.Gameplay || Active.Id == FlowScenes.Result))
+            return _uploadBanner = "custom_upload.banner_skin";
         var source = song?.Descriptor.Key.Source ?? request?.Song.Source
             ?? (Active.Id == FlowScenes.SongSelect ? SelectMemory.Library : (SongSourceKind?)null);
         if (source is not (SongSourceKind.Tja or SongSourceKind.OsuLazer or SongSourceKind.OsuStable))

@@ -16,6 +16,7 @@ internal sealed class SkinEditorLink(GameShell shell, string root) : IDisposable
     private readonly SkinLinkServer _server = new();
     private LumenGameSceneInstance? _tapped;
     private Process? _editor;
+    private bool _restarting;
 
     public string Root => root;
 
@@ -41,8 +42,37 @@ internal sealed class SkinEditorLink(GameShell shell, string root) : IDisposable
     private int? _revealAt;       // a transition shown for the editor: when it opens again, then goes
     private bool _revealed;
 
+    // What the movies were given since the last tick: a state or list place by its last value (a song changes some
+    // every tick, for ~30 movies), events in order. Sent once a tick.
+    private readonly Dictionary<(string Movie, Waddamburo.Lumen.Provider.WdKind Kind, string Name, int Drum, int Index), Waddamburo.Lumen.Runtime.LumenProvided> _states = [];
+    private readonly List<(string Movie, Waddamburo.Lumen.Runtime.LumenProvided Provided)> _events = [];
+
+    private void held(string movie, Waddamburo.Lumen.Runtime.LumenProvided provided)
+    {
+        if (!_server.Connected) return;
+        if (provided.Kind == Waddamburo.Lumen.Provider.WdKind.Event) _events.Add((movie, provided));
+        else _states[(movie, provided.Kind, provided.Name, provided.Drum, provided.Index)] = provided;
+    }
+
+    /// <summary>An editor session runs (from F7 until the editor closes): plays are not saved, the window may lose focus.</summary>
+    public bool Editing => _editor is { HasExited: false };
+
     public void Tick()
     {
+        foreach (var (state, provided) in _states)
+            _server.Send(SkinLinkWire.Provided(state.Movie, provided));
+        _states.Clear();
+        foreach (var (movie, provided) in _events)
+            _server.Send(SkinLinkWire.Provided(movie, provided));
+        _events.Clear();
+        // The editor closed: the game starts again from the beginning, as it was before the session (nothing of it kept).
+        if (_editor is { HasExited: true } && !_restarting)
+        {
+            _restarting = true;
+            Console.WriteLine("Skin editor closed: starting the game again, clean.");
+            shell.RequestRestart();
+            return;
+        }
         while (_server.TryTake(out var line))
             if (SkinLinkWire.Command(line) is ("show", var asked))
                 (_wanted, _wantedSince) = (asked, shell.Tick);
@@ -77,7 +107,7 @@ internal sealed class SkinEditorLink(GameShell shell, string root) : IDisposable
             // What it holds already (an editor joining late, a screen just entered), then each delivery.
             foreach (var provided in player.ProvidedNow())
                 _server.Send(SkinLinkWire.Provided(movie, provided));
-            player.ProviderTap = provided => _server.Send(SkinLinkWire.Provided(movie, provided));
+            player.ProviderTap = provided => held(movie, provided);
         }
     }
 

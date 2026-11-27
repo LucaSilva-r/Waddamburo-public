@@ -241,10 +241,17 @@ public sealed class SkinLive : IDisposable
         Connected = false;
     }
 
-    /// <summary>Takes what arrived (on the editor's thread, once a tick) and passes it to the players that show it.</summary>
+    /// <summary>
+    /// Takes what arrived (on the editor's thread, once a tick) and passes it to the players that show it: a state by its
+    /// last value only, events in order, within a few milliseconds (the rest waits for the next tick, so a song pouring
+    /// values in never holds the editor up).
+    /// </summary>
     public void Drain()
     {
-        while (_incoming.TryDequeue(out var line))
+        var budget = System.Diagnostics.Stopwatch.StartNew();
+        var states = new Dictionary<(string Movie, WdKind Kind, string Name, int Drum, int Index), LumenProvided>();
+        var events = new List<(string Movie, LumenProvided Provided)>();
+        while (budget.Elapsed.TotalMilliseconds < 4 && _incoming.TryDequeue(out var line))
         {
             if (SkinLinkWire.Command(line) is ("notice", var text))
             {
@@ -255,24 +262,43 @@ public sealed class SkinLive : IDisposable
                 continue;
             if (screen is not null)
             {
+                deliver(states, events);
                 Screen = screen;
                 ScreenChanged?.Invoke(screen);
                 continue;
             }
-            var held = _held.TryGetValue(movie!, out var known) ? known : _held[movie!] = [];
-            if (provided.Kind != WdKind.Event)
-            {
-                var key = (provided.Kind, provided.Name, provided.Drum, provided.Index);
-                if (provided.Values[0].Kind == LumenHostValueKind.Undefined) held.Remove(key);
-                else held[key] = provided.Values[0];
-            }
-            if (_players.TryGetValue(movie!, out var players))
-            {
-                players.RemoveAll(static reference => !reference.TryGetTarget(out _));
-                foreach (var reference in players)
-                    if (reference.TryGetTarget(out var player))
-                        give(player, provided);
-            }
+            if (provided.Kind == WdKind.Event) events.Add((movie!, provided));
+            else states[(movie!, provided.Kind, provided.Name, provided.Drum, provided.Index)] = provided;
+        }
+        deliver(states, events);
+    }
+
+    private void deliver(Dictionary<(string Movie, WdKind Kind, string Name, int Drum, int Index), LumenProvided> states,
+        List<(string Movie, LumenProvided Provided)> events)
+    {
+        foreach (var (key, provided) in states)
+            take(key.Movie, provided);
+        foreach (var (movie, provided) in events)
+            take(movie, provided);
+        states.Clear();
+        events.Clear();
+    }
+
+    private void take(string movie, LumenProvided provided)
+    {
+        var held = _held.TryGetValue(movie, out var known) ? known : _held[movie] = [];
+        if (provided.Kind != WdKind.Event)
+        {
+            var key = (provided.Kind, provided.Name, provided.Drum, provided.Index);
+            if (provided.Values[0].Kind == LumenHostValueKind.Undefined) held.Remove(key);
+            else held[key] = provided.Values[0];
+        }
+        if (_players.TryGetValue(movie, out var players))
+        {
+            players.RemoveAll(static reference => !reference.TryGetTarget(out _));
+            foreach (var reference in players)
+                if (reference.TryGetTarget(out var player))
+                    give(player, provided);
         }
     }
 

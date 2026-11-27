@@ -424,7 +424,8 @@ internal sealed class HomeControls : IDisposable
         if (_shell.Editor.IsOpen) return false;
         // Online, the song goes on whatever this player does: leaving the window doesn't stop it.
         var online = _shell.Match.InSong && active == FlowScenes.Gameplay;
-        var focusPause = !(BuildInfo.Dev && _shell.Arcade.DevNoFocusPause); // a developer option
+        // A developer option; and never while the skin editor runs beside the game (it has the focus).
+        var focusPause = !(BuildInfo.Dev && _shell.Arcade.DevNoFocusPause) && !_shell.SkinEditing;
         var unfocused = !_focused || _focusBlip;
         _focusBlip = false;
         if (_menu.IsOpen || !(escape || home && !online && unfocused && focusPause && active == FlowScenes.Gameplay && !_gameplay.ChartOver && !_gameplay.InCourse))

@@ -215,7 +215,8 @@ internal sealed partial class GameplayFlow(GameShell shell) : FlowScene(shell)
         // Reviews show it too: seeking back rebuilds the lanes, which takes a shown banner down.
         Shell.Gameplay.EndBanner = _mode.EndBanner;
         // A course saves apart, whole (saveCourse).
-        _play.Voided = request.Review is not null || !_mode.RealPlay || _mode.SeveralSongs || Shell.DevAutoplay;
+        // A play while the skin editor runs is voided too: movies may change under it, nothing is saved or sent.
+        _play.Voided = request.Review is not null || !_mode.RealPlay || _mode.SeveralSongs || Shell.DevAutoplay || Shell.SkinEditing;
         if (_play.Review is not null && request.Review?.Player is { } watched)
             Shell.Players.WatchAs(_side, watched);
         _play.Lanes.Autoplay = (Shell.Autoplay || _mode.AutoplayInterval is not null || Shell.DevAutoplay) && _play.Review is null
