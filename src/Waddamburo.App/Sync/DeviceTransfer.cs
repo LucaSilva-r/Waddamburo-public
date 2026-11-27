@@ -1,6 +1,5 @@
 using Waddamburo.App.Home;
 using Waddamburo.Platform.Sdl;
-using Waddamburo.Platform.Sdl.Media;
 using Waddamburo.Platform.Sdl.Rendering;
 
 namespace Waddamburo.App.Sync;

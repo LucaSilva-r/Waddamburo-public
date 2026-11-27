@@ -13,14 +13,14 @@ namespace Waddamburo.App.Flow;
 /// </summary>
 internal static class CrashScreen
 {
+    /// <summary>--no-crash-screen: a crash ends the game at once (it is on the console and in the crash file), for runs nobody watches.</summary>
+    public static bool Off { get; set; }
+
     /// <summary>
     /// Shows the screen in <paramref name="application"/>'s window until it is closed or Escape is pressed.
     /// <paramref name="code"/> and <paramref name="name"/>: the error's ("10-1", "MOVIES"); <paramref name="log"/>: the
     /// crash file written for it.
     /// </summary>
-    /// <summary>--no-crash-screen: a crash ends the game at once (it is on the console and in the crash file), for runs nobody watches.</summary>
-    public static bool Off { get; set; }
-
     public static void Show(SdlApplication application, string fontPath, string code, string name, Exception exception,
         string? log, (string Text, RenderColor Colour)[]? footer = null)
     {

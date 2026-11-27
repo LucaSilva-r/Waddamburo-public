@@ -32,7 +32,7 @@ public enum LumenAnchor
 /// <summary>
 /// The stage's size. Always 720 units tall; as wide as the screen's shape asks (<see cref="Fit"/>: 960 at 4:3, 1280 at
 /// 16:9, 1680 at 21:9, any wider screen filled; narrower than 4:3, letterboxed). Everything is still made and placed on a 1280-wide stage, centred in the
-/// real one (the frame is widened at the end: <see cref="Widen"/>); an anchored layer moves with its edge
+/// real one; an anchored layer moves with its edge
 /// (<see cref="Anchored"/>). A stage of 1280 changes nothing (Green's frontend, the tools).
 /// </summary>
 public static class LumenStage

@@ -6,8 +6,11 @@ namespace Waddamburo.Lumen.Provider;
 public enum WdKind { State, Event, List, Request }
 
 /// <summary>One name of the provider: what a movie may read with <c>Wd.get</c>, listen to with <c>Wd.on</c>, or ask for with <c>Wd.request</c>.</summary>
+/// <param name="Name">The key used by the movie.</param>
+/// <param name="Kind">The provider operation or value category.</param>
 /// <param name="Type">number, bool, text; an event's arguments in order.</param>
 /// <param name="Scope">When it has a value (free-movies.md, Scopes): app, session, or a screen. A request: the screen that takes it.</param>
+/// <param name="Description">What the name represents in the game.</param>
 /// <param name="Sample">A plausible value (an event: its arguments, comma separated), for previews and documentation.</param>
 public sealed record WdName(string Name, WdKind Kind, string Type, string Scope, string Description, string Sample = "");
 

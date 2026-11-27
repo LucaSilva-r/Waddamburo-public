@@ -42,13 +42,18 @@ internal sealed class WaddamburoScreens : IScreenCompositions
     // A player's name board: bottom left for the left drum, bottom right for the right one (FlowScenes.BoardSide).
     private static SceneLayerDefinition board(int side) => movie("indicator", "player_name", LayerRoles.IndicatorPart, side == 1 ? 948 : 60, 638);
 
+    // The entry's name boards: top left, the left drum's first.
+    private static SceneLayerDefinition topBoard(int side) =>
+        movie("indicator", "player_name", LayerRoles.IndicatorPart, side == 1 ? 316 : 32, 12) with { Anchor = Lumen.Rendering.LumenAnchor.Left };
+
     private static SceneDefinition screen(SceneId id, params SceneLayerDefinition[] layers) => new(SceneDefinition.CurrentVersion, id, layers);
 
     public IReadOnlyList<SceneDefinition> Initial(IReadOnlyList<SceneDefinition> gameplayAndResults) =>
     [
         skin("boot", screen(FlowScenes.Boot, movie("attract/kidou", "kidou", "boot"))),
-        // The entry: who plays, and the mode (normal or dan). Its boards show each drum's player.
-        skin("entry", screen(FlowScenes.Entry, movie("entry", "entry", "player-entry"), board(0), board(1))),
+        // The entry (the main menu): who plays, and the mode (normal or dan). Its boards show each drum's player, side
+        // by side in the top bar.
+        skin("entry", screen(FlowScenes.Entry, movie("entry", "entry", "player-entry"), topBoard(0), topBoard(1))),
         SongSelect([0]),
         .. gameplayAndResults,
         skin("tutorial", screen(FlowScenes.Tutorial, movie("tutorial", "tutorial", "tutorial"))),

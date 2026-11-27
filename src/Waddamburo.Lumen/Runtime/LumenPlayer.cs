@@ -87,6 +87,7 @@ public sealed partial class LumenPlayer : IAvm1Host
         _globals["MovieClip"] = createBuiltinConstructor();
         _globals["Array"] = createBuiltinConstructor();
         _globals["MovieClipLoader"] = new MovieClipLoaderConstructor();
+        _globals["Date"] = new DateConstructor();
         installKeyObject();
         installMathObject();
         installExternalInterface();
@@ -1917,6 +1918,8 @@ public sealed partial class LumenPlayer : IAvm1Host
         }
         else if (candidate.Value is MovieClipLoaderConstructor)
             return new Avm1Lookup(true, new MovieClipLoaderObject());
+        else if (candidate.Value is DateConstructor)
+            return new Avm1Lookup(true, createDate(arguments));
         else
             value = new Avm1Object();
         value.Properties["__constructor__"] = name;
@@ -2565,6 +2568,7 @@ public sealed partial class LumenPlayer : IAvm1Host
     private sealed record ClipTransform(DisplayInstance Instance);
     private sealed class ColorTransformConstructor;
     private sealed class MovieClipLoaderConstructor;
+    private sealed class DateConstructor;
     private sealed class MovieClipLoaderObject : Avm1Object
     {
         public List<Avm1Object> Listeners { get; } = [];
@@ -2580,6 +2584,49 @@ public sealed partial class LumenPlayer : IAvm1Host
             value.Properties[ColorTransformProperties[index]] = index < arguments.Count
                 ? toNumber(arguments[index]) : index < 4 ? 1d : 0d;
         return value;
+    }
+
+    /// <summary>
+    /// ActionScript 2's Date, the getters only, in local time: new Date() is now, new Date(ms) that many milliseconds
+    /// after 1970 (UTC), new Date(year, month[, day, hours, minutes, seconds, ms]) that local time (month 0 to 11).
+    /// ponytail: no setters, UTC getters or parse; add them when a movie needs them.
+    /// </summary>
+    private static Avm1Object createDate(IReadOnlyList<object?> arguments)
+    {
+        DateTime time;
+        try
+        {
+            time = arguments.Count switch
+            {
+                0 => DateTime.Now,
+                1 => DateTimeOffset.FromUnixTimeMilliseconds((long)toNumber(arguments[0])).LocalDateTime,
+                _ => new DateTime((int)toNumber(arguments[0]), 1, 1, 0, 0, 0, DateTimeKind.Local)
+                    .AddMonths((int)toNumber(arguments[1]))
+                    .AddDays((arguments.Count > 2 ? toNumber(arguments[2]) : 1) - 1)
+                    .AddHours(arguments.Count > 3 ? toNumber(arguments[3]) : 0)
+                    .AddMinutes(arguments.Count > 4 ? toNumber(arguments[4]) : 0)
+                    .AddSeconds(arguments.Count > 5 ? toNumber(arguments[5]) : 0)
+                    .AddMilliseconds(arguments.Count > 6 ? toNumber(arguments[6]) : 0),
+            };
+        }
+        catch (ArgumentException)
+        {
+            time = DateTime.MinValue; // out of range or not a number: Flash gives an invalid date; ours reads year 1
+        }
+        var date = new Avm1Object();
+        void getter(string name, Func<double> value) => date.Properties[name] = new Avm1NativeFunction(
+            $"Date.{name}", _ => LumenHostValue.FromNumber(value()));
+        getter("getFullYear", () => time.Year);
+        getter("getMonth", () => time.Month - 1);
+        getter("getDate", () => time.Day);
+        getter("getDay", () => (int)time.DayOfWeek);
+        getter("getHours", () => time.Hour);
+        getter("getMinutes", () => time.Minute);
+        getter("getSeconds", () => time.Second);
+        getter("getMilliseconds", () => time.Millisecond);
+        getter("getTime", () => new DateTimeOffset(time).ToUnixTimeMilliseconds());
+        getter("getTimezoneOffset", () => -TimeZoneInfo.Local.GetUtcOffset(time).TotalMinutes);
+        return date;
     }
 
     private void installExternalInterface()

@@ -22,7 +22,6 @@ using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Media;
 using Waddamburo.Platform.Sdl.Rendering;
 using Waddamburo.App.Home;
-using Waddamburo.Skins.Green.Art;
 using Waddamburo.Skins.Green.Screens;
 using Waddamburo.Skins.Green.Sound;
 

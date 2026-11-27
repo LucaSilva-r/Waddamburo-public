@@ -6,7 +6,7 @@ namespace Waddamburo.App.Gameplay;
 /// <summary>
 /// A dan course's requirements as the play goes: published to the provider (dan.rank, dan.name, dan.song,
 /// dan.notesLeft, the dan.exam lists), and whether the course has failed. The game's panel is driven from what is
-/// published, by the gameplay adapter (<see cref="GameplayGameMovies"/>).
+/// published, by the gameplay adapter (<see cref="Waddamburo.Skins.Green.Gameplay.GameplayGameMovies"/>).
 /// </summary>
 internal sealed class DanExamPanel(DanCourse course,
     Action<string, LumenHostValue> publish, Action<string, int, LumenHostValue> publishItem)

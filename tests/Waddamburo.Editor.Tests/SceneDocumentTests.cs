@@ -1,4 +1,3 @@
-using Waddamburo.Editor;
 using Waddamburo.Game.Scenes;
 
 namespace Waddamburo.Editor.Tests;

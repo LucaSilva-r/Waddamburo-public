@@ -6,7 +6,7 @@ namespace Waddamburo.Game.Scenes;
 
 /// <summary>
 /// A skin's screens (<c>scenes.json</c> at the skin's root): which movies make each screen and where. The engine keeps
-/// what a screen needs to work (<see cref="Required"/>: the roles its hosts drive); everything else is the skin's.
+/// what a screen needs to work (the roles listed in <see cref="Screens"/> for its hosts to drive); everything else is the skin's.
 /// <code>
 /// { "format": 1, "scenes": { "entry": { "layers": [ { "movie": "entry/entry", "role": "player-entry" },
 ///   { "movie": "indicator/player_name", "role": "indicator-part", "x": 60, "y": 638, "side": 0 } ] } } }
@@ -42,6 +42,14 @@ public sealed class SkinScenes
     };
 
     /// <summary>One layer as the skin wrote it: placed at (x, y), scaled, then turned by <paramref name="Rotation"/> degrees (clockwise) about that point.</summary>
+    /// <param name="Movie">Movie package path relative to the skin folder.</param>
+    /// <param name="Role">The role the scene host uses to identify this layer.</param>
+    /// <param name="X">Horizontal position on the stage.</param>
+    /// <param name="Y">Vertical position on the stage.</param>
+    /// <param name="Side">Optional drum side for a per-player layer.</param>
+    /// <param name="ScaleX">Horizontal scale factor.</param>
+    /// <param name="ScaleY">Vertical scale factor.</param>
+    /// <param name="Rotation">Clockwise rotation in degrees about the layer position.</param>
     /// <param name="Anchor">Where it holds on a stage wider or narrower than 1280 (<c>"anchor": "left|center|right|stretch"</c>).</param>
     public sealed record Layer(string Movie, string Role, float X, float Y, int? Side, float ScaleX = 1, float ScaleY = 1, float Rotation = 0,
         Waddamburo.Lumen.Rendering.LumenAnchor Anchor = Waddamburo.Lumen.Rendering.LumenAnchor.Center)

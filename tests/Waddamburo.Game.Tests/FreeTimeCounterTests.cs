@@ -298,12 +298,14 @@ public sealed class FreeTimeCounterTests
             return null;
         };
         advance(entry, 2);
-        Assert.Equal("PLAYER ENTRY", entry.ReadScriptValue("heading.text"));
+        Assert.Equal("Hit DON to join", entry.ReadScriptValue("label.text"));
         entry.Publish("entry.setup", LumenHostValue.FromBoolean(true));
         entry.Publish("player.joined", LumenHostValue.FromBoolean(true), 1);
         entry.Publish("entry.setup", LumenHostValue.FromBoolean(false)); // the home setup closes: the mode menu
-        Assert.Equal("MODE", entry.ReadScriptValue("heading.text"));
-        Assert.Equal("<  NORMAL  >", entry.ReadScriptValue("hint.text"));
+        Assert.Equal("Play", entry.ReadScriptValue("label.text"));
+        Assert.Equal("Ka · turn", entry.ReadScriptValue("hintKa.text"));
+        advance(entry, 60); // the dial comes out of the drum
+        Assert.True(entry.TryGetInstanceBounds("i0", out _));
         entry.Publish("entry.timeLeft", n(0)); // the countdown ran out: the mode shown starts
         Assert.Equal(["session.start normal"], asked);
         Assert.Empty(entry.Diagnostics);

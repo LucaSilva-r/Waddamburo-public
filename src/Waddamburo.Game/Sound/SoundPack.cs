@@ -4,7 +4,7 @@ namespace Waddamburo.Game.Sound;
 
 /// <summary>
 /// A skin's own sounds: a folder with <c>sounds.json</c> and the files it names (any format the engine decodes).
-/// A name it does not have is asked of <paramref name="fallback"/> (the next skin down: ours, then the game's).
+/// A name it does not have is asked of the fallback sound set supplied to <see cref="Load"/> (the next skin down: ours, then the game's).
 /// </summary>
 /// <remarks>
 /// <code>

@@ -1,5 +1,3 @@
-using Waddamburo.Editor;
-
 namespace Waddamburo.Editor.Tests;
 
 public sealed class PreviewScenarioTests

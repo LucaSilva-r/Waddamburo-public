@@ -1,7 +1,6 @@
 using System.Runtime.InteropServices;
 using Waddamburo.Game;
 using Waddamburo.Game.Scenes;
-using Waddamburo.Lumen.Provider;
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;
 using Waddamburo.Platform.Sdl;

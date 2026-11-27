@@ -1,7 +1,6 @@
 using Waddamburo.Catalog;
 using Waddamburo.Game;
 using Waddamburo.Game.Gameplay;
-using Waddamburo.Services.Online;
 using Waddamburo.Game.Scenes;
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Lumen.Runtime;

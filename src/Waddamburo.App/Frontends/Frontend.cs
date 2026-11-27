@@ -6,6 +6,7 @@ namespace Waddamburo.App.Frontends;
 /// What a frontend is made of and offers (docs/development/frontends.md): the code asks for a feature or a kind of
 /// content, never which frontend runs. Picked by config.cfg's frontend at start.
 /// </summary>
+/// <param name="Name">The frontend identifier.</param>
 /// <param name="GameMovies">The game's movies may load (else packages only, a missing one a placeholder).</param>
 /// <param name="GameSounds">The game's sounds, jingles and screen sounds may play (else our pack only).</param>
 /// <param name="Mascot">Don-chan: Green's 3D Don on the stands and lanes.</param>

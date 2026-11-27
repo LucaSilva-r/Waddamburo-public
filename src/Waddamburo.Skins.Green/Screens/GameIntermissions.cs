@@ -27,6 +27,8 @@ public static class GameIntermissions
     }
 
     /// <summary>Covers the screen; false while the movie cannot take it yet (a shutter registers Close on its first frame).</summary>
+    /// <param name="movie">The intermission movie covering the screen.</param>
+    /// <param name="title">Whether to use the song-title transition.</param>
     /// <param name="side">Whose colour a shutter takes: 0 the left drum, 1 the right, 2 both (traced Close(1), Close(2)).</param>
     public static bool Cover(LumenPlayer movie, bool title, int side)
     {

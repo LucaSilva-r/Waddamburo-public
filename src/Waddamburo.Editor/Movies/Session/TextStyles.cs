@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Numerics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -235,7 +234,6 @@ public sealed partial class MovieInspectorSession
     {
         ImGui.PushID(id);
         JsonNode? value(string key) => settings[key] ?? inherited?[key];
-        bool own(string key) => inherited is null || settings.ContainsKey(key);
         void set(string key, JsonNode? node, bool continues) => edit(() => settings[key] = node, continues);
         void label(string key, Action control)
         {

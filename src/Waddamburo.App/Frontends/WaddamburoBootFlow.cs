@@ -1,6 +1,4 @@
-using Waddamburo.App.Flow;
 using Waddamburo.Game.Flow;
-using Waddamburo.Game.Scenes;
 using Waddamburo.Platform.Sdl;
 
 namespace Waddamburo.App.Frontends;

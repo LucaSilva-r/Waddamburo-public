@@ -15,6 +15,7 @@ public sealed class TaikoHitFlights : INoteFlights
     private readonly int _kadonAt; // the Kadon flights (purple big ka) follow the others; none: _layers.Length
 
     /// <param name="layers">The hit flight movies, taken in turn.</param>
+    /// <param name="sceneOwn">Optional scene movie that animates flights from provider data.</param>
     /// <param name="kadonLayers">Flights for OpenTaiko's Kadon (the flight movie on its purple texture copies).</param>
     public TaikoHitFlights(IEnumerable<LumenSceneLayer> layers, IEnumerable<LumenSceneLayer>? kadonLayers = null, LumenSceneLayer? sceneOwn = null)
     {

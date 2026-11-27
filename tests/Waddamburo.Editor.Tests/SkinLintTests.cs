@@ -1,5 +1,4 @@
 using System.IO.Compression;
-using Waddamburo.Editor;
 
 namespace Waddamburo.Editor.Tests;
 

@@ -16,7 +16,11 @@ public static class SkinLint
 {
     public enum Level { Error, Warning }
 
+    /// <param name="Level">Severity of the finding.</param>
     /// <param name="File">The file, from the skin's folder ("entry/entry/scripts/main.as").</param>
+    /// <param name="Line">Line of the finding in the file.</param>
+    /// <param name="Column">Column of the finding on that line.</param>
+    /// <param name="Text">Diagnostic message displayed by the editor.</param>
     /// <param name="Package">The package it belongs to, when one ("entry/entry"): the editor opens it.</param>
     public sealed record Problem(Level Level, string File, int Line, int Column, string Text, string? Package = null);
 

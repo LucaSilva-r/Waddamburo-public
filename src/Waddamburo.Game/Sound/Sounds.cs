@@ -17,7 +17,7 @@ public readonly record struct SoundSettings(float Gain = 1, float PanDegrees = 0
 
 /// <summary>
 /// One sound file, or one stream of a container, that the engine decodes (any format its decoders read: ATRAC in NUB
-/// banks, ADPCM, Ogg, WAV, ...). <paramref name="Stream"/> is 1-based within a container, 0 for a file's only stream.
+/// banks, ADPCM, Ogg, WAV, ...). <see cref="Stream"/> is 1-based within a container, 0 for a file's only stream.
 /// The engine caches a sound by <see cref="Key"/>; <see cref="Settings"/> is asked once, when
 /// the sound is first decoded (off the frame, so it may read the file).
 /// </summary>

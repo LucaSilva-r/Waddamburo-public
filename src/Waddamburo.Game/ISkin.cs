@@ -38,6 +38,8 @@ public interface ISkin
 public interface ITransitionSkin
 {
     /// <summary>The movie covers the screen; false while it cannot take it yet.</summary>
+    /// <param name="movie">The intermission movie covering the screen.</param>
+    /// <param name="title">Whether to use the song-title transition.</param>
     /// <param name="side">Whose colour: 0 the left drum, 1 the right, 2 both.</param>
     bool Cover(LumenPlayer movie, bool title, int side);
 

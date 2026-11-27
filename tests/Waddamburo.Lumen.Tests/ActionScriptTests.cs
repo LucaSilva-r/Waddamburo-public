@@ -97,6 +97,8 @@ public sealed class ActionScriptTests
     [InlineData("var o = { a: 1 }; delete o.a; report(o.a, Math.floor(2.7), Math.abs(-4));", "undefined,2,4")]
     // Objects compare by reference: the same one is equal, two alike are not.
     [InlineData("var a = { n: 1 }; var b = { n: 1 }; var m = {}; m[3] = a; report(a == a, a === a, a == b, m[3] == a, a != b, [] == []);", "true,true,false,true,true,false")]
+    [InlineData("var d = new Date(2026, 10, 27, 21, 4, 9); report(d.getFullYear(), d.getMonth(), d.getDate(), d.getDay(), d.getHours(), d.getMinutes(), d.getSeconds());", "2026,10,27,5,21,4,9")]
+    [InlineData("var d = new Date(2026, 0, 31, 23, 59); var e = new Date(d.getTime() + 60000); report(e.getMonth(), e.getDate(), e.getHours(), e.getMinutes());", "1,1,0,0")]
     [InlineData("var r = report('first'); report(r, report('second') + 10);", "first|second|1,12")]
     public void ScriptsRun(string script, string expected)
     {
