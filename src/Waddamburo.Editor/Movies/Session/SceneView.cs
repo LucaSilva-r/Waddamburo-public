@@ -213,6 +213,11 @@ public sealed partial class MovieInspectorSession
         ImGui.End();
     }
 
+    private float _sceneStageWidth = Lumen.Rendering.LumenStage.BaseWidth;
+
+    /// <summary>The stage width the scene view shows (LumenStage: 960 at 4:3 to 1680 at 21:9).</summary>
+    public float SceneStageWidth { get => _sceneStageWidth; set => _sceneStageWidth = Math.Clamp(value, Lumen.Rendering.LumenStage.MinWidth, Lumen.Rendering.LumenStage.MaxWidth); }
+
     // Who plays (and, in gameplay, a dan course's lane): the screen as that credit sees it.
     private void variantPicker(string key)
     {
@@ -228,6 +233,20 @@ public sealed partial class MovieInspectorSession
         }
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Who has joined: the screen as that credit sees it.\nA screen built per drum (Song Select's name boards, the dan list) shows each joined drum's parts;\ngameplay: one lane (the left or the right drum's) or two.");
+        // The screen's shape: everything placed on 1280, anchored layers moved to their edges.
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(130);
+        var widths = new (string Name, float Width)[] { ("16:9", 1280), ("4:3", 960), ("16:10", 1152), ("Phone 19.5:9", 1560), ("21:9", 1680) };
+        var shown = widths.FirstOrDefault(each => each.Width == _sceneStageWidth).Name ?? $"{_sceneStageWidth:0}";
+        if (ImGui.BeginCombo("##stage width", shown))
+        {
+            foreach (var (name, width) in widths)
+                if (ImGui.Selectable($"{name}  ({width:0} wide)", width == _sceneStageWidth))
+                    _sceneStageWidth = width;
+            ImGui.EndCombo();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("The screen's shape: the stage is always 720 tall, as wide as the screen asks (4:3 to 21:9).\nLayers hold their anchor's edge (the Anchor field); the faint box is the 16:9 one.");
         if (key == "gameplay")
         {
             ImGui.SameLine();
@@ -325,6 +344,11 @@ public sealed partial class MovieInspectorSession
             field("Drum", () => ImGui.Combo("##side", ref drum, "Every drum\0Left drum only\0Right drum only\0"),
                 each => each with { Side = drum == 0 ? null : drum - 1 });
         }
+        var anchor = (int)layer.Anchor;
+        field("Anchor", () => ImGui.Combo("##anchor", ref anchor, "Centre (with the stage)\0Left edge\0Right edge\0Stretch across\0"),
+            each => each with { Anchor = (Lumen.Rendering.LumenAnchor)anchor });
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Where it holds when the screen is narrower or wider than 16:9 (4:3, 21:9, a phone).\nTry it with the stage width above the stage.");
         if (ImGui.Button("Reset scale and rotation"))
             commit(key, own, [(index, layer with { ScaleX = 1, ScaleY = 1, Rotation = 0 })], false);
     }
@@ -334,7 +358,7 @@ public sealed partial class MovieInspectorSession
     private Vector2[]? layerCorners(int index, SkinScenes.Layer layer)
     {
         if (_liveScene is null || !_liveScene.Bounds(index, out var bounds)) return null;
-        var matrix = layer.Transform;
+        var matrix = Lumen.Rendering.LumenStage.Anchored(layer.Transform, layer.Anchor); // where it is at this stage width
         Vector2 at(float x, float y) { var (tx, ty) = matrix.Transform(x, y); return new(tx, ty); }
         return [at(bounds.X, bounds.Y), at(bounds.X + bounds.Width, bounds.Y), at(bounds.X + bounds.Width, bounds.Y + bounds.Height), at(bounds.X, bounds.Y + bounds.Height)];
     }
@@ -380,7 +404,9 @@ public sealed partial class MovieInspectorSession
         // then zoomed about the pointer (wheel) and moved (middle drag). Home: fitted again; F: the selection framed.
         var area = ImGui.GetContentRegionAvail();
         var origin = ImGui.GetCursorScreenPos();
-        var fit = Math.Min(area.X / 1280, area.Y / 720) * .85f;
+        // The screen at the stage width shown (LumenStage): the 1280 box everything is placed on, centred in it.
+        var stageWidth = Lumen.Rendering.LumenStage.Width;
+        var fit = Math.Min(area.X / stageWidth, area.Y / 720) * .85f;
         var scale = fit * _sceneZoom;
         var size = new Vector2(1280, 720) * scale;
         var corner = origin + area / 2 + _scenePan - size / 2;
@@ -435,13 +461,18 @@ public sealed partial class MovieInspectorSession
             panelSize * io.DisplayFramebufferScale) is { } texture)
             list.AddImage(texture, origin, origin + panelSize);
         var shade = color(0, 0, 0, .55f);
-        var (left, right) = (Math.Clamp(corner.X, origin.X, origin.X + panelSize.X), Math.Clamp(corner.X + size.X, origin.X, origin.X + panelSize.X));
+        var screenLeft = corner.X - Lumen.Rendering.LumenStage.Extra * scale;
+        var (left, right) = (Math.Clamp(screenLeft, origin.X, origin.X + panelSize.X), Math.Clamp(screenLeft + stageWidth * scale, origin.X, origin.X + panelSize.X));
         var (topEdge, bottomEdge) = (Math.Clamp(corner.Y, origin.Y, origin.Y + panelSize.Y), Math.Clamp(corner.Y + size.Y, origin.Y, origin.Y + panelSize.Y));
         list.AddRectFilled(origin, new(origin.X + panelSize.X, topEdge), shade);
         list.AddRectFilled(new(origin.X, bottomEdge), origin + panelSize, shade);
         list.AddRectFilled(new(origin.X, topEdge), new(left, bottomEdge), shade);
         list.AddRectFilled(new(right, topEdge), new(origin.X + panelSize.X, bottomEdge), shade);
-        list.AddRect(corner - Vector2.One, corner + size + Vector2.One, color(.55f, .6f, .66f), 0, ImDrawFlags.None, 1);
+        list.AddRect(new Vector2(screenLeft, corner.Y) - Vector2.One, new Vector2(screenLeft + stageWidth * scale, corner.Y + size.Y) + Vector2.One,
+            color(.55f, .6f, .66f), 0, ImDrawFlags.None, 1);
+        // Another width: the 16:9 box layers are placed on, faint.
+        if (stageWidth != Lumen.Rendering.LumenStage.BaseWidth)
+            list.AddRect(corner, corner + size, color(.55f, .6f, .66f, .35f), 0, ImDrawFlags.None, 1);
         var point = (mouse - corner) / scale;
         Vector2 screen(Vector2 at) => corner + at * scale;
         if (over && _sceneMove is null) transformToolKeys();
@@ -577,7 +608,7 @@ public sealed partial class MovieInspectorSession
     private Vector2 sceneSnap(SceneMove move, Vector2 delta, IReadOnlyList<SkinScenes.Layer> all, float threshold)
     {
         var (min, max) = (move.Min + delta, move.Max + delta);
-        List<float> xs = [0, 640, 1280], ys = [0, 360, 720];
+        List<float> xs = [0, 640, 1280, -Lumen.Rendering.LumenStage.Extra, 1280 + Lumen.Rendering.LumenStage.Extra], ys = [0, 360, 720];
         for (var index = 0; index < all.Count; index++)
             if (!_sceneSelection.Contains(index) && layerCorners(index, all[index]) is { } quad)
             {

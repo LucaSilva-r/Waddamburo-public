@@ -283,7 +283,7 @@ internal static class MovieViewer
                         var folder = Waddamburo.Game.Scenes.DirectoryLumenMovieContentSource.PackageFolder(skin, layer.ArchiveId, layer.MovieId) is { } found
                             ? Path.GetRelativePath(skin, found).Replace('\\', '/')
                             : $"{Path.GetDirectoryName(layer.ArchiveId)?.Replace('\\', '/')}/{Path.GetFileNameWithoutExtension(layer.MovieId)}";
-                        return Waddamburo.Game.Scenes.SkinScenes.Layer.FromMatrix(folder, layer.HostId, layer.Transform);
+                        return Waddamburo.Game.Scenes.SkinScenes.Layer.FromMatrix(folder, layer.HostId, layer.Transform) with { Anchor = layer.Anchor };
                     }).ToArray();
                 gameplay = (scenes.Text, variant, layers);
                 return layers;
@@ -315,6 +315,9 @@ internal static class MovieViewer
                 var players = parts.Contains("both") ? Waddamburo.Editor.SkinStage.Players.Both
                     : parts.Contains("right") ? Waddamburo.Editor.SkinStage.Players.Right : Waddamburo.Editor.SkinStage.Players.Left;
                 skinStage.Variant = new(players, parts.Contains("dojo"));
+                // :w<width> shows the screen at that stage width (960 4:3 ... 1680 21:9).
+                if (parts.FirstOrDefault(static part => part.StartsWith('w')) is { } wide && float.TryParse(wide[1..], System.Globalization.CultureInfo.InvariantCulture, out var width))
+                    inspector.SceneStageWidth = width;
                 inspector.ShowScene(parts[0]);
             }
             else if (inspect?.Split('=', 2) is [_, "text"])

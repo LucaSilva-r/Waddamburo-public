@@ -244,6 +244,8 @@ public sealed partial class MovieInspectorSession
     private void skinPages(ImGuiIOPtr io, Vector2 size)
     {
         _thumbBudget = 2;
+        // The scene view shows its chosen stage width; everything else is made on (and shown at) 1280.
+        Lumen.Rendering.LumenStage.Width = _page == Page.Scene ? _sceneStageWidth : Lumen.Rendering.LumenStage.BaseWidth;
         pollProblems();
         _application.StageRegion = new RenderRectangle(0, 0, .0001f, .0001f); // the package's own stage hides under the page
         if (!io.WantTextInput)
