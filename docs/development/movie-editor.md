@@ -18,7 +18,8 @@ from the current folder). `--inspect=scene:<screen>` starts on a scene view (for
   thumbnail and the screens using it, a slot without a package made on click.
 - **Scene view**: the screen playing; layers listed back to front (gameplay's layout layers greyed under the skin's);
   Move / Rotate / Scale / Transform tools (W/E/R/T; a handle scales about the opposite one, Alt about the origin;
-  Transform: inside moves, handles scale, just outside a corner turns); snapping to the stage, other layers' edges and a grid
+  Transform: inside moves, handles scale, just outside a corner turns); a canvas (wheel zooms about the pointer,
+  middle drag moves, Home fits, F frames the selection; the screen fitted with a margin); snapping to the stage, other layers' edges and a grid
   (Ctrl held: off), 15° and 0.05 steps; arrows nudge; drag a component onto the stage to add it; one gesture is one
   undo step. Saves `scenes.json` (Ctrl+S).
 - **Live scene window** (F4, Skin menu) over the component editor: the screen with the package being edited, from its

@@ -138,7 +138,7 @@ public sealed partial class MovieInspectorSession
         _liveClock = Math.Min(_liveClock + ImGui.GetIO().DeltaTime * 60, 4);
         for (; _liveClock >= 1; _liveClock--)
             _liveScene!.Advance();
-        _sceneTexture ??= _application.CreatePreview(1280, 720);
+        _sceneTexture ??= _application.CreatePreview(2560, 1440); // twice the screen: sharp when zoomed in
         _application.DrawPreview(_sceneTexture.Value, _liveScene!.Frame());
         return (nint)_sceneTexture.Value.Value;
     }

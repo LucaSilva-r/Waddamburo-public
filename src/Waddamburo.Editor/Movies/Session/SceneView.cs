@@ -22,6 +22,9 @@ public sealed partial class MovieInspectorSession
     private (SceneTool Tool, Vector2 From, SkinScenes.Layer Start, int Handle, Vector2 Anchor)? _gesture2;
     private bool _gestureEdited, _fieldEdited;
     private readonly List<(Vector2 A, Vector2 B)> _sceneGuides = [];
+    private float _sceneZoom = 1;   // 1: the screen fitted to the panel with a margin
+    private Vector2 _scenePan;
+    private bool _scenePanning;
 
     private void scenePage(float top, Vector2 size)
     {
@@ -125,7 +128,8 @@ public sealed partial class MovieInspectorSession
         ImGui.SetNextItemWidth(90);
         ImGui.Combo("##grid", ref _grid, GridNames, GridNames.Length);
         ImGui.SameLine(0, 24);
-        ImGui.TextDisabled("Arrows nudge (Shift: 10). Delete removes.");
+        ImGui.TextDisabled($"zoom {_sceneZoom * 100:0}%%");
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Wheel zooms, middle drag moves, Home fits the screen, F frames the selection.\nArrows nudge (Shift: 10). Delete removes.");
     }
 
     private static readonly int[] GridSteps = [0, 1, 2, 4, 8, 16, 32, 64];
@@ -217,20 +221,50 @@ public sealed partial class MovieInspectorSession
 
     private void sceneStage(string key, IReadOnlyList<SkinScenes.Layer> layers)
     {
+        // The canvas: the whole panel, the screen in it fitted with a margin (so handles on its edges can be taken),
+        // then zoomed about the pointer (wheel) and moved (middle drag). Home: fitted again; F: the selection framed.
         var area = ImGui.GetContentRegionAvail();
-        var scale = Math.Min(area.X / 1280, area.Y / 720);
+        var origin = ImGui.GetCursorScreenPos();
+        var fit = Math.Min(area.X / 1280, area.Y / 720) * .85f;
+        var scale = fit * _sceneZoom;
         var size = new Vector2(1280, 720) * scale;
-        var corner = ImGui.GetCursorScreenPos() + (area - size) / 2;
+        var corner = origin + area / 2 + _scenePan - size / 2;
         var list = ImGui.GetWindowDrawList();
-        if (liveScene(key) is { } texture)
-            list.AddImage(texture, corner, corner + size);
-        list.AddRect(corner, corner + size, CardBorder);
-        ImGui.SetCursorScreenPos(corner);
-        ImGui.InvisibleButton("##stage", size);
+        ImGui.InvisibleButton("##stage", Vector2.Max(area, Vector2.One));
         var io = ImGui.GetIO();
         var mouse = ImGui.GetMousePos();
-        var stagePoint = (mouse - corner) / scale;
         var over = ImGui.IsItemHovered();
+        if (over && io.MouseWheel != 0 && _gesture2 is null)
+        {
+            var held = (mouse - corner) / scale;
+            _sceneZoom = Math.Clamp(_sceneZoom * MathF.Pow(1.15f, io.MouseWheel), .1f, 16);
+            scale = fit * _sceneZoom;
+            size = new Vector2(1280, 720) * scale;
+            // The point under the pointer stays under it.
+            _scenePan = mouse - held * scale + size / 2 - origin - area / 2;
+            corner = origin + area / 2 + _scenePan - size / 2;
+        }
+        if (over && ImGui.IsMouseClicked(ImGuiMouseButton.Middle)) _scenePanning = true;
+        if (_scenePanning)
+        {
+            if (!ImGui.IsMouseDown(ImGuiMouseButton.Middle)) _scenePanning = false;
+            else { _scenePan += io.MouseDelta; corner += io.MouseDelta; ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeAll); }
+        }
+        if (over && !io.WantTextInput && !io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.Home, false))
+            (_sceneZoom, _scenePan) = (1, Vector2.Zero);
+        if (over && !io.WantTextInput && !io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.F, false)
+            && _sceneLayer >= 0 && _sceneLayer < layers.Count && layerCorners(_sceneLayer, layers) is { } framed)
+        {
+            var (low, high) = extent(framed);
+            var extentSize = Vector2.Max(high - low, new(8));
+            _sceneZoom = Math.Clamp(Math.Min(area.X * .6f / (extentSize.X * fit), area.Y * .6f / (extentSize.Y * fit)), .1f, 16);
+            _scenePan = (new Vector2(640, 360) - (low + high) / 2) * fit * _sceneZoom;
+            return; // drawn framed from the next frame
+        }
+        if (liveScene(key) is { } texture)
+            list.AddImage(texture, corner, corner + size);
+        list.AddRect(corner - Vector2.One, corner + size + Vector2.One, color(.55f, .6f, .66f), 0, ImDrawFlags.None, 1);
+        var stagePoint = (mouse - corner) / scale;
         var snapping = _snap && !io.KeyCtrl;
         Vector2 screen(Vector2 point) => corner + point * scale;
         if (over && !io.WantTextInput && !io.KeyCtrl)
