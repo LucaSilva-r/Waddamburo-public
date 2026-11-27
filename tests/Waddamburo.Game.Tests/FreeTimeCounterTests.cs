@@ -195,7 +195,7 @@ public sealed class FreeTimeCounterTests
     {
         var select = load("song_select/song_select");
         var asked = new List<string>();
-        select.RequestHandler = (name, _) => { asked.Add(name); return null; };
+        select.RequestHandler = (name, _) => { if (name != "rows.window") asked.Add(name); return null; }; // the window it shows: any
         static LumenHostValue text(string value) => LumenHostValue.FromString(value);
         select.Publish("rows.count", n(3));
         select.Publish("selected.row", n(2));
@@ -215,8 +215,12 @@ public sealed class FreeTimeCounterTests
         select.PublishItem("row.title", 2, text("Oni"));
         select.PublishItem("row.stars", 2, n(7));
         advance(select, 2);
-        Assert.Equal("  - Vocaloid   (1)", select.ReadScriptValue("row0.text"));
-        Assert.Equal(">           Oni   Lv 7", select.ReadScriptValue("row2.text"));
+        // A panel per row, in row order: the folder with its count, the chart with its level.
+        Assert.Equal("Vocaloid", select.ReadScriptValue("list.p0.title.text"));
+        Assert.Equal("1", select.ReadScriptValue("list.p0.meta.text"));
+        Assert.Equal("Oni", select.ReadScriptValue("list.p2.chart_title.text"));
+        Assert.Equal("7", select.ReadScriptValue("list.p2.chip.label.text"));
+        Assert.Equal("Senbonzakura", select.ReadScriptValue("info.title.text")); // a chart shows its song
         Assert.Empty(asked);
         select.Publish("select.timeLeft", n(0)); // out of time on a chart: it is played, once
         advance(select, 3);

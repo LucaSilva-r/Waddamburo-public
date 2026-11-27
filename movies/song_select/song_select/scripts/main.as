@@ -125,11 +125,17 @@ function bind(r, y, alpha, x) {
 
 function release(p) {
     if (p.row != undefined && byRow[p.row] == p) {
-        delete byRow[p.row];
+        byRow[p.row] = undefined;
     }
     p.row = undefined;
     p.dying = false;
     p.clip._visible = false;
+}
+
+// The panel showing row r, if any (an entry counts only while its panel still holds that row).
+function panelOf(r) {
+    var p = byRow[r];
+    return p != undefined && p.row == r ? p : undefined;
 }
 
 function rebuildIndex() {
@@ -153,7 +159,7 @@ function shift(op, count) {
         opened = {row: op.row, from: op.row + 1, to: op.row + d, until: frame + 40};
     } else {
         var n = -d;
-        var parent = byRow[op.row];
+        var parent = panelOf(op.row);
         for (var j = 0; j < panels.length; j++) {
             var p = panels[j];
             if (p.row == undefined) {
@@ -219,11 +225,11 @@ function layout() {
 
     // Rows that should be on screen get a panel.
     for (var r = Math.max(0, cur - WINDOW); r < Math.min(count, cur + WINDOW); r++) {
-        if (t[r] == undefined || t[r] < -120 || t[r] > 840 || byRow[r] != undefined || Wd.get("row.kind", r) == undefined) {
+        if (t[r] == undefined || t[r] < -120 || t[r] > 840 || panelOf(r) != undefined || Wd.get("row.kind", r) == undefined) {
             continue;
         }
-        if (opened != undefined && r >= opened.from && r <= opened.to && byRow[opened.row] != undefined) {
-            bind(r, byRow[opened.row].y, 0, byRow[opened.row].x);
+        if (opened != undefined && r >= opened.from && r <= opened.to && panelOf(opened.row) != undefined) {
+            bind(r, panelOf(opened.row).y, 0, panelOf(opened.row).x);
         } else if (panels.length == 0 || shownKey == "") {
             // The screen's first frame: the list sweeps in from the right, the far rows last.
             bind(r, t[r], 0, LIST_X + 300 + Math.abs(t[r] - CENTER) * 0.6);
