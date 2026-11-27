@@ -86,9 +86,16 @@ public sealed class NoteGeometry
         var (x, y) = Point(noteTime, time, controlTime ?? noteTime, route, hitNote);
         y += yOffset;
         var margin = WideView ? 1500 : 100;
-        if (x < -margin || x > 1280 + margin || y < -margin || y > 720 + margin)
+        // A left-anchored lane on a stage of another width: its right edge is the stage's width (fewer notes at 4:3);
+        // past 16:9 no more notes than at 16:9 (as osu!taiko): they fade in at the 16:9 distance.
+        var stage = Waddamburo.Lumen.Rendering.LumenStage.Width;
+        var right = WideView ? 1280 : Math.Min(stage, 1280);
+        if (x < -margin || x > right + margin || y < -margin || y > 720 + margin)
             return null;
         var (turn, size, alpha) = (0d, 1f, 1f);
+        var capped = !WideView && stage > 1280;
+        if (capped && x > 1240)
+            alpha = Math.Clamp((1340 - (float)x) / 100, 0, 1);
         if (barLine && scroll.Imaginary != 0)
             turn = Math.Atan2(scroll.Imaginary, scroll.Multiplier);
         // Note mods on the note itself: dizzy turns it by how far it is, zoom sizes it, alpha fades it.
@@ -96,7 +103,7 @@ public sealed class NoteGeometry
             (turn, size, alpha) = (_mods.Value("notes", "dizzy", time) * (x - HitX) / 100,
                 (float)_mods.Value("notes", "zoom", time), Math.Clamp((float)_mods.Value("notes", "alpha", time), 0, 1));
         var (cos, sin) = ((float)Math.Cos(turn), (float)Math.Sin(turn));
-        return new NotePlacement(new LumenMatrix(size * cos, size * sin, -size * sin, size * cos, x, y), alpha);
+        return new NotePlacement(new LumenMatrix(size * cos, size * sin, -size * sin, size * cos, x, y), capped && x > 1240 ? Math.Min(alpha, Math.Clamp((1340 - (float)x) / 100, 0, 1)) : alpha);
     }
 
     /// <summary>

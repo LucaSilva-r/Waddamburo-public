@@ -33,7 +33,10 @@ public sealed class TaikoLumenPresentation
     private readonly float _hitRadius;
     private readonly LumenMatrix? _laneFrame;
 
-    private LumenSceneLayer inLane(LumenSceneLayer layer) => _laneFrame is { } frame ? layer with { Transform = layer.Transform.Then(frame) } : layer;
+    // Notes go where the lane goes: in its frame, and with its stage edge (LumenStage anchors).
+    private LumenSceneLayer inLane(LumenSceneLayer layer) => (_laneFrame is { } frame ? layer with { Transform = layer.Transform.Then(frame) } : layer)
+        with { Anchor = _laneAnchor };
+    private Waddamburo.Lumen.Rendering.LumenAnchor _laneAnchor;
     private readonly TaikoGoGoPresentation _gogo;
     private readonly Func<IEnumerable<LumenSceneLayer>>? _flights; // the hit flights drawn now
     private readonly Func<LumenPlayer, bool> _flies; // a flight movie: placed with the target
@@ -94,6 +97,7 @@ public sealed class TaikoLumenPresentation
         // A turned or resized lane (a skin's place): the notes, bar lines and their labels travel along it, sized with it,
         // about the hit target; they are worked out on a level lane, then put in its frame.
         var lane = target.Transform;
+        _laneAnchor = target.Anchor;
         _laneFrame = lane is { M11: 1, M12: 0, M21: 0, M22: 1 } ? null
             : new LumenMatrix(lane.M11, lane.M12, lane.M21, lane.M22,
                 _hitX - (lane.M11 * _hitX + lane.M21 * _hitY), _hitY - (lane.M12 * _hitX + lane.M22 * _hitY));
