@@ -65,7 +65,13 @@ public sealed class SkinScenes
 
     private readonly Dictionary<string, Layer[]> _scenes;
 
-    private SkinScenes(Dictionary<string, Layer[]> scenes) => _scenes = scenes;
+    private SkinScenes(Dictionary<string, Layer[]> scenes, Dictionary<int, System.Numerics.Vector2> layout) => (_scenes, Layout) = (scenes, layout);
+
+    /// <summary>
+    /// The gameplay layout's points the skin moves (gameplay's <c>"layout": {"14": [248, 271]}</c>: by ensolayout
+    /// index, over the standard layout). Every gameplay movie at a point moves with it (the lane, its gauge, its hit mark...).
+    /// </summary>
+    public IReadOnlyDictionary<int, System.Numerics.Vector2> Layout { get; }
 
     /// <summary>Screen keys the file composes.</summary>
     public IEnumerable<string> Keys => _scenes.Keys;
@@ -119,6 +125,7 @@ public sealed class SkinScenes
         if (!root.TryGetProperty("scenes", out var scenes) || scenes.ValueKind != JsonValueKind.Object)
             throw new InvalidDataException("\"scenes\" object expected.");
         var result = new Dictionary<string, Layer[]>(StringComparer.Ordinal);
+        var points = new Dictionary<int, System.Numerics.Vector2>();
         foreach (var scene in scenes.EnumerateObject())
         {
             if (!Screens.TryGetValue(scene.Name, out var screen))
@@ -130,8 +137,23 @@ public sealed class SkinScenes
                 if (!layers.Any(layer => layer.Role == role))
                     throw new InvalidDataException($"{scene.Name}: needs a layer with role \"{role}\".");
             result[scene.Name] = layers;
+            if (scene.Value.TryGetProperty("layout", out var layout))
+            {
+                if (scene.Name != "gameplay" || layout.ValueKind != JsonValueKind.Object)
+                    throw new InvalidDataException($"{scene.Name}: \"layout\" is gameplay's only, an object of points by index.");
+                foreach (var point in layout.EnumerateObject())
+                {
+                    if (!int.TryParse(point.Name, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var index)
+                        || index >= Formats.Layout.EnsoLayout.Standard.Points.Length)
+                        throw new InvalidDataException($"gameplay layout: \"{point.Name}\" is no layout point (0 to {Formats.Layout.EnsoLayout.Standard.Points.Length - 1}).");
+                    if (point.Value.ValueKind != JsonValueKind.Array || point.Value.GetArrayLength() != 2
+                        || point.Value.EnumerateArray().Any(static each => each.ValueKind != JsonValueKind.Number || !float.IsFinite(each.GetSingle())))
+                        throw new InvalidDataException($"gameplay layout {index}: [x, y] expected.");
+                    points[index] = new(point.Value[0].GetSingle(), point.Value[1].GetSingle());
+                }
+            }
         }
-        return new(result);
+        return new(result, points);
     }
 
     private static Layer readLayer(JsonElement layer, string where)

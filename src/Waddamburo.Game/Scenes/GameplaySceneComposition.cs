@@ -275,6 +275,15 @@ public static class GameplaySceneComposition
         let name = $"{entry.Part}_a_{variant:00}{suffix}"
         select ($"enso_original/{name}/packeddata.ddp", $"{name}/{name}.lm");
 
+    /// <summary>
+    /// The layout point (ensolayout index) the first player's gameplay movie of this name sits at; null for one the
+    /// engine places itself (notes, bar lines) or a name it does not know.
+    /// </summary>
+    public static int? LayoutIndex(string movie) =>
+        SystemLayers.FirstOrDefault(entry => entry.Movie == movie) is { Movie: not null } system ? system.Index
+        : SkinRoles.FirstOrDefault(entry => entry.Role == Role(movie)) is { Role: not null } skin ? skin.Index
+        : null;
+
     /// <summary>Traced draw depth of a gameplay layer role (larger = further back); null if unknown.</summary>
     public static int? Depth(string role) =>
         SkinRoles.FirstOrDefault(entry => entry.Role == role) is { Role: not null } skin ? skin.Depth

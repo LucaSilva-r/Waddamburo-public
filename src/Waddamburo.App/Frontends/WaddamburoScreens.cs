@@ -70,7 +70,8 @@ internal sealed class WaddamburoScreens : IScreenCompositions
     public SceneDefinition Gameplay(SceneId id, Random random, Formats.Layout.EnsoLayout layout, GameplaySceneComposition.ThemedSkin? theme = null,
         int side = 0, bool twoPlayers = false, bool dojo = false)
     {
-        var all = GameplaySceneComposition.Create(id, random, layout, null, side, twoPlayers, dojo);
+        // The skin's layout points over the layout given (the game data's, else the standard one).
+        var all = GameplaySceneComposition.Create(id, random, Skin is { } skin ? layout.With(skin.Layout) : layout, null, side, twoPlayers, dojo);
         // The skin's gameplay entry adds layers over the layout's (decoration): the roles above stay the layout's.
         return new(SceneDefinition.CurrentVersion, id, [.. all.Layers.Where(static layer => !GameplaySceneComposition.IsGreenDecoration(layer)),
             .. (Skin?.Layers("gameplay") ?? []).Select(static layer => layer.Definition())]);

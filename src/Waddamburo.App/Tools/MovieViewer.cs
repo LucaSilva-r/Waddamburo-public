@@ -257,19 +257,30 @@ internal static class MovieViewer
         if (skin is not null && inspector is not null)
         {
             skinStage = new Waddamburo.Editor.SkinStage(application, skin, Presentation.GameMovieContent.DecodeImage, ViewerHostBinding.Instance, textFields.Resolve);
-            // Gameplay: the layout's layers (lane, gauge, notes...) under the skin's, as the game composes them.
-            var gameplay = new Frontends.WaddamburoScreens().Gameplay(Waddamburo.Game.Scenes.FlowScenes.Gameplay, new Random(1),
-                Waddamburo.Formats.Layout.EnsoLayout.Standard).Layers.Select(layer =>
-                {
-                    var folder = Waddamburo.Game.Scenes.DirectoryLumenMovieContentSource.PackageFolder(skin, layer.ArchiveId, layer.MovieId) is { } found
-                        ? Path.GetRelativePath(skin, found).Replace('\\', '/')
-                        : $"{Path.GetDirectoryName(layer.ArchiveId)?.Replace('\\', '/')}/{Path.GetFileNameWithoutExtension(layer.MovieId)}";
-                    return new Waddamburo.Game.Scenes.SkinScenes.Layer(folder, layer.HostId, layer.Transform.X, layer.Transform.Y, null,
-                        layer.Transform.M11, layer.Transform.M22);
-                }).ToArray();
-            skinStage.Fixed = key => key == "gameplay" ? gameplay : [];
+            // Gameplay: the layout's layers (lane, gauge, notes...) under the skin's, as the game composes them, at the
+            // skin's layout points (made again when they change).
+            var scenes = new Waddamburo.Editor.SceneDocument(skin);
+            (string Text, Waddamburo.Game.Scenes.SkinScenes.Layer[] Layers)? gameplay = null;
+            Waddamburo.Game.Scenes.SkinScenes.Layer[] gameplayLayers()
+            {
+                if (gameplay is { } made && made.Text == scenes.Text)
+                    return made.Layers;
+                var layout = Waddamburo.Formats.Layout.EnsoLayout.Standard.With(scenes.Layout);
+                var layers = Waddamburo.Game.Scenes.GameplaySceneComposition.Create(Waddamburo.Game.Scenes.FlowScenes.Gameplay, new Random(1), layout)
+                    .Layers.Where(static layer => !Waddamburo.Game.Scenes.GameplaySceneComposition.IsGreenDecoration(layer)).Select(layer =>
+                    {
+                        var folder = Waddamburo.Game.Scenes.DirectoryLumenMovieContentSource.PackageFolder(skin, layer.ArchiveId, layer.MovieId) is { } found
+                            ? Path.GetRelativePath(skin, found).Replace('\\', '/')
+                            : $"{Path.GetDirectoryName(layer.ArchiveId)?.Replace('\\', '/')}/{Path.GetFileNameWithoutExtension(layer.MovieId)}";
+                        return new Waddamburo.Game.Scenes.SkinScenes.Layer(folder, layer.HostId, layer.Transform.X, layer.Transform.Y, null,
+                            layer.Transform.M11, layer.Transform.M22);
+                    }).ToArray();
+                gameplay = (scenes.Text, layers);
+                return layers;
+            }
+            skinStage.Fixed = key => key == "gameplay" ? gameplayLayers() : [];
             inspector.Skin = skinStage;
-            inspector.Scenes = new Waddamburo.Editor.SceneDocument(skin);
+            inspector.Scenes = scenes;
             inspector.ShowHome();
             // --inspect=scene:<screen> starts on that screen's scene view.
             if (inspect?.Split('=', 2) is [_, var start] && start.StartsWith("scene:", StringComparison.Ordinal))

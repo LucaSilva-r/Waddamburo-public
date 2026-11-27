@@ -47,13 +47,23 @@ public sealed partial class MovieInspectorSession
             ImGui.SeparatorText("Layers, back to front");
             if (under.Count > 0)
             {
-                ImGui.TextDisabled($"{under.Count} from the layout (lane, gauge, notes...):");
-                ImGui.TextDisabled("moved in a song: pause > Layouts.");
-                foreach (var layer in under)
+                ImGui.TextDisabled("The layout's (moving one moves its point:");
+                ImGui.TextDisabled("every movie on that point goes with it)");
+                for (var index = 0; index < under.Count; index++)
                 {
-                    ImGui.TextDisabled("  " + layer.Movie[(layer.Movie.LastIndexOf('/') + 1)..]);
-                    if (ImGui.IsItemHovered()) ImGui.SetTooltip($"{layer.Movie} ({layer.Role})");
-                    if (ImGui.IsItemClicked() && Skin.Exists(layer.Movie)) openPackage(layer.Movie);
+                    var layer = under[index];
+                    var point = layoutPoint(layer);
+                    ImGui.PushID(1000 + index);
+                    ImGui.BeginDisabled(point is null);
+                    if (ImGui.Selectable($"  {layer.Movie[(layer.Movie.LastIndexOf('/') + 1)..]}{(point is { } at ? $"  · point {at}" : "  · placed by the engine")}",
+                        _layoutLayer == index, ImGuiSelectableFlags.AllowDoubleClick))
+                    {
+                        (_layoutLayer, _sceneLayer) = (index, -1);
+                        if (ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left) && Skin.Exists(layer.Movie)) openPackage(layer.Movie);
+                    }
+                    ImGui.EndDisabled();
+                    if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled)) ImGui.SetTooltip($"{layer.Movie} ({layer.Role})");
+                    ImGui.PopID();
                 }
                 ImGui.Spacing();
             }
@@ -64,7 +74,7 @@ public sealed partial class MovieInspectorSession
                 if (ImGui.Selectable($"{layer.Movie[(layer.Movie.LastIndexOf('/') + 1)..]}  ({layer.Role}){(layer.Side is { } drum ? drum == 0 ? " left" : " right" : "")}",
                     _sceneLayer == index, ImGuiSelectableFlags.AllowDoubleClick))
                 {
-                    _sceneLayer = index;
+                    (_sceneLayer, _layoutLayer) = (index, -1);
                     if (ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left)) openPackage(layer.Movie);
                 }
                 if (ImGui.IsItemHovered()) ImGui.SetTooltip($"{layer.Movie}\nDouble-click to edit it.");
@@ -90,6 +100,8 @@ public sealed partial class MovieInspectorSession
         {
             if (_sceneLayer >= 0 && _sceneLayer < layers.Count)
                 layerInspector(key, layers[_sceneLayer]);
+            else if (_layoutLayer >= 0 && _layoutLayer < under.Count)
+                layoutInspector(under[_layoutLayer]);
             else
                 ImGui.TextDisabled("Select a layer: in the list, or on the stage.");
             ImGui.Separator();
@@ -305,6 +317,21 @@ public sealed partial class MovieInspectorSession
         bool turnZone() => _sceneTool == SceneTool.Transform && selected is not null && handleUnder() < 0 && !inside(selected, stagePoint)
             && selected.Any(at => Vector2.Distance(screen(at), mouse) <= 28);
         var under = over ? hit() : -1;
+        var fixedLayers = Skin!.Fixed?.Invoke(key) ?? [];
+        Vector2[]? fixedCorners(int index)
+        {
+            if (_liveScene is null || index >= _liveScene.FixedCount || !_liveScene.Bounds(index, out var bounds)) return null;
+            var matrix = fixedLayers[index].Transform;
+            Vector2 at(float x, float y) { var (tx, ty) = matrix.Transform(x, y); return new(tx, ty); }
+            return [at(bounds.X, bounds.Y), at(bounds.X + bounds.Width, bounds.Y), at(bounds.X + bounds.Width, bounds.Y + bounds.Height), at(bounds.X, bounds.Y + bounds.Height)];
+        }
+        int fixedHit()
+        {
+            for (var index = fixedLayers.Count - 1; index >= 0; index--)
+                if (layoutPoint(fixedLayers[index]) is not null && fixedCorners(index) is { } quad && inside(quad, stagePoint))
+                    return index;
+            return -1;
+        }
         // A component dropped on the stage: a new layer there, on top.
         if (_dragPackage is { } dropped && over && !ImGui.IsMouseDown(ImGuiMouseButton.Left))
         {
@@ -319,6 +346,10 @@ public sealed partial class MovieInspectorSession
             var turn = turnZone();
             var keep = handle >= 0 || turn || (_sceneTool == SceneTool.Rotate && selected is not null && (under == _sceneLayer || under < 0));
             if (!keep) _sceneLayer = under;
+            // Nothing of the skin's there: a layout layer (gameplay), moved by its layout point.
+            _layoutLayer = !keep && under < 0 ? fixedHit() : -1;
+            _layoutGesture = _layoutLayer >= 0 && layoutPoint(fixedLayers[_layoutLayer]) is { } point
+                ? (stagePoint, currentLayout()[point], point) : null;
             // A handle scales about the opposite one (Alt: about the layer's origin), which stays where it is.
             var anchor = handle < 0 || io.KeyAlt || localHandles(_sceneLayer) is not { } own ? Vector2.Zero
                 : own[handle < 4 ? (handle + 2) % 4 : 4 + (handle - 2) % 4];
@@ -327,6 +358,29 @@ public sealed partial class MovieInspectorSession
             _gestureEdited = false;
         }
         _sceneGuides.Clear();
+        if (_layoutGesture is { } moving)
+        {
+            if (!ImGui.IsMouseDown(ImGuiMouseButton.Left)) _layoutGesture = null;
+            else if (stagePoint != moving.From)
+            {
+                var to = moving.Start + stagePoint - moving.From;
+                var step = snapping ? Math.Max(1, GridSteps[Math.Clamp(_grid, 0, GridSteps.Length - 1)]) : 1;
+                to = new(MathF.Round(to.X / step) * step, MathF.Round(to.Y / step) * step);
+                if (to != currentLayout()[moving.Point])
+                {
+                    editLayout(moving.Point, to, _gestureEdited);
+                    _gestureEdited = true;
+                }
+            }
+        }
+        if (over && !io.WantTextInput && _layoutLayer >= 0 && _layoutLayer < fixedLayers.Count && layoutPoint(fixedLayers[_layoutLayer]) is { } nudged)
+        {
+            var step = io.KeyShift ? 10 : 1;
+            var nudge = new Vector2(ImGui.IsKeyPressed(ImGuiKey.RightArrow) ? step : ImGui.IsKeyPressed(ImGuiKey.LeftArrow) ? -step : 0,
+                ImGui.IsKeyPressed(ImGuiKey.DownArrow) ? step : ImGui.IsKeyPressed(ImGuiKey.UpArrow) ? -step : 0);
+            if (nudge != Vector2.Zero)
+                editLayout(nudged, currentLayout()[nudged] + nudge, false);
+        }
         if (_gesture2 is { } gesture && _sceneLayer >= 0 && _sceneLayer < layers.Count)
         {
             if (!ImGui.IsMouseDown(ImGuiMouseButton.Left)) _gesture2 = null;
@@ -380,6 +434,16 @@ public sealed partial class MovieInspectorSession
                 list.AddLine(pivot, pivot + new Vector2(cos, sin) * 48, Accent, 2);
             }
         }
+        // A layout layer: its box, and the other movies on its point in a fainter line.
+        if (_layoutLayer >= 0 && _layoutLayer < fixedLayers.Count && layoutPoint(fixedLayers[_layoutLayer]) is { } shared)
+            for (var index = 0; index < fixedLayers.Count; index++)
+                if (layoutPoint(fixedLayers[index]) == shared && fixedCorners(index) is { } quad)
+                {
+                    var points = quad.Select(screen).ToArray();
+                    list.AddPolyline(ref points[0], 4, index == _layoutLayer ? Accent : color(1, .56f, .18f, .45f), ImDrawFlags.Closed, index == _layoutLayer ? 2 : 1);
+                    if (index == _layoutLayer)
+                        list.AddText(points[0] - new Vector2(0, 17), Accent, $"{fixedLayers[index].Movie}  (layout point {shared})");
+                }
         foreach (var (a, b) in _sceneGuides)
             list.AddLine(screen(a), screen(b), color(.3f, .85f, 1, .9f), 1);
         if (_dragPackage is not null && over)
@@ -387,6 +451,55 @@ public sealed partial class MovieInspectorSession
         list.PopClipRect();
         if (handleUnder() >= 0) ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeAll);
         else if (turnZone()) ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+    }
+
+    private int _layoutLayer = -1; // a selected layout layer (gameplay's), by its place in the screen's engine layers
+    private (Vector2 From, Vector2 Start, int Point)? _layoutGesture;
+
+    // The layout point a gameplay layer sits at (null: the engine places it, as it does notes).
+    private static int? layoutPoint(SkinScenes.Layer layer) =>
+        GameplaySceneComposition.LayoutIndex(layer.Movie[(layer.Movie.LastIndexOf('/') + 1)..]) is { } index and > 1 ? index : null;
+
+    private Waddamburo.Formats.Layout.EnsoLayout currentLayout() => Waddamburo.Formats.Layout.EnsoLayout.Standard.With(Scenes!.Layout);
+
+    private void editLayout(int point, Vector2? to, bool continues)
+    {
+        try
+        {
+            Scenes!.EditLayout(point, to is { } at && at == Waddamburo.Formats.Layout.EnsoLayout.Standard[point] ? null : to, continues);
+            _notice = null;
+        }
+        catch (InvalidOperationException refused)
+        {
+            _notice = refused.Message;
+        }
+    }
+
+    private void layoutInspector(SkinScenes.Layer layer)
+    {
+        ImGui.TextUnformatted(layer.Movie);
+        if (layoutPoint(layer) is not { } point)
+        {
+            ImGui.TextDisabled("Placed by the engine.");
+            return;
+        }
+        ImGui.TextWrapped($"On layout point {point}: moving it moves every gameplay movie on that point (the lane's gauge, hit mark... with the lane).");
+        if (Skin!.Exists(layer.Movie) && ImGui.Button("Edit this component")) openPackage(layer.Movie);
+        var at = currentLayout()[point];
+        ImGui.TextDisabled("Point");
+        ImGui.SameLine(90);
+        ImGui.SetNextItemWidth(-1);
+        var changed = ImGui.DragFloat2("##point", ref at, 1, -4000, 4000, "%.0f");
+        if (ImGui.IsItemActivated()) _fieldEdited = false;
+        if (changed)
+        {
+            editLayout(point, new(MathF.Round(at.X), MathF.Round(at.Y)), _fieldEdited);
+            _fieldEdited = true;
+        }
+        ImGui.BeginDisabled(!Scenes!.Layout.ContainsKey(point));
+        if (ImGui.Button("Back to the standard layout")) editLayout(point, null, false);
+        ImGui.EndDisabled();
+        ImGui.TextDisabled($"Standard: {Waddamburo.Formats.Layout.EnsoLayout.Standard[point].X:0}, {Waddamburo.Formats.Layout.EnsoLayout.Standard[point].Y:0}");
     }
 
     private SkinScenes.Layer rotated(SkinScenes.Layer start, Vector2 from, Vector2 to, bool snapping)

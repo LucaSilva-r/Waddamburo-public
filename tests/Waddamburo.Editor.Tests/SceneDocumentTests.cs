@@ -66,3 +66,31 @@ public sealed class SceneScaleTests
         Assert.Equal(anchorBefore.Y, anchorAfter.Y, 1);
     }
 }
+
+public sealed class SceneLayoutTests
+{
+    [Fact]
+    public void LayoutPointsAreKeptByLayerEditsAndGoBackToStandard()
+    {
+        var root = Directory.CreateTempSubdirectory("waddamburo-layout-test").FullName;
+        try
+        {
+            var scenes = new SceneDocument(root);
+            scenes.EditLayout(14, new(300, 280));
+            scenes.EditLayout(13, new(910, 40));
+            scenes.Edit("gameplay", list => list.Add(new("deco/stars", "decoration", 0, 0, null)));
+            Assert.Equal(new System.Numerics.Vector2(300, 280), scenes.Layout[14]);
+            Assert.Single(scenes.Layers("gameplay"));
+            Assert.Contains("\"layout\": { \"13\": [910, 40], \"14\": [300, 280] }", scenes.Text);
+            scenes.EditLayout(14, null);
+            Assert.False(scenes.Layout.ContainsKey(14));
+            // A layout anywhere but gameplay, or a point past the layout's, is refused.
+            Assert.Throws<InvalidDataException>(() => SkinScenes.Parse("""{ "format": 1, "scenes": { "boot": { "layers": [ { "movie": "a/b", "role": "boot" } ], "layout": { "1": [0, 0] } } } }"""));
+            Assert.Throws<InvalidDataException>(() => SkinScenes.Parse("""{ "format": 1, "scenes": { "gameplay": { "layers": [], "layout": { "99": [0, 0] } } } }"""));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+}

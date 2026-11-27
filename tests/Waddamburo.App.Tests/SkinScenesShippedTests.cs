@@ -30,3 +30,20 @@ public sealed class SkinScenesShippedTests
         Assert.Equal(builtIn.Initial([]).SelectMany(Describe), skinned.Initial([]).SelectMany(Describe));
     }
 }
+
+public sealed class SkinLayoutTests
+{
+    // The skin's layout point 14 (the lane's) moves the lane and what sits on it in Waddamburo's gameplay screen.
+    [Fact]
+    public void TheSkinsLayoutMovesTheGameplayLayers()
+    {
+        var screens = new WaddamburoScreens
+        {
+            Skin = SkinScenes.Parse("""{ "format": 1, "scenes": { "gameplay": { "layers": [], "layout": { "14": [300, 280] } } } }"""),
+        };
+        var scene = screens.Gameplay(Waddamburo.Game.Scenes.FlowScenes.Gameplay, new Random(1), Waddamburo.Formats.Layout.EnsoLayout.Standard);
+        var lane = scene.Layers.Single(static layer => layer.MovieId == "lane/lane.lm");
+        Assert.Equal((300f, 280f), (lane.Transform.X, lane.Transform.Y));
+        Assert.Equal((300f, 280f), (scene.Layers.Single(static layer => layer.MovieId == "lane_hit/lane_hit.lm").Transform.X, 280f));
+    }
+}

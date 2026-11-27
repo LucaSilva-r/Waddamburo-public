@@ -64,9 +64,40 @@ public sealed class SceneDocument
     {
         var layers = Layers(key).ToList();
         change(layers);
+        write(key, scene => scene["layers"] = new JsonArray([.. layers.Select(write)]), continues);
+    }
+
+    /// <summary>The gameplay layout's points the skin moves, by index (see <see cref="SkinScenes.Layout"/>).</summary>
+    public IReadOnlyDictionary<int, System.Numerics.Vector2> Layout => Parsed?.Layout ?? new Dictionary<int, System.Numerics.Vector2>();
+
+    /// <summary>Moves a gameplay layout point (null: back to the standard layout's), as <see cref="Edit"/> does a layer.</summary>
+    public void EditLayout(int index, System.Numerics.Vector2? point, bool continues = false) => write("gameplay", scene =>
+    {
+        var layout = scene["layout"] as JsonObject ?? new JsonObject();
+        var key = index.ToString(CultureInfo.InvariantCulture);
+        if (point is { } at) layout[key] = new JsonArray(Math.Round(at.X, 2), Math.Round(at.Y, 2));
+        else layout.Remove(key);
+        // Points in index order, so the file reads top to bottom.
+        var sorted = new JsonObject();
+        foreach (var (name, value) in layout.OrderBy(static pair => int.Parse(pair.Key, CultureInfo.InvariantCulture)).ToList())
+        {
+            layout.Remove(name);
+            sorted[name] = value;
+        }
+        if (sorted.Count == 0) scene.Remove("layout");
+        else scene["layout"] = sorted;
+        scene["layers"] ??= new JsonArray([.. Layers("gameplay").Select(write)]);
+    }, continues);
+
+    // Changes one screen's entry of the file (made when the file leaves it out), checked as the engine reads it.
+    private void write(string key, Action<JsonObject> change, bool continues)
+    {
         var root = JsonNode.Parse(Text, documentOptions: new() { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true })!.AsObject();
         var scenes = root["scenes"] as JsonObject ?? (JsonObject)(root["scenes"] = new JsonObject());
-        scenes[key] = new JsonObject { ["layers"] = new JsonArray([.. layers.Select(write)]) };
+        var scene = scenes[key] as JsonObject ?? new JsonObject();
+        scenes[key] = null;
+        change(scene);
+        scenes[key] = scene;
         var text = format(root);
         try
         {
@@ -144,14 +175,17 @@ public sealed class SceneDocument
             var (key, scene) = scenes[index];
             var layers = scene?["layers"]?.AsArray() ?? [];
             var comma = index < scenes.Count - 1 ? "," : "";
+            // gameplay's layout points: one line after its layers.
+            var layout = scene?["layout"] is JsonObject points && points.Count > 0
+                ? $", \"layout\": {{ {string.Join(", ", points.Select(static pair => $"\"{pair.Key}\": [{value(pair.Value![0])}, {value(pair.Value![1])}]"))} }}" : "";
             if (layers.Count <= 1)
             {
-                lines.Add($"    {JsonSerializer.Serialize(key)}: {{ \"layers\": [{(layers.Count == 1 ? $" {compact(layers[0]!)} " : "")}] }}{comma}");
+                lines.Add($"    {JsonSerializer.Serialize(key)}: {{ \"layers\": [{(layers.Count == 1 ? $" {compact(layers[0]!)} " : "")}]{layout} }}{comma}");
                 continue;
             }
             lines.Add($"    {JsonSerializer.Serialize(key)}: {{ \"layers\": [");
             lines.AddRange(layers.Select((layer, at) => $"      {compact(layer!)}{(at < layers.Count - 1 ? "," : "")}"));
-            lines.Add($"    ] }}{comma}");
+            lines.Add($"    ]{layout} }}{comma}");
         }
         lines.Add("  }");
         lines.Add("}");
