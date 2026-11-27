@@ -430,7 +430,9 @@ middle. Gameplay's own movies hug the left edge (the song's title the right) unl
 follow the lane. Note visibility follows osu!taiko: a narrower screen shows fewer notes, a wider one no more than 16:9
 (they fade in at the 16:9 distance, `NoteGeometry.Place`). Green's frontend, and a player's squeezed 4:3 layout, stay
 1280. The skin editor's scene view shows any width (its stage width picker) and edits a layer's anchor; the component
-editor sets a clip's. ponytail: engine-drawn overlays (menus, pause, setup) are still the centred 1280 box.
+editor sets a clip's. The engine's own overlays fit (`GameShell.Fitted`): a centred one (menus, pause, settings,
+search) shrinks to fit a narrower stage, one across the whole stage (dims, backdrops) spans it, a corner one (notices,
+the pairing pill) holds its edge. ponytail: the touch drum and menu touch buttons stay in the 1280 box (cut at 4:3).
 
 ## Contracts (the game's side, private lab)
 
