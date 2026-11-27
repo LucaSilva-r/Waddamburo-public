@@ -720,7 +720,8 @@ internal static class Avm1Interpreter
         (bool leftBoolean, bool rightBoolean) => leftBoolean == rightBoolean,
         (double leftNumber, double rightNumber) => numericEquals(leftNumber, rightNumber),
         (string leftText, string rightText) => leftText == rightText,
-        _ => false,
+        // Objects, functions and clips: the same one (Flash compares them by reference).
+        _ => left is not (bool or double or string) && ReferenceEquals(left, right),
     };
 
     private static bool numericEquals(double left, double right) =>

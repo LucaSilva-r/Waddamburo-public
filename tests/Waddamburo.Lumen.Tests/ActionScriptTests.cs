@@ -91,6 +91,8 @@ public sealed class ActionScriptTests
     [InlineData("report(true ? 1 : 2, false ? 1 : 2, 1 ? (0 ? 'a' : 'b') : 'c'); // comment\n/* block\ncomment */", "1,2,b")]
     [InlineData("var x: Number = 3; function typed(a: String, b: flash.geom.Point): Void { report(a, x); } typed('t');", "t,3")]
     [InlineData("var o = { a: 1 }; delete o.a; report(o.a, Math.floor(2.7), Math.abs(-4));", "undefined,2,4")]
+    // Objects compare by reference: the same one is equal, two alike are not.
+    [InlineData("var a = { n: 1 }; var b = { n: 1 }; var m = {}; m[3] = a; report(a == a, a === a, a == b, m[3] == a, a != b, [] == []);", "true,true,false,true,true,false")]
     [InlineData("var r = report('first'); report(r, report('second') + 10);", "first|second|1,12")]
     public void ScriptsRun(string script, string expected)
     {
