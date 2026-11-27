@@ -320,7 +320,7 @@ internal sealed class HomeControls : IDisposable
                 ? SceneTextures.Compose(countdown.CreateSnapshot(1, layer => _shell.Gameplay.PlaceOverlay(layer, "timer")),
                     _resumeTextures, "Resume", _shell.ResolveSurface).Quads
                 : [])
-            .Concat(_shell.Unsqueezed(Enumerable.Empty<RenderQuad>()
+            .Concat(_shell.Fitted(Enumerable.Empty<RenderQuad>()
             .Concat(_shell.DeviceTransfer.IsOpen ? _shell.DeviceTransfer.Quads()
                 : _settingsOverlay && _shell.Service is { } settings ? settings.Quads()
                 : pauseChoices ? pause().Quads() : [])

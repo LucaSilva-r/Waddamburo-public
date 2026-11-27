@@ -140,9 +140,9 @@ internal sealed partial class GameShell
         if (!Editor.IsOpen && _gameplay.Reviewing && _gameplay.Review is { } review)
             quads.AddRange(_reviewBar.Quads(review, _gameplay.Training, _gameplay.AutoplayReview && _gameplay.Training is null));
         if (_playerSetup is not null)
-            quads.AddRange(_playerSetup.Quads(interpolation));
+            quads.AddRange(Fitted(_playerSetup.Quads(interpolation), centred: true));
         if (_accountPicker is not null)
-            quads.AddRange(_accountPicker.Quads());
+            quads.AddRange(Fitted(_accountPicker.Quads(), centred: true));
         quads.AddRange(indicatorQuads(false));
         quads.AddRange(Overlay.Quads(interpolation, ResolveSurface));
         // The online lobby shades (frosts) Song Select, all but its Don-chans and name boards: those come again over it.
@@ -150,22 +150,22 @@ internal sealed partial class GameShell
         if (Room.ShadesScene && Active.Id == FlowScenes.SongSelect)
         {
             frosted = quads.Count;
-            quads.AddRange(Room.Shade());
+            quads.AddRange(Fitted(Room.Shade(), centred: true));
             quads.AddRange(players(scene, interpolation));
         }
         foreach (var overlay in _inputOverlays)
             if (overlay != _search)
-                quads.AddRange(overlay.Quads());
+                quads.AddRange(Fitted(overlay.Quads(), centred: true));
         quads.AddRange(indicatorQuads(true));
-        quads.AddRange(pill());
+        quads.AddRange(Fitted(pill()));
         if (_notices is not null)
             // A replay being watched shows its toasts (a report's answer, a sanction); a song being played holds them.
-            quads.AddRange(_notices.Quads(Scenes.OnLane && !_gameplay.Demo && !(_gameplay.Reviewing && !_gameplay.Attempting)));
+            quads.AddRange(Fitted(_notices.Quads(Scenes.OnLane && !_gameplay.Demo && !(_gameplay.Reviewing && !_gameplay.Attempting))));
         // Song search is a menu page: everything under it frosted, as the settings are.
         if (_search.IsOpen)
         {
             frosted = quads.Count;
-            quads.AddRange(_search.Quads());
+            quads.AddRange(Fitted(_search.Quads(), centred: true));
         }
         // Sign in's overlay as well: a menu page over the frosted entry.
         if (_playerSetup is { SignInOpen: true })
@@ -179,6 +179,33 @@ internal sealed partial class GameShell
         _presenter.Presented(result, Overlay.IsShown);
         Painter.EndFrame();
         return _home.Draw(result);
+    }
+
+    /// <summary>
+    /// The engine's own overlays on a stage narrower or wider than 1280 (LumenStage; Waddamburo's frontend): a centred
+    /// one (a menu) shrinks to fit a narrower stage and stays as it is on a wider one; one across the whole stage (a dim,
+    /// a backdrop, a bar) spans the real one; a corner one moves out to its side's edge. And unsqueezed, as below.
+    /// </summary>
+    public IEnumerable<RenderQuad> Fitted(IEnumerable<RenderQuad> quads, bool centred = false)
+    {
+        quads = Unsqueezed(quads, centred);
+        var extra = Waddamburo.Lumen.Rendering.LumenStage.Extra;
+        if (extra == 0)
+            return quads;
+        var width = Waddamburo.Lumen.Rendering.LumenStage.Width;
+        var shrink = Math.Min(1, width / Waddamburo.Lumen.Rendering.LumenStage.BaseWidth);
+        var edge = extra / Waddamburo.Lumen.Rendering.LumenStage.BaseWidth;
+        return quads.Select(quad =>
+        {
+            var low = Math.Min(Math.Min(quad.TopLeft.X, quad.TopRight.X), Math.Min(quad.BottomRight.X, quad.BottomLeft.X));
+            var high = Math.Max(Math.Max(quad.TopLeft.X, quad.TopRight.X), Math.Max(quad.BottomRight.X, quad.BottomLeft.X));
+            var across = low <= .001f && high >= .999f;
+            RenderVertex v(RenderVertex vertex) => across
+                ? vertex with { X = vertex.X * width / Waddamburo.Lumen.Rendering.LumenStage.BaseWidth - edge }
+                : centred ? vertex with { X = .5f + (vertex.X - .5f) * shrink, Y = .5f + (vertex.Y - .5f) * shrink }
+                : vertex with { X = vertex.X + (vertex.X >= .5f ? edge : -edge) };
+            return quad with { TopLeft = v(quad.TopLeft), TopRight = v(quad.TopRight), BottomRight = v(quad.BottomRight), BottomLeft = v(quad.BottomLeft) };
+        });
     }
 
     /// <summary>
@@ -230,6 +257,8 @@ internal sealed partial class GameShell
             top.Add(Painter.Text(Strings.T("song_select.no_music"), 640, bannerY + 13, 508, 22));
         }
         top.AddRange(_performance.Quads());
+        // Banners and the like over the 1280 box: fitted to the stage (the touch controls below keep their places).
+        top = [.. Fitted(top, centred: true)];
         // Settings > Game Options > Lyrics: a sample line over the menu, as the settings stand.
         if (_service?.LyricsPreview is { } lyricsLook)
             top.AddRange(LyricsOverlay.Quads(Painter, Strings.T("service.lyrics.sample"), lyricsLook));

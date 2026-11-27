@@ -44,7 +44,7 @@ internal sealed class CustomUploadPrompt(GameShell shell, string fontPath) : IIn
         return true;
     }
 
-    public IEnumerable<RenderQuad> Quads() => shell.Unsqueezed(_menu.Quads(), centred: true);
+    public IEnumerable<RenderQuad> Quads() => shell.Fitted(_menu.Quads(), centred: true);
 
     public void Dispose() => _menu.Dispose();
 }

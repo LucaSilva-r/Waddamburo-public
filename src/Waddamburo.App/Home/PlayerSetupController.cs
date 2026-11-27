@@ -238,7 +238,7 @@ internal sealed class PlayerSetupController : IDisposable
     /// <summary>The sign-in overlay is open: the shell frosts everything under it, as under the settings.</summary>
     public bool SignInOpen => _signIn.IsOpen;
 
-    public IEnumerable<RenderQuad> SignInQuads() => shell.Unsqueezed(_signIn.Quads(), centred: true);
+    public IEnumerable<RenderQuad> SignInQuads() => shell.Fitted(_signIn.Quads(), centred: true);
 
     /// <summary>Home players' names over the entry's boards, and the setup's arrows and option text.</summary>
     public IEnumerable<RenderQuad> Quads(float interpolation)
