@@ -101,6 +101,7 @@ public sealed partial class MovieInspectorSession
         if (panel("##scene stage", new(side, top, size.X - side * 2, height), ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoTitleBar))
         {
             stageTools();
+            scenarioPicker(key);
             sceneStage(key, layers);
         }
         ImGui.End();

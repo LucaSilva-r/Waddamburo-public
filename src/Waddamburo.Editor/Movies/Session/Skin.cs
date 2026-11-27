@@ -33,7 +33,7 @@ public sealed partial class MovieInspectorSession
     private RenderTextureId? _sceneTexture;
     private Vector2 _sceneTextureSize;
     private SkinStage.Scene? _liveScene;
-    private (string Key, int Version, string Text)? _liveBuilt;
+    private (string Key, int Version, string Text, PreviewScenario? Scenario)? _liveBuilt;
     private double _liveClock;
     private (int Version, IReadOnlyList<string> Folders)? _packages;
     private string? _skinName;
@@ -63,7 +63,7 @@ public sealed partial class MovieInspectorSession
     /// <summary>Starts on a screen's scene view (a key of <see cref="SkinScenes.Screens"/>).</summary>
     public void ShowScene(string key) => openScene(key);
 
-    private int previewVersion => HashCode.Combine(Skin!.Version, Scenes?.Text);
+    private int previewVersion => HashCode.Combine(Skin!.Version, Scenes?.Text, _scenarioVersion);
 
     private IReadOnlyList<string> packages()
     {
@@ -122,7 +122,7 @@ public sealed partial class MovieInspectorSession
 
     private SkinStage.Scene playScene(string key, int ticks)
     {
-        var scene = Skin!.PlayScreen(key, Scenes!.Layers(key));
+        var scene = Skin!.PlayScreen(key, Scenes!.Layers(key), scenario: scenario(key));
         scene.Advance(ticks);
         return scene;
     }
@@ -132,10 +132,11 @@ public sealed partial class MovieInspectorSession
     // (null: the screen), so what a layer draws past the screen's edges shows too.
     private nint? liveScene(string key, (float X, float Y, float Width, float Height)? view = null, Vector2? pixels = null)
     {
-        if (_liveBuilt is not { } built || built.Key != key || built.Version != Skin!.Version || built.Text != Scenes!.Text)
+        var chosen = scenario(key);
+        if (_liveBuilt is not { } built || built.Key != key || built.Version != Skin!.Version || built.Text != Scenes!.Text || built.Scenario != chosen)
         {
-            _liveScene = Skin!.PlayScreen(key, Scenes!.Layers(key), _liveBuilt?.Key == key ? _liveScene : null);
-            _liveBuilt = (key, Skin.Version, Scenes.Text);
+            _liveScene = Skin!.PlayScreen(key, Scenes!.Layers(key), _liveBuilt?.Key == key ? _liveScene : null, chosen);
+            _liveBuilt = (key, Skin.Version, Scenes.Text, chosen);
         }
         _liveClock = Math.Min(_liveClock + ImGui.GetIO().DeltaTime * 60, 4);
         for (; _liveClock >= 1; _liveClock--)
@@ -427,6 +428,7 @@ public sealed partial class MovieInspectorSession
             }
             ImGui.SameLine();
             if (ImGui.SmallButton("Open scene")) _page = Page.Scene;
+            scenarioPicker(_sceneKey);
             var area = ImGui.GetContentRegionAvail();
             var scale = Math.Max(.01f, Math.Min(area.X / 1280, area.Y / 720));
             if (liveScene(_sceneKey) is { } texture)

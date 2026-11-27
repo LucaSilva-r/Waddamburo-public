@@ -102,10 +102,10 @@ public sealed class SkinStage
     public Func<string, IReadOnlyList<SkinScenes.Layer>>? Fixed { get; set; }
 
     /// <summary>A screen: the engine's layers (<see cref="Fixed"/>), then the skin's. <paramref name="reuse"/>: a scene whose players carry on where unchanged.</summary>
-    public Scene PlayScreen(string key, IReadOnlyList<SkinScenes.Layer> layers, Scene? reuse = null)
+    public Scene PlayScreen(string key, IReadOnlyList<SkinScenes.Layer> layers, Scene? reuse = null, PreviewScenario? scenario = null)
     {
         var under = Fixed?.Invoke(key) ?? [];
-        return new(this, [.. under, .. layers], reuse, fixedCount: under.Count);
+        return new(this, [.. under, .. layers], reuse, fixedCount: under.Count, scenario);
     }
 
     /// <summary>One package alone, fitted to the stage (a component's thumbnail): played for a moment, then measured.</summary>
@@ -131,9 +131,15 @@ public sealed class SkinStage
         private readonly (string Folder, int Version, LumenPlayer Player)[] _made;
         private readonly List<Action> _ticks = [];
 
-        internal Scene(SkinStage stage, IReadOnlyList<SkinScenes.Layer> layers, Scene? reuse, int fixedCount = 0)
+        private readonly PreviewScenario? _scenario;
+        private double _clock;
+
+        internal Scene(SkinStage stage, IReadOnlyList<SkinScenes.Layer> layers, Scene? reuse, int fixedCount = 0, PreviewScenario? scenario = null)
         {
             _stage = stage;
+            _scenario = scenario;
+            if (reuse?._scenario != scenario) reuse = null; // another scenario: every movie starts again with its data
+            _clock = reuse?._clock ?? 0;
             FixedCount = fixedCount;
             var sceneLayers = new List<LumenSceneLayer>();
             var textures = new List<RenderTextureId>();
@@ -148,6 +154,8 @@ public sealed class SkinStage
                 var player = kept ?? fresh(content);
                 if (PreviewData.Attach(player, layer.Role, fresh: kept is null, layer.Side) is { } tick)
                     _ticks.Add(tick);
+                if (kept is null)
+                    scenario?.Apply(player);
                 _made[index] = (layer.Movie, version, player);
                 sceneLayers.Add(new(player, layer.Transform, (uint)textures.Count, (uint)ids.Length));
                 textures.AddRange(ids);
@@ -167,6 +175,13 @@ public sealed class SkinStage
             {
                 foreach (var each in _ticks)
                     each();
+                if (_scenario is { } playing)
+                {
+                    foreach (var (name, drum, arguments) in playing.Due(_clock, _clock + 1.0 / 60))
+                        foreach (var layer in _made)
+                            layer.Player.EmitFor(drum, name, arguments);
+                    _clock += 1.0 / 60;
+                }
                 _player.Advance();
             }
         }

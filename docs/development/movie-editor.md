@@ -26,7 +26,11 @@ from the current folder). `--inspect=scene:<screen>` starts on a scene view (for
   unsaved document; only the edited movie restarts.
 - **Example data** (`Skin/PreviewData.cs`): every state at its sample, lists filled, both drums joined with names, the
   engine's `LibraryRows` over an example library for Song Select and the dan list (the movie's row requests answered).
-  ponytail: one fixed set; named scenarios per screen later.
+  Over it, **preview scenarios** (`Skin/PreviewScenarios.cs`): `previews/<screen>.json` in the skin, named sets of
+  states (`"player.name@2"`: a drum's), lists (their `.count` set too) and timed events looped
+  (`{"at": 0.5, "name": "note.judged", "args": [...]}`, `"loop": 2`), names checked against WdNames. Chosen in the
+  scene view and the live window; New adds one to the file and opens it in VS Code; a saved file is read again.
+  ponytail: gameplay scenarios are states and events, not a chart played (the --play driver could feed one later).
 - Built on `SkinStage` (plays screens and packages into preview textures: `SdlApplication.CreatePreview` /
   `DrawPreview`, renderer views 4-10, 7 a frame) and `SceneDocument` (scenes.json edits, refused when a screen would
   lose a required role). Thumbnails are drawn again each start (no disk cache yet). The live window is an ImGui
