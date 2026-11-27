@@ -203,6 +203,12 @@ public sealed partial class LumenPlayer : IAvm1Host
     /// <summary>Where the scene holds this movie (its layer's anchor): its clips' anchors are kept to the stage's edges.</summary>
     public Rendering.LumenAnchor SceneAnchor { get; set; }
 
+    /// <summary>How wide the scene draws this movie (its layer's horizontal scale): its clips' anchors are in stage units.</summary>
+    public float SceneScale { get; set; } = 1;
+
+    /// <summary>Where the scene draws this movie's origin across (its layer's place, before its anchor).</summary>
+    public float SceneX { get; set; }
+
     /// <summary>The movie this player runs (for <see cref="Inspect"/>).</summary>
     public string? Name
     {
@@ -2910,7 +2916,9 @@ public sealed partial class LumenPlayer : IAvm1Host
         ImmutableArray<LumenRenderQuad>.Builder quads,
         byte maskDepth = 0)
     {
-        if (Rendering.LumenStage.Width == Rendering.LumenStage.BaseWidth || anchorOf(instance) is not { } stretched || !Rendering.LumenStage.Stretches(stretched))
+        // To an edge (stretch-right, stretch-left) at any width; keeping its margins (stretch) only on another one.
+        if (anchorOf(instance) is not { } stretched || !Rendering.LumenStage.Stretches(stretched)
+            || stretched == Rendering.LumenAnchor.Stretch && Rendering.LumenStage.Width == Rendering.LumenStage.BaseWidth)
         {
             appendInstanceDrawn(instance, parentTransform, parentColor, parentBlend, interpolationFraction, quads, maskDepth);
             return;
@@ -2928,7 +2936,7 @@ public sealed partial class LumenPlayer : IAvm1Host
                 (minX, maxX) = (MathF.Min(minX, vertex.X), MathF.Max(maxX, vertex.X));
         if (!(maxX > minX))
             return;
-        var (from, to) = Rendering.LumenStage.StretchSpan(minX, maxX, SceneAnchor, kind);
+        var (from, to) = Rendering.LumenStage.StretchSpan(minX, maxX, SceneAnchor, kind, SceneScale, SceneX);
         var scale = (to - from) / (maxX - minX);
         float map(float x) => from + (x - minX) * scale;
         static LumenRenderVertex moved(LumenRenderVertex vertex, float by) => vertex with { X = vertex.X + by };
@@ -2982,7 +2990,7 @@ public sealed partial class LumenPlayer : IAvm1Host
         var transform = local.Transform.Then(parentTransform);
         // A clip anchored to a stage edge (a package's "anchor"): it, and what it holds, moves with that edge.
         if (anchorOf(instance) is { } anchor)
-            transform = Rendering.LumenStage.ClipAnchored(transform, anchor, SceneAnchor);
+            transform = Rendering.LumenStage.ClipAnchored(transform, anchor, SceneAnchor, SceneScale);
         var color = local.Color.Then(parentColor);
         var blend = instance.BlendMode switch
         {

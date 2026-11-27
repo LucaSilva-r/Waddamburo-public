@@ -91,6 +91,9 @@ public sealed class LumenScenePlayer
             var start = quads.Count;
             var placed = Rendering.LumenStage.Anchored(layer.Transform, layer.Anchor);
             layer.Player.SceneAnchor = layer.Anchor; // its clips' anchors hold the stage's edges, not the movie's
+            var scaleX = MathF.Sqrt(layer.Transform.M11 * layer.Transform.M11 + layer.Transform.M12 * layer.Transform.M12);
+            layer.Player.SceneScale = scaleX > 0 ? scaleX : 1;
+            layer.Player.SceneX = layer.Transform.X;
             layer.Player.AppendRenderQuads(playerInterpolation?.Invoke(layer.Player) ?? interpolationFraction, quads);
             for (var index = start; index < quads.Count; index++)
             {

@@ -18,9 +18,9 @@ public enum LumenAnchor
     Stretch,
     /// <summary>Scaled evenly to cover the stage, the overflow cropped (a picture background, as osu!'s).</summary>
     Cover,
-    /// <summary>Its right side reaches the right edge; its left side stays (a lane from the judge circle on).</summary>
+    /// <summary>Its right side reaches the right edge, at any width; its left side stays (a lane from the judge circle on).</summary>
     StretchRight,
-    /// <summary>Its left side reaches the left edge; its right side stays (the panel left of the judge circle).</summary>
+    /// <summary>Its left side reaches the left edge, at any width; its right side stays (the panel left of the judge circle).</summary>
     StretchLeft,
     /// <summary>
     /// Left on a narrower stage, centred on a wider one: gameplay, whose judge circle stays where a 16:9 screen in the
@@ -87,15 +87,16 @@ public static class LumenStage
     /// to the stage's edges whatever the movie's anchor (a left clip in a right-anchored movie still holds the left edge).
     /// Stretch is not a transform: the player maps the clip's drawing (<see cref="StretchSpan"/>).
     /// </summary>
-    public static LumenMatrix ClipAnchored(LumenMatrix transform, LumenAnchor clip, LumenAnchor movie)
+    public static LumenMatrix ClipAnchored(LumenMatrix transform, LumenAnchor clip, LumenAnchor movie, float movieScale = 1)
     {
         if (clip == LumenAnchor.LeftWhenNarrow)
             clip = Width < BaseWidth ? LumenAnchor.Left : LumenAnchor.Center;
         if (Width == BaseWidth || clip is LumenAnchor.Center or LumenAnchor.Stretch or LumenAnchor.StretchLeft or LumenAnchor.StretchRight)
             return transform;
-        var shift = Shift(movie);
+        // In the movie's own units: a movie drawn at 0.9 moves its clips 1/0.9 as far for the same distance on the stage.
+        var shift = Shift(movie) / movieScale;
         if (clip != LumenAnchor.Cover)
-            return transform with { X = transform.X + Shift(clip) - shift };
+            return transform with { X = transform.X + (Shift(clip) / movieScale - shift) };
         var covered = Anchored(transform with { X = transform.X + shift }, LumenAnchor.Cover);
         return covered with { X = covered.X - shift };
     }
@@ -104,8 +105,17 @@ public static class LumenStage
     /// Where a stretched clip drawn from <paramref name="minX"/> to <paramref name="maxX"/> (in its movie, anchored
     /// <paramref name="movie"/>) goes: each side keeps its distance to its edge of the stage.
     /// </summary>
-    public static (float From, float To) StretchSpan(float minX, float maxX, LumenAnchor movie, LumenAnchor clip = LumenAnchor.Stretch) =>
-        (clip == LumenAnchor.StretchRight ? minX : minX - Extra - Shift(movie), clip == LumenAnchor.StretchLeft ? maxX : maxX + Extra - Shift(movie));
+    /// <remarks>
+    /// stretch keeps each side's distance to its edge; stretch-right / stretch-left take that side to the edge itself, at
+    /// any width (<paramref name="movieX"/>, <paramref name="movieScale"/>: where and how wide the scene draws the movie).
+    /// </remarks>
+    public static (float From, float To) StretchSpan(float minX, float maxX, LumenAnchor movie, LumenAnchor clip = LumenAnchor.Stretch,
+        float movieScale = 1, float movieX = 0) => clip switch
+    {
+        LumenAnchor.StretchRight => (minX, (BaseWidth + Extra - Shift(movie) - movieX) / movieScale),
+        LumenAnchor.StretchLeft => ((-Extra - Shift(movie) - movieX) / movieScale, maxX),
+        _ => (minX - (Extra + Shift(movie)) / movieScale, maxX + (Extra - Shift(movie)) / movieScale),
+    };
 
     /// <summary>Whether the anchor widens the drawing (a stretch of either kind) rather than moving it.</summary>
     public static bool Stretches(LumenAnchor anchor) => anchor is LumenAnchor.Stretch or LumenAnchor.StretchLeft or LumenAnchor.StretchRight;
