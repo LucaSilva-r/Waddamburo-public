@@ -70,6 +70,12 @@ from the current folder). `--inspect=scene:<screen>` starts on a scene view (for
   `wd-names.json`, written by `--dump-wd=...`, kept current by a test); the package's labels and clip names from its
   movie.json; the skin's problems shown in their files on save (`--lint-skin=<skin> --json`). ponytail: no language
   server; errors as you type would need one.
+- **Variants** (`SkinStage.Variant`): the scene view's "Left drum / Right drum / Both drums" and, on gameplay, "Dan
+  course" play every screen as that credit sees it: a screen built per drum shows the joined drums' parts (the
+  others stay in the layer list, dimmed, unpicked); gameplay the right drum's lane (katsu movies), two lanes (the
+  second keeps the layout's places, not editable here), or a dan course's (`WaddamburoScreens.Placed` side, two
+  players, dojo). Previews and thumbnails follow it. `--inspect=scene:<screen>[:left|right|both][:dojo]`. 4:3 is no
+  variant: it is each player's own layout (pause › Layouts), and a 4:3 screen shows the 16:9 stage letterboxed.
 - **Text** (`Movies/Session/TextStyles.cs`, `Skin/TextDocument.cs`): the home page's Text tab edits text.json (undo,
   Save; unsaved styles drawn at once everywhere, `SkinText.Current`): styles (new, duplicate, rename, delete), fonts
   (a name for each font file found in the skin), a style's settings and its layers (+ Border, + Shadow, + Fill; grow,

@@ -44,7 +44,9 @@ public sealed partial class MovieInspectorSession
     private SceneMove? _sceneMove;
 
     // The name a screen's own movie is placed by (null: placed by the engine, not by the skin).
-    private static string? placeName(SkinScenes.Layer layer) => GameplaySceneComposition.PlaceName(layer.Movie[(layer.Movie.LastIndexOf('/') + 1)..]);
+    // A gameplay movie's place name; none for the second player's lane (two players): it keeps the layout's places.
+    private static string? placeName(SkinScenes.Layer layer) => layer.Role == GameplaySceneComposition.PlayerTwoHostId ? null
+        : GameplaySceneComposition.PlaceName(layer.Movie[(layer.Movie.LastIndexOf('/') + 1)..]);
 
     // The active layer as an index of the whole screen.
     private int selectedIndex(int ownCount, int skinCount) => _layoutLayer >= 0 && _layoutLayer < ownCount ? _layoutLayer
@@ -159,8 +161,12 @@ public sealed partial class MovieInspectorSession
             {
                 var layer = layers[index];
                 ImGui.PushID(index);
-                if (ImGui.Selectable($"{layer.Movie[(layer.Movie.LastIndexOf('/') + 1)..]}  ({layer.Role}){(layer.Side is { } drum ? drum == 0 ? " left" : " right" : "")}",
-                    _sceneSelection.Contains(own.Count + index), ImGuiSelectableFlags.AllowDoubleClick))
+                var unseen = !Skin!.Variant.Shows(layer.Side);
+                if (unseen) ImGui.PushStyleColor(ImGuiCol.Text, ImGui.GetStyle().Colors[(int)ImGuiCol.TextDisabled]);
+                var picked = ImGui.Selectable($"{layer.Movie[(layer.Movie.LastIndexOf('/') + 1)..]}  ({layer.Role}){(layer.Side is { } drum ? drum == 0 ? " left" : " right" : "")}{(unseen ? "  · not this credit's" : "")}",
+                    _sceneSelection.Contains(own.Count + index), ImGuiSelectableFlags.AllowDoubleClick);
+                if (unseen) ImGui.PopStyleColor();
+                if (picked)
                     listClick(own.Count + index, layer.Movie);
                 if (ImGui.IsItemHovered()) ImGui.SetTooltip($"{layer.Movie}\nDouble-click to edit it. Ctrl: add to the selection, Shift: a run.");
                 ImGui.PopID();
@@ -200,9 +206,36 @@ public sealed partial class MovieInspectorSession
         {
             sceneTools();
             scenarioPicker(key);
+            ImGui.SameLine(0, 16);
+            variantPicker(key);
             sceneStage(key, all, own);
         }
         ImGui.End();
+    }
+
+    // Who plays (and, in gameplay, a dan course's lane): the screen as that credit sees it.
+    private void variantPicker(string key)
+    {
+        var variant = Skin!.Variant;
+        string[] names = ["Left drum", "Right drum", "Both drums"];
+        ImGui.SetNextItemWidth(120);
+        if (ImGui.BeginCombo("##players", names[(int)variant.Players]))
+        {
+            for (var index = 0; index < names.Length; index++)
+                if (ImGui.Selectable(names[index], index == (int)variant.Players))
+                    Skin.Variant = variant with { Players = (SkinStage.Players)index };
+            ImGui.EndCombo();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Who has joined: the screen as that credit sees it.\nA screen built per drum (Song Select's name boards, the dan list) shows each joined drum's parts;\ngameplay: one lane (the left or the right drum's) or two.");
+        if (key == "gameplay")
+        {
+            ImGui.SameLine();
+            var dojo = variant.Dojo;
+            if (ImGui.Checkbox("Dan course", ref dojo))
+                Skin.Variant = variant with { Dojo = dojo };
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("The lane as a dan course shows it (its gauge and exam panels).");
+        }
     }
 
     // The skin's selected layers removed (the screen's own stay: they are the engine's).

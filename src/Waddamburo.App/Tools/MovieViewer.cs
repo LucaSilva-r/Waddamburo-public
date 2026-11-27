@@ -265,14 +265,18 @@ internal static class MovieViewer
             // Gameplay: the layout's layers (lane, gauge, notes...) under the skin's, as the game composes them, where the
             // skin's places put them (made again when they change).
             var scenes = skinScenes = new Waddamburo.Editor.SceneDocument(skin);
-            (string Text, Waddamburo.Game.Scenes.SkinScenes.Layer[] Layers)? gameplay = null;
+            (string Text, Waddamburo.Editor.SkinStage.ScreenVariant Variant, Waddamburo.Game.Scenes.SkinScenes.Layer[] Layers)? gameplay = null;
             Waddamburo.Game.Scenes.SkinScenes.Layer[] gameplayLayers()
             {
-                if (gameplay is { } made && made.Text == scenes.Text)
+                var variant = skinStage!.Variant;
+                if (gameplay is { } made && made.Text == scenes.Text && made.Variant == variant)
                     return made.Layers;
                 var screens = new Frontends.WaddamburoScreens { Skin = scenes.Parsed };
                 // The engine's note templates (notes, bar lines) are left out: they only show where it puts each note.
-                var layers = screens.Placed(Waddamburo.Game.Scenes.FlowScenes.Gameplay, new Random(1))
+                // The variant: whose lane (the right drum's alone: its katsu movies), two lanes, a dan course's.
+                var layers = screens.Placed(Waddamburo.Game.Scenes.FlowScenes.Gameplay, new Random(1),
+                        side: variant.Players == Waddamburo.Editor.SkinStage.Players.Right ? 1 : 0,
+                        twoPlayers: variant.Players == Waddamburo.Editor.SkinStage.Players.Both, dojo: variant.Dojo)
                     .Where(static layer => Waddamburo.Game.Scenes.GameplaySceneComposition.PlaceName(Path.GetFileNameWithoutExtension(layer.MovieId)) is not null)
                     .Select(layer =>
                     {
@@ -281,7 +285,7 @@ internal static class MovieViewer
                             : $"{Path.GetDirectoryName(layer.ArchiveId)?.Replace('\\', '/')}/{Path.GetFileNameWithoutExtension(layer.MovieId)}";
                         return Waddamburo.Game.Scenes.SkinScenes.Layer.FromMatrix(folder, layer.HostId, layer.Transform);
                     }).ToArray();
-                gameplay = (scenes.Text, layers);
+                gameplay = (scenes.Text, variant, layers);
                 return layers;
             }
             skinStage.Fixed = key => key == "gameplay" ? gameplayLayers() : [];
@@ -304,8 +308,15 @@ internal static class MovieViewer
                 }
             }
             // --inspect=scene:<screen> starts on that screen's scene view.
+            // --inspect=scene:<screen>[:left|right|both][:dojo] starts on that screen's scene view, in that variant.
             if (inspect?.Split('=', 2) is [_, var start] && start.StartsWith("scene:", StringComparison.Ordinal))
-                inspector.ShowScene(start[6..]);
+            {
+                var parts = start[6..].Split(':');
+                var players = parts.Contains("both") ? Waddamburo.Editor.SkinStage.Players.Both
+                    : parts.Contains("right") ? Waddamburo.Editor.SkinStage.Players.Right : Waddamburo.Editor.SkinStage.Players.Left;
+                skinStage.Variant = new(players, parts.Contains("dojo"));
+                inspector.ShowScene(parts[0]);
+            }
             else if (inspect?.Split('=', 2) is [_, "text"])
                 inspector.ShowText();
         }

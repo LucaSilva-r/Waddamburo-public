@@ -118,6 +118,31 @@ public sealed class SkinStage
         return _contents[folder] = (version, loaded, textures);
     }
 
+    /// <summary>Which drums have joined, as each player sees a screen (a screen built per drum shows each joined drum's parts).</summary>
+    public enum Players { Left, Right, Both }
+
+    /// <summary>A screen as one kind of credit sees it: who plays, and (gameplay) a dan course's lane.</summary>
+    public sealed record ScreenVariant(Players Players = Players.Left, bool Dojo = false)
+    {
+        /// <summary>Whether a layer kept to a drum's side (null: every credit's) shows.</summary>
+        public bool Shows(int? side) => side is not { } drum || Players == Players.Both || drum == (Players == Players.Right ? 1 : 0);
+    }
+
+    private ScreenVariant _variant = new();
+
+    /// <summary>The variant every screen is played in (previews, thumbnails, the scene view); another one plays them again.</summary>
+    public ScreenVariant Variant
+    {
+        get => _variant;
+        set
+        {
+            if (value == _variant)
+                return;
+            _variant = value;
+            Version++;
+        }
+    }
+
     /// <summary>
     /// The layers the engine places on a screen itself, under the skin's (gameplay: the layout's lane, gauge, notes...),
     /// as skin folders (set by the host). Null or empty: the screen is the skin's layers alone.
@@ -167,6 +192,7 @@ public sealed class SkinStage
         private readonly LumenScenePlayer _player;
         private readonly RenderTextureId[] _textures;
         private readonly (string Folder, int Version, LumenPlayer Player)[] _made;
+        private readonly bool[] _hidden;
         private readonly List<Action> _ticks = [];
 
         private readonly PreviewScenario? _scenario;
@@ -185,6 +211,7 @@ public sealed class SkinStage
             var sceneLayers = new List<LumenSceneLayer>();
             var textures = new List<RenderTextureId>();
             _made = new (string, int, LumenPlayer)[layers.Count];
+            _hidden = new bool[layers.Count];
             for (var index = 0; index < layers.Count; index++)
             {
                 var layer = layers[index];
@@ -200,18 +227,25 @@ public sealed class SkinStage
                 }
                 else
                 {
-                    if (PreviewData.Attach(player, layer.Role, fresh: kept is null, layer.Side) is { } tick)
+                    // The second player's lane (two players) is the right drum's: its name, its data.
+                    var side = layer.Side ?? (layer.Role == Waddamburo.Game.Scenes.GameplaySceneComposition.PlayerTwoHostId ? 1 : null);
+                    if (PreviewData.Attach(player, layer.Role, fresh: kept is null, side) is { } tick)
                         _ticks.Add(tick);
                     if (kept is null)
                         scenario?.Apply(player);
                 }
                 _made[index] = (layer.Movie, version, player);
-                sceneLayers.Add(new(player, layer.Transform, (uint)textures.Count, (uint)ids.Length));
+                // Another drum's part in this variant: kept in place (the layer list's order), unseen and unpicked.
+                _hidden[index] = index >= fixedCount && !stage.Variant.Shows(layer.Side);
+                sceneLayers.Add(new(player, layer.Transform, (uint)textures.Count, (uint)ids.Length) { Alpha = _hidden[index] ? 0 : 1 });
                 textures.AddRange(ids);
             }
             _player = new LumenScenePlayer(1280, 720, sceneLayers);
             _textures = [.. textures];
         }
+
+        /// <summary>Whether a layer is another drum's part in this variant (not drawn).</summary>
+        public bool Hidden(int layer) => layer >= 0 && layer < _hidden.Length && _hidden[layer];
 
         /// <summary>How many of the layers are the engine's (<see cref="Fixed"/>), before the skin's.</summary>
         public int FixedCount { get; }
@@ -239,7 +273,7 @@ public sealed class SkinStage
         public bool Bounds(int layer, out LumenNativeSurfacePlacement box)
         {
             box = default;
-            return layer >= 0 && layer < _made.Length && _made[layer].Player.TryInspectBounds("", out box);
+            return layer >= 0 && layer < _made.Length && !_hidden[layer] && _made[layer].Player.TryInspectBounds("", out box);
         }
 
         /// <summary>A frame of the screen; <paramref name="view"/>: the part of the stage it shows (null: the 1280x720 screen).</summary>
