@@ -75,12 +75,19 @@ internal sealed class WaddamburoScreens : IScreenCompositions
         return new(SceneDefinition.CurrentVersion, id, [.. all, .. (Skin?.Layers("gameplay") ?? []).Select(static layer => layer.Definition())]);
     }
 
+    /// <summary>
+    /// Waddamburo's gameplay layout: the standard one with the lane at the left edge, as Green's own data has it (its judge
+    /// circle 413 from the left, the panel left of it running off the screen), not 248 in.
+    /// </summary>
+    public static Formats.Layout.EnsoLayout Layout { get; } = Formats.Layout.EnsoLayout.Standard.With(
+        (14, new(0, 271)), (15, new(0, 449)), (16, new(0, 244)), (17, new(0, 422)));
+
     /// <summary>The gameplay roles at the layout's places, each moved where the skin's places put it (the editor shows these).</summary>
     public IReadOnlyList<SceneLayerDefinition> Placed(SceneId id, Random random, int side = 0,
         bool twoPlayers = false, bool dojo = false) =>
         // Always the standard layout: our movies are made for its places, whatever ensolayout.bin the game data has
         // (Green's moves the lane to (0, 184)); the skin's places go over it. The layout given is Green's frontend's.
-        [.. GameplaySceneComposition.Create(id, random, Formats.Layout.EnsoLayout.Standard, null, side, twoPlayers, dojo).Layers
+        [.. GameplaySceneComposition.Create(id, random, Layout, null, side, twoPlayers, dojo).Layers
             .Where(static layer => !GameplaySceneComposition.IsGreenDecoration(layer))
             // ponytail: the first lane only; the second player's (two players) keeps the layout's places.
             .Select(layer => layer.HostId != GameplaySceneComposition.PlayerTwoHostId && Skin?.Places.GetValueOrDefault(GameplaySceneComposition.PlaceName(Path.GetFileNameWithoutExtension(layer.MovieId)) ?? "")

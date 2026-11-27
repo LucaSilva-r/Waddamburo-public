@@ -37,6 +37,15 @@ public sealed class EnsoLayout
         new(200, 92), new(200, 630), new(23, 193), new(23, 495), new(143, 156), new(143, 531),
     ]);
 
+    /// <summary>This layout with some points moved (by layout index).</summary>
+    public EnsoLayout With(params ReadOnlySpan<(int Index, Vector2 Point)> moved)
+    {
+        var points = Points.ToBuilder();
+        foreach (var (index, point) in moved)
+            points[index] = point;
+        return new(points.ToImmutable());
+    }
+
     public Vector2 this[int index] => (uint)index < (uint)Points.Length
         ? Points[index]
         : throw new InvalidDataException($"ensolayout has no entry {index} ({Points.Length} entries).");

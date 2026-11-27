@@ -59,7 +59,7 @@ public sealed class SkinPlaceTests
         {
             Skin = SkinScenes.Parse("""{ "format": 1, "scenes": { "gameplay": { "layers": [], "places": { "lane": { "x": 300, "y": 280, "rotation": 5 } } } } }"""),
         };
-        var layout = Waddamburo.Formats.Layout.EnsoLayout.Standard;
+        var layout = WaddamburoScreens.Layout; // the standard one, the lane at the left edge as Green's data has it
         var scene = screens.Gameplay(Waddamburo.Game.Scenes.FlowScenes.Gameplay, new Random(1), layout);
         var lane = scene.Layers.Single(static layer => layer.MovieId == "lane/lane.lm");
         Assert.Equal((300f, 280f), (lane.Transform.X, lane.Transform.Y));
@@ -67,7 +67,7 @@ public sealed class SkinPlaceTests
         var gauge = scene.Layers.First(static layer => layer.MovieId.StartsWith("gage_don_1p_", StringComparison.Ordinal));
         Assert.Equal((layout[14].X, layout[14].Y), (gauge.Transform.X, gauge.Transform.Y));
         // The game data's own ensolayout.bin (Green's puts the lane's point at 0, 184) moves nothing of ours: our movies
-        // are made for the standard layout.
+        // are made for Waddamburo's layout.
         var green = Waddamburo.Formats.Layout.EnsoLayout.Parse(greenLike());
         var onGreen = screens.Gameplay(Waddamburo.Game.Scenes.FlowScenes.Gameplay, new Random(1), green);
         var greenGauge = onGreen.Layers.First(static layer => layer.MovieId.StartsWith("gage_don_1p_", StringComparison.Ordinal));
