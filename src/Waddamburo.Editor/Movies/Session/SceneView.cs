@@ -345,7 +345,7 @@ public sealed partial class MovieInspectorSession
                 each => each with { Side = drum == 0 ? null : drum - 1 });
         }
         var anchor = (int)layer.Anchor;
-        field("Anchor", () => ImGui.Combo("##anchor", ref anchor, "Centre (with the stage)\0Left edge\0Right edge\0Stretch across\0"),
+        field("Anchor", () => ImGui.Combo("##anchor", ref anchor, "Centre (with the stage)\0Left edge\0Right edge\0Stretch across\0Cover (fill, crop)\0"),
             each => each with { Anchor = (Lumen.Rendering.LumenAnchor)anchor });
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Where it holds when the screen is narrower or wider than 16:9 (4:3, 21:9, a phone).\nTry it with the stage width above the stage.");

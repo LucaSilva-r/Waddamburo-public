@@ -11,8 +11,13 @@ public enum LumenAnchor
     Left,
     /// <summary>Keeps its distance to the right edge.</summary>
     Right,
-    /// <summary>Stretched across: as wide as the stage (backgrounds, bars).</summary>
+    /// <summary>
+    /// Stretched across: its left side keeps its distance to the left edge, its right side to the right edge (a
+    /// background, a bar, a lane's band). A 9-sliced shape keeps its corners and caps.
+    /// </summary>
     Stretch,
+    /// <summary>Scaled evenly to cover the stage, the overflow cropped (a picture background, as osu!'s).</summary>
+    Cover,
 }
 
 /// <summary>
@@ -41,6 +46,13 @@ public static class LumenStage
     {
         if (anchor == LumenAnchor.Center || Width == BaseWidth)
             return transform;
+        if (anchor == LumenAnchor.Cover)
+        {
+            // Evenly about the stage's centre, as much as covers it (a narrower stage is covered already: cropped).
+            var cover = Math.Max(1, Width / BaseWidth);
+            return new LumenMatrix(transform.M11 * cover, transform.M12 * cover, transform.M21 * cover, transform.M22 * cover,
+                BaseWidth / 2 + (transform.X - BaseWidth / 2) * cover, Height / 2 + (transform.Y - Height / 2) * cover);
+        }
         if (anchor == LumenAnchor.Stretch)
         {
             // Wider about the 1280 box's centre: its edges land on the stage's.
@@ -49,6 +61,32 @@ public static class LumenStage
         }
         return transform with { X = transform.X + (anchor == LumenAnchor.Left ? -Extra : Extra) };
     }
+
+    /// <summary>How far a movie anchored so is moved sideways (left, right; none else).</summary>
+    public static float Shift(LumenAnchor anchor) => anchor == LumenAnchor.Left ? -Extra : anchor == LumenAnchor.Right ? Extra : 0;
+
+    /// <summary>
+    /// A clip's transform in its movie (whose own scene anchor is <paramref name="movie"/>) for the clip's anchor, kept
+    /// to the stage's edges whatever the movie's anchor (a left clip in a right-anchored movie still holds the left edge).
+    /// Stretch is not a transform: the player maps the clip's drawing (<see cref="StretchSpan"/>).
+    /// </summary>
+    public static LumenMatrix ClipAnchored(LumenMatrix transform, LumenAnchor clip, LumenAnchor movie)
+    {
+        if (Width == BaseWidth || clip is LumenAnchor.Center or LumenAnchor.Stretch)
+            return transform;
+        var shift = Shift(movie);
+        if (clip != LumenAnchor.Cover)
+            return transform with { X = transform.X + Shift(clip) - shift };
+        var covered = Anchored(transform with { X = transform.X + shift }, LumenAnchor.Cover);
+        return covered with { X = covered.X - shift };
+    }
+
+    /// <summary>
+    /// Where a stretched clip drawn from <paramref name="minX"/> to <paramref name="maxX"/> (in its movie, anchored
+    /// <paramref name="movie"/>) goes: each side keeps its distance to its edge of the stage.
+    /// </summary>
+    public static (float From, float To) StretchSpan(float minX, float maxX, LumenAnchor movie) =>
+        (minX - Extra - Shift(movie), maxX + Extra - Shift(movie));
 
     /// <summary>A point of the 1280 stage on the real one, as a fraction of its width.</summary>
     public static float ToStage(float baseX) => (baseX + Extra) / Width;
@@ -62,7 +100,8 @@ public static class LumenStage
         "left" => LumenAnchor.Left,
         "right" => LumenAnchor.Right,
         "stretch" => LumenAnchor.Stretch,
-        _ => throw new FormatException($"\"anchor\" is left, center, right or stretch, not \"{text}\"."),
+        "cover" => LumenAnchor.Cover,
+        _ => throw new FormatException($"\"anchor\" is left, center, right, stretch or cover, not \"{text}\"."),
     };
 
     public static string Name(LumenAnchor anchor) => anchor.ToString().ToLowerInvariant();

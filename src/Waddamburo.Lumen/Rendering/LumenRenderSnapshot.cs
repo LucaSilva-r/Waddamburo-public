@@ -78,7 +78,11 @@ public readonly record struct LumenRenderQuad(
     LumenRenderMaskOperation MaskOperation = LumenRenderMaskOperation.Draw,
     byte MaskDepth = 0,
     string? Source = null,
-    float LumaKey = 0);
+    float LumaKey = 0)
+{
+    /// <summary>One of a 9-sliced shape's nine (always nine, in a row): its column, 1 left, 2 middle, 3 right; 0: no slice.</summary>
+    public byte Slice { get; init; }
+}
 
 /// <summary>The quads of one snapshot per frame, reused by the next (<see cref="LumenRenderSnapshot.Detached"/> keeps one).</summary>
 public sealed class LumenQuadBuffer

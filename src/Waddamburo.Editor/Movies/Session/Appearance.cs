@@ -36,11 +36,12 @@ public sealed partial class MovieInspectorSession
         // Where it holds on a screen narrower or wider than 16:9 (LumenStage): anchored clips move with that edge.
         var anchor = (string?)layer["anchor"] ?? "center";
         fieldLabel("Anchor", "Where it holds when the screen is narrower or wider than 16:9 (4:3, 21:9, a phone): with the middle,\n"
-            + "the left or right edge, or stretched across (backgrounds, bars). See it in the skin's scene view at another width.");
+            + "the left or right edge, stretched across (each side keeps its distance to its edge: bars, a lane; a shape's 9-slice keeps\n"
+            + "its corners), or cover (scaled evenly to fill, cropped: a picture background). See it in the skin's scene view at another width.");
         ImGui.SetNextItemWidth(-1);
         if (ImGui.BeginCombo("##anchor", anchor))
         {
-            foreach (var option in (string[])["center", "left", "right", "stretch"])
+            foreach (var option in (string[])["center", "left", "right", "stretch", "cover"])
                 if (ImGui.Selectable(option, option == anchor))
                     attempt(() => _document!.Edit(_ => { if (option == "center") layer.Remove("anchor"); else layer["anchor"] = option; }));
             ImGui.EndCombo();

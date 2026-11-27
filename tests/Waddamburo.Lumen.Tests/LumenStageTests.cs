@@ -67,4 +67,53 @@ public sealed class LumenStageTests
         }
         Assert.Throws<FormatException>(() => MoviePackage.Assemble(movie.Replace("\"right\"", "\"top\""), _ => ""));
     }
+
+    private static LumenPlayer package(string layers, string shapes)
+    {
+        var movie = $$"""
+            { "format": 1, "root": "main", "textures": { "t": "t.png" },
+              "shapes": { {{shapes}} },
+              "sprites": { "main": { "frames": 1, "layers": [ {{layers}} ] } } }
+            """;
+        var assembled = MoviePackage.Assemble(movie, _ => "");
+        var read = LmbSemanticReader.Read(LmbFile.Parse(assembled.Lmb), validationContext: new LmbSemanticValidationContext(1));
+        return new LumenPlayer(read.Value, 1280, 720)
+        {
+            ClipAnchors = assembled.Anchors.ToDictionary(static each => (each.Sprite, (long)each.Depth), static each => LumenStage.Parse(each.Anchor)),
+            ShapeSlices = assembled.Slices.ToDictionary(static each => each.Shape, static each => (each.Left, each.Top, each.Right, each.Bottom)),
+        };
+    }
+
+    private static float[] edges(LumenPlayer player) =>
+        [.. player.CreateRenderSnapshot().Quads.SelectMany(static quad => (float[])[quad.TopLeft.X, quad.TopRight.X]).Distinct().Order()];
+
+    // On a 21:9 stage (200 more each side): a stretched clip keeps each side's distance to its edge; in a left-anchored
+    // movie (the lane) its left stays put and its right reaches the stage's right edge, a 9-sliced one's caps unwidened;
+    // a left clip in a right-anchored movie still holds the left edge; cover scales evenly.
+    [Fact]
+    public void StretchKeepsMarginsAndSlices()
+    {
+        var before = LumenStage.Width;
+        try
+        {
+            LumenStage.Width = 1680;
+            var background = package("""{ "character": "bg", "anchor": "stretch", "keys": [ { "frame": 0 } ] }""",
+                """ "bg": { "texture": "t", "rect": [0, 0, 1280, 720] } """);
+            Assert.Equal([-200f, 1480f], edges(background));
+            var lane = package("""{ "character": "band", "anchor": "stretch", "keys": [ { "frame": 0 } ] }""",
+                """ "band": { "texture": "t", "rect": [400, 0, 880, 100], "slice": [20, 0, 20, 0] } """);
+            lane.SceneAnchor = LumenAnchor.Left;
+            Assert.Equal([400f, 420f, 1660f, 1680f], edges(lane));
+            var corner = package("""{ "character": "dot", "anchor": "left", "keys": [ { "frame": 0, "x": 10 } ] }""",
+                """ "dot": { "texture": "t", "rect": [0, 0, 10, 10] } """);
+            corner.SceneAnchor = LumenAnchor.Right;
+            Assert.Equal([-390f, -380f], edges(corner)); // -200 for the left edge, -200 against the movie's +200
+            var cover = LumenStage.Anchored(LumenMatrix.Identity, LumenAnchor.Cover);
+            Assert.Equal((1.3125f, -200f, -112.5f), (cover.M11, cover.X, cover.Y));
+        }
+        finally
+        {
+            LumenStage.Width = before;
+        }
+    }
 }

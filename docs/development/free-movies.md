@@ -426,7 +426,12 @@ Waddamburo's frontend is always 720 units tall and as wide as the window's shape
 "right" | "stretch"` (height never changes, so only these): on a scenes.json layer or gameplay place (the whole movie;
 `LumenScenePlayer` moves it) or on a movie.json sprite layer (that clip and what it holds; the assembler records it by
 sprite and depth, `LumenPlayer` moves its world transform). Unanchored is centre: what was made for 1280 stays in the
-middle. Gameplay's own movies hug the left edge (the song's title the right) unless a place anchors them; the notes
+middle. `stretch` keeps each side's distance to its edge (a background spans the stage; the lane's band, in the
+left-anchored lane, keeps its left end at the judge and reaches the right edge); `cover` scales evenly to fill the stage,
+the overflow cropped (a picture background, as osu!'s). A clip's anchor holds the stage's edges whatever its movie's
+own (`LumenStage.ClipAnchored`, the player knows its scene anchor). A shape's `"slice": [left, top, right, bottom]`
+(a 9-slice) is drawn in nine pieces when stretched: corners and caps keep their size, only the middle widens.
+Gameplay's own movies hug the left edge (the song's title the right) unless a place anchors them; the notes
 follow the lane. Note visibility follows osu!taiko: a narrower screen shows fewer notes, a wider one no more than 16:9
 (they fade in at the 16:9 distance, `NoteGeometry.Place`). Green's frontend, and a player's squeezed 4:3 layout, stay
 1280. The skin editor's scene view shows any width (its stage width picker) and edits a layer's anchor; the component

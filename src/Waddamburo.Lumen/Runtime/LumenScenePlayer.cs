@@ -90,6 +90,7 @@ public sealed class LumenScenePlayer
             // Each player appends to the scene's builder (no snapshot of its own), then its quads are placed in it.
             var start = quads.Count;
             var placed = Rendering.LumenStage.Anchored(layer.Transform, layer.Anchor);
+            layer.Player.SceneAnchor = layer.Anchor; // its clips' anchors hold the stage's edges, not the movie's
             layer.Player.AppendRenderQuads(playerInterpolation?.Invoke(layer.Player) ?? interpolationFraction, quads);
             for (var index = start; index < quads.Count; index++)
             {

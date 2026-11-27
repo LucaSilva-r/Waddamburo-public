@@ -24,6 +24,9 @@ public static class MoviePackage
         /// sprite's character id and the layer's depth.
         /// </summary>
         public ImmutableArray<(uint Sprite, uint Depth, string Anchor)> Anchors { get; init; } = [];
+
+        /// <summary>9-sliced shapes ("slice": [left, top, right, bottom] insets, in the shape's units) by character id.</summary>
+        public ImmutableArray<(uint Shape, float Left, float Top, float Right, float Bottom)> Slices { get; init; } = [];
     }
 
     private static readonly JsonDocumentOptions Options = new() { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip };
@@ -86,6 +89,7 @@ public static class MoviePackage
         private readonly List<byte[]> _actions = [];
         private readonly List<float[]> _bounds = [];
         private readonly List<(uint Sprite, uint Depth, string Anchor)> _anchors = [];
+            private readonly List<(uint Shape, float Left, float Top, float Right, float Bottom)> _slices = [];
         private readonly List<string> _strings = [""]; // Index 0 is "no name".
         private readonly List<(float A, float B, float C, float D, float X, float Y)> _matrices = [];
         private readonly List<(short R, short G, short B, short A)> _colours = [];
@@ -204,7 +208,7 @@ public static class MoviePackage
                     BinaryPrimitives.WriteUInt32BigEndian(payload.AsSpan(index * 4), words[index]);
                 writeRecord(stream, tag, payload);
             }
-            return new Assembled(stream.ToArray(), [.. textures.Select(static texture => texture.File)]) { Anchors = [.. _anchors] };
+            return new Assembled(stream.ToArray(), [.. textures.Select(static texture => texture.File)]) { Anchors = [.. _anchors], Slices = [.. _slices] };
         }
 
         // One textured quad: "rect" [x, y, width, height] in the shape's own space, "uv" [left, top, right, bottom]
@@ -222,6 +226,14 @@ public static class MoviePackage
                 (texture, flags) = ((uint)index, 0x00410000);
             }
             float left = rect[0], top = rect[1], right = rect[0] + rect[2], bottom = rect[1] + rect[3];
+            // "slice": [left, top, right, bottom] insets: stretched, its corners and caps keep their size (a 9-slice).
+            if (shape.Value.TryGetProperty("slice", out var sliceValue))
+            {
+                var insets = floats(sliceValue, 4, $"shape \"{shape.Name}\" slice");
+                if (insets.Any(static inset => inset < 0) || insets[0] + insets[2] > rect[2] || insets[1] + insets[3] > rect[3])
+                    throw new FormatException($"{FileName}: shape \"{shape.Name}\" slice: insets from 0, together no more than the shape's size.");
+                _slices.Add((_characters[shape.Name], insets[0], insets[1], insets[2], insets[3]));
+            }
             body.Add((LmbTags.DefineShape, [_characters[shape.Name], 0, 0, 1]));
             body.Add((LmbTags.ShapeGeometry,
             [
@@ -253,8 +265,8 @@ public static class MoviePackage
                 if (layer.TryGetProperty("anchor", out var anchorValue))
                 {
                     var anchor = anchorValue.ValueKind == JsonValueKind.String ? anchorValue.GetString() : null;
-                    if (anchor is not ("left" or "center" or "right" or "stretch"))
-                        throw new FormatException($"{FileName}: {where}: \"anchor\" is left, center, right or stretch.");
+                    if (anchor is not ("left" or "center" or "right" or "stretch" or "cover"))
+                        throw new FormatException($"{FileName}: {where}: \"anchor\" is left, center, right, stretch or cover.");
                     if (anchor != "center")
                         _anchors.Add((_characters[sprite.Name], depth, anchor));
                 }

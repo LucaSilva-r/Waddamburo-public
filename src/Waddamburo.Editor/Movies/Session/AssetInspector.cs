@@ -138,6 +138,22 @@ public sealed partial class MovieInspectorSession
         ImGui.BeginDisabled(uv is null);
         if (ImGui.Button("Use whole texture")) attempt(() => _document!.SetShapeUv(name, null));
         ImGui.EndDisabled();
+        // 9-slice: stretched (an anchor's stretch), the corners and caps keep their size; only the middle widens.
+        var slice = shape["slice"] as JsonArray;
+        var insets = slice is { Count: 4 }
+            ? new Vector4(assetNumber(slice[0]), assetNumber(slice[1]), assetNumber(slice[2]), assetNumber(slice[3])) : Vector4.Zero;
+        ImGui.TextUnformatted("9-slice insets (left, top, right, bottom)");
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("When it is stretched across a wider screen (Anchor: stretch), this much of each side keeps its shape:\n"
+                + "rounded ends, borders and caps stay as drawn, only the middle widens. 0: stretched as a whole.");
+        ImGui.SetNextItemWidth(-1);
+        if (ImGui.InputFloat4("##shape slice", ref insets) && insets.X >= 0 && insets.Y >= 0 && insets.Z >= 0 && insets.W >= 0)
+            attempt(() => _document!.Edit(_ =>
+            {
+                if (insets == Vector4.Zero) shape.Remove("slice");
+                else shape["slice"] = new JsonArray(insets.X, insets.Y, insets.Z, insets.W);
+            }, _assetGesture && !ImGui.IsItemActivated()));
+        assetGesture();
         ImGui.TextWrapped("Bounds and artwork affect every instance of this shape. Instance names and animation stay unchanged.");
         ImGui.EndDisabled();
     }

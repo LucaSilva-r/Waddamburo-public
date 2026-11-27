@@ -197,6 +197,12 @@ public sealed partial class LumenPlayer : IAvm1Host
     /// <summary>Clips anchored to a stage edge, by their holder's character id and their depth (a package's "anchor").</summary>
     public IReadOnlyDictionary<(uint Sprite, long Depth), Rendering.LumenAnchor>? ClipAnchors { get; init; }
 
+    /// <summary>9-sliced shapes by character id: insets from each side, in the shape's units (a package's "slice").</summary>
+    public IReadOnlyDictionary<uint, (float Left, float Top, float Right, float Bottom)>? ShapeSlices { get; init; }
+
+    /// <summary>Where the scene holds this movie (its layer's anchor): its clips' anchors are kept to the stage's edges.</summary>
+    public Rendering.LumenAnchor SceneAnchor { get; set; }
+
     /// <summary>The movie this player runs (for <see cref="Inspect"/>).</summary>
     public string? Name
     {
@@ -2889,7 +2895,75 @@ public sealed partial class LumenPlayer : IAvm1Host
         instance.Color = color;
     }
 
+    private Rendering.LumenAnchor? anchorOf(DisplayInstance instance) =>
+        ClipAnchors is { Count: > 0 } anchors && instance.Parent is { } holder
+            && anchors.TryGetValue((holder.CharacterId, instance.Depth - TimelineDepthBase), out var anchor) ? anchor : null;
+
+    // A stretched clip (a package's "anchor": "stretch") is drawn as it is, then its drawing is widened: each side to its
+    // edge of the stage, a 9-sliced shape's corners and caps moved, not widened.
     private void appendInstance(
+        DisplayInstance instance,
+        LumenMatrix parentTransform,
+        ColorState parentColor,
+        LumenRenderBlend parentBlend,
+        float interpolationFraction,
+        ImmutableArray<LumenRenderQuad>.Builder quads,
+        byte maskDepth = 0)
+    {
+        if (Rendering.LumenStage.Width == Rendering.LumenStage.BaseWidth || anchorOf(instance) != Rendering.LumenAnchor.Stretch)
+        {
+            appendInstanceDrawn(instance, parentTransform, parentColor, parentBlend, interpolationFraction, quads, maskDepth);
+            return;
+        }
+        var start = quads.Count;
+        appendInstanceDrawn(instance, parentTransform, parentColor, parentBlend, interpolationFraction, quads, maskDepth);
+        stretch(quads, start);
+    }
+
+    private void stretch(ImmutableArray<LumenRenderQuad>.Builder quads, int start)
+    {
+        float minX = float.PositiveInfinity, maxX = float.NegativeInfinity;
+        for (var index = start; index < quads.Count; index++)
+            foreach (var vertex in (ReadOnlySpan<LumenRenderVertex>)[quads[index].TopLeft, quads[index].TopRight, quads[index].BottomRight, quads[index].BottomLeft])
+                (minX, maxX) = (MathF.Min(minX, vertex.X), MathF.Max(maxX, vertex.X));
+        if (!(maxX > minX))
+            return;
+        var (from, to) = Rendering.LumenStage.StretchSpan(minX, maxX, SceneAnchor);
+        var scale = (to - from) / (maxX - minX);
+        float map(float x) => from + (x - minX) * scale;
+        static LumenRenderVertex moved(LumenRenderVertex vertex, float by) => vertex with { X = vertex.X + by };
+        for (var index = start; index < quads.Count;)
+        {
+            var quad = quads[index];
+            if (quad.Slice == 0 || index + 9 > quads.Count)
+            {
+                LumenRenderVertex at(LumenRenderVertex vertex) => vertex with { X = map(vertex.X) };
+                quads[index++] = quad with { TopLeft = at(quad.TopLeft), TopRight = at(quad.TopRight), BottomRight = at(quad.BottomRight), BottomLeft = at(quad.BottomLeft) };
+                continue;
+            }
+            // Nine of a sliced shape: the left column moves with the shape's left side, the right with its right side,
+            // the middle spans between them.
+            float left = float.PositiveInfinity, right = float.NegativeInfinity;
+            for (var piece = index; piece < index + 9; piece++)
+                foreach (var vertex in (ReadOnlySpan<LumenRenderVertex>)[quads[piece].TopLeft, quads[piece].TopRight, quads[piece].BottomRight, quads[piece].BottomLeft])
+                    (left, right) = (MathF.Min(left, vertex.X), MathF.Max(right, vertex.X));
+            var (byLeft, byRight) = (map(left) - left, map(right) - right);
+            for (var piece = index; piece < index + 9; piece++)
+            {
+                var sliced = quads[piece];
+                var centre = (sliced.TopLeft.X + sliced.TopRight.X + sliced.BottomRight.X + sliced.BottomLeft.X) / 4;
+                float by(LumenRenderVertex vertex) => sliced.Slice switch { 1 => byLeft, 3 => byRight, _ => vertex.X <= centre ? byLeft : byRight };
+                quads[piece] = sliced with
+                {
+                    TopLeft = moved(sliced.TopLeft, by(sliced.TopLeft)), TopRight = moved(sliced.TopRight, by(sliced.TopRight)),
+                    BottomRight = moved(sliced.BottomRight, by(sliced.BottomRight)), BottomLeft = moved(sliced.BottomLeft, by(sliced.BottomLeft)),
+                };
+            }
+            index += 9;
+        }
+    }
+
+    private void appendInstanceDrawn(
         DisplayInstance instance,
         LumenMatrix parentTransform,
         ColorState parentColor,
@@ -2907,8 +2981,8 @@ public sealed partial class LumenPlayer : IAvm1Host
         var local = interpolate(instance, interpolationFraction);
         var transform = local.Transform.Then(parentTransform);
         // A clip anchored to a stage edge (a package's "anchor"): it, and what it holds, moves with that edge.
-        if (ClipAnchors is { Count: > 0 } anchors && instance.Parent is { } holder && anchors.TryGetValue((holder.CharacterId, instance.Depth - TimelineDepthBase), out var anchor))
-            transform = Rendering.LumenStage.Anchored(transform, anchor);
+        if (anchorOf(instance) is { } anchor)
+            transform = Rendering.LumenStage.ClipAnchored(transform, anchor, SceneAnchor);
         var color = local.Color.Then(parentColor);
         var blend = instance.BlendMode switch
         {
@@ -2962,6 +3036,11 @@ public sealed partial class LumenPlayer : IAvm1Host
                     continue;
                 }
 
+                if (ShapeSlices is { Count: > 0 } slices && slices.TryGetValue(instance.CharacterId, out var slice))
+                {
+                    appendSliced(geometry, slice, transform, color, blend, maskDepth, quads);
+                    continue;
+                }
                 quads.Add(new LumenRenderQuad(
                     geometry.TextureIndex,
                     transformVertex(geometry.Vertices[0], transform),
@@ -3244,6 +3323,34 @@ public sealed partial class LumenPlayer : IAvm1Host
 
     private static float lerp(float from, float to, float fraction) =>
         from + ((to - from) * fraction);
+
+    // A 9-sliced shape (a package's "slice": insets from each side, in its own units): nine quads, row by row, their
+    // columns marked (LumenRenderQuad.Slice) so a stretch moves the corners and caps and widens only the middle.
+    private static void appendSliced(LmbShapeGeometry geometry, (float Left, float Top, float Right, float Bottom) slice, LumenMatrix transform,
+        ColorState color, LumenRenderBlend blend, byte maskDepth, ImmutableArray<LumenRenderQuad>.Builder quads)
+    {
+        var vertices = geometry.Vertices;
+        float x0 = vertices.Min(static v => v.X), x1 = vertices.Max(static v => v.X), y0 = vertices.Min(static v => v.Y), y1 = vertices.Max(static v => v.Y);
+        var topLeft = vertices.MinBy(static v => v.X + v.Y);
+        var bottomRight = vertices.MaxBy(static v => v.X + v.Y);
+        float width = x1 - x0, height = y1 - y0;
+        if (width <= 0 || height <= 0)
+            return;
+        float[] xs = [x0, x0 + Math.Min(slice.Left, width / 2), x1 - Math.Min(slice.Right, width / 2), x1];
+        float[] ys = [y0, y0 + Math.Min(slice.Top, height / 2), y1 - Math.Min(slice.Bottom, height / 2), y1];
+        float u(float x) => topLeft.U + (bottomRight.U - topLeft.U) * (x - x0) / width;
+        float v(float y) => topLeft.V + (bottomRight.V - topLeft.V) * (y - y0) / height;
+        LumenRenderVertex at(float x, float y)
+        {
+            var (px, py) = transform.Transform(x, y);
+            return new LumenRenderVertex(px, py, u(x), v(y));
+        }
+        for (var row = 0; row < 3; row++)
+            for (var column = 0; column < 3; column++)
+                quads.Add(new LumenRenderQuad(geometry.TextureIndex,
+                    at(xs[column], ys[row]), at(xs[column + 1], ys[row]), at(xs[column + 1], ys[row + 1]), at(xs[column], ys[row + 1]),
+                    color.Multiply, color.Add, blend, MaskDepth: maskDepth) { Slice = (byte)(column + 1) });
+    }
 
     private static LumenRenderVertex transformVertex(LmbVertex vertex, LumenMatrix transform)
     {
