@@ -88,6 +88,7 @@ public sealed partial class MovieInspectorSession : IDisposable
         _key = null;
         _notice = null;
         Paused = true;
+        _page = Page.Component;
         _layer.FileDropped = document is { ReadOnly: false } ? path => importTexture(path) : null;
     }
 
@@ -140,6 +141,13 @@ public sealed partial class MovieInspectorSession : IDisposable
     {
         if (ImGui.GetFrameCount() == 120 && Environment.GetEnvironmentVariable("WADDAMBURO_EDITOR_FAIL") is not null)
             _failNow = true;
+        if (Skin is not null && _page != Page.Component)
+        {
+            pollMovieFiles();
+            skinPages(io, size);
+            return;
+        }
+        _thumbBudget = 0;
         pollAssetFile();
         refreshAssetSelection();
         pollMovieFiles();
@@ -181,6 +189,8 @@ public sealed partial class MovieInspectorSession : IDisposable
         bottom(layout.Tracks, player, clips);
         stage(layout.Stage, player, clips);
         dividers(layout, size);
+        liveWindow();
+        dragGhost();
         ImGui.PopStyleVar();
     }
 

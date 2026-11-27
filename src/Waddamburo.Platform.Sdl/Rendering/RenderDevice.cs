@@ -387,6 +387,7 @@ internal sealed unsafe partial class RenderDevice : IDisposable
             fullscreen(PresentView, _stage!.Color, PlatformInfo.IsMobile ? _quadProgram : _blurProgram!.Value, 0, 0, 1, blend: false);
         }
 
+        drawPreviews();
         if (ImGuiLayer is { } gui)
             submitImGui(gui.EndFrame());
 
@@ -402,6 +403,61 @@ internal sealed unsafe partial class RenderDevice : IDisposable
             BgfxSupport.Frame();
         return BgfxSupport.Callbacks.Capture
             ?? throw new InvalidOperationException("bgfx did not deliver the screenshot.");
+    }
+
+    // Editor previews: frames drawn into textures of their own, shown by ImGui. Views 4-10 are free (the Don prepasses
+    // use 0-3, the backdrop 11-15), so at most PreviewViews previews draw per present; the rest wait for the next one.
+    private const ushort FirstPreviewView = 4;
+    internal const int PreviewViews = 7;
+    private readonly Dictionary<uint, StageTarget> _previews = [];
+    private readonly List<(uint Id, RenderFrame Frame)> _previewQueue = [];
+
+    /// <summary>A texture to draw frames into (<see cref="DrawPreview"/>), sampled like any other.</summary>
+    public RenderTextureId CreatePreview(ushort width, ushort height)
+    {
+        var target = StageTarget.Create((width, height));
+        var id = RegisterBorrowedTexture(target.Color);
+        _previews[id.Value] = target;
+        return id;
+    }
+
+    /// <summary>Draws the frame into the preview with the next present. False: this present's previews are full.</summary>
+    public bool DrawPreview(RenderTextureId preview, RenderFrame frame)
+    {
+        if (!_previews.ContainsKey(preview.Value))
+            throw new ArgumentException($"Texture {preview.Value} is not a preview.", nameof(preview));
+        if (_previewQueue.Count >= PreviewViews)
+            return false;
+        validateFrame(frame);
+        _previewQueue.Add((preview.Value, frame));
+        return true;
+    }
+
+    public void ReleasePreview(RenderTextureId preview)
+    {
+        if (!_previews.Remove(preview.Value, out var target))
+            return;
+        UnregisterBorrowedTexture(preview);
+        target.Dispose();
+    }
+
+    private void drawPreviews()
+    {
+        for (var index = 0; index < _previewQueue.Count; index++)
+        {
+            var (id, frame) = _previewQueue[index];
+            var target = _previews[id];
+            var view = (ushort)(FirstPreviewView + index);
+            bgfx.set_view_frame_buffer(view, target.Buffer);
+            bgfx.set_view_rect(view, 0, 0, target.Size.Width, target.Size.Height, 0, 1);
+            bgfx.set_view_scissor(view, 0, 0, target.Size.Width, target.Size.Height);
+            bgfx.set_view_clear(view, (ushort)(bgfx.ClearFlags.Color | bgfx.ClearFlags.Stencil), BgfxSupport.PackRgba(frame.ClearColor), 1, 0);
+            bgfx.set_view_mode(view, bgfx.ViewMode.Sequential);
+            bgfx.touch(view);
+            // ponytail: frosted backdrops draw as plain quads in a preview.
+            submitQuads(view, frame.QuadSpan);
+        }
+        _previewQueue.Clear();
     }
 
     /// <summary>

@@ -11,6 +11,7 @@ namespace Waddamburo.Game.Scenes;
 /// { "format": 1, "scenes": { "entry": { "layers": [ { "movie": "entry/entry", "role": "player-entry" },
 ///   { "movie": "indicator/player_name", "role": "indicator-part", "x": 60, "y": 638, "side": 0 } ] } } }
 /// </code>
+/// Optional per layer: <c>scaleX</c>, <c>scaleY</c> (1), <c>rotation</c> (degrees, clockwise, about x/y).
 /// A layer's <c>movie</c> is its package folder under the skin (<c>attract/kidou/kidou</c>); <c>side</c> keeps it to
 /// the drum on that side where a screen is built per drum (Song Select's and the dan list's name boards).
 /// </summary>
@@ -40,15 +41,25 @@ public sealed class SkinScenes
         ["dan-shutter"] = (new SceneId("dan-shutter"), [RainbowTransitionComposition.StaticHostId]),
     };
 
-    /// <summary>One layer as the skin wrote it.</summary>
-    public sealed record Layer(string Movie, string Role, float X, float Y, int? Side)
+    /// <summary>One layer as the skin wrote it: placed at (x, y), scaled, then turned by <paramref name="Rotation"/> degrees (clockwise) about that point.</summary>
+    public sealed record Layer(string Movie, string Role, float X, float Y, int? Side, float ScaleX = 1, float ScaleY = 1, float Rotation = 0)
     {
+        /// <summary>Where the layer's movie goes on the stage.</summary>
+        public LumenMatrix Transform
+        {
+            get
+            {
+                var (sin, cos) = MathF.SinCos(Rotation * MathF.PI / 180);
+                return new(cos * ScaleX, sin * ScaleX, -sin * ScaleY, cos * ScaleY, X, Y);
+            }
+        }
+
         /// <summary>The engine's layer: "attract/kidou/kidou" is archive "attract/kidou/packeddata.ddp", movie "kidou/kidou.lm".</summary>
         public SceneLayerDefinition Definition()
         {
             var cut = Movie.LastIndexOf('/');
             var name = Movie[(cut + 1)..];
-            return new($"{Movie[..cut]}/packeddata.ddp", $"{name}/{name}.lm", LumenMatrix.Identity with { X = X, Y = Y }, Role);
+            return new($"{Movie[..cut]}/packeddata.ddp", $"{name}/{name}.lm", Transform, Role);
         }
     }
 
@@ -127,10 +138,10 @@ public sealed class SkinScenes
     {
         string text(string name) => layer.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
             && value.GetString() is { Length: > 0 } got ? got : throw new InvalidDataException($"{where}: \"{name}\" text expected.");
-        float number(string name)
+        float number(string name, float otherwise = 0)
         {
             if (!layer.TryGetProperty(name, out var value))
-                return 0;
+                return otherwise;
             if (value.ValueKind != JsonValueKind.Number || !float.IsFinite(value.GetSingle()))
                 throw new InvalidDataException($"{where}: \"{name}\" must be a number.");
             return value.GetSingle();
@@ -142,6 +153,9 @@ public sealed class SkinScenes
         if (layer.TryGetProperty("side", out var sideValue))
             side = sideValue.ValueKind == JsonValueKind.Number && sideValue.GetInt32() is 0 or 1 ? sideValue.GetInt32()
                 : throw new InvalidDataException($"{where}: \"side\" is 0 (left drum) or 1 (right drum).");
-        return new(movie, text("role"), number("x"), number("y"), side);
+        var (scaleX, scaleY) = (number("scaleX", 1), number("scaleY", 1));
+        if (scaleX == 0 || scaleY == 0)
+            throw new InvalidDataException($"{where}: a scale of 0 hides the layer; remove the layer instead.");
+        return new(movie, text("role"), number("x"), number("y"), side, scaleX, scaleY, number("rotation"));
     }
 }

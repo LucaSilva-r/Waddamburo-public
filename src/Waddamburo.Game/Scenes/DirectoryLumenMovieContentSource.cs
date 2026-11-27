@@ -71,24 +71,26 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
             return null;
         string?[] roots = archiveMissing ? [BundledRoot] : [PackageRoot, PreferBundled?.Invoke() == true ? BundledRoot : null];
         foreach (var root in roots)
-        {
-            if (root is null)
-                continue;
-            // "indicator/packeddata.ddp" + "time_counter/time_counter.lm" -> <root>/indicator/time_counter.
-            var directory = Path.Combine(root, Path.GetDirectoryName(archiveId) ?? "", Path.GetFileNameWithoutExtension(movieId));
-            if (File.Exists(Path.Combine(directory, Formats.Package.MoviePackage.FileName)))
+            if (root is not null && PackageFolder(root, archiveId, movieId) is { } directory)
                 return directory;
-            // The second drum's and Katsu-chan's gameplay parts: a package reads its own drum from the provider, so the
-            // first drum's serves ("enso_system/katsu2p" + "gage_katsu_2p_easy" -> enso_system/don1p/gage_don_1p_easy).
-            var folder = Path.GetDirectoryName(archiveId) ?? "";
-            var first = folder.Replace("base2p", "base1p").Replace("katsu1p", "don1p").Replace("katsu2p", "don1p").Replace("don2p", "don1p");
-            if (!folder.StartsWith("enso_system", StringComparison.Ordinal))
-                continue;
-            directory = Path.Combine(root, first, Path.GetFileNameWithoutExtension(movieId).Replace("_katsu_", "_don_").Replace("_2p", "_1p"));
-            if (File.Exists(Path.Combine(directory, Formats.Package.MoviePackage.FileName)))
-                return directory;
-        }
         return null;
+    }
+
+    /// <summary>The package folder under a skin root that plays this archive movie, or null when the skin has none.</summary>
+    public static string? PackageFolder(string root, string archiveId, string movieId)
+    {
+        // "indicator/packeddata.ddp" + "time_counter/time_counter.lm" -> <root>/indicator/time_counter.
+        var directory = Path.Combine(root, Path.GetDirectoryName(archiveId) ?? "", Path.GetFileNameWithoutExtension(movieId));
+        if (File.Exists(Path.Combine(directory, Formats.Package.MoviePackage.FileName)))
+            return directory;
+        // The second drum's and Katsu-chan's gameplay parts: a package reads its own drum from the provider, so the
+        // first drum's serves ("enso_system/katsu2p" + "gage_katsu_2p_easy" -> enso_system/don1p/gage_don_1p_easy).
+        var folder = Path.GetDirectoryName(archiveId) ?? "";
+        if (!folder.StartsWith("enso_system", StringComparison.Ordinal))
+            return null;
+        var first = folder.Replace("base2p", "base1p").Replace("katsu1p", "don1p").Replace("katsu2p", "don1p").Replace("don2p", "don1p");
+        directory = Path.Combine(root, first, Path.GetFileNameWithoutExtension(movieId).Replace("_katsu_", "_don_").Replace("_2p", "_1p"));
+        return File.Exists(Path.Combine(directory, Formats.Package.MoviePackage.FileName)) ? directory : null;
     }
 
     /// <summary>Whether a movie can be loaded: from a package, or from its archive in the game data.</summary>

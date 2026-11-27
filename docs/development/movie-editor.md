@@ -8,6 +8,28 @@ Status: read side done; write side built in parts: document, undo, save, timelin
 browser, code list with errors. Done when the timer can be rebuilt in it from an empty package. Script text is edited
 in an outside editor only (user's call).
 
+## Skin editor (2026-11-27)
+
+`Waddamburo.App --skin[=folder]` opens the editor on a whole skin (bare: the nearest `movies/` with a skin.json, up
+from the current folder). `--inspect=scene:<screen>` starts on a scene view (for screenshots).
+
+- **Home**: Scenes, every screen of `scenes.json` as a flow map (boot, entry, song select, rainbow, gameplay, results;
+  the dan dojo below; transitions in their own row) with live thumbnails; Components, every package by area with a
+  thumbnail and the screens using it, a slot without a package made on click.
+- **Scene view**: the screen playing; layers listed back to front (gameplay's layout layers greyed under the skin's);
+  Move / Rotate / Scale tools (W/E/R) about the layer's origin; snapping to the stage, other layers' edges and a grid
+  (Ctrl held: off), 15° and 0.05 steps; arrows nudge; drag a component onto the stage to add it; one gesture is one
+  undo step. Saves `scenes.json` (Ctrl+S).
+- **Live scene window** (F4, Skin menu) over the component editor: the screen with the package being edited, from its
+  unsaved document; only the edited movie restarts.
+- **Example data** (`Skin/PreviewData.cs`): every state at its sample, lists filled, both drums joined with names, the
+  engine's `LibraryRows` over an example library for Song Select and the dan list (the movie's row requests answered).
+  ponytail: one fixed set; named scenarios per screen later.
+- Built on `SkinStage` (plays screens and packages into preview textures: `SdlApplication.CreatePreview` /
+  `DrawPreview`, renderer views 4-10, 7 a frame) and `SceneDocument` (scenes.json edits, refused when a screen would
+  lose a required role). Thumbnails are drawn again each start (no disk cache yet). The live window is an ImGui
+  window inside the editor, not an OS window yet.
+
 ## Read side
 
 Built (`MovieInspectorSession`, over the player's `Inspect…` calls, which leave the edge log alone):

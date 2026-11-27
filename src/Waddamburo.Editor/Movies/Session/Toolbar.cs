@@ -28,6 +28,7 @@ public sealed partial class MovieInspectorSession
             if (ImGui.MenuItem("Redo", "Ctrl+Shift+Z", false, _document?.CanRedo == true)) edited(_document!.Redo);
             ImGui.EndMenu();
         }
+        skinMenu();
         ImGui.TextDisabled(_title + (_document?.IsDirty == true ? " *" : "") + (_gameData ? " (read-only)" : ""));
         if (_notice is not null || ScriptErrors.Count > 0)
         {

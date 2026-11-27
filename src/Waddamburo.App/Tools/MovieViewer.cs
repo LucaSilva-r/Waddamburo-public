@@ -20,6 +20,30 @@ internal static class MovieViewer
         run(LumenMovieContent.LoadPackage(directory, Presentation.GameMovieContent.DecodeImage, scriptErrors: []), windowWidth, windowHeight, seekFrame,
             frameLimit, tickLimit, screenshotPath, callbackInvocations, inputTimeline, directory);
 
+    /// <summary>
+    /// The movie editor on a whole skin: its home page (screens, components), the scene view, and any package opened
+    /// from them. <paramref name="root"/> empty: the nearest movies/ folder with a skin.json, up from here (a checkout's
+    /// submodule), else the one beside the executable.
+    /// </summary>
+    public static int RunSkin(string root, int windowWidth, int windowHeight, int? frameLimit, int? tickLimit, string? screenshotPath,
+        SdlKeyboardTimeline inputTimeline)
+    {
+        if (root.Length == 0)
+        {
+            for (var folder = new DirectoryInfo(Environment.CurrentDirectory); folder is not null && root.Length == 0; folder = folder.Parent)
+                if (File.Exists(Path.Combine(folder.FullName, "movies", "skin.json")))
+                    root = Path.Combine(folder.FullName, "movies");
+            if (root.Length == 0)
+                root = Path.Combine(AppContext.BaseDirectory, "movies");
+        }
+        root = Path.GetFullPath(root);
+        if (!Directory.Exists(root))
+            throw new DirectoryNotFoundException($"No skin folder at {root}.");
+        Console.WriteLine($"Skin: {root}");
+        return run(LumenMovieContent.Placeholder("skin", ""), windowWidth, windowHeight, null, frameLimit, tickLimit, screenshotPath, [], inputTimeline,
+            skin: root);
+    }
+
     public static int Run(
         string archivePath,
         string movieName,
@@ -46,7 +70,7 @@ internal static class MovieViewer
 
     private static int run(LumenMovieContent content, int windowWidth, int windowHeight, int? seekFrame, int? frameLimit,
         int? tickLimit, string? screenshotPath, ImmutableArray<CallbackInvocation> callbackInvocations, SdlKeyboardTimeline inputTimeline,
-        string? package = null)
+        string? package = null, string? skin = null)
     {
         var plain = Environment.GetCommandLineArgs().Contains("--plain", StringComparer.Ordinal);
         foreach (var diagnostic in content.Diagnostics)
@@ -67,7 +91,7 @@ internal static class MovieViewer
         Console.WriteLine($"Renderer: {application.GpuDriver}");
         var interactive = frameLimit is null && tickLimit is null;
         var inspect = Environment.GetCommandLineArgs().FirstOrDefault(static each => each.StartsWith("--inspect", StringComparison.Ordinal));
-        var inspecting = !plain && (interactive || inspect is not null);
+        var inspecting = skin is not null || (!plain && (interactive || inspect is not null));
         // A package is edited; a game movie is described in the same shape, to look at only (never written).
         Waddamburo.Editor.MovieDocument? document = null;
         if (package is not null && !plain)
@@ -218,13 +242,46 @@ internal static class MovieViewer
             inspector.ScriptErrors = scriptErrors;
             inspector.TextureOf = name => named.TryGetValue(name, out var texture) ? texture : null;
         }
+        // A whole skin: the home page first; the package being edited plays live in every preview of the skin.
+        Waddamburo.Editor.SkinStage? skinStage = null;
+        void liveSkinPackage()
+        {
+            if (skinStage is null)
+                return;
+            var relative = package is null ? null : Path.GetRelativePath(skinStage.Root, package).Replace('\\', '/');
+            if (relative is null || relative.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(relative) || document is not { ReadOnly: false } open)
+                skinStage.SetLive(null);
+            else
+                skinStage.SetLive(relative, () => open.Text, open.ReadFile);
+        }
+        if (skin is not null && inspector is not null)
+        {
+            skinStage = new Waddamburo.Editor.SkinStage(application, skin, Presentation.GameMovieContent.DecodeImage, ViewerHostBinding.Instance, textFields.Resolve);
+            // Gameplay: the layout's layers (lane, gauge, notes...) under the skin's, as the game composes them.
+            var gameplay = new Frontends.WaddamburoScreens().Gameplay(Waddamburo.Game.Scenes.FlowScenes.Gameplay, new Random(1),
+                Waddamburo.Formats.Layout.EnsoLayout.Standard).Layers.Select(layer =>
+                {
+                    var folder = Waddamburo.Game.Scenes.DirectoryLumenMovieContentSource.PackageFolder(skin, layer.ArchiveId, layer.MovieId) is { } found
+                        ? Path.GetRelativePath(skin, found).Replace('\\', '/')
+                        : $"{Path.GetDirectoryName(layer.ArchiveId)?.Replace('\\', '/')}/{Path.GetFileNameWithoutExtension(layer.MovieId)}";
+                    return new Waddamburo.Game.Scenes.SkinScenes.Layer(folder, layer.HostId, layer.Transform.X, layer.Transform.Y, null,
+                        layer.Transform.M11, layer.Transform.M22);
+                }).ToArray();
+            skinStage.Fixed = key => key == "gameplay" ? gameplay : [];
+            inspector.Skin = skinStage;
+            inspector.Scenes = new Waddamburo.Editor.SceneDocument(skin);
+            inspector.ShowHome();
+            // --inspect=scene:<screen> starts on that screen's scene view.
+            if (inspect?.Split('=', 2) is [_, var start] && start.StartsWith("scene:", StringComparison.Ordinal))
+                inspector.ShowScene(start[6..]);
+        }
         // --inspect=sprite:<part of its name> starts on that sprite alone.
         if (inspect?.Split('=', 2) is [_, var wanted] && wanted.StartsWith("sprite:", StringComparison.Ordinal))
             inspector?.ShowSpriteNamed(wanted[7..]);
         if (inspect?.Split('=', 2) is [_, var asset] && asset.Split(':', 3) is ["asset", var group, var assetName])
             inspector?.SelectAsset(group, assetName);
-        Action reloadDocument = () => reload(force: true);
-        Action markSaved = () => loaded = package is null ? default : stamp();
+        Action reloadDocument = () => { reload(force: true); skinStage?.LiveChanged(); };
+        Action markSaved = () => { loaded = package is null ? default : stamp(); skinStage?.Reload(); };
         if (document is not null) { document.Changed += reloadDocument; document.Saved += markSaved; }
         if (inspector is not null)
         {
@@ -268,6 +325,7 @@ internal static class MovieViewer
                 document.Changed += reloadDocument;
                 document.Saved += markSaved;
                 loaded = package is null ? default : stamp();
+                liveSkinPackage();
             };
         }
         RenderFrame createFrame(double interpolationFraction) => LumenRenderFrameAdapter.Compose(

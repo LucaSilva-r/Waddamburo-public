@@ -194,6 +194,8 @@ public sealed partial class MovieInspectorSession
         ImGui.EndTable();
     }
 
+    internal static LumenHostValue ParseValue(string text) => parse(text);
+
     private static LumenHostValue parse(string text) => text.Trim() switch
     {
         "" or "undefined" => LumenHostValue.Undefined,

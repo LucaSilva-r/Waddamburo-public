@@ -327,6 +327,11 @@ public static class Boot
                 a.InputTimeline);
             return 0;
         }
+        if (a.SkinPath is not null)
+        {
+            MovieViewer.RunSkin(a.SkinPath, a.WindowSize.Width, a.WindowSize.Height, a.FrameLimit, a.TickLimit, a.ScreenshotPath, a.InputTimeline);
+            return 0;
+        }
         if (a.PackagePath is not null)
         {
             if (a.ArchivePath is not null || a.MovieName is not null)

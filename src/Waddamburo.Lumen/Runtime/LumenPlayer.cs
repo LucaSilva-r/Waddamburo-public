@@ -1572,6 +1572,55 @@ public sealed partial class LumenPlayer : IAvm1Host
         return new Avm1Lookup(true, removed ?? Avm1Undefined.Instance);
     }
 
+    // Flash 8's String methods (AS2 semantics: a negative start counts from the end where Flash does, NaN is 0).
+    private static object stringMethod(string text, string name, IReadOnlyList<object?> arguments)
+    {
+        bool given(int index) => arguments.Count > index && arguments[index] is not Avm1Undefined and not null;
+        int number(int index, int otherwise)
+        {
+            if (!given(index)) return otherwise;
+            var value = toNumber(arguments[index]);
+            return double.IsNaN(value) ? 0 : (int)Math.Clamp(Math.Truncate(value), int.MinValue / 2, int.MaxValue / 2);
+        }
+        int fromEnd(int value) => value < 0 ? Math.Max(0, text.Length + value) : Math.Min(value, text.Length);
+        switch (name)
+        {
+            case "substr":
+            {
+                var start = fromEnd(number(0, 0));
+                var length = Math.Clamp(number(1, text.Length - start), 0, text.Length - start);
+                return text.Substring(start, length);
+            }
+            case "substring":
+            {
+                var (from, to) = (Math.Clamp(number(0, 0), 0, text.Length), Math.Clamp(number(1, text.Length), 0, text.Length));
+                return from <= to ? text[from..to] : text[to..from];
+            }
+            case "slice":
+            {
+                var (from, to) = (fromEnd(number(0, 0)), fromEnd(number(1, text.Length)));
+                return from < to ? text[from..to] : string.Empty;
+            }
+            case "indexOf":
+            {
+                var wanted = toAvmString(given(0) ? arguments[0] : Avm1Undefined.Instance);
+                var from = Math.Clamp(number(1, 0), 0, text.Length);
+                return (double)text.IndexOf(wanted, from, StringComparison.Ordinal);
+            }
+            case "lastIndexOf":
+            {
+                var wanted = toAvmString(given(0) ? arguments[0] : Avm1Undefined.Instance);
+                var from = Math.Clamp(number(1, text.Length), 0, text.Length);
+                var limit = Math.Min(text.Length, from + wanted.Length);
+                return (double)text[..limit].LastIndexOf(wanted, StringComparison.Ordinal);
+            }
+            case "toUpperCase":
+                return text.ToUpperInvariant();
+            default:
+                return text.ToLowerInvariant();
+        }
+    }
+
     Avm1Lookup IAvm1Host.CallMethod(Avm1ExecutionContext context, object? target, string name, IReadOnlyList<object?> arguments, int instructionOffset)
     {
         var instance = (DisplayInstance)context.Owner;
@@ -1588,6 +1637,8 @@ public sealed partial class LumenPlayer : IAvm1Host
                 true,
                 (uint)index < (uint)text.Length ? text[index].ToString() : string.Empty);
         }
+        if (target is string stringTarget && name is "substr" or "substring" or "slice" or "indexOf" or "lastIndexOf" or "toUpperCase" or "toLowerCase")
+            return new Avm1Lookup(true, stringMethod(stringTarget, name, arguments));
         if (target is string codeText && name == "charCodeAt")
         {
             var index = arguments.Count > 0 ? (int)toNumber(arguments[0]) : 0;

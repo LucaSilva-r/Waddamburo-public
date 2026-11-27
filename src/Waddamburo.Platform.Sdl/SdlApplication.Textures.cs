@@ -105,4 +105,13 @@ public sealed unsafe partial class SdlApplication
         ObjectDisposedException.ThrowIf(_disposed, this);
         return new SdlDonRenderer(_renderer!, assetRoot);
     }
+
+    /// <summary>A texture to draw whole frames into (the editor's scene thumbnails and previews).</summary>
+    public RenderTextureId CreatePreview(int width, int height) =>
+        (_renderer ?? throw new InvalidOperationException("The renderer is not ready.")).CreatePreview(checked((ushort)width), checked((ushort)height));
+
+    /// <summary>Draws the frame into a preview with the next present; false when this present already draws its most.</summary>
+    public bool DrawPreview(RenderTextureId preview, RenderFrame frame) => _renderer?.DrawPreview(preview, frame) ?? false;
+
+    public void ReleasePreview(RenderTextureId preview) => _renderer?.ReleasePreview(preview);
 }

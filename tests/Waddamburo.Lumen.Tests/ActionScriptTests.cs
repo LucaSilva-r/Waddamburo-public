@@ -71,6 +71,10 @@ public sealed class ActionScriptTests
 
     [Theory]
     [InlineData("report(1 + 2 * 3, (1 + 2) * 3, 7 % 4, 10 / 4, -3, 2 - 5);", "7,9,3,2.5,-3,-3")]
+    // Flash 8's String methods: negative starts from the end where Flash takes them, a missing length to the end.
+    [InlineData("var s = '1002340'; report(s.substr(4), s.substr(-3), s.substr(0, 4), s.substr(2, 99));", "340,340,1002,02340")]
+    [InlineData("var s = 'Waddamburo'; report(s.substring(4, 1), s.slice(-4), s.slice(1, -4), s.indexOf('d'), s.lastIndexOf('d'), s.indexOf('z'));", "add,buro,addam,2,3,-1")]
+    [InlineData("report('Don'.toUpperCase(), 'KA'.toLowerCase(), 'abc'.substring(1));", "DON,ka,bc")]
     [InlineData("report('a' + 1 + 2, 1 + 2 + 'a', \"x\\ty\", 0x10, 1e3, .5);", "a12,3a,x\ty,16,1000,0.5")]
     [InlineData("report(1 < 2, 2 <= 2, 3 > 4, 4 >= 5, 1 == '1', 1 === '1', 1 != 2, 1 !== 1);", "true,true,false,false,true,false,true,false")]
     [InlineData("report(6 & 3, 6 | 3, 6 ^ 3, ~5, 1 << 4, -16 >> 2, 16 >>> 2, !0);", "2,7,5,-6,16,-4,4,true")]
