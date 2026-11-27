@@ -31,19 +31,24 @@ public sealed class SkinScenesShippedTests
     }
 }
 
-public sealed class SkinLayoutTests
+public sealed class SkinPlaceTests
 {
-    // The skin's layout point 14 (the lane's) moves the lane and what sits on it in Waddamburo's gameplay screen.
+    // A place moves that movie alone: the lane moves, its gauge stays at the layout's place; the second lane keeps its own.
     [Fact]
-    public void TheSkinsLayoutMovesTheGameplayLayers()
+    public void ThePlacesMoveEachGameplayMovieOnItsOwn()
     {
         var screens = new WaddamburoScreens
         {
-            Skin = SkinScenes.Parse("""{ "format": 1, "scenes": { "gameplay": { "layers": [], "layout": { "14": [300, 280] } } } }"""),
+            Skin = SkinScenes.Parse("""{ "format": 1, "scenes": { "gameplay": { "layers": [], "places": { "lane": { "x": 300, "y": 280, "rotation": 5 } } } } }"""),
         };
-        var scene = screens.Gameplay(Waddamburo.Game.Scenes.FlowScenes.Gameplay, new Random(1), Waddamburo.Formats.Layout.EnsoLayout.Standard);
+        var layout = Waddamburo.Formats.Layout.EnsoLayout.Standard;
+        var scene = screens.Gameplay(Waddamburo.Game.Scenes.FlowScenes.Gameplay, new Random(1), layout);
         var lane = scene.Layers.Single(static layer => layer.MovieId == "lane/lane.lm");
         Assert.Equal((300f, 280f), (lane.Transform.X, lane.Transform.Y));
-        Assert.Equal((300f, 280f), (scene.Layers.Single(static layer => layer.MovieId == "lane_hit/lane_hit.lm").Transform.X, 280f));
+        Assert.NotEqual(0, lane.Transform.M12);
+        var gauge = scene.Layers.First(static layer => layer.MovieId.StartsWith("gage_don_1p_", StringComparison.Ordinal));
+        Assert.Equal((layout[14].X, layout[14].Y), (gauge.Transform.X, gauge.Transform.Y));
+        var two = screens.Gameplay(Waddamburo.Game.Scenes.FlowScenes.Gameplay, new Random(1), layout, twoPlayers: true);
+        Assert.Single(two.Layers, static layer => layer.MovieId == "lane/lane.lm" && layer.Transform.X == 300);
     }
 }

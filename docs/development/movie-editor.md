@@ -22,9 +22,9 @@ from the current folder). `--inspect=scene:<screen>` starts on a scene view (for
   middle drag moves, Home fits, F frames the selection; the screen fitted with a margin); snapping to the stage, other layers' edges and a grid
   (Ctrl held: off), 15° and 0.05 steps; arrows nudge; drag a component onto the stage to add it; one gesture is one
   undo step. Saves `scenes.json` (Ctrl+S).
-- **Gameplay's layout**: the layout's layers (lane, gauge, song info, combo...) are listed and picked like the skin's;
-  dragging one, its arrows or its Point field move its layout point (scenes.json gameplay `layout`), with every movie
-  on that point; Back to the standard layout drops the override. Notes and bar lines are the engine's.
+- **Gameplay's own movies** (lane, hit target, gauge, song info, combo...) are listed first and placed with the same
+  tools as the skin's layers, written as scenes.json gameplay `places`; Back to the layout's place drops one. The
+  notes follow `lane_hit` (the hit target); the engine's note templates are not shown.
 - **Live scene window** (F4, Skin menu) over the component editor: the screen with the package being edited, from its
   unsaved document; only the edited movie restarts.
 - **Example data** (`Skin/PreviewData.cs`): every state at its sample, lists filled, both drums joined with names, the

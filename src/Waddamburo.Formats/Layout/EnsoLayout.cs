@@ -37,18 +37,6 @@ public sealed class EnsoLayout
         new(200, 92), new(200, 630), new(23, 193), new(23, 495), new(143, 156), new(143, 531),
     ]);
 
-    /// <summary>This layout with some of its points moved (by index; an index past the end is ignored).</summary>
-    public EnsoLayout With(IReadOnlyDictionary<int, Vector2> points)
-    {
-        if (points.Count == 0)
-            return this;
-        var moved = Points.ToBuilder();
-        foreach (var (index, point) in points)
-            if ((uint)index < (uint)moved.Count)
-                moved[index] = point;
-        return new EnsoLayout(moved.MoveToImmutable());
-    }
-
     public Vector2 this[int index] => (uint)index < (uint)Points.Length
         ? Points[index]
         : throw new InvalidDataException($"ensolayout has no entry {index} ({Points.Length} entries).");

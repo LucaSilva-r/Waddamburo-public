@@ -67,30 +67,39 @@ public sealed class SceneScaleTests
     }
 }
 
-public sealed class SceneLayoutTests
+public sealed class ScenePlaceTests
 {
     [Fact]
-    public void LayoutPointsAreKeptByLayerEditsAndGoBackToStandard()
+    public void PlacesAreKeptByLayerEditsAndGoBackToTheLayout()
     {
-        var root = Directory.CreateTempSubdirectory("waddamburo-layout-test").FullName;
+        var root = Directory.CreateTempSubdirectory("waddamburo-place-test").FullName;
         try
         {
             var scenes = new SceneDocument(root);
-            scenes.EditLayout(14, new(300, 280));
-            scenes.EditLayout(13, new(910, 40));
+            scenes.EditPlace("lane", new("lane", "place", 300, 280, null, Rotation: 10));
+            scenes.EditPlace("gage_don_1p", new("x", "place", 400, 100, null));
             scenes.Edit("gameplay", list => list.Add(new("deco/stars", "decoration", 0, 0, null)));
-            Assert.Equal(new System.Numerics.Vector2(300, 280), scenes.Layout[14]);
+            Assert.Equal((300f, 280f, 10f), (scenes.Places["lane"].X, scenes.Places["lane"].Y, scenes.Places["lane"].Rotation));
             Assert.Single(scenes.Layers("gameplay"));
-            Assert.Contains("\"layout\": { \"13\": [910, 40], \"14\": [300, 280] }", scenes.Text);
-            scenes.EditLayout(14, null);
-            Assert.False(scenes.Layout.ContainsKey(14));
-            // A layout anywhere but gameplay, or a point past the layout's, is refused.
-            Assert.Throws<InvalidDataException>(() => SkinScenes.Parse("""{ "format": 1, "scenes": { "boot": { "layers": [ { "movie": "a/b", "role": "boot" } ], "layout": { "1": [0, 0] } } } }"""));
-            Assert.Throws<InvalidDataException>(() => SkinScenes.Parse("""{ "format": 1, "scenes": { "gameplay": { "layers": [], "layout": { "99": [0, 0] } } } }"""));
+            Assert.Contains("\"lane\": { \"x\": 300, \"y\": 280, \"rotation\": 10 }", scenes.Text);
+            scenes.EditPlace("lane", null);
+            Assert.False(scenes.Places.ContainsKey("lane"));
+            Assert.Throws<InvalidDataException>(() => SkinScenes.Parse("""{ "format": 1, "scenes": { "boot": { "layers": [ { "movie": "a/b", "role": "boot" } ], "places": { "lane": { "x": 0 } } } } }"""));
         }
         finally
         {
             Directory.Delete(root, recursive: true);
         }
+    }
+
+    [Fact]
+    public void AMatrixReadsBackAsPlaceScaleAndTurn()
+    {
+        var layer = new SkinScenes.Layer("a/b", "place", 10, 20, null, 2, .5f, 30);
+        var back = SkinScenes.Layer.FromMatrix("a/b", "place", layer.Transform);
+        Assert.Equal(2, back.ScaleX, 3);
+        Assert.Equal(.5f, back.ScaleY, 3);
+        Assert.Equal(30, back.Rotation, 2);
+        Assert.Equal((10f, 20f), (back.X, back.Y));
     }
 }

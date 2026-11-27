@@ -284,6 +284,13 @@ public static class GameplaySceneComposition
         : SkinRoles.FirstOrDefault(entry => entry.Role == Role(movie)) is { Role: not null } skin ? skin.Index
         : null;
 
+    /// <summary>
+    /// The name a skin places the first player's gameplay movie by (scenes.json gameplay places): the movie's own, the
+    /// course gauges sharing "gage_don_1p" (one shows at a time); null for one the engine places (notes, bar lines).
+    /// </summary>
+    public static string? PlaceName(string movie) => LayoutIndex(movie) is null ? null
+        : movie.StartsWith("gage_don_1p_", StringComparison.Ordinal) ? "gage_don_1p" : movie;
+
     /// <summary>Traced draw depth of a gameplay layer role (larger = further back); null if unknown.</summary>
     public static int? Depth(string role) =>
         SkinRoles.FirstOrDefault(entry => entry.Role == role) is { Role: not null } skin ? skin.Depth

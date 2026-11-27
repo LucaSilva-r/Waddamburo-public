@@ -70,12 +70,19 @@ internal sealed class WaddamburoScreens : IScreenCompositions
     public SceneDefinition Gameplay(SceneId id, Random random, Formats.Layout.EnsoLayout layout, GameplaySceneComposition.ThemedSkin? theme = null,
         int side = 0, bool twoPlayers = false, bool dojo = false)
     {
-        // The skin's layout points over the layout given (the game data's, else the standard one).
-        var all = GameplaySceneComposition.Create(id, random, Skin is { } skin ? layout.With(skin.Layout) : layout, null, side, twoPlayers, dojo);
+        var all = Placed(id, random, layout, side, twoPlayers, dojo);
         // The skin's gameplay entry adds layers over the layout's (decoration): the roles above stay the layout's.
-        return new(SceneDefinition.CurrentVersion, id, [.. all.Layers.Where(static layer => !GameplaySceneComposition.IsGreenDecoration(layer)),
-            .. (Skin?.Layers("gameplay") ?? []).Select(static layer => layer.Definition())]);
+        return new(SceneDefinition.CurrentVersion, id, [.. all, .. (Skin?.Layers("gameplay") ?? []).Select(static layer => layer.Definition())]);
     }
+
+    /// <summary>The gameplay roles at the layout's places, each moved where the skin's places put it (the editor shows these).</summary>
+    public IReadOnlyList<SceneLayerDefinition> Placed(SceneId id, Random random, Formats.Layout.EnsoLayout layout, int side = 0,
+        bool twoPlayers = false, bool dojo = false) =>
+        [.. GameplaySceneComposition.Create(id, random, layout, null, side, twoPlayers, dojo).Layers
+            .Where(static layer => !GameplaySceneComposition.IsGreenDecoration(layer))
+            // ponytail: the first lane only; the second player's (two players) keeps the layout's places.
+            .Select(layer => layer.HostId != GameplaySceneComposition.PlayerTwoHostId && Skin?.Places.GetValueOrDefault(GameplaySceneComposition.PlaceName(Path.GetFileNameWithoutExtension(layer.MovieId)) ?? "")
+                is { } place ? new SceneLayerDefinition(layer.ArchiveId, layer.MovieId, place.Transform, layer.HostId, layer.AnchorId) : layer)];
 
     public SceneDefinition Results => skin("result", BuiltInResults);
 

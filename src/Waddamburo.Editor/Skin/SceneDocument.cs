@@ -67,25 +67,31 @@ public sealed class SceneDocument
         write(key, scene => scene["layers"] = new JsonArray([.. layers.Select(write)]), continues);
     }
 
-    /// <summary>The gameplay layout's points the skin moves, by index (see <see cref="SkinScenes.Layout"/>).</summary>
-    public IReadOnlyDictionary<int, System.Numerics.Vector2> Layout => Parsed?.Layout ?? new Dictionary<int, System.Numerics.Vector2>();
+    /// <summary>Where the skin puts gameplay's own movies (see <see cref="SkinScenes.Places"/>).</summary>
+    public IReadOnlyDictionary<string, SkinScenes.Layer> Places => Parsed?.Places ?? new Dictionary<string, SkinScenes.Layer>();
 
-    /// <summary>Moves a gameplay layout point (null: back to the standard layout's), as <see cref="Edit"/> does a layer.</summary>
-    public void EditLayout(int index, System.Numerics.Vector2? point, bool continues = false) => write("gameplay", scene =>
+    /// <summary>Places one of gameplay's own movies (null: back at the layout's place), as <see cref="Edit"/> does a layer.</summary>
+    public void EditPlace(string name, SkinScenes.Layer? place, bool continues = false) => write("gameplay", scene =>
     {
-        var layout = scene["layout"] as JsonObject ?? new JsonObject();
-        var key = index.ToString(CultureInfo.InvariantCulture);
-        if (point is { } at) layout[key] = new JsonArray(Math.Round(at.X, 2), Math.Round(at.Y, 2));
-        else layout.Remove(key);
-        // Points in index order, so the file reads top to bottom.
-        var sorted = new JsonObject();
-        foreach (var (name, value) in layout.OrderBy(static pair => int.Parse(pair.Key, CultureInfo.InvariantCulture)).ToList())
+        var places = scene["places"] as JsonObject ?? new JsonObject();
+        if (place is { } at)
         {
-            layout.Remove(name);
-            sorted[name] = value;
+            var node = write(at);
+            node.Remove("movie");
+            node.Remove("role");
+            if (!node.ContainsKey("x")) node["x"] = 0;
+            if (!node.ContainsKey("y")) node["y"] = 0;
+            places[name] = node;
         }
-        if (sorted.Count == 0) scene.Remove("layout");
-        else scene["layout"] = sorted;
+        else places.Remove(name);
+        var sorted = new JsonObject();
+        foreach (var (key, value) in places.OrderBy(static pair => pair.Key, StringComparer.Ordinal).ToList())
+        {
+            places.Remove(key);
+            sorted[key] = value;
+        }
+        if (sorted.Count == 0) scene.Remove("places");
+        else scene["places"] = sorted;
         scene["layers"] ??= new JsonArray([.. Layers("gameplay").Select(write)]);
     }, continues);
 
@@ -175,9 +181,10 @@ public sealed class SceneDocument
             var (key, scene) = scenes[index];
             var layers = scene?["layers"]?.AsArray() ?? [];
             var comma = index < scenes.Count - 1 ? "," : "";
-            // gameplay's layout points: one line after its layers.
-            var layout = scene?["layout"] is JsonObject points && points.Count > 0
-                ? $", \"layout\": {{ {string.Join(", ", points.Select(static pair => $"\"{pair.Key}\": [{value(pair.Value![0])}, {value(pair.Value![1])}]"))} }}" : "";
+            // gameplay's places of its own movies: one a line, after its layers.
+            var places = scene?["places"] is JsonObject placed && placed.Count > 0 ? placed : null;
+            var layout = places is null ? "" : ", \"places\": {\n" + string.Join(",\n", places.Select(static pair =>
+                $"      {JsonSerializer.Serialize(pair.Key)}: {compact(pair.Value!)}")) + "\n    }";
             if (layers.Count <= 1)
             {
                 lines.Add($"    {JsonSerializer.Serialize(key)}: {{ \"layers\": [{(layers.Count == 1 ? $" {compact(layers[0]!)} " : "")}]{layout} }}{comma}");

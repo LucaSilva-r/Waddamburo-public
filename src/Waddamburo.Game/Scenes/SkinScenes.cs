@@ -54,6 +54,15 @@ public sealed class SkinScenes
             }
         }
 
+        /// <summary>A layer placed by a matrix (no skew): its scale and turn read back from it.</summary>
+        public static Layer FromMatrix(string movie, string role, LumenMatrix matrix)
+        {
+            var scaleX = MathF.Sqrt(matrix.M11 * matrix.M11 + matrix.M12 * matrix.M12);
+            var rotation = MathF.Atan2(matrix.M12, matrix.M11) * 180 / MathF.PI;
+            var scaleY = scaleX == 0 ? 0 : (matrix.M11 * matrix.M22 - matrix.M21 * matrix.M12) / scaleX;
+            return new(movie, role, matrix.X, matrix.Y, null, scaleX, scaleY, MathF.Round(rotation, 3));
+        }
+
         /// <summary>The engine's layer: "attract/kidou/kidou" is archive "attract/kidou/packeddata.ddp", movie "kidou/kidou.lm".</summary>
         public SceneLayerDefinition Definition()
         {
@@ -65,13 +74,14 @@ public sealed class SkinScenes
 
     private readonly Dictionary<string, Layer[]> _scenes;
 
-    private SkinScenes(Dictionary<string, Layer[]> scenes, Dictionary<int, System.Numerics.Vector2> layout) => (_scenes, Layout) = (scenes, layout);
+    private SkinScenes(Dictionary<string, Layer[]> scenes, Dictionary<string, Layer> places) => (_scenes, Places) = (scenes, places);
 
     /// <summary>
-    /// The gameplay layout's points the skin moves (gameplay's <c>"layout": {"14": [248, 271]}</c>: by ensolayout
-    /// index, over the standard layout). Every gameplay movie at a point moves with it (the lane, its gauge, its hit mark...).
+    /// Where the skin puts gameplay's own movies (gameplay's <c>"places": {"lane": {"x": 248, "y": 271, "rotation": 5}}</c>),
+    /// by <see cref="GameplaySceneComposition.PlaceName"/>; a movie left out stays at the layout's place. The notes
+    /// follow the hit target's movie (lane_hit): they come to it along its turn and size.
     /// </summary>
-    public IReadOnlyDictionary<int, System.Numerics.Vector2> Layout { get; }
+    public IReadOnlyDictionary<string, Layer> Places { get; }
 
     /// <summary>Screen keys the file composes.</summary>
     public IEnumerable<string> Keys => _scenes.Keys;
@@ -125,7 +135,7 @@ public sealed class SkinScenes
         if (!root.TryGetProperty("scenes", out var scenes) || scenes.ValueKind != JsonValueKind.Object)
             throw new InvalidDataException("\"scenes\" object expected.");
         var result = new Dictionary<string, Layer[]>(StringComparer.Ordinal);
-        var points = new Dictionary<int, System.Numerics.Vector2>();
+        var places = new Dictionary<string, Layer>(StringComparer.Ordinal);
         foreach (var scene in scenes.EnumerateObject())
         {
             if (!Screens.TryGetValue(scene.Name, out var screen))
@@ -137,26 +147,22 @@ public sealed class SkinScenes
                 if (!layers.Any(layer => layer.Role == role))
                     throw new InvalidDataException($"{scene.Name}: needs a layer with role \"{role}\".");
             result[scene.Name] = layers;
-            if (scene.Value.TryGetProperty("layout", out var layout))
+            if (scene.Value.TryGetProperty("places", out var placed))
             {
-                if (scene.Name != "gameplay" || layout.ValueKind != JsonValueKind.Object)
-                    throw new InvalidDataException($"{scene.Name}: \"layout\" is gameplay's only, an object of points by index.");
-                foreach (var point in layout.EnumerateObject())
+                if (scene.Name != "gameplay" || placed.ValueKind != JsonValueKind.Object)
+                    throw new InvalidDataException($"{scene.Name}: \"places\" is gameplay's only, an object of places by movie.");
+                foreach (var place in placed.EnumerateObject())
                 {
-                    if (!int.TryParse(point.Name, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var index)
-                        || index >= Formats.Layout.EnsoLayout.Standard.Points.Length)
-                        throw new InvalidDataException($"gameplay layout: \"{point.Name}\" is no layout point (0 to {Formats.Layout.EnsoLayout.Standard.Points.Length - 1}).");
-                    if (point.Value.ValueKind != JsonValueKind.Array || point.Value.GetArrayLength() != 2
-                        || point.Value.EnumerateArray().Any(static each => each.ValueKind != JsonValueKind.Number || !float.IsFinite(each.GetSingle())))
-                        throw new InvalidDataException($"gameplay layout {index}: [x, y] expected.");
-                    points[index] = new(point.Value[0].GetSingle(), point.Value[1].GetSingle());
+                    if (place.Value.ValueKind != JsonValueKind.Object)
+                        throw new InvalidDataException($"gameplay places: \"{place.Name}\" is an object (x, y, scaleX, scaleY, rotation).");
+                    places[place.Name] = readLayer(place.Value, $"gameplay place {place.Name}", place.Name);
                 }
             }
         }
-        return new(result, points);
+        return new(result, places);
     }
 
-    private static Layer readLayer(JsonElement layer, string where)
+    private static Layer readLayer(JsonElement layer, string where, string? place = null)
     {
         string text(string name) => layer.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
             && value.GetString() is { Length: > 0 } got ? got : throw new InvalidDataException($"{where}: \"{name}\" text expected.");
@@ -168,8 +174,8 @@ public sealed class SkinScenes
                 throw new InvalidDataException($"{where}: \"{name}\" must be a number.");
             return value.GetSingle();
         }
-        var movie = text("movie");
-        if (movie.Split('/') is not { Length: >= 2 } parts || parts.Any(static part => part is "" or "." or ".."))
+        var movie = place ?? text("movie");
+        if (place is null && (movie.Split('/') is not { Length: >= 2 } parts || parts.Any(static part => part is "" or "." or "..")))
             throw new InvalidDataException($"{where}: \"movie\" is a package folder under the skin, like \"entry/entry\".");
         int? side = null;
         if (layer.TryGetProperty("side", out var sideValue))
@@ -178,6 +184,6 @@ public sealed class SkinScenes
         var (scaleX, scaleY) = (number("scaleX", 1), number("scaleY", 1));
         if (scaleX == 0 || scaleY == 0)
             throw new InvalidDataException($"{where}: a scale of 0 hides the layer; remove the layer instead.");
-        return new(movie, text("role"), number("x"), number("y"), side, scaleX, scaleY, number("rotation"));
+        return new(movie, place is null ? text("role") : "place", number("x"), number("y"), side, scaleX, scaleY, number("rotation"));
     }
 }

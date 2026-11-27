@@ -31,6 +31,9 @@ public sealed class TaikoLumenPresentation
     private readonly float _hitX;
     private readonly float _hitY;
     private readonly float _hitRadius;
+    private readonly LumenMatrix? _laneFrame;
+
+    private LumenSceneLayer inLane(LumenSceneLayer layer) => _laneFrame is { } frame ? layer with { Transform = layer.Transform.Then(frame) } : layer;
     private readonly TaikoGoGoPresentation _gogo;
     private readonly Func<IEnumerable<LumenSceneLayer>>? _flights; // the hit flights drawn now
     private readonly Func<LumenPlayer, bool> _flies; // a flight movie: placed with the target
@@ -88,6 +91,12 @@ public sealed class TaikoLumenPresentation
             throw new InvalidDataException("Gameplay lane is missing rendered target geometry.");
         (_hitX, _hitY) = target.Transform.Transform(bounds.X + bounds.Width / 2, bounds.Y + bounds.Height / 2);
         _hitRadius = _hitY - target.Transform.Transform(bounds.X + bounds.Width / 2, bounds.Y).Y;
+        // A turned or resized lane (a skin's place): the notes, bar lines and their labels travel along it, sized with it,
+        // about the hit target; they are worked out on a level lane, then put in its frame.
+        var lane = target.Transform;
+        _laneFrame = lane is { M11: 1, M12: 0, M21: 0, M22: 1 } ? null
+            : new LumenMatrix(lane.M11, lane.M12, lane.M21, lane.M22,
+                _hitX - (lane.M11 * _hitX + lane.M21 * _hitY), _hitY - (lane.M12 * _hitX + lane.M22 * _hitY));
         _mods = new ChartModValues(chart.Effects.Mods);
         _geometry = new NoteGeometry(chart, _hitX, _hitY, _mods);
         _layout = new ChartModValues(chart.Effects.Layout);
@@ -272,7 +281,8 @@ public sealed class TaikoLumenPresentation
         var notes = new List<(TimeSpan Start, LumenSceneLayer Layer)>();
         if (_longNotes is not null)
             notes.AddRange(_longNotes.NoteLayers(time,
-                (noteTime, controlTime, route) => _geometry.Point(noteTime, time, controlTime, route), _geometry.Origin(time), bodies: !Doron));
+                (noteTime, controlTime, route) => _geometry.Point(noteTime, time, controlTime, route), _geometry.Origin(time), bodies: !Doron)
+                .Select(note => (note.Start, inLane(note.Layer))));
         var hitNotes = new List<LumenSceneLayer>(1);
         var texts = new List<LumenSceneLayer>();
         var noteWindows = _noteWindows ??= [.. _chart.HitObjects.Select(note => _geometry.Window(note.StartTime, note.Branch, NoteGeometry.ScrollTime(note)))];
@@ -353,7 +363,7 @@ public sealed class TaikoLumenPresentation
         TimeSpan? controlTime = null)
     {
         if (_geometry.Place(noteTime, time, route, yOffset, hitNote, barLine, controlTime) is { } placed)
-            layers.Add(template with { Transform = placed.Transform, Alpha = placed.Alpha });
+            layers.Add(inLane(template with { Transform = placed.Transform, Alpha = placed.Alpha }));
     }
 
     // 太鼓の達人Wii's giant note: the big note's art scaled up, rolling (turned by the distance it travelled over its

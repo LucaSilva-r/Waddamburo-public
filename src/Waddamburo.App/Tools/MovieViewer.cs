@@ -257,23 +257,24 @@ internal static class MovieViewer
         if (skin is not null && inspector is not null)
         {
             skinStage = new Waddamburo.Editor.SkinStage(application, skin, Presentation.GameMovieContent.DecodeImage, ViewerHostBinding.Instance, textFields.Resolve);
-            // Gameplay: the layout's layers (lane, gauge, notes...) under the skin's, as the game composes them, at the
-            // skin's layout points (made again when they change).
+            // Gameplay: the layout's layers (lane, gauge, notes...) under the skin's, as the game composes them, where the
+            // skin's places put them (made again when they change).
             var scenes = new Waddamburo.Editor.SceneDocument(skin);
             (string Text, Waddamburo.Game.Scenes.SkinScenes.Layer[] Layers)? gameplay = null;
             Waddamburo.Game.Scenes.SkinScenes.Layer[] gameplayLayers()
             {
                 if (gameplay is { } made && made.Text == scenes.Text)
                     return made.Layers;
-                var layout = Waddamburo.Formats.Layout.EnsoLayout.Standard.With(scenes.Layout);
-                var layers = Waddamburo.Game.Scenes.GameplaySceneComposition.Create(Waddamburo.Game.Scenes.FlowScenes.Gameplay, new Random(1), layout)
-                    .Layers.Where(static layer => !Waddamburo.Game.Scenes.GameplaySceneComposition.IsGreenDecoration(layer)).Select(layer =>
+                var screens = new Frontends.WaddamburoScreens { Skin = scenes.Parsed };
+                // The engine's note templates (notes, bar lines) are left out: they only show where it puts each note.
+                var layers = screens.Placed(Waddamburo.Game.Scenes.FlowScenes.Gameplay, new Random(1), Waddamburo.Formats.Layout.EnsoLayout.Standard)
+                    .Where(static layer => Waddamburo.Game.Scenes.GameplaySceneComposition.PlaceName(Path.GetFileNameWithoutExtension(layer.MovieId)) is not null)
+                    .Select(layer =>
                     {
                         var folder = Waddamburo.Game.Scenes.DirectoryLumenMovieContentSource.PackageFolder(skin, layer.ArchiveId, layer.MovieId) is { } found
                             ? Path.GetRelativePath(skin, found).Replace('\\', '/')
                             : $"{Path.GetDirectoryName(layer.ArchiveId)?.Replace('\\', '/')}/{Path.GetFileNameWithoutExtension(layer.MovieId)}";
-                        return new Waddamburo.Game.Scenes.SkinScenes.Layer(folder, layer.HostId, layer.Transform.X, layer.Transform.Y, null,
-                            layer.Transform.M11, layer.Transform.M22);
+                        return Waddamburo.Game.Scenes.SkinScenes.Layer.FromMatrix(folder, layer.HostId, layer.Transform);
                     }).ToArray();
                 gameplay = (scenes.Text, layers);
                 return layers;

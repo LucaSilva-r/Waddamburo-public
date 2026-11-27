@@ -390,10 +390,12 @@ A skin folder (`movies/`, or `USRDIR/waddamburo/movies` over it) holds, beside i
   screen is built per drum (Song Select, the dan list). The engine keeps each screen's required roles
   (`SkinScenes.Screens`): a screen missing one is refused with its name. Screens: boot, entry, song-select, tutorial,
   dani-select, result, dani-result, rainbow, shutter, fade, dan-cover, dan-exit-cover, dan-shutter, and gameplay, whose
-  layers only go over the layout's, and whose `"layout": {"14": [248, 271]}` moves the layout's points (ensolayout
-  indices, over the standard layout or the game data's): every gameplay movie on a point moves with it, the notes
-  with the lane (the hit point is read from the lane's placement). ponytail: the second player's lane has points of
-  its own (the next index), not moved with the first's. A screen the file leaves out, or a
+  layers only go over the layout's, and whose `"places": {"lane": {"x": 248, "y": 271, "rotation": 5}}` puts each of
+  gameplay's own movies where the skin wants it (place, scale, turn; by movie name, the course gauges sharing
+  `gage_don_1p`); one left out stays at the layout's place. The notes, bar lines and rolls follow the hit target's
+  movie (`lane_hit`, the one with the `target` clip): worked out on a level lane, then put in its frame
+  (`TaikoLumenPresentation` lane frame). ponytail: the first lane only; the second player's keeps the layout's
+  places, and the right drum's player alone (katsu1p movies) too. A screen the file leaves out, or a
   file that does not read (printed at boot), is the built-in one (`WaddamburoScreens`). The user's folder's file wins
   whole over the bundled one. Green's frontend ignores it.
 
