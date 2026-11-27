@@ -17,7 +17,14 @@ public static class MoviePackage
     public const string FileName = "movie.json";
 
     /// <summary>The assembled movie and its texture files (package-relative), in texture-index order.</summary>
-    public sealed record Assembled(byte[] Lmb, ImmutableArray<string> TextureFiles);
+    public sealed record Assembled(byte[] Lmb, ImmutableArray<string> TextureFiles)
+    {
+        /// <summary>
+        /// The layers anchored to a stage edge ("anchor": "left", "right" or "stretch"; the engine's LumenStage): by the
+        /// sprite's character id and the layer's depth.
+        /// </summary>
+        public ImmutableArray<(uint Sprite, uint Depth, string Anchor)> Anchors { get; init; } = [];
+    }
 
     private static readonly JsonDocumentOptions Options = new() { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip };
 
@@ -78,6 +85,7 @@ public static class MoviePackage
     {
         private readonly List<byte[]> _actions = [];
         private readonly List<float[]> _bounds = [];
+        private readonly List<(uint Sprite, uint Depth, string Anchor)> _anchors = [];
         private readonly List<string> _strings = [""]; // Index 0 is "no name".
         private readonly List<(float A, float B, float C, float D, float X, float Y)> _matrices = [];
         private readonly List<(short R, short G, short B, short A)> _colours = [];
@@ -196,7 +204,7 @@ public static class MoviePackage
                     BinaryPrimitives.WriteUInt32BigEndian(payload.AsSpan(index * 4), words[index]);
                 writeRecord(stream, tag, payload);
             }
-            return new Assembled(stream.ToArray(), [.. textures.Select(static texture => texture.File)]);
+            return new Assembled(stream.ToArray(), [.. textures.Select(static texture => texture.File)]) { Anchors = [.. _anchors] };
         }
 
         // One textured quad: "rect" [x, y, width, height] in the shape's own space, "uv" [left, top, right, bottom]
@@ -241,6 +249,15 @@ public static class MoviePackage
                 if (!_characters.TryGetValue(characterName, out var character))
                     throw new FormatException($"{FileName}: {where} places an unknown character: \"{characterName}\".");
                 var depth = (uint)number(layer, "depth", layerIndex + 1);
+                // "anchor": where the clip holds on a stage wider or narrower than 1280 (center: with the stage).
+                if (layer.TryGetProperty("anchor", out var anchorValue))
+                {
+                    var anchor = anchorValue.ValueKind == JsonValueKind.String ? anchorValue.GetString() : null;
+                    if (anchor is not ("left" or "center" or "right" or "stretch"))
+                        throw new FormatException($"{FileName}: {where}: \"anchor\" is left, center, right or stretch.");
+                    if (anchor != "center")
+                        _anchors.Add((_characters[sprite.Name], depth, anchor));
+                }
                 var name = layer.TryGetProperty("name", out var nameValue) ? text(nameValue.GetString() ?? "") : 0;
                 var blend = (layer.TryGetProperty("blend", out var blendValue) ? blendValue.GetString() : "normal") switch
                 {

@@ -127,7 +127,10 @@ public sealed class LumenMovieContent
         var semantic = LmbSemanticReader.Read(LmbFile.Parse(assembled.Lmb, parserLimits), parserLimits,
             new LmbSemanticValidationContext(textures.Count));
         var name = Path.GetFileName(root);
-        return new LumenMovieContent($"{name}/{name}.lm", semantic.Value, textures.MoveToImmutable(), semantic.Diagnostics);
+        return new LumenMovieContent($"{name}/{name}.lm", semantic.Value, textures.MoveToImmutable(), semantic.Diagnostics)
+        {
+            ClipAnchors = assembled.Anchors.ToDictionary(static each => (each.Sprite, (long)each.Depth), static each => Lumen.Rendering.LumenStage.Parse(each.Anchor)),
+        };
     }
 
     /// <summary>A movie that shows nothing and answers nothing: the stand-in for one that exists nowhere.</summary>
@@ -170,7 +173,10 @@ public sealed class LumenMovieContent
         float stageHeight = 720,
         ILumenHostBinding? hostBinding = null,
         Func<string, LumenLoadedMovie?>? movieLoader = null) =>
-        new(Definition, stageWidth, stageHeight, hostBinding: hostBinding, movieLoader: movieLoader) { Name = Name, StandIn = IsStandIn };
+        new(Definition, stageWidth, stageHeight, hostBinding: hostBinding, movieLoader: movieLoader) { Name = Name, StandIn = IsStandIn, ClipAnchors = ClipAnchors };
+
+    /// <summary>A package's clips anchored to a stage edge (by sprite id and depth; MoviePackage.Assembled.Anchors).</summary>
+    public IReadOnlyDictionary<(uint Sprite, long Depth), Lumen.Rendering.LumenAnchor>? ClipAnchors { get; private init; }
 
     /// <summary>Made by <see cref="Empty"/>: its players accept any callback.</summary>
     public bool IsStandIn { get; private init; }

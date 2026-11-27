@@ -194,6 +194,9 @@ public sealed partial class LumenPlayer : IAvm1Host
     /// <summary>This player stands in for a movie that exists nowhere: empty, and it accepts any callback.</summary>
     public bool StandIn { get; init; }
 
+    /// <summary>Clips anchored to a stage edge, by their holder's character id and their depth (a package's "anchor").</summary>
+    public IReadOnlyDictionary<(uint Sprite, long Depth), Rendering.LumenAnchor>? ClipAnchors { get; init; }
+
     /// <summary>The movie this player runs (for <see cref="Inspect"/>).</summary>
     public string? Name
     {
@@ -2903,6 +2906,9 @@ public sealed partial class LumenPlayer : IAvm1Host
             ? 1 : interpolationFraction;
         var local = interpolate(instance, interpolationFraction);
         var transform = local.Transform.Then(parentTransform);
+        // A clip anchored to a stage edge (a package's "anchor"): it, and what it holds, moves with that edge.
+        if (ClipAnchors is { Count: > 0 } anchors && instance.Parent is { } holder && anchors.TryGetValue((holder.CharacterId, instance.Depth - TimelineDepthBase), out var anchor))
+            transform = Rendering.LumenStage.Anchored(transform, anchor);
         var color = local.Color.Then(parentColor);
         var blend = instance.BlendMode switch
         {
