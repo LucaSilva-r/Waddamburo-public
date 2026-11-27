@@ -358,7 +358,7 @@ public sealed partial class MovieInspectorSession
                 var offset = layer["offset"] is JsonArray { Count: 2 } o
                     ? new Vector2((float)(TextStyleJson.Number(o[0]) ?? 0), (float)(TextStyleJson.Number(o[1]) ?? 0)) : Vector2.Zero;
                 if (ImGui.DragFloat2("Offset", ref offset, .1f, -128, 128, "%.1f"))
-                    edit(() => layer["offset"] = offset == Vector2.Zero ? null : new JsonArray(Math.Round(offset.X, 2), Math.Round(offset.Y, 2)), styleContinues());
+                    edit(() => { if (offset == Vector2.Zero) layer.Remove("offset"); else layer["offset"] = new JsonArray(Math.Round(offset.X, 2), Math.Round(offset.Y, 2)); }, styleContinues());
                 var wrap = layer["wrap"]?.GetValueKind() == JsonValueKind.True;
                 ImGui.BeginDisabled(index == layers.Count - 1);
                 if (ImGui.Checkbox("Around the layers in front", ref wrap))
@@ -368,7 +368,7 @@ public sealed partial class MovieInspectorSession
                     ImGui.SetTooltip("Grow from the layers in front of this one, as they are placed (with their offsets),\ninstead of from the text: a border that also wraps an offset highlight (fake 3D).");
                 var blur = (float)(TextStyleJson.Number(layer["blur"]) ?? 0);
                 if (ImGui.DragFloat("Blur", ref blur, .1f, 0, 128, "%.1f"))
-                    edit(() => layer["blur"] = blur > 0 ? Math.Round(blur, 2) : null, styleContinues());
+                    edit(() => { if (blur > 0) layer["blur"] = Math.Round(blur, 2); else layer.Remove("blur"); }, styleContinues());
                 var (top, bottom, gradient) = colours(layer["color"]);
                 if (ImGui.ColorEdit4(gradient ? "Top" : "Colour", ref top, ImGuiColorEditFlags.AlphaBar))
                     edit(() => layer["color"] = gradient ? new JsonArray(hex(top), hex(bottom)) : hex(top), styleContinues());
@@ -388,8 +388,7 @@ public sealed partial class MovieInspectorSession
                     {
                         var made = layer["gradient"] as JsonObject ?? new JsonObject();
                         change(made);
-                        layer["gradient"] = made.Count > 0 ? made : null;
-                        if (made.Count == 0) layer.Remove("gradient");
+                        if (made.Count > 0) layer["gradient"] = made; else layer.Remove("gradient");
                     }, continues);
                     if (ImGui.SliderFloat("Angle", ref angle, -180, 180, "%.0f deg"))
                         gradientSet(g => { if (angle == 0) g.Remove("angle"); else g["angle"] = MathF.Round(angle); }, styleContinues());
