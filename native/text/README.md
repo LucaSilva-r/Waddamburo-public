@@ -23,6 +23,16 @@ the replacement is ready. Work is demand-driven and bounded to 16 pending jobs a
 64 resident GPU textures, independent of catalog size. Fixed framebuffer probes
 retain a synchronous mode so their final frame does not depend on worker timing.
 
+Styled text (ABI 1.8, `waddamburo_text_context_render_styled_rgba8`) draws any text in any box
+from a style instead of a calibrated profile: letter spacing, line height, slant, alignment along
+and across the lines, a fit mode for text too big for its box (clip, shrink, squeeze along the
+line, wrap then shrink), and top-to-bottom columns with the song titles' punctuation rules. Its look
+is a stack of up to 16 layers drawn back to front, each the text's shape grown outwards, moved,
+blurred and painted with a top-to-bottom gradient over each line: a shadow, two borders and a
+gradient fill are four layers. Borders are grown from the whole text, so overlapping glyphs share
+one border, and one distance field serves every layer. Work is confined to the ink's box grown by
+the layers' reach (a 7-digit score with a border: about 0.15 ms at 1x, 1.3 ms at 3x).
+
 Enable it with `-DWADDAMBURO_BUILD_TEXT=ON` and supply a font at application run
 time with `--font=PATH`. The adapter never searches for or packages a font.
 

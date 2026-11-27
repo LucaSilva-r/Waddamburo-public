@@ -19,6 +19,13 @@ if(WADDAMBURO_PACKAGE)
 else()
   target_link_libraries(waddamburo_text PRIVATE Freetype::Freetype)
 endif()
+if(UNIX AND NOT APPLE)
+  target_link_libraries(waddamburo_text PRIVATE m)
+endif()
+# sqrtf inline (the styled text's distance field takes one per pixel); nothing reads errno.
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+  target_compile_options(waddamburo_text PRIVATE -fno-math-errno)
+endif()
 set_target_properties(waddamburo_text PROPERTIES C_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN true)
 
 if(BUILD_TESTING)

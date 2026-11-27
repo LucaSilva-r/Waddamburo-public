@@ -24,6 +24,7 @@ extern "C" {
 #define WADDAMBURO_TEXT_ABI_VERSION_1_5 UINT32_C(0x00010005)
 #define WADDAMBURO_TEXT_ABI_VERSION_1_6 UINT32_C(0x00010006)
 #define WADDAMBURO_TEXT_ABI_VERSION_1_7 UINT32_C(0x00010007)
+#define WADDAMBURO_TEXT_ABI_VERSION_1_8 UINT32_C(0x00010008)
 
 /* Song-title flags (ABI 1.5): a column too long for its slot keeps its font size and is squashed
  * vertically (as the arcade does), instead of the whole font shrinking. Compact and expanded only. */
@@ -148,6 +149,62 @@ waddamburo_text_context_render_glyph(
     uint8_t *fill,
     uint8_t *outline,
     uint64_t mask_capacity,
+    waddamburo_text_error *error);
+
+
+/* Styled text (ABI 1.8): any text in a box, laid out and drawn as a stack of layers.
+ *
+ * A layer is the text's shape grown outwards by `grow` pixels (0: the glyphs themselves), moved by
+ * the offset, blurred, and painted with a colour that runs from `top_rgba` to `bottom_rgba` over each
+ * line (0xRRGGBBAA, straight alpha). Layers are drawn back to front, so a title with a shadow, a
+ * black border, a red border and a white fill is four layers. Outlines are grown from the whole
+ * text, so overlapping glyphs share one border. */
+typedef struct waddamburo_text_layer {
+    float grow;
+    float offset_x;
+    float offset_y;
+    float blur;
+    uint32_t top_rgba;
+    uint32_t bottom_rgba;
+} waddamburo_text_layer;
+
+#define WADDAMBURO_TEXT_ALIGN_START UINT32_C(0)   /* left, or top */
+#define WADDAMBURO_TEXT_ALIGN_CENTER UINT32_C(1)
+#define WADDAMBURO_TEXT_ALIGN_END UINT32_C(2)     /* right, or bottom */
+
+/* What a text too big for its box does. */
+#define WADDAMBURO_TEXT_FIT_CLIP UINT32_C(0)      /* nothing: it runs out of the box */
+#define WADDAMBURO_TEXT_FIT_SHRINK UINT32_C(1)    /* the whole font shrinks */
+#define WADDAMBURO_TEXT_FIT_SQUEEZE UINT32_C(2)   /* squeezed along the line only (as the game's titles) */
+#define WADDAMBURO_TEXT_FIT_WRAP UINT32_C(3)      /* broken into lines, then shrunk if still too big */
+
+typedef struct waddamburo_text_style {
+    uint32_t struct_size;
+    float font_px;          /* the em size */
+    float letter_spacing;   /* pixels added between characters (negative: tighter) */
+    float line_height;      /* line (or column) advance as a multiple of the font's line box; 0: 1 */
+    float slant;            /* horizontal shear per pixel of height (0.2: a synthetic italic) */
+    uint32_t align;         /* along the line: WADDAMBURO_TEXT_ALIGN_* */
+    uint32_t vertical_align;/* across the lines */
+    uint32_t fit;           /* WADDAMBURO_TEXT_FIT_* */
+    uint32_t vertical;      /* 1: top to bottom, columns right to left (punctuation turned) */
+    uint32_t layer_count;   /* 1..16 */
+    const waddamburo_text_layer *layers;
+} waddamburo_text_style;
+
+/* Renders utf8_text (newlines break lines) into a width x height premultiplied RGBA8 surface. All the
+ * style's lengths are multiplied by `scale` (the drawable's pixel density over the logical box). An
+ * empty text gives a transparent surface. */
+WADDAMBURO_TEXT_API waddamburo_text_result WADDAMBURO_TEXT_CALL
+waddamburo_text_context_render_styled_rgba8(
+    waddamburo_text_context *context,
+    const char *utf8_text,
+    const waddamburo_text_style *style,
+    float scale,
+    uint32_t width,
+    uint32_t height,
+    uint8_t *rgba8,
+    uint64_t rgba8_capacity,
     waddamburo_text_error *error);
 
 #ifdef __cplusplus

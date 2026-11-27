@@ -25,7 +25,10 @@ public enum SongTitleTextProfile : uint
 /// <summary>Rasterizes a user-supplied font through Waddamburo's stable FreeType C adapter.</summary>
 public static unsafe partial class NativeVerticalTextRasterizer
 {
-    private const uint AbiVersion = 0x0001_0007;
+    // The oldest library each call works with: one of the same major version, this minor or later.
+    private const uint AbiVersion = 0x0001_0007, StyledAbiVersion = 0x0001_0008;
+
+    private static bool compatible(uint needed) => GetAbiVersion() is var version && version >> 16 == needed >> 16 && version >= needed;
     private const uint SquashFlag = 1; // WADDAMBURO_TEXT_SONG_TITLE_SQUASH
     private static readonly ConcurrentDictionary<string, Lazy<NativeFontContext>> FontContexts =
         new(StringComparer.Ordinal);
@@ -62,7 +65,7 @@ public static unsafe partial class NativeVerticalTextRasterizer
         ArgumentOutOfRangeException.ThrowIfZero(rasterScale);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(rasterScale, 4U);
         requireFont(fontPath);
-        if (GetAbiVersion() != AbiVersion)
+        if (!compatible(AbiVersion))
             throw new InvalidOperationException("The native text rasterizer ABI is incompatible.");
 
         var baseDimensions = profile switch
@@ -100,13 +103,33 @@ public static unsafe partial class NativeVerticalTextRasterizer
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(fontPath);
         requireFont(fontPath);
-        if (GetAbiVersion() != AbiVersion)
+        if (!compatible(AbiVersion))
             throw new InvalidOperationException("The native text rasterizer ABI is incompatible.");
         return FontContexts.GetOrAdd(
             chain(fontPath),
             static path => new Lazy<NativeFontContext>(
                 () => new NativeFontContext(path),
                 LazyThreadSafetyMode.ExecutionAndPublication)).Value.RenderGlyph(scalar, fontPx, outlineRadius);
+    }
+
+    /// <summary>
+    /// Any text in a width x height box (pixels: the logical box times <paramref name="scale"/>) in a
+    /// <see cref="Waddamburo.Formats.Text.TextStyle"/>, whose font is <paramref name="fontPath"/>. Premultiplied RGBA8.
+    /// </summary>
+    public static RgbaTextSurface RenderStyled(string fontPath, string text, Waddamburo.Formats.Text.TextStyle style, float scale,
+        uint width, uint height)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(fontPath);
+        ArgumentOutOfRangeException.ThrowIfZero(width);
+        ArgumentOutOfRangeException.ThrowIfZero(height);
+        requireFont(fontPath);
+        if (!compatible(StyledAbiVersion))
+            throw new InvalidOperationException("The native text rasterizer ABI is incompatible.");
+        return FontContexts.GetOrAdd(
+            chain(fontPath),
+            static path => new Lazy<NativeFontContext>(
+                () => new NativeFontContext(path),
+                LazyThreadSafetyMode.ExecutionAndPublication)).Value.RenderStyled(text, style, scale, width, height);
     }
 
     public static RgbaTextSurface Render(string fontPath, string text, uint width, uint height)
@@ -116,7 +139,7 @@ public static unsafe partial class NativeVerticalTextRasterizer
         ArgumentOutOfRangeException.ThrowIfZero(width);
         ArgumentOutOfRangeException.ThrowIfZero(height);
         requireFont(fontPath);
-        if (GetAbiVersion() != AbiVersion)
+        if (!compatible(AbiVersion))
             throw new InvalidOperationException("The native text rasterizer ABI is incompatible.");
 
         var pixels = new byte[checked((int)((ulong)width * height * 4))];
@@ -205,6 +228,40 @@ public static unsafe partial class NativeVerticalTextRasterizer
             return new RgbaTextSurface(width, height, pixels);
         }
 
+        public RgbaTextSurface RenderStyled(string text, Waddamburo.Formats.Text.TextStyle style, float scale, uint width, uint height)
+        {
+            var pixels = new byte[checked((int)((ulong)width * height * 4))];
+            var error = new NativeTextError { StructSize = (uint)Unsafe.SizeOf<NativeTextError>() };
+            var layers = style.Layers.IsDefaultOrEmpty ? [new Waddamburo.Formats.Text.TextLayer()] : style.Layers.AsSpan();
+            var native = stackalloc NativeTextLayer[Math.Min(layers.Length, 16)];
+            for (var i = 0; i < Math.Min(layers.Length, 16); i++)
+                native[i] = new NativeTextLayer
+                {
+                    Grow = layers[i].Grow, OffsetX = layers[i].OffsetX, OffsetY = layers[i].OffsetY, Blur = layers[i].Blur,
+                    TopRgba = layers[i].Top, BottomRgba = layers[i].Bottom,
+                };
+            var nativeStyle = new NativeTextStyle
+            {
+                StructSize = (uint)Unsafe.SizeOf<NativeTextStyle>(),
+                FontPx = style.Size, LetterSpacing = style.LetterSpacing, LineHeight = style.LineHeight, Slant = style.Slant,
+                Align = (uint)style.Align, VerticalAlign = (uint)style.VerticalAlign, Fit = (uint)style.Fit,
+                Vertical = style.Vertical ? 1U : 0U, LayerCount = (uint)Math.Min(layers.Length, 16), Layers = native,
+            };
+            lock (_sync)
+            {
+                fixed (byte* destination = pixels)
+                {
+                    var result = RenderStyledWithContext(_handle.DangerousGetHandle(), text, &nativeStyle, scale, width, height,
+                        destination, (ulong)pixels.Length, &error);
+                    if (result != 0)
+                        throw new InvalidOperationException(error.Message.Length == 0
+                            ? $"Styled text rasterization failed with code {result}."
+                            : error.Message);
+                }
+            }
+            return new RgbaTextSurface(width, height, pixels);
+        }
+
         public GlyphMasks RenderGlyph(int scalar, float fontPx, uint outlineRadius)
         {
             var error = new NativeTextError { StructSize = (uint)Unsafe.SizeOf<NativeTextError>() };
@@ -249,6 +306,33 @@ public static unsafe partial class NativeVerticalTextRasterizer
         public float Descender;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeTextLayer
+    {
+        public float Grow;
+        public float OffsetX;
+        public float OffsetY;
+        public float Blur;
+        public uint TopRgba;
+        public uint BottomRgba;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeTextStyle
+    {
+        public uint StructSize;
+        public float FontPx;
+        public float LetterSpacing;
+        public float LineHeight;
+        public float Slant;
+        public uint Align;
+        public uint VerticalAlign;
+        public uint Fit;
+        public uint Vertical;
+        public uint LayerCount;
+        public NativeTextLayer* Layers;
+    }
+
     private sealed class NativeTextContextHandle : SafeHandle
     {
         public NativeTextContextHandle(nint value) : base(nint.Zero, true) => SetHandle(value);
@@ -290,6 +374,22 @@ public static unsafe partial class NativeVerticalTextRasterizer
         uint flags,
         uint outlineRgb,
         uint rasterScale,
+        uint width,
+        uint height,
+        byte* rgba8,
+        ulong rgba8Capacity,
+        NativeTextError* error);
+
+    [LibraryImport(
+        "waddamburo_text",
+        EntryPoint = "waddamburo_text_context_render_styled_rgba8",
+        StringMarshalling = StringMarshalling.Utf8)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    private static partial int RenderStyledWithContext(
+        nint context,
+        string text,
+        NativeTextStyle* style,
+        float scale,
         uint width,
         uint height,
         byte* rgba8,
