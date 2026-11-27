@@ -1,4 +1,4 @@
-# Waddamburo skins for VS Code
+# Waddamburo Skins for VS Code
 
 ActionScript 2 for a Waddamburo skin's scripts (`.as`):
 
