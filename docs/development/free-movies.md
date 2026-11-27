@@ -431,8 +431,13 @@ left-anchored lane, keeps its left end at the judge and reaches the right edge);
 the overflow cropped (a picture background, as osu!'s). A clip's anchor holds the stage's edges whatever its movie's
 own (`LumenStage.ClipAnchored`, the player knows its scene anchor). A shape's `"slice": [left, top, right, bottom]`
 (a 9-slice) is drawn in nine pieces when stretched: corners and caps keep their size, only the middle widens.
-Gameplay's own movies hug the left edge (the song's title the right) unless a place anchors them; the notes
-follow the lane. Note visibility follows osu!taiko: a narrower screen shows fewer notes, a wider one no more than 16:9
+The reference is the 16:9 screen in the middle (user, 2026-11-27): on a wider stage things are placed against
+it, and only what stretches reaches the real edges. Gameplay's own movies are `left-when-narrow` (the song's title
+`right`) unless a place anchors them: wider, the judge circle is where Green's is in that middle 16:9 screen (413
+from its left; Waddamburo's layout puts the lane at the left edge, as Green's data, and the skin's places draw it at
+0.9, at Green's height), the panel (`stretch-left`) reaching the left edge and the lane (`stretch-right`) the right
+one; narrower, all of it keeps to the left edge. `stretch-left` / `stretch-right` reach their edge at any width (a
+movie drawn scaled or placed, too); `stretch` keeps its margins. The notes follow the lane. Note visibility follows osu!taiko: a narrower screen shows fewer notes, a wider one no more than 16:9
 (they fade in at the 16:9 distance, `NoteGeometry.Place`). Green's frontend, and a player's squeezed 4:3 layout, stay
 1280. The skin editor's scene view shows any width (its stage width picker) and edits a layer's anchor; the component
 editor sets a clip's. The engine's own overlays fit (`GameShell.Fitted`): a centred one (menus, pause, settings,
