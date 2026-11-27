@@ -306,6 +306,8 @@ internal static class MovieViewer
             // --inspect=scene:<screen> starts on that screen's scene view.
             if (inspect?.Split('=', 2) is [_, var start] && start.StartsWith("scene:", StringComparison.Ordinal))
                 inspector.ShowScene(start[6..]);
+            else if (inspect?.Split('=', 2) is [_, "text"])
+                inspector.ShowText();
         }
         // --inspect=sprite:<part of its name> starts on that sprite alone.
         if (inspect?.Split('=', 2) is [_, var wanted] && wanted.StartsWith("sprite:", StringComparison.Ordinal))
@@ -394,6 +396,14 @@ internal static class MovieViewer
                 static problem => Console.Error.WriteLine($"Skin text styles ignored: {problem}"));
         }
         readSkinText();
+        if (inspector is not null)
+        {
+            // Text authoring: the skin's text.json, edited with undo (unsaved styles drawn at once), and previews drawn as
+            // the game draws text fields.
+            if (textRoot is not null)
+                inspector.TextStyles = new Waddamburo.Editor.TextDocument(textRoot);
+            inspector.TextTexture = textFields.Resolve;
+        }
         var simulationTick = 0;
         var treeEvery = int.TryParse(DiagnosticSwitches.TreeEvery, out var every) ? every : 0;
         var treeFilter = DiagnosticSwitches.TreeFilter?.Split('|', StringSplitOptions.RemoveEmptyEntries) ?? [];

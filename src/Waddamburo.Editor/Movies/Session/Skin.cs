@@ -80,6 +80,15 @@ public sealed partial class MovieInspectorSession
     /// <summary>Starts on a screen's scene view (a key of <see cref="SkinScenes.Screens"/>).</summary>
     public void ShowScene(string key) => openScene(key);
 
+    /// <summary>Starts on the home page's Text tab (text styles and fonts).</summary>
+    public void ShowText()
+    {
+        _page = Page.Home;
+        _openTextTab = true;
+    }
+
+    private bool _openTextTab;
+
     private int previewVersion => HashCode.Combine(Skin!.Version, Scenes?.Text, _scenarioVersion);
 
     private IReadOnlyList<string> packages()
@@ -312,6 +321,16 @@ public sealed partial class MovieInspectorSession
                 if (ImGui.BeginTabItem("Components"))
                 {
                     components(open: openPackage, columns: 0);
+                    ImGui.EndTabItem();
+                }
+                var openText = _openTextTab;
+                _openTextTab = false;
+                var always = true;
+                var textLabel = _textStyles?.IsDirty == true ? "Text*###text" : "Text###text";
+                // Selected from outside (--inspect=text) through the overload that takes flags, for that one frame.
+                if (openText ? ImGui.BeginTabItem(textLabel, ref always, ImGuiTabItemFlags.SetSelected) : ImGui.BeginTabItem(textLabel))
+                {
+                    textTab();
                     ImGui.EndTabItem();
                 }
                 var errors = problemCount(SkinLint.Level.Error);

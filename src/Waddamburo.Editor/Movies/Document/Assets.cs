@@ -170,14 +170,18 @@ public sealed partial class MovieDocument
     }
 
     /// <summary>A new text field with default bounds and appearance.</summary>
-    public string AddText(string name, string folder = "")
+    public string AddText(string name, string folder = "", float[]? rect = null)
     {
         requireFolder(folder);
         name = free("texts", tidy(name));
         Edit(root =>
         {
+            // With a text of its own, so it shows at once (until a script or a bind gives it one).
             (root["texts"] as JsonObject ?? (JsonObject)(root["texts"] = new JsonObject()))[name] = new JsonObject
-                { ["rect"] = new JsonArray(0, 0, 200, 48), ["size"] = 32, ["align"] = "left", ["color"] = "#ffffff" };
+            {
+                ["rect"] = rect is [var x, var y, var w, var h] ? new JsonArray(x, y, w, h) : new JsonArray(0, 0, 200, 48),
+                ["size"] = 32, ["align"] = "left", ["color"] = "#ffffff", ["text"] = "Text",
+            };
             assignAssetFolder("texts", name, folder);
         });
         return name;

@@ -85,24 +85,7 @@ public sealed partial class MovieInspectorSession
                         edited(() => _document!.Edit(_ => entry["rect"] = new JsonArray(box.X, box.Y, box.Z, box.W), _assetGesture && !ImGui.IsItemActivated()));
                 }
                 assetGesture();
-                var size = entry["size"] is { } fontSize ? assetNumber(fontSize) : 32;
-                if (ImGui.InputFloat("Font size", ref size) && size > 0)
-                    edited(() => _document!.Edit(_ => entry["size"] = size, _assetGesture && !ImGui.IsItemActivated()));
-                assetGesture();
-                var alignment = (string?)entry["align"] ?? "left";
-                if (ImGui.BeginCombo("Alignment", alignment))
-                {
-                    foreach (var option in new[] { "left", "center", "right" })
-                        if (ImGui.Selectable(option, alignment == option))
-                            edited(() => _document!.Edit(_ => entry["align"] = option));
-                    ImGui.EndCombo();
-                }
-                var hex = (string?)entry["color"] ?? "#000000";
-                var rgb = Convert.ToUInt32(hex[1..], 16);
-                var colour = new Vector3((rgb >> 16 & 255) / 255f, (rgb >> 8 & 255) / 255f, (rgb & 255) / 255f);
-                if (ImGui.ColorEdit3("Colour", ref colour))
-                    edited(() => _document!.Edit(_ => entry["color"] = $"#{(int)MathF.Round(colour.X * 255):x2}{(int)MathF.Round(colour.Y * 255):x2}{(int)MathF.Round(colour.Z * 255):x2}", _assetGesture && !ImGui.IsItemActivated()));
-                assetGesture();
+                textFieldSettings(entry);
                 ImGui.BeginDisabled(users.Length > 0);
                 if (ImGui.Button("Delete unused field"))
                     edited(() => _document!.Edit(_ => root["texts"]!.AsObject().Remove(name)));

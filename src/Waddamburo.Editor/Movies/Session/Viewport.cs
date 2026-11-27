@@ -103,6 +103,38 @@ public sealed partial class MovieInspectorSession
             if (asset.Group == "textures")
                 character = (document.Root["shapes"] as System.Text.Json.Nodes.JsonObject)?.FirstOrDefault(shape => (string?)shape.Value?["texture"] == asset.Name).Key
                     ?? document.AddShape(asset.Name, asset.Name, TextureOf?.Invoke(asset.Name)?.Width ?? 128, TextureOf?.Invoke(asset.Name)?.Height ?? 128, folder: asset.Folder);
+            placeCharacter(document, clip, sprite, name, character, point);
+        });
+    }
+
+    // A new text field of this size, placed with its top-left where the box was drawn, and selected in the inspector.
+    private void placeText(LumenPlayer player, IReadOnlyList<LumenInstanceInfo> clips, Vector2 point, Vector2 size)
+    {
+        if (_document is not { ReadOnly: false } document)
+            return;
+        if (timelineOf(clips) is not var (clip, name, sprite))
+        {
+            _notice = "Open a timeline to place a text field into.";
+            return;
+        }
+        if (clip.Path.Length > 0 && player.TryInspectParentTransform(clip.Path, out var parent))
+        {
+            var world = clip.Transform.Then(parent);
+            if (Matrix3x2.Invert(new(world.M11, world.M12, world.M21, world.M22, world.X, world.Y), out var inverse))
+                point = Vector2.Transform(point, inverse);
+        }
+        attempt(() =>
+        {
+            var character = document.AddText("text", rect: [0, 0, MathF.Round(size.X), MathF.Round(size.Y)]);
+            placeCharacter(document, clip, sprite, name, character, point);
+            selectAsset("texts", character);
+        });
+    }
+
+    private static void placeCharacter(MovieDocument document, LumenInstanceInfo clip, System.Text.Json.Nodes.JsonObject sprite, string name,
+        string character, Vector2 point)
+    {
+        {
             if (character == name)
                 throw new InvalidOperationException("A sprite cannot be placed inside itself.");
             var frame = clip.Frame;
@@ -118,7 +150,7 @@ public sealed partial class MovieInspectorSession
                         { ["frame"] = frame, ["x"] = Math.Round((double)point.X), ["y"] = Math.Round((double)point.Y) }),
                 });
             });
-        });
+        }
     }
     private const float RulerSize = 18;
 
@@ -189,12 +221,27 @@ public sealed partial class MovieInspectorSession
                 _handlePivot = new((float)MovieDocument.Number(pivotData[0]), (float)MovieDocument.Number(pivotData[1]));
             var centre = hasBox ? view.ToScreen(new(box.X + box.Width * _handlePivot.X, box.Y + box.Height * _handlePivot.Y)) : Vector2.Zero;
             var handle = hasBox ? stageHandles(draw, view, box.X, box.Y, box.Width, box.Height, mouse) : -1;
-            if (!overTools && ImGui.IsWindowHovered() && ImGui.GetIO().KeyShift && handle < 0
+            // The text tool: a box dragged on the stage becomes a new text field there (a click: the default size).
+            var texting = _textTool || _textDrag is not null;
+            if (_textTool && _textDrag is null && !overTools && ImGui.IsWindowHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Left) && inArea(area, mouse))
+                _textDrag = point;
+            if (_textDrag is { } from)
+            {
+                draw.AddRect(view.ToScreen(Vector2.Min(from, point)), view.ToScreen(Vector2.Max(from, point)), color(1, .56f, .18f), 0, 0, 1.5f);
+                if (ImGui.IsMouseReleased(ImGuiMouseButton.Left))
+                {
+                    var size = Vector2.Abs(point - from);
+                    placeText(player, clips, size.X > 4 && size.Y > 4 ? Vector2.Min(from, point) : from, size.X > 4 && size.Y > 4 ? size : new(200, 48));
+                    _textDrag = null;
+                    _textTool = false;
+                }
+            }
+            if (!texting && !overTools && ImGui.IsWindowHovered() && ImGui.GetIO().KeyShift && handle < 0
                 && ImGui.IsMouseClicked(ImGuiMouseButton.Left) && inArea(area, mouse))
                 _selectionBox = point;
             selectionBox(player, clips, view, point);
             // Defer click-through until release: pressing selected bounds must never switch the drag target.
-            if (_selectionBox is null && (!ImGui.GetIO().KeyShift || handle >= 0) && !overTools && ImGui.IsWindowHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Left) && inArea(area, mouse))
+            if (!texting && _selectionBox is null && (!ImGui.GetIO().KeyShift || handle >= 0) && !overTools && ImGui.IsWindowHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Left) && inArea(area, mouse))
             {
                 var onSelected = hasBox && point.X >= box.X && point.Y >= box.Y && point.X <= box.X + box.Width && point.Y <= box.Y + box.Height;
                 if ((handle >= 0 || onSelected && _stageTool is 0 or 3) && selected is not null && _document is { ReadOnly: false } && layerOf(clips, selected) is not null)

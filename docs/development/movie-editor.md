@@ -70,6 +70,14 @@ from the current folder). `--inspect=scene:<screen>` starts on a scene view (for
   `wd-names.json`, written by `--dump-wd=...`, kept current by a test); the package's labels and clip names from its
   movie.json; the skin's problems shown in their files on save (`--lint-skin=<skin> --json`). ponytail: no language
   server; errors as you type would need one.
+- **Text** (`Movies/Session/TextStyles.cs`, `Skin/TextDocument.cs`): the home page's Text tab edits text.json (undo,
+  Save; unsaved styles drawn at once everywhere, `SkinText.Current`): styles (new, duplicate, rename, delete), fonts
+  (a name for each font file found in the skin), a style's settings and its layers (+ Border, + Shadow, + Fill; grow,
+  offset, blur, colour or gradient; reorder) beside samples (a score, Japanese, mixed, a long line, your own text)
+  drawn by the game's text field renderer. A text field's inspector: a scaled preview, its own text, its style, its
+  bind (Wd states, searchable), and every style setting over the style's (orange, with x to give it back); picking a
+  style drops the field's own look. The stage's Text tool (T) makes a text field from a box dragged on the stage.
+  `--inspect=text` starts on the Text tab.
 - **Assistants (MCP)** (`App/Tools/SkinMcp.cs`, `Waddamburo.App --mcp[=skin]`): an MCP server on stdio for Claude
   Desktop, VS Code or any MCP client. Tools: `list_files`, `read_file`, `write_file` (inside the skin's folder only),
   `check_skin` (the Problems list), `wd_names` (the `--dump-wd` JSON), `screenshot` (a screen as the editor shows it

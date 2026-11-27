@@ -6,6 +6,8 @@ namespace Waddamburo.Editor;
 public sealed partial class MovieInspectorSession
 {
     private int _stageTool = 3;
+    private bool _textTool;          // the text tool: the next box dragged on the stage is a new text field
+    private Vector2? _textDrag;
     private void stageTools(EditorPanel area)
     {
         if (ImGui.IsWindowHovered() && _move is null)
@@ -18,6 +20,11 @@ public sealed partial class MovieInspectorSession
                 ? "Auto key is on: changing something makes a key on the current frame.\nMove the playhead, move the thing, and it animates."
                 : "Auto key is off: changing something moves its whole animation; no key is added.", active: _autoKey, accent: new Vector4(.78f, .16f, .16f, 1)))
             _autoKey = !_autoKey;
+        ImGui.SameLine();
+        if (iconButton("type", "Text tool (T): drag a box on the stage to make a text field there.", active: _textTool))
+            _textTool = !_textTool;
+        if (ImGui.IsWindowHovered() && !ImGui.GetIO().WantTextInput && ImGui.IsKeyPressed(ImGuiKey.T, false))
+            _textTool = !_textTool;
         ImGui.EndDisabled();
         // Transport in the middle, as the timeline may be out of sight; the view's zoom on the right.
         var style = ImGui.GetStyle();
