@@ -237,7 +237,7 @@ public sealed class SkinStage
                 _made[index] = (layer.Movie, version, player);
                 // Another drum's part in this variant: kept in place (the layer list's order), unseen and unpicked.
                 _hidden[index] = index >= fixedCount && !stage.Variant.Shows(layer.Side);
-                sceneLayers.Add(new(player, layer.Transform, (uint)textures.Count, (uint)ids.Length) { Alpha = _hidden[index] ? 0 : 1 });
+                sceneLayers.Add(new(player, layer.Transform, (uint)textures.Count, (uint)ids.Length) { Alpha = _hidden[index] ? 0 : 1, Anchor = layer.Anchor });
                 textures.AddRange(ids);
             }
             _player = new LumenScenePlayer(1280, 720, sceneLayers);
