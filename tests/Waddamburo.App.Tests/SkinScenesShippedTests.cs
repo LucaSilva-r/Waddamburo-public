@@ -33,6 +33,24 @@ public sealed class SkinScenesShippedTests
 
 public sealed class SkinPlaceTests
 {
+    // An ensolayout.bin as Green's: every point at (0, 184).
+    private static byte[] greenLike()
+    {
+        const string signature = "serialization::archive";
+        var data = new byte[0x35 + 28 * 12];
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(data, (uint)signature.Length);
+        System.Text.Encoding.ASCII.GetBytes(signature).CopyTo(data, 4);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(0x31), 28);
+        for (var index = 0; index < 28; index++)
+        {
+            var record = data.AsSpan(0x35 + index * 12, 12);
+            System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(record, index);
+            System.Buffers.Binary.BinaryPrimitives.WriteSingleBigEndian(record[4..], 0);
+            System.Buffers.Binary.BinaryPrimitives.WriteSingleBigEndian(record[8..], 184);
+        }
+        return data;
+    }
+
     // A place moves that movie alone: the lane moves, its gauge stays at the layout's place; the second lane keeps its own.
     [Fact]
     public void ThePlacesMoveEachGameplayMovieOnItsOwn()
@@ -48,6 +66,12 @@ public sealed class SkinPlaceTests
         Assert.NotEqual(0, lane.Transform.M12);
         var gauge = scene.Layers.First(static layer => layer.MovieId.StartsWith("gage_don_1p_", StringComparison.Ordinal));
         Assert.Equal((layout[14].X, layout[14].Y), (gauge.Transform.X, gauge.Transform.Y));
+        // The game data's own ensolayout.bin (Green's puts the lane's point at 0, 184) moves nothing of ours: our movies
+        // are made for the standard layout.
+        var green = Waddamburo.Formats.Layout.EnsoLayout.Parse(greenLike());
+        var onGreen = screens.Gameplay(Waddamburo.Game.Scenes.FlowScenes.Gameplay, new Random(1), green);
+        var greenGauge = onGreen.Layers.First(static layer => layer.MovieId.StartsWith("gage_don_1p_", StringComparison.Ordinal));
+        Assert.Equal((layout[14].X, layout[14].Y), (greenGauge.Transform.X, greenGauge.Transform.Y));
         var two = screens.Gameplay(Waddamburo.Game.Scenes.FlowScenes.Gameplay, new Random(1), layout, twoPlayers: true);
         Assert.Single(two.Layers, static layer => layer.MovieId == "lane/lane.lm" && layer.Transform.X == 300);
     }

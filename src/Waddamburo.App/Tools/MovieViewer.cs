@@ -272,7 +272,7 @@ internal static class MovieViewer
                     return made.Layers;
                 var screens = new Frontends.WaddamburoScreens { Skin = scenes.Parsed };
                 // The engine's note templates (notes, bar lines) are left out: they only show where it puts each note.
-                var layers = screens.Placed(Waddamburo.Game.Scenes.FlowScenes.Gameplay, new Random(1), Waddamburo.Formats.Layout.EnsoLayout.Standard)
+                var layers = screens.Placed(Waddamburo.Game.Scenes.FlowScenes.Gameplay, new Random(1))
                     .Where(static layer => Waddamburo.Game.Scenes.GameplaySceneComposition.PlaceName(Path.GetFileNameWithoutExtension(layer.MovieId)) is not null)
                     .Select(layer =>
                     {

@@ -70,15 +70,17 @@ internal sealed class WaddamburoScreens : IScreenCompositions
     public SceneDefinition Gameplay(SceneId id, Random random, Formats.Layout.EnsoLayout layout, GameplaySceneComposition.ThemedSkin? theme = null,
         int side = 0, bool twoPlayers = false, bool dojo = false)
     {
-        var all = Placed(id, random, layout, side, twoPlayers, dojo);
+        var all = Placed(id, random, side, twoPlayers, dojo);
         // The skin's gameplay entry adds layers over the layout's (decoration): the roles above stay the layout's.
         return new(SceneDefinition.CurrentVersion, id, [.. all, .. (Skin?.Layers("gameplay") ?? []).Select(static layer => layer.Definition())]);
     }
 
     /// <summary>The gameplay roles at the layout's places, each moved where the skin's places put it (the editor shows these).</summary>
-    public IReadOnlyList<SceneLayerDefinition> Placed(SceneId id, Random random, Formats.Layout.EnsoLayout layout, int side = 0,
+    public IReadOnlyList<SceneLayerDefinition> Placed(SceneId id, Random random, int side = 0,
         bool twoPlayers = false, bool dojo = false) =>
-        [.. GameplaySceneComposition.Create(id, random, layout, null, side, twoPlayers, dojo).Layers
+        // Always the standard layout: our movies are made for its places, whatever ensolayout.bin the game data has
+        // (Green's moves the lane to (0, 184)); the skin's places go over it. The layout given is Green's frontend's.
+        [.. GameplaySceneComposition.Create(id, random, Formats.Layout.EnsoLayout.Standard, null, side, twoPlayers, dojo).Layers
             .Where(static layer => !GameplaySceneComposition.IsGreenDecoration(layer))
             // ponytail: the first lane only; the second player's (two players) keeps the layout's places.
             .Select(layer => layer.HostId != GameplaySceneComposition.PlayerTwoHostId && Skin?.Places.GetValueOrDefault(GameplaySceneComposition.PlaceName(Path.GetFileNameWithoutExtension(layer.MovieId)) ?? "")
