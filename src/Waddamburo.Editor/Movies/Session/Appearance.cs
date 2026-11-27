@@ -41,7 +41,7 @@ public sealed partial class MovieInspectorSession
         ImGui.SetNextItemWidth(-1);
         if (ImGui.BeginCombo("##anchor", anchor))
         {
-            foreach (var option in (string[])["center", "left", "right", "stretch", "cover"])
+            foreach (var option in (string[])["center", "left", "right", "stretch", "stretch-left", "stretch-right", "cover", "left-when-narrow"])
                 if (ImGui.Selectable(option, option == anchor))
                     attempt(() => _document!.Edit(_ => { if (option == "center") layer.Remove("anchor"); else layer["anchor"] = option; }));
             ImGui.EndCombo();

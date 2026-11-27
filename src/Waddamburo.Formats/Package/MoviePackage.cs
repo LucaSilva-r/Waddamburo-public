@@ -265,8 +265,8 @@ public static class MoviePackage
                 if (layer.TryGetProperty("anchor", out var anchorValue))
                 {
                     var anchor = anchorValue.ValueKind == JsonValueKind.String ? anchorValue.GetString() : null;
-                    if (anchor is not ("left" or "center" or "right" or "stretch" or "cover"))
-                        throw new FormatException($"{FileName}: {where}: \"anchor\" is left, center, right, stretch or cover.");
+                    if (anchor is not ("left" or "center" or "right" or "stretch" or "stretch-left" or "stretch-right" or "cover" or "left-when-narrow"))
+                        throw new FormatException($"{FileName}: {where}: \"anchor\" is left, center, right, stretch, stretch-left, stretch-right, cover or left-when-narrow.");
                     if (anchor != "center")
                         _anchors.Add((_characters[sprite.Name], depth, anchor));
                 }

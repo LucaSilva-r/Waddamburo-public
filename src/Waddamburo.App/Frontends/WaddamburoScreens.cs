@@ -85,10 +85,11 @@ internal sealed class WaddamburoScreens : IScreenCompositions
             // ponytail: the first lane only; the second player's (two players) keeps the layout's places.
             .Select(layer => layer.HostId != GameplaySceneComposition.PlayerTwoHostId && Skin?.Places.GetValueOrDefault(GameplaySceneComposition.PlaceName(Path.GetFileNameWithoutExtension(layer.MovieId)) ?? "")
                 is { } place ? new SceneLayerDefinition(layer.ArchiveId, layer.MovieId, place.Transform, layer.HostId, layer.AnchorId) { Anchor = place.Anchor } : layer)
-            // On a stage of another width gameplay hugs the left edge (the song's title the right); a skin's place may say otherwise.
+            // On a narrower stage gameplay hugs the left edge; on a wider one it stays where a 16:9 screen in the middle has
+            // it (its lane and panel stretch to the edges); the song's title holds the right. A skin's place may say otherwise.
             .Select(static layer => layer.Anchor != Lumen.Rendering.LumenAnchor.Center ? layer
                 : layer with { Anchor = Path.GetFileNameWithoutExtension(layer.MovieId).StartsWith("song_info", StringComparison.Ordinal)
-                    ? Lumen.Rendering.LumenAnchor.Right : Lumen.Rendering.LumenAnchor.Left })];
+                    ? Lumen.Rendering.LumenAnchor.Right : Lumen.Rendering.LumenAnchor.LeftWhenNarrow })];
 
     public SceneDefinition Results => skin("result", BuiltInResults);
 

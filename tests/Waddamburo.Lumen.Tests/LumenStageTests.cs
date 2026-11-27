@@ -111,6 +111,22 @@ public sealed class LumenStageTests
                 """ "dot": { "texture": "t", "rect": [0, 0, 10, 10] } """);
             corner.SceneAnchor = LumenAnchor.Right;
             Assert.Equal([-390f, -380f], edges(corner)); // -200 for the left edge, -200 against the movie's +200
+            // Gameplay on a wider stage: centred (the judge where a 16:9 screen in the middle has it); the lane stretches
+            // right from where it starts, the panel left to the edge; on a narrower one it hugs the left edge.
+            Assert.Equal(0, LumenStage.Shift(LumenAnchor.LeftWhenNarrow));
+            var right = package("""{ "character": "band", "anchor": "stretch-right", "keys": [ { "frame": 0 } ] }""",
+                """ "band": { "texture": "t", "rect": [400, 0, 880, 100] } """);
+            right.SceneAnchor = LumenAnchor.LeftWhenNarrow;
+            Assert.Equal([400f, 1480f], edges(right));
+            var leftward = package("""{ "character": "panel", "anchor": "stretch-left", "keys": [ { "frame": 0 } ] }""",
+                """ "panel": { "texture": "t", "rect": [0, 0, 400, 100] } """);
+            leftward.SceneAnchor = LumenAnchor.LeftWhenNarrow;
+            Assert.Equal([-200f, 400f], edges(leftward));
+            LumenStage.Width = 960;
+            Assert.Equal(160, LumenStage.Shift(LumenAnchor.LeftWhenNarrow));
+            Assert.Equal([400f, 960f], edges(right)); // in the movie: moved 160 right, so 1120, the stage's right edge
+            Assert.Equal([0f, 400f], edges(leftward));
+            LumenStage.Width = 1680;
             var cover = LumenStage.Anchored(LumenMatrix.Identity, LumenAnchor.Cover);
             Assert.Equal((1.3125f, -200f, -112.5f), (cover.M11, cover.X, cover.Y));
         }

@@ -2910,17 +2910,17 @@ public sealed partial class LumenPlayer : IAvm1Host
         ImmutableArray<LumenRenderQuad>.Builder quads,
         byte maskDepth = 0)
     {
-        if (Rendering.LumenStage.Width == Rendering.LumenStage.BaseWidth || anchorOf(instance) != Rendering.LumenAnchor.Stretch)
+        if (Rendering.LumenStage.Width == Rendering.LumenStage.BaseWidth || anchorOf(instance) is not { } stretched || !Rendering.LumenStage.Stretches(stretched))
         {
             appendInstanceDrawn(instance, parentTransform, parentColor, parentBlend, interpolationFraction, quads, maskDepth);
             return;
         }
         var start = quads.Count;
         appendInstanceDrawn(instance, parentTransform, parentColor, parentBlend, interpolationFraction, quads, maskDepth);
-        stretch(quads, start);
+        stretch(quads, start, stretched);
     }
 
-    private void stretch(ImmutableArray<LumenRenderQuad>.Builder quads, int start)
+    private void stretch(ImmutableArray<LumenRenderQuad>.Builder quads, int start, Rendering.LumenAnchor kind)
     {
         float minX = float.PositiveInfinity, maxX = float.NegativeInfinity;
         for (var index = start; index < quads.Count; index++)
@@ -2928,7 +2928,7 @@ public sealed partial class LumenPlayer : IAvm1Host
                 (minX, maxX) = (MathF.Min(minX, vertex.X), MathF.Max(maxX, vertex.X));
         if (!(maxX > minX))
             return;
-        var (from, to) = Rendering.LumenStage.StretchSpan(minX, maxX, SceneAnchor);
+        var (from, to) = Rendering.LumenStage.StretchSpan(minX, maxX, SceneAnchor, kind);
         var scale = (to - from) / (maxX - minX);
         float map(float x) => from + (x - minX) * scale;
         static LumenRenderVertex moved(LumenRenderVertex vertex, float by) => vertex with { X = vertex.X + by };

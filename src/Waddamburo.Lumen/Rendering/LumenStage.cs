@@ -18,6 +18,15 @@ public enum LumenAnchor
     Stretch,
     /// <summary>Scaled evenly to cover the stage, the overflow cropped (a picture background, as osu!'s).</summary>
     Cover,
+    /// <summary>Its right side reaches the right edge; its left side stays (a lane from the judge circle on).</summary>
+    StretchRight,
+    /// <summary>Its left side reaches the left edge; its right side stays (the panel left of the judge circle).</summary>
+    StretchLeft,
+    /// <summary>
+    /// Left on a narrower stage, centred on a wider one: gameplay, whose judge circle stays where a 16:9 screen in the
+    /// middle would have it (the lane and its panel stretch out to the edges).
+    /// </summary>
+    LeftWhenNarrow,
 }
 
 /// <summary>
@@ -44,7 +53,9 @@ public static class LumenStage
     /// <summary>A layer's transform (on the 1280 stage) moved or stretched by its anchor for the stage now.</summary>
     public static LumenMatrix Anchored(LumenMatrix transform, LumenAnchor anchor)
     {
-        if (anchor == LumenAnchor.Center || Width == BaseWidth)
+        if (anchor == LumenAnchor.LeftWhenNarrow)
+            anchor = Width < BaseWidth ? LumenAnchor.Left : LumenAnchor.Center;
+        if (anchor is LumenAnchor.Center or LumenAnchor.StretchLeft or LumenAnchor.StretchRight || Width == BaseWidth)
             return transform;
         if (anchor == LumenAnchor.Cover)
         {
@@ -63,7 +74,13 @@ public static class LumenStage
     }
 
     /// <summary>How far a movie anchored so is moved sideways (left, right; none else).</summary>
-    public static float Shift(LumenAnchor anchor) => anchor == LumenAnchor.Left ? -Extra : anchor == LumenAnchor.Right ? Extra : 0;
+    public static float Shift(LumenAnchor anchor) => anchor switch
+    {
+        LumenAnchor.Left => -Extra,
+        LumenAnchor.Right => Extra,
+        LumenAnchor.LeftWhenNarrow when Width < BaseWidth => -Extra,
+        _ => 0,
+    };
 
     /// <summary>
     /// A clip's transform in its movie (whose own scene anchor is <paramref name="movie"/>) for the clip's anchor, kept
@@ -72,7 +89,9 @@ public static class LumenStage
     /// </summary>
     public static LumenMatrix ClipAnchored(LumenMatrix transform, LumenAnchor clip, LumenAnchor movie)
     {
-        if (Width == BaseWidth || clip is LumenAnchor.Center or LumenAnchor.Stretch)
+        if (clip == LumenAnchor.LeftWhenNarrow)
+            clip = Width < BaseWidth ? LumenAnchor.Left : LumenAnchor.Center;
+        if (Width == BaseWidth || clip is LumenAnchor.Center or LumenAnchor.Stretch or LumenAnchor.StretchLeft or LumenAnchor.StretchRight)
             return transform;
         var shift = Shift(movie);
         if (clip != LumenAnchor.Cover)
@@ -85,8 +104,11 @@ public static class LumenStage
     /// Where a stretched clip drawn from <paramref name="minX"/> to <paramref name="maxX"/> (in its movie, anchored
     /// <paramref name="movie"/>) goes: each side keeps its distance to its edge of the stage.
     /// </summary>
-    public static (float From, float To) StretchSpan(float minX, float maxX, LumenAnchor movie) =>
-        (minX - Extra - Shift(movie), maxX + Extra - Shift(movie));
+    public static (float From, float To) StretchSpan(float minX, float maxX, LumenAnchor movie, LumenAnchor clip = LumenAnchor.Stretch) =>
+        (clip == LumenAnchor.StretchRight ? minX : minX - Extra - Shift(movie), clip == LumenAnchor.StretchLeft ? maxX : maxX + Extra - Shift(movie));
+
+    /// <summary>Whether the anchor widens the drawing (a stretch of either kind) rather than moving it.</summary>
+    public static bool Stretches(LumenAnchor anchor) => anchor is LumenAnchor.Stretch or LumenAnchor.StretchLeft or LumenAnchor.StretchRight;
 
     /// <summary>
     /// How far a thing centred at <paramref name="centre"/> (a fraction of the 1280 stage) moves to keep to its nearest
@@ -111,8 +133,17 @@ public static class LumenStage
         "right" => LumenAnchor.Right,
         "stretch" => LumenAnchor.Stretch,
         "cover" => LumenAnchor.Cover,
-        _ => throw new FormatException($"\"anchor\" is left, center, right, stretch or cover, not \"{text}\"."),
+        "stretch-right" => LumenAnchor.StretchRight,
+        "stretch-left" => LumenAnchor.StretchLeft,
+        "left-when-narrow" => LumenAnchor.LeftWhenNarrow,
+        _ => throw new FormatException($"\"anchor\" is left, center, right, stretch, stretch-left, stretch-right, cover or left-when-narrow, not \"{text}\"."),
     };
 
-    public static string Name(LumenAnchor anchor) => anchor.ToString().ToLowerInvariant();
+    public static string Name(LumenAnchor anchor) => anchor switch
+    {
+        LumenAnchor.StretchRight => "stretch-right",
+        LumenAnchor.StretchLeft => "stretch-left",
+        LumenAnchor.LeftWhenNarrow => "left-when-narrow",
+        _ => anchor.ToString().ToLowerInvariant(),
+    };
 }
