@@ -11,8 +11,9 @@ namespace Waddamburo.App.Flow;
 /// the editor is told which screen the game shows and everything the game's provider gives each movie on it
 /// (<see cref="SkinLinkWire"/>), so its previews show the real song list, the real play.
 /// </summary>
-internal sealed class SkinEditorLink(GameShell shell, string root) : IDisposable
+internal sealed class SkinEditorLink(GameShell shell, string root, Action<int, Waddamburo.Game.LumenMovieContent> swap) : IDisposable
 {
+    private readonly Dictionary<string, string> _edited = new(StringComparer.Ordinal); // folder -> movie.json being edited
     private readonly SkinLinkServer _server = new();
     private LumenGameSceneInstance? _tapped;
     private Process? _editor;
@@ -67,8 +68,13 @@ internal sealed class SkinEditorLink(GameShell shell, string root) : IDisposable
             return;
         }
         while (_server.TryTake(out var line))
+        {
             if (SkinLinkWire.Command(line) is ("show", var asked))
                 (_wanted, _wantedSince) = (asked, shell.Tick);
+            else if (SkinLinkWire.TryPackage(line) is var (folder, json))
+                _edited[folder] = json;
+        }
+        swapEdited();
         if (_wanted is { } wanted && shell.Tick - _wantedSince > 600)
         {
             _server.Send(SkinLinkWire.Notice($"The game could not get to {wanted}."));
@@ -183,6 +189,34 @@ internal sealed class SkinEditorLink(GameShell shell, string root) : IDisposable
                 done($"{key} shows after a play: play a song in the game to get there.");
                 break;
         }
+    }
+
+    // Packages being edited (not saved) whose movie is on the screen: swapped in place, the screen going on. A song's
+    // lane holds its movies: an edit to one waits for a save (then the screen reloads after the song).
+    private void swapEdited()
+    {
+        if (_edited.Count == 0 || shell.Scenes.OnLane || shell.Reload.Busy || shell.Coordinator.Flow.State != GameFlowState.Active)
+            return;
+        var scene = shell.Active;
+        for (var index = 0; index < scene.Layers.Length; index++)
+        {
+            var definition = scene.Layers[index].Definition;
+            if (DirectoryLumenMovieContentSource.PackageFolder(root, definition.ArchiveId, definition.MovieId) is not { } directory
+                || !_edited.TryGetValue(Path.GetRelativePath(root, directory).Replace('\\', '/'), out var json))
+                continue;
+            try
+            {
+                var errors = new List<Waddamburo.Formats.Package.ActionScriptException>();
+                var content = Waddamburo.Game.LumenMovieContent.LoadPackage(directory, Presentation.GameMovieContent.DecodeImage, scriptErrors: errors, movieJson: json);
+                swap(index, content);
+            }
+            catch (Exception error) when (error is InvalidDataException or FormatException or IOException or InvalidOperationException
+                or System.Text.Json.JsonException)
+            {
+                Console.Error.WriteLine($"Skin editor: {definition.MovieId} not swapped: {error.Message}");
+            }
+        }
+        _edited.Clear();
     }
 
     public void Dispose() => _server.Dispose();

@@ -23,6 +23,23 @@ public static class SkinLinkWire
     /// <summary>Editor to game: show this screen (a skin key).</summary>
     public static string Show(string key) => new JsonObject { ["t"] = "show", ["k"] = key }.ToJsonString();
 
+    /// <summary>Editor to game: a package's movie.json as being edited (not saved yet), by its skin folder.</summary>
+    public static string Package(string folder, string json) => new JsonObject { ["t"] = "package", ["m"] = folder, ["j"] = json }.ToJsonString();
+
+    /// <summary>A package line read back: its folder and movie.json text; null for another line.</summary>
+    public static (string Folder, string Json)? TryPackage(string line)
+    {
+        try
+        {
+            var node = JsonNode.Parse(line)!.AsObject();
+            return node["t"]?.GetValue<string>() == "package" ? (node["m"]!.GetValue<string>(), node["j"]!.GetValue<string>()) : null;
+        }
+        catch (Exception error) when (error is JsonException or InvalidOperationException or NullReferenceException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>Game to editor: a sentence to show (why a screen could not be shown).</summary>
     public static string Notice(string text) => new JsonObject { ["t"] = "notice", ["k"] = text }.ToJsonString();
 
@@ -212,12 +229,32 @@ public sealed class SkinLive : IDisposable
     public event Action<string>? Notice;
 
     /// <summary>Asks the game to show a screen (a skin key); it says so if it cannot.</summary>
-    public void Show(string key)
+    public void Show(string key) => send(SkinLinkWire.Show(key));
+
+    private (string Folder, string Json)? _edited;
+    private long _editedSent;
+
+    /// <summary>
+    /// A package as being edited: the game swaps its movie in place without a save. Sent at most ten times a second
+    /// (a drag edits every frame), the last version always.
+    /// </summary>
+    public void Edited(string folder, string json) => _edited = (folder, json);
+
+    private void sendEdited()
+    {
+        if (_edited is not { } edited || System.Diagnostics.Stopwatch.GetElapsedTime(_editedSent).TotalMilliseconds < 100)
+            return;
+        _edited = null;
+        _editedSent = System.Diagnostics.Stopwatch.GetTimestamp();
+        send(SkinLinkWire.Package(edited.Folder, edited.Json));
+    }
+
+    private void send(string line)
     {
         if (!Connected) return;
         try
         {
-            var bytes = Encoding.UTF8.GetBytes(SkinLinkWire.Show(key) + "\n");
+            var bytes = Encoding.UTF8.GetBytes(line + "\n");
             _client.GetStream().Write(bytes);
         }
         catch (Exception error) when (error is IOException or SocketException or ObjectDisposedException or InvalidOperationException)
@@ -248,6 +285,7 @@ public sealed class SkinLive : IDisposable
     /// </summary>
     public void Drain()
     {
+        sendEdited();
         var budget = System.Diagnostics.Stopwatch.StartNew();
         var batch = new ProvidedBatch();
         while (budget.Elapsed.TotalMilliseconds < 4 && _incoming.TryDequeue(out var line))

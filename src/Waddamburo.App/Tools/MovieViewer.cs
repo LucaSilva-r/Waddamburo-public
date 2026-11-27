@@ -312,7 +312,18 @@ internal static class MovieViewer
             inspector?.ShowSpriteNamed(wanted[7..]);
         if (inspect?.Split('=', 2) is [_, var asset] && asset.Split(':', 3) is ["asset", var group, var assetName])
             inspector?.SelectAsset(group, assetName);
-        Action reloadDocument = () => { reload(force: true); skinStage?.LiveChanged(); };
+        Action reloadDocument = () =>
+        {
+            reload(force: true);
+            skinStage?.LiveChanged();
+            // Linked to a game: the edit reaches it too, unsaved (it swaps the movie in place).
+            if (skinLive is { Connected: true } && skinStage is not null && package is not null && document is { ReadOnly: false } edited)
+            {
+                var folder = Path.GetRelativePath(skinStage.Root, package).Replace('\\', '/');
+                if (!folder.StartsWith("..", StringComparison.Ordinal))
+                    skinLive.Edited(folder, edited.Text);
+            }
+        };
         Action markSaved = () => { loaded = package is null ? default : stamp(); skinStage?.Reload(); };
         if (document is not null) { document.Changed += reloadDocument; document.Saved += markSaved; }
         if (inspector is not null)

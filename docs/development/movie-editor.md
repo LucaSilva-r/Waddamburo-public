@@ -46,7 +46,10 @@ from the current folder). `--inspect=scene:<screen>` starts on a scene view (for
   is replaced, the screen going on: the engine's states and lists, request handler, editor tap and host carried over,
   its textures appended (`ScenePresenter.AddSceneTextures`). Song Select keeps its list and cursor (its flow restarts
   them only for another showing). scenes.json reloads the screen as before; during a song the screen reloads after
-  it (the lane holds its movies). A script's own state (a timer mid-way) starts over. `--skin-dev=<folder>` alone gives the
+  it (the lane holds its movies). A script's own state (a timer mid-way) starts over.
+- **Unsaved edits reach the game**: linked by F7, each change of a package's movie.json is sent (`SkinLinkWire.Package`,
+  at most ten times a second, the last always) and the game swaps that movie in place when it is on screen (not on a
+  song's lane: those wait). Artwork imported but not saved reaches it on save; scripts are saved files anyway. `--skin-dev=<folder>` alone gives the
   reload without the editor. ponytail: unsaved edits reach the game on save only; the editor's movies send no
   requests to the game.
 - The component editor's player gets the same data as its part in the skin (live, else the example data); its Wd

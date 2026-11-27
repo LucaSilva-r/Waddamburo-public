@@ -34,6 +34,8 @@ public sealed class SkinLinkTests
         Assert.Equal(("show", "gameplay"), SkinLinkWire.Command(SkinLinkWire.Show("gameplay")));
         Assert.Equal(("notice", "no song"), SkinLinkWire.Command(SkinLinkWire.Notice("no song")));
         Assert.Null(SkinLinkWire.Command(SkinLinkWire.Screen("entry")));
+        Assert.Equal(("entry/entry", "{ \"format\": 2 }"), SkinLinkWire.TryPackage(SkinLinkWire.Package("entry/entry", "{ \"format\": 2 }")));
+        Assert.Null(SkinLinkWire.TryPackage(SkinLinkWire.Show("entry")));
         using var server = new SkinLinkServer();
         using var live = new SkinLive(server.Port);
         var waited = System.Diagnostics.Stopwatch.StartNew();

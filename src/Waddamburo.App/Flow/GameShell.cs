@@ -362,7 +362,7 @@ internal sealed partial class GameShell : IDisposable
                 _skinDev = new SkinDevReload(this, root, _presenter.ForgetKept, swapMovie);
                 _skinDev.ReloadNow(scenes: true);
             }
-            _editorLink = new SkinEditorLink(this, root);
+            _editorLink = new SkinEditorLink(this, root, swapMovie);
         }
         _editorLink.Launch();
     }
