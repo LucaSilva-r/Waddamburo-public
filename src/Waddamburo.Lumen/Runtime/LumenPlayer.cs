@@ -3245,25 +3245,62 @@ public sealed partial class LumenPlayer : IAvm1Host
         return new LumenRenderVertex(position.X, position.Y, vertex.U, vertex.V);
     }
 
-    // A text field shows what a script put in its `text` (the authored placeholder is not drawn): one
-    // quad over its box whose native surface key carries everything the host needs to rasterize it.
+    // A text field's own settings (a package's field: its style, its text, its bind), read once per field.
+    private readonly record struct FieldText(int Settings, string? Text, string? Bind);
+    private readonly Dictionary<LmbTextDefinition, FieldText> _fieldTexts = [];
+
+    private FieldText fieldText(LmbTextDefinition field, string html)
+    {
+        if (_fieldTexts.TryGetValue(field, out var known))
+            return known;
+        var made = default(FieldText);
+        if (LumenTextSurface.SettingsOf(html) is { } json)
+            try
+            {
+                using var settings = System.Text.Json.JsonDocument.Parse(json);
+                string? read(string key) => settings.RootElement.TryGetProperty(key, out var value)
+                    && value.ValueKind == System.Text.Json.JsonValueKind.String ? value.GetString() : null;
+                made = new FieldText(LumenTextSurface.SettingsId(json), read("text"), read("bind"));
+                // A bound field reads the provider as a script would (the editor's live link mirrors what was read).
+                if (made.Bind is { } bind)
+                {
+                    _providerAsked.Add(bind);
+                    UsesProvider = true;
+                }
+            }
+            catch (System.Text.Json.JsonException)
+            {
+            }
+        return _fieldTexts[field] = made;
+    }
+
+    // A text field shows what a script put in its `text`; else what the engine gives the Wd name it is bound to; else
+    // its package's own text (the authored placeholder of a game's movie is not drawn): one quad over its box whose
+    // native surface key carries everything the host needs to rasterize it.
     private void appendText(DisplayInstance instance, LmbTextDefinition field, LumenMatrix transform, ColorState color,
         LumenRenderBlend blend, byte maskDepth, ImmutableArray<LumenRenderQuad>.Builder quads)
     {
-        if (!instance.Variables.TryGetValue("text", out var value) || toAvmString(value) is not { Length: > 0 } text
-            || field.BoundsIndex >= _movie.Bounds.Length)
+        if (field.BoundsIndex >= _movie.Bounds.Length)
+            return;
+        var html = field.HtmlStringIndex < _movie.Strings.Length ? _movie.Strings[(int)field.HtmlStringIndex].Value : "";
+        var own = fieldText(field, html);
+        var text = instance.Variables.TryGetValue("text", out var value) ? toAvmString(value)
+            : own.Bind is { } bind && Provided(bind) is { Kind: not LumenHostValueKind.Undefined } given ? toAvmString(fromHostValue(given))
+            : own.Text;
+        if (text is not { Length: > 0 })
             return;
         var box = _movie.Bounds[(int)field.BoundsIndex];
-        var html = field.HtmlStringIndex < _movie.Strings.Length ? _movie.Strings[(int)field.HtmlStringIndex].Value : "";
         var key = LumenTextSurface.Key(text, box.Right - box.Left, box.Bottom - box.Top, field.FontSize,
-            LumenTextSurface.Align(html), LumenTextSurface.Colour(html));
+            LumenTextSurface.Align(html), LumenTextSurface.Colour(html), own.Settings);
         LumenRenderVertex corner(float x, float y, float u, float v)
         {
             var position = transform.Transform(x, y);
             return new LumenRenderVertex(position.X, position.Y, u, v);
         }
-        quads.Add(new LumenRenderQuad(0, corner(box.Left, box.Top, 0, 0), corner(box.Right, box.Top, 1, 0),
-            corner(box.Right, box.Bottom, 1, 1), corner(box.Left, box.Bottom, 0, 1), color.Multiply, color.Add, blend,
+        // A styled field's borders and shadow reach out of its box.
+        var margin = own.Settings != 0 ? LumenTextSurface.Margin?.Invoke(own.Settings) ?? 0 : 0;
+        quads.Add(new LumenRenderQuad(0, corner(box.Left - margin, box.Top - margin, 0, 0), corner(box.Right + margin, box.Top - margin, 1, 0),
+            corner(box.Right + margin, box.Bottom + margin, 1, 1), corner(box.Left - margin, box.Bottom + margin, 0, 1), color.Multiply, color.Add, blend,
             NativeSurface: key, MaskDepth: maskDepth));
     }
 

@@ -378,6 +378,22 @@ internal static class MovieViewer
                     ? textureIds[index]
                     : throw new InvalidDataException($"Render snapshot references missing texture {index}."),
                 surface => placeholders.TryGetValue(surface, out var placeholder) ? placeholder : textFields.Resolve(surface));
+        // The skin's fonts and text styles (its text.json; the skin found up from a lone package), read again when saved.
+        var textRoot = skin ?? (package is null ? null : findSkinUp(package));
+        var textStamp = DateTime.MinValue;
+        void readSkinText()
+        {
+            if (textRoot is null)
+                return;
+            var file = Path.Combine(textRoot, Waddamburo.Game.Scenes.SkinText.FileName);
+            var stamp = File.Exists(file) ? File.GetLastWriteTimeUtc(file) : DateTime.MinValue;
+            if (stamp == textStamp)
+                return;
+            textStamp = stamp;
+            Waddamburo.Game.Scenes.SkinText.Current = Waddamburo.Game.Scenes.SkinText.Find([textRoot],
+                static problem => Console.Error.WriteLine($"Skin text styles ignored: {problem}"));
+        }
+        readSkinText();
         var simulationTick = 0;
         var treeEvery = int.TryParse(DiagnosticSwitches.TreeEvery, out var every) ? every : 0;
         var treeFilter = DiagnosticSwitches.TreeFilter?.Split('|', StringSplitOptions.RemoveEmptyEntries) ?? [];
@@ -387,6 +403,8 @@ internal static class MovieViewer
             {
                 simulationTick++;
                 skinLive?.Drain();
+                if (simulationTick % 30 == 0)
+                    readSkinText();
                 if (package is not null && (debugger is not null || inspector is not null) && simulationTick % 30 == 0)
                     reload();
                 keyboard = inputTimeline.Apply(simulationTick, keyboard);
@@ -430,5 +448,13 @@ internal static class MovieViewer
         if (result.DroppedTicks > 0)
             Console.Error.WriteLine($"Warning PLT_DROPPED_TICKS: dropped {result.DroppedTicks} simulation ticks.");
         return result.RenderedFrames;
+    }
+
+    private static string? findSkinUp(string folder)
+    {
+        for (var directory = new DirectoryInfo(folder); directory is not null; directory = directory.Parent)
+            if (File.Exists(Path.Combine(directory.FullName, "skin.json")))
+                return directory.FullName;
+        return null;
     }
 }

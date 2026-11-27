@@ -193,8 +193,10 @@ typedef struct waddamburo_text_style {
 } waddamburo_text_style;
 
 /* Renders utf8_text (newlines break lines) into a width x height premultiplied RGBA8 surface. All the
- * style's lengths are multiplied by `scale` (the drawable's pixel density over the logical box). An
- * empty text gives a transparent surface. */
+ * style's lengths are multiplied by `scale` (the drawable's pixel density over the logical box). The
+ * text is fitted to the surface less the layers' reach (grow + blur + offset) and a pixel on every
+ * side: a caller wanting the text to fill a box makes the surface that much larger. An empty text
+ * gives a transparent surface. */
 WADDAMBURO_TEXT_API waddamburo_text_result WADDAMBURO_TEXT_CALL
 waddamburo_text_context_render_styled_rgba8(
     waddamburo_text_context *context,

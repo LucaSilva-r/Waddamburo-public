@@ -398,6 +398,21 @@ A skin folder (`movies/`, or `USRDIR/waddamburo/movies` over it) holds, beside i
   places, and the right drum's player alone (katsu1p movies) too. A screen the file leaves out, or a
   file that does not read (printed at boot), is the built-in one (`WaddamburoScreens`). The user's folder's file wins
   whole over the bundled one. Green's frontend ignores it.
+- `text.json` (`Game/Scenes/SkinText.cs`): the skin's fonts and text styles. `{"format": 1, "fonts": {"pop":
+  "fonts/MochiyPopPOne-Regular.ttf"}, "styles": {"title": {"font": "pop", "size": 64, "spacing": -6, "slant": 0.12,
+  "align": "center", "valign": "center", "fit": "squeeze", "layers": [{"grow": 17, "offset": [4, 5], "blur": 6,
+  "color": "#000000b0"}, {"grow": 15, "color": "#101010"}, {"grow": 9, "color": "#e01818"}, {"color": ["#ffffff",
+  "#c8c8d0"]}]}}}` (`Formats/Text/TextStyleJson.cs`). A style's look is its layers, back to front: the text's shape
+  grown by `grow`, moved by `offset`, blurred, painted with a colour or a [top, bottom] gradient over each line
+  (`"#rrggbb"` or `"#rrggbbaa"`); a top-level `color` paints the front layer. `fit`: clip, shrink, squeeze (along
+  the line, as the game's titles) or wrap (then shrink); `vertical`: columns top to bottom, right to left, punctuation
+  turned. The font `game` is the engine's own. A package's text field picks a style (`"style": "title"`), may set any
+  setting over it, may carry its own `"text"` (shown, in the editor and the game, until a script or the engine gives
+  one: a field's text is a script's, else its `"bind"`'s Wd state, else its own) and `"bind": "song.title"` (filled by
+  the engine, no script). A field's size, align and colour stay its defaults under the style. The text fills the
+  field's box; borders and shadows draw out of it. Drawn by the native styled text renderer
+  (`waddamburo_text_context_render_styled_rgba8`, native/text/README.md); `--skin-dev` draws everything again when
+  text.json or a font changes. Checked by the problems panel (unknown style, a bind that is no state, a missing font).
 
 ## Contracts (the game's side, private lab)
 

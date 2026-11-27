@@ -74,6 +74,10 @@ internal sealed class SkinDevReload(GameShell shell, string root, Action forgetK
         if (changed.Any(static file => Path.GetFileName(file) == SkinScenes.FileName))
             Frontends.WaddamburoScreens.Instance.Skin = SkinScenes.Find([root, Path.Combine(AppContext.BaseDirectory, "movies")],
                 static problem => Console.Error.WriteLine($"Skin scenes ignored: {problem}"));
+        // Text styles and fonts: every text drawn again in them, the screen going on.
+        if (changed.Any(static file => Path.GetFileName(file) == SkinText.FileName || Path.GetExtension(file) is ".ttf" or ".otf"))
+            SkinText.Current = SkinText.Find([root, Path.Combine(AppContext.BaseDirectory, "movies")],
+                static problem => Console.Error.WriteLine($"Skin text styles ignored: {problem}"));
         forgetKept();
         // Packages only (no scenes.json): their movies on the screen are swapped in place, the screen going on. A song's
         // lane holds its movies itself: then the whole screen again, once the song is over.

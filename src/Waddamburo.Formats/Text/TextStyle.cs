@@ -43,4 +43,9 @@ public sealed record TextStyle(
     TextAlign Align = TextAlign.Start,
     TextAlign VerticalAlign = TextAlign.Center,
     TextFit Fit = TextFit.Shrink,
-    bool Vertical = false);
+    bool Vertical = false)
+{
+    /// <summary>How far the layers reach out of the text (grow + blur + offset): the renderer keeps the text that far in.</summary>
+    public float Reach => Layers.IsDefaultOrEmpty ? 0 : Layers.Max(static layer =>
+        Math.Max(layer.Grow, 0) + Math.Max(layer.Blur, 0) + Math.Max(Math.Abs(layer.OffsetX), Math.Abs(layer.OffsetY)));
+}

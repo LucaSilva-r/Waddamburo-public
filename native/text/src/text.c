@@ -1334,7 +1334,8 @@ waddamburo_text_result WADDAMBURO_TEXT_CALL waddamburo_text_context_render_style
     }
     for (uint32_t l = 0U; l < style->layer_count; ++l) {
         const waddamburo_text_layer *layer = &style->layers[l];
-        float r = (layer->grow > 0.0f ? layer->grow : 0.0f) + (layer->blur > 0.0f ? layer->blur : 0.0f);
+        float shift = fabsf(layer->offset_x) > fabsf(layer->offset_y) ? fabsf(layer->offset_x) : fabsf(layer->offset_y);
+        float r = (layer->grow > 0.0f ? layer->grow : 0.0f) + (layer->blur > 0.0f ? layer->blur : 0.0f) + shift;
         if (!(layer->grow >= 0.0f && layer->grow <= 256.0f && layer->blur >= 0.0f && layer->blur <= 256.0f)) {
             result = set_error(error, WADDAMBURO_TEXT_ERROR_INVALID_ARGUMENT, 0, "A text layer's grow or blur is out of range.");
             goto done;

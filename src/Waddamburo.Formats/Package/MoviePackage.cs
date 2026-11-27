@@ -116,18 +116,46 @@ public static class MoviePackage
             foreach (var shape in shapes)
                 addShape(body, shape, textures);
             // A text field: a box a script fills through its "text" member (clip.field.text = "12"), drawn by the
-            // engine's own text renderer in the game's font. "size" in pixels, "align" left / center / right,
-            // "color" "#rrggbb".
+            // engine's own text renderer. "size" in pixels, "align" left / center / right, "color" "#rrggbb"; and
+            // (Text/TextStyleJson) a "style" of the skin's text.json, any style setting of its own over it, a "text"
+            // shown until a script or the engine gives one, a "bind" to a Wd name the engine fills it from. Those ride
+            // in the HTML after the paragraph (<!--wd {...}-->), which the game's own text readers skip.
             foreach (var field in texts)
             {
                 var rect = floats(field.Value.GetProperty("rect"), 4, $"text \"{field.Name}\" rect");
-                var align = field.Value.TryGetProperty("align", out var alignValue) ? alignValue.GetString() : "left";
-                var colour = field.Value.TryGetProperty("color", out var colourValue) ? colourValue.GetString() ?? "" : "#000000";
-                if (align is not ("left" or "center" or "right") || colour.Length != 7 || colour[0] != '#' || !colour[1..].All(Uri.IsHexDigit))
-                    throw new FormatException($"{FileName}: text \"{field.Name}\" needs align left, center or right and a color like \"#ffcc00\".");
+                var own = System.Text.Json.Nodes.JsonNode.Parse(field.Value.GetRawText())!.AsObject();
+                own.Remove("rect");
+                foreach (var (key, value) in own)
+                    if (key is not ("style" or "text" or "bind") && !Text.TextStyleJson.Keys.Contains(key))
+                        throw new FormatException($"{FileName}: text \"{field.Name}\": \"{key}\" is no text setting.");
+                    else if (key is "style" or "text" or "bind" && value?.GetValueKind() != JsonValueKind.String)
+                        throw new FormatException($"{FileName}: text \"{field.Name}\": \"{key}\" is a string.");
+                var align = own["align"]?.GetValueKind() == JsonValueKind.String ? own["align"]!.GetValue<string>() : "left";
+                if (align is not ("left" or "center" or "right"))
+                    throw new FormatException($"{FileName}: text \"{field.Name}\" needs align left, center or right.");
+                var settings = new System.Text.Json.Nodes.JsonObject();
+                foreach (var (key, value) in own)
+                    if (key is not ("style" or "text" or "bind"))
+                        settings[key] = value?.DeepClone();
+                try
+                {
+                    Text.TextStyleJson.Parse(settings);
+                }
+                catch (Exception error) when (error is FormatException or InvalidOperationException)
+                {
+                    throw new FormatException($"{FileName}: text \"{field.Name}\": {error.Message}");
+                }
+                // The game's readers take the fill's colour (the top of a gradient) from the paragraph.
+                var colour = own["color"] switch
+                {
+                    System.Text.Json.Nodes.JsonArray { Count: > 0 } pair => pair[0]!.GetValue<string>()[..7],
+                    System.Text.Json.Nodes.JsonValue value => value.GetValue<string>()[..7],
+                    _ => "#000000",
+                };
                 var words = new uint[16];
                 words[0] = _characters[field.Name];
-                words[2] = text($"<p align=\"{align}\"><font color=\"{colour}\"></font></p>");
+                words[2] = text($"<p align=\"{align}\"><font color=\"{colour}\"></font></p>"
+                    + (own.Count > 0 ? $"<!--wd {own.ToJsonString()}-->" : ""));
                 words[5] = (uint)_bounds.Count;
                 words[11] = bits((float)number(field.Value, "size", 24));
                 _bounds.Add([rect[0], rect[1], rect[0] + rect[2], rect[1] + rect[3]]);

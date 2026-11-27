@@ -1,27 +1,62 @@
-using SkiaSharp;
+using Waddamburo.Game.Scenes;
 using Waddamburo.Lumen.Rendering;
 using Waddamburo.Platform.Sdl;
 using Waddamburo.Platform.Sdl.Rendering;
+using Waddamburo.Platform.Sdl.Text;
 
 namespace Waddamburo.App.Presentation;
 
 /// <summary>
-/// Movies' dynamic text fields (song select's ranking names, our movies' scores and words), drawn in the game font
-/// with SkiaSharp on first use: a score that changes at every hit costs a fraction of a millisecond (the outlined
-/// title rasterizer took 3-4 ms a string, a dropped frame at each hit). The least recently drawn go once more than
-/// <see cref="Kept"/> are held (every score is a new text).
+/// Movies' dynamic text fields (song select's ranking names, our movies' scores and words), drawn by the native styled
+/// text renderer in the field's style (<see cref="SkinText"/>: the skin's text.json and the field's own settings; the
+/// game font with the field's size, alignment and colour when it has none) on first use. The least recently drawn go
+/// once more than <see cref="Kept"/> are held (every score is a new text); all go when the skin's text changes.
 /// </summary>
-internal sealed class TextFieldTextures(SdlApplication application, string fontPath) : IDisposable
+/// <remarks>ponytail: drawn on the frame that first shows it (a 7-digit bordered score: ~0.15 ms at 1x, ~1.3 ms at 3x);
+/// a worker with the previous text kept on screen, as the song titles do, if a busy screen drops frames.</remarks>
+internal sealed class TextFieldTextures : IDisposable
 {
     private const int Kept = 256;
+    private readonly SdlApplication application;
+    private readonly string fontPath;
+    private readonly Dictionary<int, float> _margins = [];
+
+    public TextFieldTextures(SdlApplication application, string fontPath)
+    {
+        this.application = application;
+        this.fontPath = fontPath;
+        LumenTextSurface.Margin = margin;
+    }
+
+    // A styled field's quad grows by its style's reach (and a unit: the renderer's own pixel of room) on every side.
+    private float margin(int settings)
+    {
+        if (_version != SkinText.Version)
+        {
+            _margins.Clear();
+            _version = SkinText.Version;
+            release();
+        }
+        if (!_margins.TryGetValue(settings, out var known))
+            _margins[settings] = known = SkinText.Current.Resolve(LumenTextSurface.Settings(settings), 24, 'l', 0).Style.Reach is > 0 and var reach
+                ? reach + 1 : 0;
+        return known;
+    }
     private readonly Dictionary<(LumenNativeSurfaceKey, int), (RenderTextureId Texture, long Used)> _uploaded = [];
     private long _uses;
-    private SKTypeface? _typeface;
+    private int _version = SkinText.Version;
+    private bool _failed;
 
     public RenderTextureId? Resolve(LumenNativeSurfaceKey key)
     {
-        if (!LumenTextSurface.TryParse(key, out var text, out var width, out var height, out var size, out var align, out var rgb))
+        if (!LumenTextSurface.TryParse(key, out var text, out var width, out var height, out var size, out var align, out var rgb, out var settings))
             return null;
+        if (_version != SkinText.Version)
+        {
+            _margins.Clear();
+            _version = SkinText.Version;
+            release();
+        }
         var scale = Math.Clamp((application.GetPixelSize().Height + 719) / 720, 1, 3);
         if (_uploaded.TryGetValue((key, scale), out var kept))
         {
@@ -34,37 +69,43 @@ internal sealed class TextFieldTextures(SdlApplication application, string fontP
             application.ReleaseTexture(oldest.Value.Texture);
             _uploaded.Remove(oldest.Key);
         }
-        int w = Math.Max(1, (int)MathF.Ceiling(width)) * scale, h = Math.Max(1, (int)MathF.Ceiling(height)) * scale;
-        using var bitmap = new SKBitmap(new SKImageInfo(w, h, SKColorType.Rgba8888, SKAlphaType.Unpremul));
-        using (var canvas = new SKCanvas(bitmap))
+        var grown = settings != 0 ? margin(settings) * 2 : 0;
+        uint w = (uint)Math.Max(1, (int)MathF.Ceiling(width + grown)) * (uint)scale, h = (uint)Math.Max(1, (int)MathF.Ceiling(height + grown)) * (uint)scale;
+        var (style, font) = SkinText.Current.Resolve(LumenTextSurface.Settings(settings), size, align, rgb);
+        RgbaTextSurface surface;
+        try
         {
-            canvas.Clear(SKColors.Transparent);
-            if (!string.IsNullOrWhiteSpace(text))
-            {
-                _typeface ??= SKTypeface.FromFile(fontPath) ?? SKTypeface.Default;
-                using var font = new SKFont(_typeface, size * scale);
-                using var paint = new SKPaint { Color = new SKColor((byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb), IsAntialias = true };
-                // Shrunk as a whole to fit the field's width, as the game squeezes a long name.
-                var advance = font.MeasureText(text);
-                if (advance > w) font.Size *= w / advance;
-                advance = font.MeasureText(text, out var ink);
-                var anchor = align switch { 'r' => 1f, 'c' => 0.5f, _ => 0f };
-                // Flash sets text 2 px below the box top with the font's leading above the capitals, so its ink sits
-                // about 0.1 em below the box centre (player_name's title: box -2..22, size 20, ink ~3..21).
-                var baseline = (height / 2f + 0.1f * size) * scale - (ink.Top + ink.Bottom) / 2;
-                canvas.DrawText(text, anchor * (w - advance), baseline, SKTextAlign.Left, font, paint);
-            }
+            surface = NativeVerticalTextRasterizer.RenderStyled(font is not null && File.Exists(font) ? font : fontPath, text, style, scale, w, h);
         }
-        var texture = application.UploadRgba8((uint)w, (uint)h, bitmap.Bytes);
+        catch (Exception error) when (error is InvalidOperationException or FileNotFoundException or DllNotFoundException or EntryPointNotFoundException)
+        {
+            if (!_failed)
+                Console.Error.WriteLine($"Text fields not drawn: {error.Message}");
+            _failed = true;
+            return null;
+        }
+        // The renderer's output is premultiplied; textures are straight alpha.
+        var pixels = surface.Pixels;
+        for (var i = 0; i < pixels.Length; i += 4)
+            if (pixels[i + 3] is > 0 and < 255 and var alpha)
+                for (var c = 0; c < 3; c++)
+                    pixels[i + c] = (byte)Math.Min(255, pixels[i + c] * 255 / alpha);
+        var texture = application.UploadRgba8(surface.Width, surface.Height, pixels);
         _uploaded[(key, scale)] = (texture, ++_uses);
         return texture;
     }
 
     public void Dispose()
     {
+        release();
+        if (LumenTextSurface.Margin == margin)
+            LumenTextSurface.Margin = null;
+    }
+
+    private void release()
+    {
         foreach (var (texture, _) in _uploaded.Values)
             application.ReleaseTexture(texture);
         _uploaded.Clear();
-        _typeface?.Dispose();
     }
 }

@@ -51,6 +51,20 @@ public static class SkinLint
             {
                 found.Add(new(Level.Error, SkinScenes.FileName, 0, 0, $"The game ignores scenes.json: {error.Message}"));
             }
+        // text.json: its fonts and styles, as the engine reads them.
+        var text = SkinText.Empty;
+        if (File.Exists(Path.Combine(root, SkinText.FileName)))
+            try
+            {
+                text = SkinText.Parse(File.ReadAllText(Path.Combine(root, SkinText.FileName)), root);
+                foreach (var (name, file) in text.Fonts)
+                    if (!File.Exists(file))
+                        found.Add(new(Level.Error, SkinText.FileName, 0, 0, $"Font \"{name}\": {relative(file)} is missing (its styles use the game's font)."));
+            }
+            catch (Exception error) when (error is InvalidDataException or JsonException)
+            {
+                found.Add(new(Level.Error, SkinText.FileName, 0, 0, $"The game ignores text.json: {error.Message}"));
+            }
         var packages = Directory.EnumerateFiles(root, MoviePackage.FileName, SearchOption.AllDirectories)
             .Select(file => relative(Path.GetDirectoryName(file)!)).Where(static folder => !folder.StartsWith('.')).ToHashSet(StringComparer.Ordinal);
         foreach (var key in scenes?.Keys ?? [])
@@ -58,7 +72,7 @@ public static class SkinLint
                 if (!packages.Contains(layer.Movie))
                     found.Add(new(Level.Warning, SkinScenes.FileName, 0, 0, $"{key}: {layer.Movie} has no package (the game shows a label there).", layer.Movie));
         foreach (var package in packages.Order(StringComparer.Ordinal))
-            checkPackage(root, package, found);
+            checkPackage(root, package, found, text);
         // Preview scenarios: names the engine gives, values that read.
         var previews = Path.Combine(root, PreviewScenario.Folder);
         if (Directory.Exists(previews))
@@ -73,7 +87,7 @@ public static class SkinLint
         return found;
     }
 
-    private static void checkPackage(string root, string package, List<Problem> found)
+    private static void checkPackage(string root, string package, List<Problem> found, SkinText text)
     {
         var folder = Path.Combine(root, package);
         var movie = $"{package}/{MoviePackage.FileName}";
@@ -106,6 +120,16 @@ public static class SkinLint
             foreach (var (name, path) in textures)
                 if (path?.GetValue<string>() is { } file && !File.Exists(Path.Combine(folder, file)))
                     found.Add(new(Level.Error, movie, 0, 0, $"Texture \"{name}\": {file} is missing.", package));
+        // Text fields: a style text.json has, a bind to a state the engine gives.
+        if (document.Root["texts"] is JsonObject fields)
+            foreach (var (name, field) in fields)
+            {
+                if (field?["style"]?.GetValueKind() == JsonValueKind.String && field["style"]!.GetValue<string>() is var style && !text.Styles.ContainsKey(style))
+                    found.Add(new(Level.Warning, movie, 0, 0, $"Text \"{name}\": no style \"{style}\" in text.json (it is drawn in its own settings).", package));
+                if (field?["bind"]?.GetValueKind() == JsonValueKind.String && field["bind"]!.GetValue<string>() is var bind
+                    && Waddamburo.Lumen.Provider.WdNames.Find(bind) is not { Kind: Waddamburo.Lumen.Provider.WdKind.State })
+                    found.Add(new(Level.Error, movie, 0, 0, $"Text \"{name}\": \"{bind}\" is no state the engine gives (Wd): the field is never filled.", package));
+            }
         foreach (var (group, name) in document.Unused())
             found.Add(new(Level.Warning, movie, 0, 0, $"Unused {group[..^1]} \"{name}\".", package));
     }

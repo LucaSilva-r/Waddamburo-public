@@ -961,6 +961,9 @@ internal sealed partial class GameShell : IDisposable
             // Waddamburo's screens: the skin's scenes.json (the user's movies folder before the bundled one) over the built-in ones.
             Frontends.WaddamburoScreens.Instance.Skin = Waddamburo.Game.Scenes.SkinScenes.Find([MovieContent.PackageRoot, MovieContent.BundledRoot],
                 static problem => Console.Error.WriteLine($"Skin scenes ignored: {problem}"));
+            // Its fonts and text styles, from the same folder.
+            Waddamburo.Game.Scenes.SkinText.Current = Waddamburo.Game.Scenes.SkinText.Find([MovieContent.PackageRoot, MovieContent.BundledRoot],
+                static problem => Console.Error.WriteLine($"Skin text styles ignored: {problem}"));
             MovieContent.PreferBundled = () => Arcade.FreeMovies || !Frontend.GameMovies;
             // Waddamburo's frontend never shows a movie of the game's: a slot without one of ours shows a placeholder.
             MovieContent.PackagesOnly = () => !Frontend.GameMovies;

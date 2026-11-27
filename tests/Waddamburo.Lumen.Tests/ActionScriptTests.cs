@@ -167,6 +167,55 @@ public sealed class ActionScriptTests
         Assert.Equal((50f, 60f), (text.TopLeft.X, text.TopLeft.Y));
     }
 
+    // A package's field: its own text until something gives one, the Wd state it is bound to over that, a script's over
+    // both; its settings ride in the key for the host's styles, and a styled field's quad grows by the style's reach.
+    [Fact]
+    public void AFieldShowsItsOwnTextThenItsBindThenAScripts()
+    {
+        LumenPlayer play(string script)
+        {
+            var movie = Movie.Replace("CLASSES", "").Replace("\"shapes\":", "\"texts\": { \"label\": { \"rect\": [0, 0, 200, 40], \"style\": \"title\", "
+                + "\"text\": \"ソングセレクト\", \"bind\": \"song.title\", \"fit\": \"squeeze\" } }, \"shapes\":")
+                .Replace("\"layers\": [ { \"character\": \"clip\"", "\"layers\": [ { \"character\": \"label\", \"name\": \"label\", "
+                + "\"keys\": [ { \"frame\": 0, \"x\": 50, \"y\": 60 } ] }, { \"character\": \"clip\"");
+            var read = LmbSemanticReader.Read(LmbFile.Parse(MoviePackage.Assemble(movie, _ => script).Lmb),
+                validationContext: new LmbSemanticValidationContext(0));
+            return new LumenPlayer(read.Value, 1280, 720);
+        }
+        static (string Text, string? Settings, float Left) shown(LumenPlayer player)
+        {
+            var quad = Assert.Single(player.CreateRenderSnapshot().Quads, static quad => quad.NativeSurface is not null);
+            Assert.True(Rendering.LumenTextSurface.TryParse(quad.NativeSurface!.Value, out var text, out _, out _, out _, out _, out _, out var settings));
+            return (text, Rendering.LumenTextSurface.Settings(settings), quad.TopLeft.X);
+        }
+        Rendering.LumenTextSurface.Margin = static _ => 5;
+        try
+        {
+            var player = play("stop();");
+            var (text, settings, left) = shown(player);
+            Assert.Equal(("ソングセレクト", 45f), (text, left));
+            Assert.Contains("\"style\":\"title\"", settings);
+            player.Publish("song.title", LumenHostValue.FromString("Senbonzakura"));
+            Assert.Equal("Senbonzakura", shown(player).Text);
+            Assert.Contains("song.title", player.ProviderNames);
+            Assert.Equal("Time", shown(play("this.label.text = 'Time'; stop();")).Text);
+        }
+        finally
+        {
+            Rendering.LumenTextSurface.Margin = null;
+        }
+    }
+
+    [Theory]
+    [InlineData("\"bad\": 1", "\"bad\" is no text setting")]
+    [InlineData("\"fit\": \"stretch\"", "\"fit\" is clip, shrink, squeeze or wrap")]
+    [InlineData("\"layers\": [ { \"color\": \"red\" } ]", "colour like")]
+    public void ATextFieldsSettingsAreChecked(string setting, string message)
+    {
+        var movie = Movie.Replace("CLASSES", "").Replace("\"shapes\":", "\"texts\": { \"label\": { \"rect\": [0, 0, 200, 40], " + setting + " } }, \"shapes\":");
+        Assert.Contains(message, Assert.Throws<FormatException>(() => MoviePackage.Assemble(movie, _ => "stop();")).Message);
+    }
+
     [Theory]
     [InlineData("var a = ;", "main.as(1,9): Unexpected ';'.")]
     [InlineData("\n  foo(1;", "main.as(2,8): Expected ',' but found ';'.")]
