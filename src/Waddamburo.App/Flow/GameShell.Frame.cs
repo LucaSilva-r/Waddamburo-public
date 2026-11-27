@@ -283,6 +283,7 @@ internal sealed partial class GameShell
         // A review's lane drags (not while practice plays live: the drum is played there).
         Application.TouchDragArea = _gameplay.Reviewing && !_gameplay.Attempting && !Application.OverlayOpen
             ? new System.Drawing.RectangleF(0, 150f / 720, 1, 200f / 720) : null;
+        var touchFrom = top.Count; // the touch controls from here: each keeps to its nearest side on another stage width
         if (TouchDrum.Editing)
             top.AddRange(TouchDrumOverlay.EditorQuads(Painter, Application.TouchHits, SdlApplication.TicksNs, Strings.T("settings.touch_drum_edit.help")));
         if (PlatformInfo.IsMobile || Application.TouchActive)
@@ -306,6 +307,18 @@ internal sealed partial class GameShell
             if (Application.TouchNotices)
                 top.Add(TouchDrumOverlay.NoticesQuad(Painter, hits, now));
         }
+        if (Waddamburo.Lumen.Rendering.LumenStage.Extra != 0)
+            for (var index = touchFrom; index < top.Count; index++)
+            {
+                var quad = top[index];
+                var by = Waddamburo.Lumen.Rendering.LumenStage.SideShift((quad.TopLeft.X + quad.TopRight.X + quad.BottomRight.X + quad.BottomLeft.X) / 4);
+                if (by != 0)
+                    top[index] = quad with
+                    {
+                        TopLeft = quad.TopLeft with { X = quad.TopLeft.X + by }, TopRight = quad.TopRight with { X = quad.TopRight.X + by },
+                        BottomRight = quad.BottomRight with { X = quad.BottomRight.X + by }, BottomLeft = quad.BottomLeft with { X = quad.BottomLeft.X + by },
+                    };
+            }
         if (top.Count == 0)
             return frame;
         return new RenderFrame(frame.ClearColor, frame.Quads.AddRange(top), frame.ContentAspectRatio)

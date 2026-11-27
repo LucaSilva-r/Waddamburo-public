@@ -26,6 +26,9 @@ public sealed class LumenStageTests
             // Through the end mapping: the stretched edges are the stage's, a right-anchored 1280 is the right edge.
             Assert.Equal((0f, 1f), (LumenStage.ToStage(-200), LumenStage.ToStage(1480)));
             Assert.Equal(640, LumenStage.FromStage(.5f));
+            // A touch button at the left (made at 0.05) is drawn 200 further left; a touch there finds it again.
+            Assert.Equal(.05f, LumenStage.FromSides(.05f + LumenStage.SideShift(.05f)), 4);
+            Assert.Equal(.5f, LumenStage.FromSides(.5f)); // the drum, in the middle, stays
             LumenStage.Width = LumenStage.Fit(4d / 3);
             Assert.Equal((960f, 1040f), (LumenStage.Width, LumenStage.Anchored(at, LumenAnchor.Right).X)); // the right edge at 1120: 80 in
             Assert.Equal(2560, LumenStage.Fit(32d / 9)); // any wider screen is filled

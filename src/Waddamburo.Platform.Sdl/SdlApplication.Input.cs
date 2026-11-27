@@ -469,7 +469,9 @@ public sealed unsafe partial class SdlApplication
         // A stage wider or narrower than 1280 (LumenStage): the point on the 1280 stage everything is made on.
         var stageX = (x * width - stage.X) / stage.Width;
         if (Waddamburo.Lumen.Rendering.LumenStage.Width != Waddamburo.Lumen.Rendering.LumenStage.BaseWidth)
-            return (Waddamburo.Lumen.Rendering.LumenStage.FromStage(stageX) / Waddamburo.Lumen.Rendering.LumenStage.BaseWidth, (y * height - stage.Y) / stage.Height, 16f / 9);
+            // Touch buttons keep to their nearest side (LumenStage.SideShift): a touch is taken back to where they were made.
+            return (Waddamburo.Lumen.Rendering.LumenStage.FromSides(Waddamburo.Lumen.Rendering.LumenStage.FromStage(stageX) / Waddamburo.Lumen.Rendering.LumenStage.BaseWidth),
+                (y * height - stage.Y) / stage.Height, 16f / 9);
         return (stageX, (y * height - stage.Y) / stage.Height, (float)stage.Width / stage.Height);
     }
 

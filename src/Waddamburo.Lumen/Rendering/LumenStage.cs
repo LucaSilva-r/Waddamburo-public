@@ -88,6 +88,16 @@ public static class LumenStage
     public static (float From, float To) StretchSpan(float minX, float maxX, LumenAnchor movie) =>
         (minX - Extra - Shift(movie), maxX + Extra - Shift(movie));
 
+    /// <summary>
+    /// How far a thing centred at <paramref name="centre"/> (a fraction of the 1280 stage) moves to keep to its nearest
+    /// side (touch buttons): the left third left, the right third right, the middle stays. A fraction of 1280.
+    /// </summary>
+    public static float SideShift(float centre) => centre < .4f ? -Extra / BaseWidth : centre > .6f ? Extra / BaseWidth : 0;
+
+    /// <summary>A touch (a fraction of the 1280 stage) back to where a side-kept thing was made (<see cref="SideShift"/>).</summary>
+    public static float FromSides(float x) =>
+        x + Extra / BaseWidth < .4f ? x + Extra / BaseWidth : x - Extra / BaseWidth > .6f ? x - Extra / BaseWidth : x;
+
     /// <summary>A point of the 1280 stage on the real one, as a fraction of its width.</summary>
     public static float ToStage(float baseX) => (baseX + Extra) / Width;
 
