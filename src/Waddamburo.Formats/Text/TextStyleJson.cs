@@ -92,8 +92,8 @@ public static class TextStyleJson
     private static TextLayer parseLayer(JsonObject layer, int index)
     {
         foreach (var (key, _) in layer)
-            if (key is not ("grow" or "offset" or "blur" or "color" or "gradient"))
-                throw new FormatException($"layers[{index}]: \"{key}\" is no layer setting (grow, offset, blur, color, gradient).");
+            if (key is not ("grow" or "offset" or "blur" or "color" or "gradient" or "wrap"))
+                throw new FormatException($"layers[{index}]: \"{key}\" is no layer setting (grow, offset, blur, color, gradient, wrap).");
         float x = 0, y = 0;
         if (layer["offset"] is JsonArray { Count: 2 } offset && Number(offset[0]) is { } ox && Number(offset[1]) is { } oy)
             (x, y) = ((float)ox, (float)oy);
@@ -126,7 +126,14 @@ public static class TextStyleJson
         }
         else if (layer["gradient"] is not null)
             throw new FormatException($"layers[{index}]: \"gradient\" is an object (angle, from, to, over).");
-        return new TextLayer(grow, x, y, blur, top, bottom, angle, from, to, overText);
+        // "wrap": true grows the layers in front of this one (as placed) instead of the text.
+        var wrap = layer["wrap"] switch
+        {
+            null => false,
+            JsonValue flag when flag.GetValueKind() is System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False => flag.GetValue<bool>(),
+            _ => throw new FormatException($"layers[{index}]: \"wrap\" is true or false."),
+        };
+        return new TextLayer(grow, x, y, blur, top, bottom, angle, from, to, overText, wrap);
     }
 
     private static (uint Top, uint Bottom) colours(JsonNode node, string what) => node switch

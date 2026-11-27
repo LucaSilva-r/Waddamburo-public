@@ -29,7 +29,8 @@ and across the lines, a fit mode for text too big for its box (clip, shrink, squ
 line, wrap then shrink), and top-to-bottom columns with the song titles' punctuation rules. Its look
 is a stack of up to 16 layers drawn back to front, each the text's shape grown outwards, moved,
 blurred and painted with a gradient (ABI 1.9: any angle, where it starts and ends, over each line or the whole
-text): a shadow, two borders and a
+text), and a layer may grow the layers in front of it instead of the text (ABI 1.10, a border
+around an offset highlight): a shadow, two borders and a
 gradient fill are four layers. Borders are grown from the whole text, so overlapping glyphs share
 one border, and one distance field serves every layer. Work is confined to the ink's box grown by
 the layers' reach (a 7-digit score with a border: about 0.15 ms at 1x, 1.3 ms at 3x).

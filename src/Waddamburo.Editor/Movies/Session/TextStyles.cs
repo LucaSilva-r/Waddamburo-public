@@ -336,7 +336,8 @@ public sealed partial class MovieInspectorSession
             ImGui.PushID(index);
             var grow = (float)(TextStyleJson.Number(layer["grow"]) ?? 0);
             var kind = index == layers.Count - 1 ? "front" : index == 0 ? "back" : "";
-            var title = (grow > 0 ? $"Border {grow:0.#}" : "Fill") + (layer["offset"] is not null || layer["blur"] is not null ? " (shadow)" : "");
+            var title = (grow > 0 ? $"Border {grow:0.#}" : "Fill") + (layer["wrap"]?.GetValueKind() == JsonValueKind.True ? " around" : "")
+                + (layer["offset"] is not null || layer["blur"] is not null ? " (shadow)" : "");
             var open = ImGui.TreeNodeEx($"{index + 1}. {title} {kind}###layer", ImGuiTreeNodeFlags.DefaultOpen | ImGuiTreeNodeFlags.AllowOverlap);
             ImGui.SameLine();
             ImGui.BeginDisabled(index == 0);
@@ -358,6 +359,13 @@ public sealed partial class MovieInspectorSession
                     ? new Vector2((float)(TextStyleJson.Number(o[0]) ?? 0), (float)(TextStyleJson.Number(o[1]) ?? 0)) : Vector2.Zero;
                 if (ImGui.DragFloat2("Offset", ref offset, .1f, -128, 128, "%.1f"))
                     edit(() => layer["offset"] = offset == Vector2.Zero ? null : new JsonArray(Math.Round(offset.X, 2), Math.Round(offset.Y, 2)), styleContinues());
+                var wrap = layer["wrap"]?.GetValueKind() == JsonValueKind.True;
+                ImGui.BeginDisabled(index == layers.Count - 1);
+                if (ImGui.Checkbox("Around the layers in front", ref wrap))
+                    edit(() => { if (wrap) layer["wrap"] = true; else layer.Remove("wrap"); }, false);
+                ImGui.EndDisabled();
+                if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+                    ImGui.SetTooltip("Grow from the layers in front of this one, as they are placed (with their offsets),\ninstead of from the text: a border that also wraps an offset highlight (fake 3D).");
                 var blur = (float)(TextStyleJson.Number(layer["blur"]) ?? 0);
                 if (ImGui.DragFloat("Blur", ref blur, .1f, 0, 128, "%.1f"))
                     edit(() => layer["blur"] = blur > 0 ? Math.Round(blur, 2) : null, styleContinues());

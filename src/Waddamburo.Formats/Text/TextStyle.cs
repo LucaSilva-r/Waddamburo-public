@@ -23,10 +23,12 @@ public enum TextFit
 /// blurred, and painted from <see cref="Top"/> to <see cref="Bottom"/> (0xRRGGBBAA) along <see cref="Angle"/> degrees
 /// (0: top to bottom, 90: left to right), <see cref="Top"/> up to <see cref="From"/> and <see cref="Bottom"/> from
 /// <see cref="To"/> (0..1 across each line, or the whole text with <see cref="OverText"/>). A title with a shadow, a
-/// black border, a red border and a white fill is four layers, back to front.
+/// black border, a red border and a white fill is four layers, back to front. With <see cref="Wrap"/> the shape grown is
+/// not the text but the layers in front of it as placed (a border around a fake-3D highlight follows the highlight).
 /// </summary>
 public sealed record TextLayer(float Grow = 0, float OffsetX = 0, float OffsetY = 0, float Blur = 0,
-    uint Top = 0xffffffff, uint Bottom = 0xffffffff, float Angle = 0, float From = 0, float To = 1, bool OverText = false)
+    uint Top = 0xffffffff, uint Bottom = 0xffffffff, float Angle = 0, float From = 0, float To = 1, bool OverText = false,
+    bool Wrap = false)
 {
     public static TextLayer Solid(uint rgba, float grow = 0) => new(grow, Top: rgba, Bottom: rgba);
 }
@@ -48,6 +50,20 @@ public sealed record TextStyle(
     bool Vertical = false)
 {
     /// <summary>How far the layers reach out of the text (grow + blur + offset): the renderer keeps the text that far in.</summary>
-    public float Reach => Layers.IsDefaultOrEmpty ? 0 : Layers.Max(static layer =>
-        Math.Max(layer.Grow, 0) + Math.Max(layer.Blur, 0) + Math.Max(Math.Abs(layer.OffsetX), Math.Abs(layer.OffsetY)));
+    public float Reach
+    {
+        get
+        {
+            // Front to back: a wrapping layer reaches past the layers in front of it.
+            float front = 0, reach = 0;
+            for (var i = Layers.IsDefault ? -1 : Layers.Length - 1; i >= 0; i--)
+            {
+                var layer = Layers[i];
+                var shape = Math.Max(layer.Grow, 0) + Math.Max(Math.Abs(layer.OffsetX), Math.Abs(layer.OffsetY)) + (layer.Wrap ? front : 0);
+                front = Math.Max(front, shape);
+                reach = Math.Max(reach, shape + Math.Max(layer.Blur, 0));
+            }
+            return reach;
+        }
+    }
 }

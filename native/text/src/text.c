@@ -614,7 +614,7 @@ static waddamburo_text_result render_title_row(
 
 uint32_t WADDAMBURO_TEXT_CALL waddamburo_text_get_abi_version(void)
 {
-    return WADDAMBURO_TEXT_ABI_VERSION_1_9;
+    return WADDAMBURO_TEXT_ABI_VERSION_1_10;
 }
 
 waddamburo_text_context *WADDAMBURO_TEXT_CALL waddamburo_text_context_create(
@@ -1267,6 +1267,54 @@ static FT_Error styled_draw_glyph(
     return 0;
 }
 
+/* Layer l's shape as it is placed (0..1 coverage, region-sized, moved by its offset; not blurred) into `out`: the
+ * text (ink and its distance field) grown by the layer's grow, or with `wrap` the layers in front of it as placed
+ * (`placed`, already made) grown so. */
+static int styled_place(
+    const waddamburo_text_style *style, uint32_t l, float scale, const uint8_t *ink, const float *distance,
+    float *const *placed, uint8_t *wrap_ink, float *wrap_distance, float *out, uint32_t width, uint32_t height, float reach)
+{
+    const waddamburo_text_layer *layer = &style->layers[l];
+    float grow = layer->grow * scale;
+    int offset_x = (int)floorf(layer->offset_x * scale + 0.5f), offset_y = (int)floorf(layer->offset_y * scale + 0.5f);
+    size_t count = (size_t)width * height;
+    const float *field = distance;
+    float *base = out;
+    int wrap = layer->wrap && placed != NULL && l + 1U < style->layer_count;
+    /* The shape before its offset, in `out` (a wrapping layer's from the union of those in front). */
+    if (wrap) {
+        for (size_t i = 0U; i < count; ++i) {
+            float a = 0.0f;
+            for (uint32_t j = l + 1U; j < style->layer_count; ++j)
+                if (placed[j][i] > a) a = placed[j][i];
+            base[i] = a;
+            wrap_ink[i] = (uint8_t)(a * 255.0f + 0.5f);
+        }
+        if (grow > 0.0f && !styled_distance(wrap_ink, wrap_distance, width, height, (uint32_t)(reach * scale) + 2U))
+            return 0;
+        field = wrap_distance;
+    } else
+        for (size_t i = 0U; i < count; ++i)
+            base[i] = (float)ink[i] * (1.0f / 255.0f);
+    if (grow > 0.0f)
+        for (size_t i = 0U; i < count; ++i) {
+            float border = grow + 0.5f - field[i];
+            border = border < 0.0f ? 0.0f : border > 1.0f ? 1.0f : border;
+            if (border > base[i]) base[i] = border;
+        }
+    /* Moved by its offset (in place: rows and columns walked away from where they move to). */
+    if (offset_x != 0 || offset_y != 0) {
+        int step_y = offset_y > 0 ? -1 : 1, step_x = offset_x > 0 ? -1 : 1;
+        for (int y = step_y > 0 ? 0 : (int)height - 1; y >= 0 && y < (int)height; y += step_y)
+            for (int x = step_x > 0 ? 0 : (int)width - 1; x >= 0 && x < (int)width; x += step_x) {
+                int sx = x - offset_x, sy = y - offset_y;
+                out[(size_t)y * width + (uint32_t)x] = sx >= 0 && sy >= 0 && sx < (int)width && sy < (int)height
+                    ? base[(size_t)sy * width + (uint32_t)sx] : 0.0f;
+            }
+    }
+    return 1;
+}
+
 waddamburo_text_result WADDAMBURO_TEXT_CALL waddamburo_text_context_render_styled_rgba8(
     waddamburo_text_context *context,
     const char *utf8_text,
@@ -1293,7 +1341,10 @@ waddamburo_text_result WADDAMBURO_TEXT_CALL waddamburo_text_context_render_style
     float font_px, spacing, line_factor, reach = 0.0f, pad, avail_w, avail_h, squeeze = 1.0f;
     float ascender = 0.0f, descender = 0.0f, line_box, line_advance, main_length = 0.0f, cross_length = 0.0f;
     FT_Error ft_error = 0;
-    int need_distance = 0;
+    int need_distance = 0, any_wrap = 0;
+    float **placed = NULL;          /* each layer's shape as placed, when a layer wraps the ones in front */
+    uint8_t *wrap_ink = NULL;
+    float *wrap_distance = NULL;
 
     if (!error_is_valid(error))
         return WADDAMBURO_TEXT_ERROR_INVALID_ARGUMENT;
@@ -1333,16 +1384,24 @@ waddamburo_text_result WADDAMBURO_TEXT_CALL waddamburo_text_context_render_style
         glyphs[i].group = (uint8_t)(vertical && i > 0U && is_horizontal_group_scalar(s) &&
             is_horizontal_group_scalar(glyphs[i - 1U].scalar) && !glyphs[i - 1U].group);
     }
-    for (uint32_t l = 0U; l < style->layer_count; ++l) {
-        const waddamburo_text_layer *layer = &style->layers[l];
-        float shift = fabsf(layer->offset_x) > fabsf(layer->offset_y) ? fabsf(layer->offset_x) : fabsf(layer->offset_y);
-        float r = (layer->grow > 0.0f ? layer->grow : 0.0f) + (layer->blur > 0.0f ? layer->blur : 0.0f) + shift;
-        if (!(layer->grow >= 0.0f && layer->grow <= 256.0f && layer->blur >= 0.0f && layer->blur <= 256.0f)) {
-            result = set_error(error, WADDAMBURO_TEXT_ERROR_INVALID_ARGUMENT, 0, "A text layer's grow or blur is out of range.");
-            goto done;
+    /* How far each layer's shape reaches out of the text (grow and offset; a wrapping layer's on top of the layers in
+     * front of it), front to back; the reach is the farthest, blur included. */
+    {
+        float front = 0.0f;
+        for (uint32_t l = style->layer_count; l-- > 0U;) {
+            const waddamburo_text_layer *layer = &style->layers[l];
+            float shift = fabsf(layer->offset_x) > fabsf(layer->offset_y) ? fabsf(layer->offset_x) : fabsf(layer->offset_y);
+            float shape;
+            if (!(layer->grow >= 0.0f && layer->grow <= 256.0f && layer->blur >= 0.0f && layer->blur <= 256.0f)) {
+                result = set_error(error, WADDAMBURO_TEXT_ERROR_INVALID_ARGUMENT, 0, "A text layer's grow or blur is out of range.");
+                goto done;
+            }
+            shape = layer->grow + shift + (layer->wrap ? front : 0.0f);
+            if (shape > front) front = shape;
+            if (shape + layer->blur > reach) reach = shape + layer->blur;
+            if (layer->grow > 0.0f) need_distance = 1;
+            if (layer->wrap) any_wrap = 1;
         }
-        if (r > reach) reach = r;
-        if (layer->grow > 0.0f) need_distance = 1;
     }
     pad = reach * scale + 1.0f;
     avail_w = (float)width - 2.0f * pad;
@@ -1553,11 +1612,32 @@ waddamburo_text_result WADDAMBURO_TEXT_CALL waddamburo_text_context_render_style
         goto done;
     }
 
+    /* With a wrapping layer, every layer's placed shape first, front to back (a wrapping one is grown from those in
+     * front of it); then each is blurred and painted, back to front. */
+    if (any_wrap) {
+        placed = (float **)calloc(style->layer_count, sizeof(*placed));
+        wrap_ink = (uint8_t *)malloc(region_count);
+        wrap_distance = (float *)malloc(region_count * sizeof(*wrap_distance));
+        if (placed == NULL || wrap_ink == NULL || wrap_distance == NULL) {
+            result = set_error(error, WADDAMBURO_TEXT_ERROR_MEMORY, 0, "Unable to allocate the text layers.");
+            goto done;
+        }
+        for (uint32_t l = style->layer_count; l-- > 0U;) {
+            placed[l] = (float *)malloc(region_count * sizeof(**placed));
+            if (placed[l] == NULL) {
+                result = set_error(error, WADDAMBURO_TEXT_ERROR_MEMORY, 0, "Unable to allocate the text layers.");
+                goto done;
+            }
+            if (!styled_place(style, l, scale, ink, distance, placed, wrap_ink, wrap_distance, placed[l], region_width, region_height, reach)) {
+                result = set_error(error, WADDAMBURO_TEXT_ERROR_MEMORY, 0, "Unable to outline the text.");
+                goto done;
+            }
+        }
+    }
     for (uint32_t l = 0U; l < style->layer_count; ++l) {
         const waddamburo_text_layer *layer = &style->layers[l];
-        float grow = layer->grow * scale, blur = layer->blur * scale;
+        float blur = layer->blur * scale;
         int offset_x = (int)floorf(layer->offset_x * scale + 0.5f), offset_y = (int)floorf(layer->offset_y * scale + 0.5f);
-        int blurred = blur >= 0.5f;
         float top[4], bottom[4];
         /* The gradient: u runs 0..1 across the band along the angle; t is u between from and to. */
         float angle = layer->gradient_angle * 0.017453292f, along_x = sinf(angle), along_y = cosf(angle);
@@ -1569,18 +1649,15 @@ waddamburo_text_result WADDAMBURO_TEXT_CALL waddamburo_text_context_render_style
             top[k] = styled_channel(layer->top_rgba, 24 - 8 * k);
             bottom[k] = styled_channel(layer->bottom_rgba, 24 - 8 * k);
         }
-        if (blurred) {
+        if (placed != NULL)
+            memcpy(cover, placed[l], region_count * sizeof(*cover));
+        else if (!styled_place(style, l, scale, ink, distance, NULL, NULL, NULL, cover, region_width, region_height, reach)) {
+            result = set_error(error, WADDAMBURO_TEXT_ERROR_MEMORY, 0, "Unable to outline the text.");
+            goto done;
+        }
+        if (blur >= 0.5f) {
             /* Three box passes each way: close to a gaussian of about blur / 2. */
             int r = (int)(blur * 0.5f + 0.5f);
-            for (size_t i = 0U; i < region_count; ++i) {
-                float a = (float)ink[i] * (1.0f / 255.0f);
-                if (grow > 0.0f) {
-                    float border = grow + 0.5f - distance[i];
-                    border = border < 0.0f ? 0.0f : border > 1.0f ? 1.0f : border;
-                    if (border > a) a = border;
-                }
-                cover[i] = a;
-            }
             for (int pass = 0; pass < 3; ++pass) {
                 styled_box_pass(cover, scratch, region_width, region_height, 1, r);
                 styled_box_pass(scratch, cover, region_width, region_height, 0, r);
@@ -1589,44 +1666,28 @@ waddamburo_text_result WADDAMBURO_TEXT_CALL waddamburo_text_context_render_style
         for (uint32_t y = 0U; y < region_height; ++y) {
             int source_y = (int)y - offset_y;
             float colour[4], u_row = 0.0f, u_step = 0.0f;
-            int x_from, x_to;
-            const uint8_t *ink_row;
-            const float *cover_row, *distance_row;
-            uint8_t *pixel;
-            if (source_y < 0 || source_y >= (int)region_height)
-                continue;
+            const float *cover_row = cover + (size_t)y * region_width;
+            uint8_t *pixel = rgba8 + ((size_t)(region_top + y) * width + region_left) * 4U;
+            if (source_y < 0) source_y = 0;
+            if (source_y >= (int)region_height) source_y = (int)region_height - 1;
             if (!flat) {
-                /* u along the row is linear in x: its value at the region's left and its step per pixel. */
+                /* u along the row is linear in x (the shape's own place, before its offset): its value at the
+                 * region's left and its step per pixel. */
                 uint32_t b = layer->gradient_over == WADDAMBURO_TEXT_GRADIENT_TEXT ? bands : row_band[source_y];
                 float centre_x = (band_left[b] + band_right[b]) * 0.5f, centre_y = (band_top[b] + band_bottom[b]) * 0.5f;
                 float extent = fabsf((band_right[b] - band_left[b]) * along_x) + fabsf((band_bottom[b] - band_top[b]) * along_y);
                 if (extent < 1.0f) extent = 1.0f;
                 u_step = along_x / extent;
                 u_row = 0.5f + (((float)region_left + 0.5f - (float)offset_x - centre_x) * along_x
-                    + ((float)(region_top + (uint32_t)source_y) + 0.5f - centre_y) * along_y) / extent;
+                    + ((float)(region_top + y) + 0.5f - (float)offset_y - centre_y) * along_y) / extent;
             }
             for (int k = 0; k < 4; ++k)
                 colour[k] = top[k];
             colour[0] *= colour[3] * 255.0f;
             colour[1] *= colour[3] * 255.0f;
             colour[2] *= colour[3] * 255.0f;
-            x_from = offset_x > 0 ? offset_x : 0;
-            x_to = (int)region_width + (offset_x < 0 ? offset_x : 0);
-            ink_row = ink + (size_t)source_y * region_width - offset_x;
-            cover_row = cover + (size_t)source_y * region_width - offset_x;
-            distance_row = need_distance ? distance + (size_t)source_y * region_width - offset_x : NULL;
-            pixel = rgba8 + ((size_t)(region_top + y) * width + region_left + (uint32_t)x_from) * 4U;
-            for (int x = x_from; x < x_to; ++x, pixel += 4) {
-                float a;
-                if (blurred)
-                    a = cover_row[x];
-                else {
-                    a = (float)ink_row[x] * (1.0f / 255.0f);
-                    if (grow > 0.0f) {
-                        float border = grow + 0.5f - distance_row[x];
-                        if (border > a) a = border > 1.0f ? 1.0f : border;
-                    }
-                }
+            for (uint32_t x = 0U; x < region_width; ++x, pixel += 4) {
+                float a = cover_row[x];
                 if (a <= 0.0f)
                     continue;
                 if (!flat) {
@@ -1655,7 +1716,11 @@ waddamburo_text_result WADDAMBURO_TEXT_CALL waddamburo_text_context_render_style
 done:
     transform_faces(context, NULL);
     free(glyphs); free(line_length); free(band_top); free(band_bottom); free(band_left); free(band_right); free(row_band);
-    free(distance); free(cover); free(scratch); free(mask); free(ink);
+    free(distance); free(cover); free(scratch); free(mask); free(ink); free(wrap_ink); free(wrap_distance);
+    if (placed != NULL)
+        for (uint32_t l = 0U; l < style->layer_count; ++l)
+            free(placed[l]);
+    free(placed);
     if (result == WADDAMBURO_TEXT_OK)
         set_error(error, WADDAMBURO_TEXT_OK, 0, "");
     return result;

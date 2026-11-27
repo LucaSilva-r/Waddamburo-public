@@ -46,6 +46,19 @@ public sealed class StyledTextTests
         Assert.All(Enumerable.Range(0, 300).Select(x => at(edge, x, 40)).Where(static p => p.A == 255), static p => Assert.True(p.B > 240 && p.R < 15));
     }
 
+    // A border wrapping the layers in front follows an offset highlight: from above, every column meets black first.
+    [Fact]
+    public void AWrappingBorderFollowsOffsetLayers()
+    {
+        static TextStyle style(bool wrap) => new("title", 32, [new(6, Top: 0x000000ff, Bottom: 0x000000ff, Wrap: wrap),
+            new(3.1f, -1.9f, -3.7f), TextLayer.Solid(0xe01818ff, 4), TextLayer.Solid(0xffffffff)], Align: TextAlign.Center);
+        bool blackFirst(RgbaTextSurface surface) => Enumerable.Range(0, (int)surface.Width).All(x =>
+            Enumerable.Range(0, (int)surface.Height).Select(y => at(surface, x, y)).FirstOrDefault(static p => p.A > 128) is var p && (p.A == 0 || p.R < 80));
+        Assert.True(blackFirst(NativeVerticalTextRasterizer.RenderStyled(Font, "プレイヤー", style(true), 2, 600, 160)));
+        Assert.False(blackFirst(NativeVerticalTextRasterizer.RenderStyled(Font, "プレイヤー", style(false), 2, 600, 160)));
+        Assert.True(style(true).Reach > style(false).Reach);
+    }
+
     [Fact]
     public void EmptyTextIsTransparent() =>
         Assert.All(NativeVerticalTextRasterizer.RenderStyled(Font, "", Title, 1, 40, 20).Pixels, static b => Assert.Equal(0, b));

@@ -406,7 +406,8 @@ A skin folder (`movies/`, or `USRDIR/waddamburo/movies` over it) holds, beside i
   grown by `grow`, moved by `offset`, blurred, painted with a colour or a [top, bottom] gradient over each line
   (`"#rrggbb"` or `"#rrggbbaa"`; `"gradient": {"angle": 30, "from": 0.3, "to": 0.7, "over": "text"}` turns it (0
   top to bottom, 90 left to right), says where the top colour ends and the bottom one begins (0..1; equal: a hard
-  edge), and runs it over the whole text instead of each line); a top-level `color` paints the front layer. `fit`: clip, shrink, squeeze (along
+  edge), and runs it over the whole text instead of each line; `"wrap": true` grows the layers in front of it, as
+  placed, instead of the text: a border that also wraps an offset highlight, the fake-3D titles); a top-level `color` paints the front layer. `fit`: clip, shrink, squeeze (along
   the line, as the game's titles) or wrap (then shrink); `vertical`: columns top to bottom, right to left, punctuation
   turned. The font `game` is the engine's own. A package's text field picks a style (`"style": "title"`), may set any
   setting over it, may carry its own `"text"` (shown, in the editor and the game, until a script or the engine gives
