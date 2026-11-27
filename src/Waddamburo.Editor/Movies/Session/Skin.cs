@@ -250,6 +250,7 @@ public sealed partial class MovieInspectorSession
             if (ImGui.MenuItem("Home", "", _page == Page.Home)) _page = Page.Home;
             if (ImGui.MenuItem("Save scenes", "Ctrl+S", false, Scenes?.IsDirty == true)) saveScenes();
             if (ImGui.MenuItem("Export skin (zip)")) exportSkin();
+            if (ImGui.MenuItem("Copy assistant setup (MCP)")) copyMcpSetup();
             ImGui.Separator();
             if (ImGui.MenuItem("Close")) requestOpenOrClose(true);
             ImGui.EndMenu();

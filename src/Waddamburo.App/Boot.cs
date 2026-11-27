@@ -57,6 +57,9 @@ public static class Boot
                 return Rescore.RunCourses(Console.OpenStandardInput(), Console.OpenStandardOutput());
             if (args is ["--rescore"])
                 return Rescore.Run(Console.OpenStandardInput(), Console.OpenStandardOutput());
+            // A skin's MCP server (an assistant working on the skin): stdin/stdout are its protocol.
+            if (args is [var mcp] && (mcp == "--mcp" || mcp.StartsWith("--mcp=", StringComparison.Ordinal)))
+                return SkinMcp.Run(mcp == "--mcp" ? "" : mcp["--mcp=".Length..]);
             ReleaseConsole.Begin();
             if (SelfUpdate.HandOff(ref args))
                 return 0;

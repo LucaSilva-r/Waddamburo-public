@@ -70,6 +70,13 @@ from the current folder). `--inspect=scene:<screen>` starts on a scene view (for
   `wd-names.json`, written by `--dump-wd=...`, kept current by a test); the package's labels and clip names from its
   movie.json; the skin's problems shown in their files on save (`--lint-skin=<skin> --json`). ponytail: no language
   server; errors as you type would need one.
+- **Assistants (MCP)** (`App/Tools/SkinMcp.cs`, `Waddamburo.App --mcp[=skin]`): an MCP server on stdio for Claude
+  Desktop, VS Code or any MCP client. Tools: `list_files`, `read_file`, `write_file` (inside the skin's folder only),
+  `check_skin` (the Problems list), `wd_names` (the `--dump-wd` JSON), `screenshot` (a screen as the editor shows it
+  with example data: a short `--skin --inspect=scene:<screen> --screenshot` run in its own window, returned as a PNG).
+  File > Copy assistant setup (MCP) puts the config entry on the clipboard. Written files reach a running editor and a
+  `--skin-dev` game through their file polling. ponytail: hand-rolled JSON-RPC, no driving of the open editor or the
+  game, editor panels in the screenshot; the MCP SDK and a SkinLink client when an assistant should work live.
 - **Live scene window** (F4, Skin menu) over the component editor: the screen with the package being edited, from its
   unsaved document; only the edited movie restarts.
 - **Example data** (`Skin/PreviewData.cs`): every state at its sample, lists filled, both drums joined with names, the

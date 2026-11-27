@@ -95,4 +95,24 @@ public sealed partial class MovieInspectorSession
             _notice = $"Could not export: {error.Message}";
         }
     }
+
+    // The MCP server entry (Waddamburo.App --mcp=<skin>) for an assistant's config (Claude Desktop's
+    // claude_desktop_config.json, a project's .mcp.json, VS Code's mcp.json "servers"), on the clipboard.
+    private void copyMcpSetup()
+    {
+        var command = Environment.ProcessPath ?? "dotnet";
+        var args = new List<string>();
+        if (Path.GetFileNameWithoutExtension(command).Equals("dotnet", StringComparison.OrdinalIgnoreCase)
+            && System.Reflection.Assembly.GetEntryAssembly()?.Location is { Length: > 0 } dll)
+            args.Add(dll);
+        args.Add($"--mcp={Skin!.Root}");
+        var entry = new System.Text.Json.Nodes.JsonObject
+        {
+            ["command"] = command,
+            ["args"] = new System.Text.Json.Nodes.JsonArray([.. args.Select(static arg => (System.Text.Json.Nodes.JsonNode?)arg)]),
+        };
+        var config = new System.Text.Json.Nodes.JsonObject { ["mcpServers"] = new System.Text.Json.Nodes.JsonObject { ["waddamburo-skin"] = entry } };
+        ImGui.SetClipboardText(config.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+        _notice = "Copied: paste it into your assistant's MCP settings (Claude Desktop: Settings > Developer > Edit Config).";
+    }
 }
