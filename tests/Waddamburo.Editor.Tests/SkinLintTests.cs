@@ -63,3 +63,15 @@ public sealed class SkinLintTests
         Assert.True(errors.Length == 0, string.Join("\n", errors.Select(static problem => $"{problem.File}:{problem.Line} {problem.Text}")));
     }
 }
+
+public sealed class WdDumpTests
+{
+    // The VS Code extension's copy of the engine's names is the engine's (regenerate: Waddamburo.App --dump-wd=...).
+    [Fact]
+    public void TheExtensionsNamesAreCurrent()
+    {
+        var file = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "tools", "vscode-waddamburo", "wd-names.json"));
+        Assert.True(File.ReadAllText(file) == WdDump.Json(),
+            "tools/vscode-waddamburo/wd-names.json is behind WdNames: run Waddamburo.App --dump-wd=tools/vscode-waddamburo/wd-names.json");
+    }
+}

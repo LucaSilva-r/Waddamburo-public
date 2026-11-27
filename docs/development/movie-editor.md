@@ -65,6 +65,11 @@ from the current folder). `--inspect=scene:<screen>` starts on a scene view (for
   textures, unused assets (an exported sprite counts as used: scripts make it); preview scenarios. Checked in the
   background after each save; a line opens its place (VS Code at the line, or the package). File > Export skin
   (zip) writes `<name>-<version>.zip` beside the folder, without dot folders.
+- **VS Code** (`tools/vscode-waddamburo`, plain JavaScript, packed by `package-vsix.py`): ActionScript 2 highlighting
+  and snippets; Wd names completed inside `Wd.on/get/request("` by what each takes, explained on hover (from
+  `wd-names.json`, written by `--dump-wd=...`, kept current by a test); the package's labels and clip names from its
+  movie.json; the skin's problems shown in their files on save (`--lint-skin=<skin> --json`). ponytail: no language
+  server; errors as you type would need one.
 - **Live scene window** (F4, Skin menu) over the component editor: the screen with the package being edited, from its
   unsaved document; only the edited movie restarts.
 - **Example data** (`Skin/PreviewData.cs`): every state at its sample, lists filled, both drums joined with names, the

@@ -1,0 +1,20 @@
+{
+  "scopeName": "source.actionscript2",
+  "name": "ActionScript 2",
+  "patterns": [
+    { "name": "comment.line.double-slash.as2", "match": "//.*$" },
+    { "name": "comment.block.as2", "begin": "/\\*", "end": "\\*/" },
+    { "name": "string.quoted.double.as2", "begin": "\"", "end": "\"", "patterns": [{ "name": "constant.character.escape.as2", "match": "\\\\." }] },
+    { "name": "string.quoted.single.as2", "begin": "'", "end": "'", "patterns": [{ "name": "constant.character.escape.as2", "match": "\\\\." }] },
+    { "name": "constant.numeric.as2", "match": "\\b(0x[0-9A-Fa-f]+|\\d+(\\.\\d+)?([eE][+-]?\\d+)?)\\b" },
+    { "name": "keyword.control.as2", "match": "\\b(if|else|for|in|while|do|return|break|continue|switch|case|default|with|try|catch|finally|throw)\\b" },
+    { "name": "storage.type.as2", "match": "\\b(var|function|class|extends|implements|interface|import|static|public|private|dynamic|intrinsic)\\b" },
+    { "name": "keyword.operator.as2", "match": "\\b(new|delete|typeof|instanceof|void)\\b" },
+    { "name": "constant.language.as2", "match": "\\b(true|false|null|undefined|NaN|Infinity)\\b" },
+    { "name": "variable.language.as2", "match": "\\b(this|super|_root|_parent|_global)\\b" },
+    { "name": "support.class.provider.as2", "match": "\\bWd\\b" },
+    { "name": "support.class.as2", "match": "\\b(Math|String|Number|Array|Object|Boolean|Date|MovieClip|TextField|Key|Mouse|Stage|Sound|Color|ExternalInterface|MovieClipLoader)\\b" },
+    { "name": "support.function.as2", "match": "\\b(gotoAndPlay|gotoAndStop|play|stop|nextFrame|prevFrame|attachMovie|duplicateMovieClip|removeMovieClip|createEmptyMovieClip|createTextField|getNextHighestDepth|setInterval|clearInterval|trace)\\b" },
+    { "name": "variable.other.property.clip.as2", "match": "\\b_(x|y|xscale|yscale|rotation|alpha|visible|width|height|currentframe|totalframes|name)\\b" }
+  ]
+}

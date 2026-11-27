@@ -1,0 +1,6 @@
+{
+  "Wd.on": { "prefix": "won", "body": ["Wd.on(\"$1\", function(${2:value}) {", "\t$0", "});"], "description": "Hear a state's value (at once, then each change) or an event's arguments." },
+  "Wd.get": { "prefix": "wget", "body": ["Wd.get(\"$1\")"], "description": "A state's value now (a list's place: Wd.get(name, index))." },
+  "Wd.request": { "prefix": "wreq", "body": ["Wd.request(\"$1\"$2);"], "description": "Ask the engine for something; true when it was taken." },
+  "onEnterFrame": { "prefix": "oef", "body": ["this.onEnterFrame = function() {", "\t$0", "};"], "description": "Run every frame." }
+}

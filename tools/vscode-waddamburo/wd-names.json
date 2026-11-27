@@ -1,0 +1,1397 @@
+{
+  "version": 1,
+  "names": [
+    {
+      "name": "play.score",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "This drum's score.",
+      "sample": "123450"
+    },
+    {
+      "name": "play.combo",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "Notes hit in a row; 0 after a miss.",
+      "sample": "57"
+    },
+    {
+      "name": "play.maxCombo",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "The longest combo of this play so far.",
+      "sample": "112"
+    },
+    {
+      "name": "play.gauge",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "The soul gauge, 0 (empty) to 1 (full).",
+      "sample": "0.65"
+    },
+    {
+      "name": "play.gaugeClearLine",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "Where on the gauge the clear line is, 0 to 1.",
+      "sample": "0.8"
+    },
+    {
+      "name": "play.gaugeCleared",
+      "kind": "state",
+      "type": "bool",
+      "scope": "play",
+      "description": "The gauge is at or past its clear line.",
+      "sample": "false"
+    },
+    {
+      "name": "play.gaugeFull",
+      "kind": "state",
+      "type": "bool",
+      "scope": "play",
+      "description": "The gauge is full.",
+      "sample": "false"
+    },
+    {
+      "name": "play.good",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "Notes hit GOOD.",
+      "sample": "98"
+    },
+    {
+      "name": "play.ok",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "Notes hit OK.",
+      "sample": "12"
+    },
+    {
+      "name": "play.bad",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "Notes missed.",
+      "sample": "3"
+    },
+    {
+      "name": "play.accuracy",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "0 to 1: GOOD counts whole, OK half, of the notes judged so far; 1 before the first.",
+      "sample": "0.92"
+    },
+    {
+      "name": "play.course",
+      "kind": "state",
+      "type": "text",
+      "scope": "play",
+      "description": "easy, normal, hard, oni or ura.",
+      "sample": "oni"
+    },
+    {
+      "name": "play.goGo",
+      "kind": "state",
+      "type": "bool",
+      "scope": "play",
+      "description": "Go-Go Time is on.",
+      "sample": "true"
+    },
+    {
+      "name": "play.branch",
+      "kind": "state",
+      "type": "text",
+      "scope": "play",
+      "description": "The route the lane is on: normal, expert or master; no value when the chart has no routes.",
+      "sample": "expert"
+    },
+    {
+      "name": "play.roll",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "Hits on the drumroll under way; no value when there is none.",
+      "sample": "24"
+    },
+    {
+      "name": "play.balloon",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "Hits the balloon under way still needs; no value when there is none (a kusudama is play.kusudama).",
+      "sample": "5"
+    },
+    {
+      "name": "play.kusudama",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "Hits the kusudama under way still needs; no value when there is none.",
+      "sample": "120"
+    },
+    {
+      "name": "play.beat",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "Beats since the chart's first timing point, following its tempo changes (fractional, told every tick; negative before it, still while the song stands still). A movie's frame from it, say start + Math.floor(beat * 40) % 40, plays one loop a beat in time with the song.",
+      "sample": "17.25"
+    },
+    {
+      "name": "play.time",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "The song's time in seconds from the chart's start (negative during the lead-in).",
+      "sample": "42.5"
+    },
+    {
+      "name": "play.duration",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "The chart's length in seconds.",
+      "sample": "128.4"
+    },
+    {
+      "name": "play.bpm",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "The tempo at this point of the song, beats a minute.",
+      "sample": "154"
+    },
+    {
+      "name": "play.meter",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "Beats in this measure (the time signature's upper number).",
+      "sample": "4"
+    },
+    {
+      "name": "play.measure",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "Which measure the song is in, from 0 at the first bar line; -1 before it.",
+      "sample": "12"
+    },
+    {
+      "name": "play.scroll",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "The chart's scroll speed here (its own changes, not the player's speed option, which is player.speed).",
+      "sample": "1.25"
+    },
+    {
+      "name": "play.rollHits",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "Drumroll hits of this play so far.",
+      "sample": "86"
+    },
+    {
+      "name": "play.balloonHits",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "Balloon and kusudama hits of this play so far.",
+      "sample": "40"
+    },
+    {
+      "name": "play.notes",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "Notes of the chart on the route being played (a section not reached follows it), rolls and balloons not counted.",
+      "sample": "612"
+    },
+    {
+      "name": "play.notesLeft",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "Of play.notes, those not judged yet.",
+      "sample": "240"
+    },
+    {
+      "name": "play.nextNoteBeats",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "Beats until the next note on the route (rolls and balloons not counted); no value when none is left.",
+      "sample": "0.5"
+    },
+    {
+      "name": "play.nextNoteSeconds",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "Seconds until the next note on the route; no value when none is left.",
+      "sample": "0.19"
+    },
+    {
+      "name": "play.nextNoteKind",
+      "kind": "state",
+      "type": "text",
+      "scope": "play",
+      "description": "The next note: don, ka, bigDon or bigKa; no value when none is left.",
+      "sample": "ka"
+    },
+    {
+      "name": "play.level",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "The stars of the course being played; no value when the song has none.",
+      "sample": "8"
+    },
+    {
+      "name": "play.progress",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "How far through the song, 0 to 1, in hundredths.",
+      "sample": "0.4"
+    },
+    {
+      "name": "dan.rank",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "The dan course's rank, 0 for the lowest; no value outside a course.",
+      "sample": "9"
+    },
+    {
+      "name": "dan.name",
+      "kind": "state",
+      "type": "text",
+      "scope": "play",
+      "description": "The dan course's name, as its series writes it.",
+      "sample": "六段"
+    },
+    {
+      "name": "dan.song",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "Which song of the dan course is playing, from 1.",
+      "sample": "2"
+    },
+    {
+      "name": "dan.notesLeft",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "Notes of the dan course not judged yet.",
+      "sample": "1240"
+    },
+    {
+      "name": "dan.exam.count",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "How many requirements the dan course's panel shows: the length of the dan.exam lists.",
+      "sample": "3"
+    },
+    {
+      "name": "dan.exam.type",
+      "kind": "list",
+      "type": "text",
+      "scope": "play",
+      "description": "A requirement's kind: soul_gauge, goods, oks, bads, combo, hits, score or rolls. oks and bads must stay under their target; the others must reach it.",
+      "sample": "bads"
+    },
+    {
+      "name": "dan.exam.target",
+      "kind": "list",
+      "type": "number",
+      "scope": "play",
+      "description": "What the requirement asks for (this song's, where each song has its own).",
+      "sample": "10"
+    },
+    {
+      "name": "dan.exam.gold",
+      "kind": "list",
+      "type": "number",
+      "scope": "play",
+      "description": "The requirement's target for a gold pass; 0 when it has none.",
+      "sample": "5"
+    },
+    {
+      "name": "dan.exam.value",
+      "kind": "list",
+      "type": "number",
+      "scope": "play",
+      "description": "Where the play stands on the requirement.",
+      "sample": "3"
+    },
+    {
+      "name": "dan.exam.possible",
+      "kind": "list",
+      "type": "bool",
+      "scope": "play",
+      "description": "The requirement can still be met.",
+      "sample": "true"
+    },
+    {
+      "name": "song.title",
+      "kind": "state",
+      "type": "text",
+      "scope": "play",
+      "description": "The song's title.",
+      "sample": "Senbonzakura"
+    },
+    {
+      "name": "song.artist",
+      "kind": "state",
+      "type": "text",
+      "scope": "play",
+      "description": "Who made the song; no value when the library does not say.",
+      "sample": "Kurousa-P"
+    },
+    {
+      "name": "song.genre",
+      "kind": "state",
+      "type": "text",
+      "scope": "play",
+      "description": "The song's genre: jpop, anime, vocaloid, doyo (children and folk), variety, classic, game or namco.",
+      "sample": "vocaloid"
+    },
+    {
+      "name": "song.source",
+      "kind": "state",
+      "type": "text",
+      "scope": "play",
+      "description": "Where the song comes from: stock, nijiiro, tja, osuLazer or osuStable.",
+      "sample": "tja"
+    },
+    {
+      "name": "song.stage",
+      "kind": "state",
+      "type": "number",
+      "scope": "session",
+      "description": "Which song of the credit or dan course this is, from 1; no value where the game shows no stage number (home).",
+      "sample": "2"
+    },
+    {
+      "name": "song.finalStage",
+      "kind": "state",
+      "type": "bool",
+      "scope": "session",
+      "description": "This is the credit's last song.",
+      "sample": "false"
+    },
+    {
+      "name": "song.subtitle",
+      "kind": "state",
+      "type": "text",
+      "scope": "play",
+      "description": "The song's subtitle; no value when it has none.",
+      "sample": "Kurousa-P feat. Hatsune Miku"
+    },
+    {
+      "name": "player.name",
+      "kind": "state",
+      "type": "text",
+      "scope": "session",
+      "description": "The name of this drum's player (read with the drum's number outside a drum's own movie); none while the drum has no player.",
+      "sample": "Don-chan"
+    },
+    {
+      "name": "player.side",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "This drum: 0 the left one, 1 the right one.",
+      "sample": "0"
+    },
+    {
+      "name": "player.autoplay",
+      "kind": "state",
+      "type": "bool",
+      "scope": "play",
+      "description": "This drum is played by the bot (autoplay, the attract demo, AI battle's AI-don), not a person.",
+      "sample": "false"
+    },
+    {
+      "name": "player.replay",
+      "kind": "state",
+      "type": "bool",
+      "scope": "play",
+      "description": "This play is a recorded one being watched again.",
+      "sample": "false"
+    },
+    {
+      "name": "player.speed",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "The notes' scroll speed option, 1 for none.",
+      "sample": "1.5"
+    },
+    {
+      "name": "player.doron",
+      "kind": "state",
+      "type": "bool",
+      "scope": "play",
+      "description": "The vanishing notes option is on.",
+      "sample": "false"
+    },
+    {
+      "name": "player.abekobe",
+      "kind": "state",
+      "type": "bool",
+      "scope": "play",
+      "description": "The swapped notes option is on.",
+      "sample": "false"
+    },
+    {
+      "name": "player.random",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "The shuffled notes option: 0 off, 1 a little, 2 a lot.",
+      "sample": "0"
+    },
+    {
+      "name": "player.shinuchi",
+      "kind": "state",
+      "type": "bool",
+      "scope": "play",
+      "description": "The true-score option is on.",
+      "sample": "false"
+    },
+    {
+      "name": "player.tone",
+      "kind": "state",
+      "type": "number",
+      "scope": "session",
+      "description": "This drum's sound: an index of the tone.name list (the game's six: taiko, festival, dogs and cats, deluxe taiko, drum kit, tambourine). Read it with the drum's number outside a drum's own movie.",
+      "sample": "0"
+    },
+    {
+      "name": "player.support",
+      "kind": "state",
+      "type": "bool",
+      "scope": "play",
+      "description": "The helping-hand option (papa-mama support) is on. Always false for now: the engine does not have it yet.",
+      "sample": "false"
+    },
+    {
+      "name": "rows.count",
+      "kind": "state",
+      "type": "number",
+      "scope": "select",
+      "description": "How many rows the library shows now (a folder opened in place adds its nodes under it): the length of the row.* lists.",
+      "sample": "120"
+    },
+    {
+      "name": "row.kind",
+      "kind": "list",
+      "type": "text",
+      "scope": "select",
+      "description": "A row's node: folder, song, chart or course (a dan course: its charts are its songs). Only the rows of the window asked for (rows.window) have values.",
+      "sample": "song"
+    },
+    {
+      "name": "row.depth",
+      "kind": "list",
+      "type": "number",
+      "scope": "select",
+      "description": "How deep a row sits: 0 at the top, one more under each open row.",
+      "sample": "1"
+    },
+    {
+      "name": "row.opened",
+      "kind": "list",
+      "type": "bool",
+      "scope": "select",
+      "description": "The row is open: its nodes are the rows under it.",
+      "sample": "false"
+    },
+    {
+      "name": "row.title",
+      "kind": "list",
+      "type": "text",
+      "scope": "select",
+      "description": "A row's title: a folder's name, a song's title, a chart's song (in a course) or name.",
+      "sample": "Senbonzakura"
+    },
+    {
+      "name": "row.subtitle",
+      "kind": "list",
+      "type": "text",
+      "scope": "select",
+      "description": "A row's subtitle; no value when it has none.",
+      "sample": "Kurousa-P"
+    },
+    {
+      "name": "row.count",
+      "kind": "list",
+      "type": "number",
+      "scope": "select",
+      "description": "How many nodes the row holds; no value for one that holds none.",
+      "sample": "8"
+    },
+    {
+      "name": "row.stars",
+      "kind": "list",
+      "type": "number",
+      "scope": "select",
+      "description": "A chart's stars; no value where there are none.",
+      "sample": "9"
+    },
+    {
+      "name": "row.course",
+      "kind": "list",
+      "type": "text",
+      "scope": "select",
+      "description": "A chart's course (easy, normal, hard, oni, ura); no value for one without a course.",
+      "sample": "oni"
+    },
+    {
+      "name": "row.playable",
+      "kind": "list",
+      "type": "bool",
+      "scope": "select",
+      "description": "The row can be played: a course whose songs are all in the library.",
+      "sample": "true"
+    },
+    {
+      "name": "selected.row",
+      "kind": "state",
+      "type": "number",
+      "scope": "select",
+      "description": "The row under the cursor.",
+      "sample": "3"
+    },
+    {
+      "name": "selected.kind",
+      "kind": "state",
+      "type": "text",
+      "scope": "select",
+      "description": "The kind of node under the cursor.",
+      "sample": "course"
+    },
+    {
+      "name": "selected.title",
+      "kind": "state",
+      "type": "text",
+      "scope": "select",
+      "description": "The title of the node under the cursor.",
+      "sample": "六段"
+    },
+    {
+      "name": "scores.count",
+      "kind": "state",
+      "type": "number",
+      "scope": "select",
+      "description": "How many online ranks the chart under the cursor has (TaikOnline's top three for its course): the length of the scores.* lists. No value off a chart, offline, or before they arrive.",
+      "sample": "3"
+    },
+    {
+      "name": "scores.name",
+      "kind": "list",
+      "type": "text",
+      "scope": "select",
+      "description": "A rank's player, best first.",
+      "sample": "Don"
+    },
+    {
+      "name": "scores.score",
+      "kind": "list",
+      "type": "number",
+      "scope": "select",
+      "description": "A rank's score, best first.",
+      "sample": "1002340"
+    },
+    {
+      "name": "rows.window",
+      "kind": "request",
+      "type": "first: number, count: number",
+      "scope": "select",
+      "description": "The rows the movie shows: the engine gives row.* for those (up to 200) and drops the rest.",
+      "sample": "0, 12"
+    },
+    {
+      "name": "select.row",
+      "kind": "request",
+      "type": "row: number",
+      "scope": "select",
+      "description": "Moves the cursor to the row.",
+      "sample": "3"
+    },
+    {
+      "name": "row.open",
+      "kind": "request",
+      "type": "row: number",
+      "scope": "select",
+      "description": "Opens the row in place (a folder, a song, a course): its nodes come in under it.",
+      "sample": "3"
+    },
+    {
+      "name": "row.close",
+      "kind": "request",
+      "type": "row: number",
+      "scope": "select",
+      "description": "Closes the open row.",
+      "sample": "3"
+    },
+    {
+      "name": "song.start",
+      "kind": "request",
+      "type": "",
+      "scope": "select",
+      "description": "Plays the chart under the cursor, for every joined drum (the rainbow, then the song).",
+      "sample": ""
+    },
+    {
+      "name": "select.timeLeft",
+      "kind": "state",
+      "type": "number",
+      "scope": "select",
+      "description": "Seconds left to choose; no value while no countdown runs (at home). At 0 a movie picks what it can.",
+      "sample": "37"
+    },
+    {
+      "name": "course.start",
+      "kind": "request",
+      "type": "",
+      "scope": "select",
+      "description": "Plays the dan course under the cursor (refused when one of its songs is not in the library).",
+      "sample": ""
+    },
+    {
+      "name": "result.course",
+      "kind": "state",
+      "type": "text",
+      "scope": "result",
+      "description": "The course this drum's player played: easy, normal, hard, oni or ura. Each result.* is read with the drum's number (Wd.get(\"result.score\", 2)); a drum that did not play has none.",
+      "sample": "oni"
+    },
+    {
+      "name": "result.score",
+      "kind": "state",
+      "type": "number",
+      "scope": "result",
+      "description": "This drum's final score.",
+      "sample": "1004280"
+    },
+    {
+      "name": "result.best",
+      "kind": "state",
+      "type": "number",
+      "scope": "result",
+      "description": "This drum's player's best score on the chart before this play; no value for a guest.",
+      "sample": "998120"
+    },
+    {
+      "name": "result.good",
+      "kind": "state",
+      "type": "number",
+      "scope": "result",
+      "description": "Notes hit GOOD.",
+      "sample": "612"
+    },
+    {
+      "name": "result.ok",
+      "kind": "state",
+      "type": "number",
+      "scope": "result",
+      "description": "Notes hit OK.",
+      "sample": "31"
+    },
+    {
+      "name": "result.bad",
+      "kind": "state",
+      "type": "number",
+      "scope": "result",
+      "description": "Notes missed.",
+      "sample": "4"
+    },
+    {
+      "name": "result.maxCombo",
+      "kind": "state",
+      "type": "number",
+      "scope": "result",
+      "description": "The longest combo.",
+      "sample": "402"
+    },
+    {
+      "name": "result.rolls",
+      "kind": "state",
+      "type": "number",
+      "scope": "result",
+      "description": "Drumroll, balloon and kusudama hits.",
+      "sample": "131"
+    },
+    {
+      "name": "result.gauge",
+      "kind": "state",
+      "type": "number",
+      "scope": "result",
+      "description": "The soul gauge at the end, 0 to 1.",
+      "sample": "0.92"
+    },
+    {
+      "name": "result.cleared",
+      "kind": "state",
+      "type": "bool",
+      "scope": "result",
+      "description": "The play cleared the song.",
+      "sample": "true"
+    },
+    {
+      "name": "result.fullCombo",
+      "kind": "state",
+      "type": "bool",
+      "scope": "result",
+      "description": "Cleared with no note missed.",
+      "sample": "false"
+    },
+    {
+      "name": "result.continue",
+      "kind": "request",
+      "type": "",
+      "scope": "result",
+      "description": "The results are done: go on (to the next song, the revival offer or the end of the credit, as the engine decides).",
+      "sample": ""
+    },
+    {
+      "name": "sound.play",
+      "kind": "request",
+      "type": "name: text, drum: number (optional: 1 left, 2 right)",
+      "scope": "app",
+      "description": "Plays the skin's sound of that name (drum.don, ui.ka, banner.clear, a name of the skin's own): for that drum's side and tone when one is given, else centred.",
+      "sample": "\"ui.don\", 1"
+    },
+    {
+      "name": "tone.count",
+      "kind": "state",
+      "type": "number",
+      "scope": "select",
+      "description": "How many drum sounds a player can choose from: the length of the tone.name list.",
+      "sample": "6"
+    },
+    {
+      "name": "tone.name",
+      "kind": "list",
+      "type": "text",
+      "scope": "select",
+      "description": "A drum sound's name, for the selector.",
+      "sample": "Taiko"
+    },
+    {
+      "name": "tone.choose",
+      "kind": "request",
+      "type": "tone: number, drum: number (1 left, 2 right)",
+      "scope": "select",
+      "description": "This drum's player takes that drum sound (player.tone follows) and hears it once.",
+      "sample": "2, 1"
+    },
+    {
+      "name": "player.join",
+      "kind": "request",
+      "type": "drum: number (1 left, 2 right)",
+      "scope": "entry",
+      "description": "This drum's player joins (in coin mode, if the credits pay for it). player.joined says when it is in.",
+      "sample": "1"
+    },
+    {
+      "name": "player.joined",
+      "kind": "state",
+      "type": "bool",
+      "scope": "session",
+      "description": "This drum's player is in the session (read with the drum's number: Wd.get(\"player.joined\", 2)).",
+      "sample": "true"
+    },
+    {
+      "name": "entry.timeLeft",
+      "kind": "state",
+      "type": "number",
+      "scope": "entry",
+      "description": "Seconds left on the entry's countdown, which starts with the first join; no value while none runs. At 0 a movie starts the session as it is.",
+      "sample": "42"
+    },
+    {
+      "name": "entry.setup",
+      "kind": "state",
+      "type": "bool",
+      "scope": "entry",
+      "description": "The home player setup is open over the entry: it has the drums. When it closes, player.joined says who plays.",
+      "sample": "false"
+    },
+    {
+      "name": "session.start",
+      "kind": "request",
+      "type": "mode: text (normal, dan)",
+      "scope": "entry",
+      "description": "The players have joined: start the game in this mode. normal goes to song select, dan to the dan dojo's course select.",
+      "sample": "dan"
+    },
+    {
+      "name": "transition.phase",
+      "kind": "state",
+      "type": "text",
+      "scope": "app",
+      "description": "Only on the intermission movie drawn over the screen (the rainbow, the fade, the shutters): cover, then reveal when the engine uncovers the next screen under it (a shutter is replaced by the next screen instead). No value as it is shown. The engine waits for the movie to stop playing after each.",
+      "sample": "cover"
+    },
+    {
+      "name": "screen.name",
+      "kind": "state",
+      "type": "text",
+      "scope": "app",
+      "description": "The screen up now: boot, attract, title, demo, entry, select, tutorial, danSelect, play, result, retry or gameover. The indicators show or hide by it.",
+      "sample": "select"
+    },
+    {
+      "name": "credits.freePlay",
+      "kind": "state",
+      "type": "bool",
+      "scope": "app",
+      "description": "Free play: a drum hit starts, no coins. False in coin mode.",
+      "sample": "false"
+    },
+    {
+      "name": "credits.count",
+      "kind": "state",
+      "type": "number",
+      "scope": "app",
+      "description": "Coin mode: the credits inserted and not used yet. No value in free play.",
+      "sample": "2"
+    },
+    {
+      "name": "credits.service",
+      "kind": "state",
+      "type": "bool",
+      "scope": "app",
+      "description": "Coin mode: the credits are service credits (the operator's switch), not coins.",
+      "sample": "false"
+    },
+    {
+      "name": "credits.toJoin",
+      "kind": "state",
+      "type": "number",
+      "scope": "app",
+      "description": "Coin mode: the credits still missing for the next player to join (0: one can join now). No value in free play.",
+      "sample": "1"
+    },
+    {
+      "name": "credits.shown",
+      "kind": "state",
+      "type": "bool",
+      "scope": "app",
+      "description": "The credit line is shown: false at home without the arcade overlay (Settings).",
+      "sample": "true"
+    },
+    {
+      "name": "network.state",
+      "kind": "state",
+      "type": "text",
+      "scope": "app",
+      "description": "The link to the score server: online, checking, noToken, unauthorized, noInternet, unreachable, timeout, serverError; none when no server is set.",
+      "sample": "online"
+    },
+    {
+      "name": "timer.left",
+      "kind": "state",
+      "type": "number",
+      "scope": "app",
+      "description": "Seconds left on the screen's countdown (the entry, song select, the pause menu's resume); no value while none runs.",
+      "sample": "42"
+    },
+    {
+      "name": "timer.shown",
+      "kind": "state",
+      "type": "bool",
+      "scope": "app",
+      "description": "The countdown is shown: false at home without the arcade overlay (Settings).",
+      "sample": "true"
+    },
+    {
+      "name": "card.accepting",
+      "kind": "state",
+      "type": "bool",
+      "scope": "app",
+      "description": "A cabinet takes a player's card now (paired on the score server's website): the attract loop and the entry. No value without a cabinet link.",
+      "sample": "true"
+    },
+    {
+      "name": "card.code",
+      "kind": "state",
+      "type": "text",
+      "scope": "app",
+      "description": "The pairing code to enter on the website while cards are taken; no value when there is none.",
+      "sample": "AB1-C2D"
+    },
+    {
+      "name": "card.codeSeconds",
+      "kind": "state",
+      "type": "number",
+      "scope": "app",
+      "description": "Seconds before card.code is replaced by a new one.",
+      "sample": "54"
+    },
+    {
+      "name": "card.player",
+      "kind": "state",
+      "type": "text",
+      "scope": "app",
+      "description": "The name of a player whose card was paired and waits for the credit to start; no value when none waits.",
+      "sample": "Don-chan"
+    },
+    {
+      "name": "revival.norma",
+      "kind": "state",
+      "type": "number",
+      "scope": "retry",
+      "description": "The revival drum roll: the hits it asks for.",
+      "sample": "40"
+    },
+    {
+      "name": "revival.hits",
+      "kind": "state",
+      "type": "number",
+      "scope": "retry",
+      "description": "The revival drum roll: the player's hits so far (any part of their drum).",
+      "sample": "12"
+    },
+    {
+      "name": "revival.timeLeft",
+      "kind": "state",
+      "type": "number",
+      "scope": "retry",
+      "description": "The revival drum roll: seconds left; no value before it starts.",
+      "sample": "6.5"
+    },
+    {
+      "name": "revival.result",
+      "kind": "state",
+      "type": "text",
+      "scope": "retry",
+      "description": "The revival drum roll's outcome: success (the credit goes on) or fail (it ends); no value while it runs.",
+      "sample": "success"
+    },
+    {
+      "name": "revival.done",
+      "kind": "request",
+      "type": "",
+      "scope": "retry",
+      "description": "The movie has shown the outcome: go on (song select after a success, the end of the credit after a fail).",
+      "sample": ""
+    },
+    {
+      "name": "gameover.done",
+      "kind": "request",
+      "type": "",
+      "scope": "gameover",
+      "description": "The end-of-credit screen is over: back to the attract loop.",
+      "sample": ""
+    },
+    {
+      "name": "dan.passed",
+      "kind": "state",
+      "type": "text",
+      "scope": "result",
+      "description": "The dan course's outcome on its results: gold, red or failed.",
+      "sample": "red"
+    },
+    {
+      "name": "dan.songsPlayed",
+      "kind": "state",
+      "type": "number",
+      "scope": "result",
+      "description": "How many of the course's songs were played (a failed course ends early).",
+      "sample": "2"
+    },
+    {
+      "name": "dan.songTitle",
+      "kind": "list",
+      "type": "text",
+      "scope": "result",
+      "description": "A course song's title, on the course's results.",
+      "sample": "Senbonzakura"
+    },
+    {
+      "name": "dan.songGood",
+      "kind": "list",
+      "type": "number",
+      "scope": "result",
+      "description": "A course song's GOODs.",
+      "sample": "300"
+    },
+    {
+      "name": "dan.songOk",
+      "kind": "list",
+      "type": "number",
+      "scope": "result",
+      "description": "A course song's OKs.",
+      "sample": "40"
+    },
+    {
+      "name": "dan.songBad",
+      "kind": "list",
+      "type": "number",
+      "scope": "result",
+      "description": "A course song's BADs.",
+      "sample": "5"
+    },
+    {
+      "name": "play.voltage",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "Waiwai: the voltage both players share, 0 to 10000 (the gauge is voltage / 200 segments).",
+      "sample": "4200"
+    },
+    {
+      "name": "play.voltageNorma",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "Waiwai: the voltage that clears the song.",
+      "sample": "7000"
+    },
+    {
+      "name": "waiwai.section",
+      "kind": "state",
+      "type": "text",
+      "scope": "play",
+      "description": "Waiwai: the section being played, together or solo; no value between sections.",
+      "sample": "solo"
+    },
+    {
+      "name": "waiwai.soloist",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "Waiwai: the drum playing the solo (1 left, 2 right); no value outside a solo.",
+      "sample": "2"
+    },
+    {
+      "name": "waiwai.normaReached",
+      "kind": "event",
+      "type": "",
+      "scope": "play",
+      "description": "Waiwai: the voltage reached the norm (once a song).",
+      "sample": ""
+    },
+    {
+      "name": "ai.sections",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "AI battle: how many sections the song is cut into.",
+      "sample": "5"
+    },
+    {
+      "name": "ai.section",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "AI battle: the section being played, from 1; no value once the last ended.",
+      "sample": "2"
+    },
+    {
+      "name": "ai.progress",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "AI battle: how far into the section, percent.",
+      "sample": "40"
+    },
+    {
+      "name": "ai.needle",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "AI battle: the territory needle, the player's territory less AI-don's, -9 to 9.",
+      "sample": "3"
+    },
+    {
+      "name": "ai.emotion",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "AI battle: AI-don's mood, 0 (losing) to 4 (winning), 2 to start.",
+      "sample": "2"
+    },
+    {
+      "name": "ai.good",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "AI battle: GOODs this section, per side (drum 1 the player, drum 2 AI-don).",
+      "sample": "48"
+    },
+    {
+      "name": "ai.ok",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "AI battle: OKs this section, per side.",
+      "sample": "3"
+    },
+    {
+      "name": "ai.bad",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "AI battle: BADs this section, per side.",
+      "sample": "0"
+    },
+    {
+      "name": "ai.rolls",
+      "kind": "state",
+      "type": "number",
+      "scope": "play",
+      "description": "AI battle: drumroll hits this section, per side (AI-don's copy the player's).",
+      "sample": "12"
+    },
+    {
+      "name": "ai.won",
+      "kind": "list",
+      "type": "bool",
+      "scope": "play",
+      "description": "AI battle: whether the player won each ended section.",
+      "sample": "true"
+    },
+    {
+      "name": "ai.sectionCue",
+      "kind": "event",
+      "type": "middle: bool",
+      "scope": "play",
+      "description": "AI battle: a third (true) or two thirds (false) of the section have passed.",
+      "sample": "true"
+    },
+    {
+      "name": "ai.sectionEnded",
+      "kind": "event",
+      "type": "won: bool, last: bool",
+      "scope": "play",
+      "description": "AI battle: a section ended: whether the player won it, whether it was the last.",
+      "sample": "true, false"
+    },
+    {
+      "name": "ai.result",
+      "kind": "event",
+      "type": "won: bool",
+      "scope": "play",
+      "description": "AI battle: the battle's result shows: whether the player won.",
+      "sample": "true"
+    },
+    {
+      "name": "result.waiwaiGauge",
+      "kind": "state",
+      "type": "number",
+      "scope": "result",
+      "description": "Waiwai's results: the shared gauge's segments at the end.",
+      "sample": "36"
+    },
+    {
+      "name": "result.duet",
+      "kind": "state",
+      "type": "number",
+      "scope": "result",
+      "description": "Waiwai's results: the duet percentage (synchro notes both players hit).",
+      "sample": "92"
+    },
+    {
+      "name": "result.rareHit",
+      "kind": "list",
+      "type": "bool",
+      "scope": "result",
+      "description": "Waiwai's results: whether each rare note was hit.",
+      "sample": "true"
+    },
+    {
+      "name": "result.aiWon",
+      "kind": "state",
+      "type": "bool",
+      "scope": "result",
+      "description": "AI battle's results: the player won the battle.",
+      "sample": "true"
+    },
+    {
+      "name": "result.aiSectionWon",
+      "kind": "list",
+      "type": "bool",
+      "scope": "result",
+      "description": "AI battle's results: whether the player won each section.",
+      "sample": "true"
+    },
+    {
+      "name": "result.aiRank",
+      "kind": "state",
+      "type": "number",
+      "scope": "result",
+      "description": "AI battle's results: the player's AI battle rank before the battle.",
+      "sample": "2"
+    },
+    {
+      "name": "result.aiRankAfter",
+      "kind": "state",
+      "type": "number",
+      "scope": "result",
+      "description": "AI battle's results: the rank after it.",
+      "sample": "3"
+    },
+    {
+      "name": "result.aiWins",
+      "kind": "state",
+      "type": "number",
+      "scope": "result",
+      "description": "AI battle's results: the player's total AI battle wins before the battle.",
+      "sample": "13"
+    },
+    {
+      "name": "transition.title",
+      "kind": "state",
+      "type": "bool",
+      "scope": "app",
+      "description": "Only on the intermission movie: it shows the song's title (the rainbow before a song); song.title and song.subtitle are told to it first.",
+      "sample": "true"
+    },
+    {
+      "name": "transition.side",
+      "kind": "state",
+      "type": "number",
+      "scope": "app",
+      "description": "Only on the intermission movie: whose colour it takes, 0 the left drum, 1 the right, 2 both.",
+      "sample": "0"
+    },
+    {
+      "name": "note.length",
+      "kind": "state",
+      "type": "number",
+      "scope": "note",
+      "description": "Only on a roll's own movie (its body and its text): the roll's length on screen in pixels, head to tail, every tick. The engine places the movie at the head, turned along the roll.",
+      "sample": "320"
+    },
+    {
+      "name": "note.hit",
+      "kind": "event",
+      "type": "part: text (don, ka)",
+      "scope": "note",
+      "description": "Only on a roll's own movie: a hit landed on this roll.",
+      "sample": "don"
+    },
+    {
+      "name": "note.judged",
+      "kind": "event",
+      "type": "result: text (good, ok, bad), big: bool, kind: text (don, ka), hit: bool",
+      "scope": "play",
+      "description": "A note of this drum was hit or missed; hit is false for a note that passed unhit (a bad with no stroke).",
+      "sample": "good, false, don, true"
+    },
+    {
+      "name": "score.added",
+      "kind": "event",
+      "type": "points: number",
+      "scope": "play",
+      "description": "Points were just scored on this drum (a big note's two halves come as one).",
+      "sample": "960"
+    },
+    {
+      "name": "combo.milestone",
+      "kind": "event",
+      "type": "combo: number",
+      "scope": "play",
+      "description": "The combo reached a hundred.",
+      "sample": "100"
+    },
+    {
+      "name": "roll.hit",
+      "kind": "event",
+      "type": "part: text (don, ka), big: bool",
+      "scope": "play",
+      "description": "A hit landed on this drum's drumroll.",
+      "sample": "don, false"
+    },
+    {
+      "name": "balloon.popped",
+      "kind": "event",
+      "type": "",
+      "scope": "play",
+      "description": "This drum's balloon burst.",
+      "sample": ""
+    },
+    {
+      "name": "balloon.started",
+      "kind": "event",
+      "type": "hits: number, goGo: bool",
+      "scope": "play",
+      "description": "A balloon came under way on this drum, needing that many hits; goGo: it starts in Go-Go time.",
+      "sample": "20, false"
+    },
+    {
+      "name": "balloon.ended",
+      "kind": "event",
+      "type": "popped: bool",
+      "scope": "play",
+      "description": "This drum's balloon is over: burst, or its time ran out.",
+      "sample": "true"
+    },
+    {
+      "name": "kusudama.started",
+      "kind": "event",
+      "type": "hits: number, goGo: bool",
+      "scope": "play",
+      "description": "A kusudama came under way on this drum, needing that many of its hits (with two drums, each adds its own to the one ball); goGo: it starts in Go-Go time.",
+      "sample": "40, false"
+    },
+    {
+      "name": "kusudama.ended",
+      "kind": "event",
+      "type": "popped: bool",
+      "scope": "play",
+      "description": "This drum's kusudama is over: burst, or its time ran out.",
+      "sample": "false"
+    },
+    {
+      "name": "beat.passed",
+      "kind": "event",
+      "type": "beat: number",
+      "scope": "play",
+      "description": "The song reached a whole beat (play.beat's whole part), once each going forward.",
+      "sample": "18"
+    },
+    {
+      "name": "measure.passed",
+      "kind": "event",
+      "type": "measure: number",
+      "scope": "play",
+      "description": "The song reached a bar line (play.measure's new value), once each going forward.",
+      "sample": "13"
+    },
+    {
+      "name": "drum.hit",
+      "kind": "event",
+      "type": "side: text (left, right), part: text (don, ka), drum: number (1 left, 2 right)",
+      "scope": "app",
+      "description": "A drum was struck, note or not, on any screen. A drum's own movie hears its drum; any other hears player 1's, or listens per drum (Wd.on(\"drum.hit\", fn, 2)) for a cursor per player.",
+      "sample": "left, don, 1"
+    },
+    {
+      "name": "song.ended",
+      "kind": "event",
+      "type": "cleared: bool, fullCombo: bool",
+      "scope": "play",
+      "description": "The song is over and its result is known.",
+      "sample": "true, false"
+    }
+  ]
+}

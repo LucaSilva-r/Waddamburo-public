@@ -1,0 +1,35 @@
+{
+  "name": "waddamburo",
+  "displayName": "Waddamburo skins",
+  "description": "ActionScript 2 for Waddamburo skins: the engine's Wd names completed and explained, the package's labels and clips, the skin's problems on save.",
+  "publisher": "waddamburo",
+  "version": "0.1.0",
+  "license": "MIT",
+  "engines": { "vscode": "^1.80.0" },
+  "main": "./extension.js",
+  "activationEvents": ["onLanguage:actionscript2", "workspaceContains:**/skin.json"],
+  "contributes": {
+    "languages": [{
+      "id": "actionscript2",
+      "aliases": ["ActionScript 2", "as2"],
+      "extensions": [".as"],
+      "configuration": "./language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "actionscript2",
+      "scopeName": "source.actionscript2",
+      "path": "./syntaxes/actionscript2.tmLanguage.json"
+    }],
+    "snippets": [{ "language": "actionscript2", "path": "./snippets.json" }],
+    "configuration": {
+      "title": "Waddamburo",
+      "properties": {
+        "waddamburo.app": {
+          "type": "string",
+          "default": "",
+          "description": "Waddamburo.App used to check the skin on save: the .dll (run with dotnet) or the executable. Empty: a checkout's build, found up from the workspace."
+        }
+      }
+    }
+  }
+}

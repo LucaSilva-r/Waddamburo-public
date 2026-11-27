@@ -327,10 +327,26 @@ public static class Boot
                 a.InputTimeline);
             return 0;
         }
+        if (a.DumpWdPath is not null)
+        {
+            var json = Waddamburo.Editor.WdDump.Json();
+            if (a.DumpWdPath.Length == 0) Console.WriteLine(json);
+            else File.WriteAllText(a.DumpWdPath, json);
+            return 0;
+        }
         if (a.LintSkinPath is not null)
         {
             var root = Path.GetFullPath(a.LintSkinPath.Length == 0 ? Waddamburo.Editor.SkinStage.FindRoot() : a.LintSkinPath);
             var problems = Waddamburo.Editor.SkinLint.Check(root);
+            if (a.LintJson)
+            {
+                Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(problems.Select(static problem => new
+                {
+                    level = problem.Level.ToString().ToLowerInvariant(), file = problem.File, line = problem.Line,
+                    column = problem.Column, text = problem.Text,
+                })));
+                return problems.Any(static problem => problem.Level == Waddamburo.Editor.SkinLint.Level.Error) ? 1 : 0;
+            }
             foreach (var problem in problems)
                 Console.WriteLine($"{problem.File}{(problem.Line > 0 ? $":{problem.Line}:{problem.Column}" : "")}: "
                     + $"{problem.Level.ToString().ToLowerInvariant()}: {problem.Text}");

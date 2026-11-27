@@ -26,6 +26,12 @@ internal sealed record BootArguments(string[] Raw)
 
     /// <summary>--lint-skin[=folder]: a skin's problems printed, exit 1 when one is an error (CI).</summary>
     public string? LintSkinPath { get; init; }
+
+    /// <summary>--json with --lint-skin: the problems as a JSON array (the VS Code extension reads it).</summary>
+    public bool LintJson { get; init; }
+
+    /// <summary>--dump-wd[=file]: every name the engine gives movies (WdNames) as JSON, for the VS Code extension.</summary>
+    public string? DumpWdPath { get; init; }
     /// <summary>--play=CHART: the bot plays the chart straight after start-up, then quits.</summary>
     public Waddamburo.App.Flow.DirectPlay? Play { get; init; }
     public string? ScenePath { get; init; }
@@ -96,6 +102,8 @@ internal sealed record BootArguments(string[] Raw)
             PackagePath = option(args, "--package="),
             SkinPath = option(args, "--skin=") ?? (args.Contains("--skin") ? "" : null),
             LintSkinPath = option(args, "--lint-skin=") ?? (args.Contains("--lint-skin") ? "" : null),
+            LintJson = args.Contains("--json"),
+            DumpWdPath = option(args, "--dump-wd=") ?? (args.Contains("--dump-wd") ? "" : null),
             Play = option(args, "--play=") is { } playChart
                 ? new Waddamburo.App.Flow.DirectPlay(Path.GetFullPath(playChart),
                     Enum.Parse<Waddamburo.Catalog.TaikoCourse>(option(args, "--play-course=") ?? "oni", ignoreCase: true),
@@ -151,6 +159,7 @@ internal sealed record BootArguments(string[] Raw)
             || parsed.PackagePath is not null
             || parsed.SkinPath is not null
             || parsed.LintSkinPath is not null
+            || parsed.DumpWdPath is not null
             || parsed.MovieName is not null
             || parsed.ScenePath is not null
             || parsed.AssetRoot is not null
