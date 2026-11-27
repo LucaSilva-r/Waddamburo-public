@@ -107,7 +107,7 @@ public sealed partial class MovieInspectorSession
                 ImGui.InputTextWithHint("##sample", "Your own text to try", ref _textSample, 400);
                 var settings = new JsonObject { ["style"] = name }.ToJsonString();
                 var vertical = style["vertical"]?.GetValueKind() == JsonValueKind.True;
-                var size = style["size"] is JsonValue value && value.TryGetValue<double>(out var number) ? (float)number : 24;
+                var size = (float)(TextStyleJson.Number(style["size"]) ?? 24);
                 foreach (var sample in _textSample.Length > 0 ? [_textSample, .. Samples] : Samples)
                 {
                     var box = vertical ? new Vector2(size * 1.6f, 420) : new Vector2(Math.Max(120, ImGui.GetContentRegionAvail().X - size * 1.2f), size * 1.6f);
@@ -248,8 +248,7 @@ public sealed partial class MovieInspectorSession
                 if (ImGui.IsItemHovered()) ImGui.SetTooltip("Back to the style's");
             }
         }
-        float number(string key, float otherwise) => value(key) is JsonValue v && v.TryGetValue<double>(out var n) ? (float)n
-            : value(key) is JsonValue f && f.TryGetValue<float>(out var s) ? s : otherwise;
+        float number(string key, float otherwise) => TextStyleJson.Number(value(key)) is { } n ? (float)n : otherwise;
         string text(string key, string otherwise) => value(key) is JsonValue v && v.TryGetValue<string>(out var s) ? s : otherwise;
         void numberControl(string key, string name, float otherwise, float speed, float min, float max, string format = "%.1f") => label(key, () =>
         {
@@ -319,7 +318,7 @@ public sealed partial class MovieInspectorSession
             ImGui.PopID();
             return;
         }
-        var reach = layers.OfType<JsonObject>().Select(static layer => layer["grow"] is JsonValue grow && grow.TryGetValue<double>(out var n) ? n : 0).DefaultIfEmpty(0).Max();
+        var reach = layers.OfType<JsonObject>().Select(static layer => TextStyleJson.Number(layer["grow"]) ?? 0).DefaultIfEmpty(0).Max();
         if (ImGui.Button("+ Border"))
             edit(() => layers.Insert(0, new JsonObject { ["grow"] = reach + 4, ["color"] = "#000000" }), false);
         ImGui.SameLine();
@@ -333,7 +332,7 @@ public sealed partial class MovieInspectorSession
             if (layers[index] is not JsonObject layer)
                 continue;
             ImGui.PushID(index);
-            var grow = layer["grow"] is JsonValue g && g.TryGetValue<double>(out var gv) ? (float)gv : 0;
+            var grow = (float)(TextStyleJson.Number(layer["grow"]) ?? 0);
             var kind = index == layers.Count - 1 ? "front" : index == 0 ? "back" : "";
             var title = (grow > 0 ? $"Border {grow:0.#}" : "Fill") + (layer["offset"] is not null || layer["blur"] is not null ? " (shadow)" : "");
             var open = ImGui.TreeNodeEx($"{index + 1}. {title} {kind}###layer", ImGuiTreeNodeFlags.DefaultOpen | ImGuiTreeNodeFlags.AllowOverlap);
@@ -353,10 +352,11 @@ public sealed partial class MovieInspectorSession
             {
                 if (ImGui.DragFloat("Grow", ref grow, .1f, 0, 128, "%.1f"))
                     edit(() => layer["grow"] = Math.Round(grow, 2), styleContinues());
-                var offset = layer["offset"] is JsonArray { Count: 2 } o ? new Vector2(o[0]!.GetValue<float>(), o[1]!.GetValue<float>()) : Vector2.Zero;
+                var offset = layer["offset"] is JsonArray { Count: 2 } o
+                    ? new Vector2((float)(TextStyleJson.Number(o[0]) ?? 0), (float)(TextStyleJson.Number(o[1]) ?? 0)) : Vector2.Zero;
                 if (ImGui.DragFloat2("Offset", ref offset, .1f, -128, 128, "%.1f"))
                     edit(() => layer["offset"] = offset == Vector2.Zero ? null : new JsonArray(Math.Round(offset.X, 2), Math.Round(offset.Y, 2)), styleContinues());
-                var blur = layer["blur"] is JsonValue b && b.TryGetValue<double>(out var bv) ? (float)bv : 0;
+                var blur = (float)(TextStyleJson.Number(layer["blur"]) ?? 0);
                 if (ImGui.DragFloat("Blur", ref blur, .1f, 0, 128, "%.1f"))
                     edit(() => layer["blur"] = blur > 0 ? Math.Round(blur, 2) : null, styleContinues());
                 var (top, bottom, gradient) = colours(layer["color"]);

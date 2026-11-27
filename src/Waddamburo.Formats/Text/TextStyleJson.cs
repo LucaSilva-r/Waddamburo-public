@@ -74,6 +74,13 @@ public static class TextStyleJson
             style["vertical"]?.GetValue<bool>() ?? false);
     }
 
+    /// <summary>
+    /// A JSON number, whatever it was made from (read from text, or set from code as an int, a float or a double: a
+    /// JsonValue made from code converts only to its own type); null when it is no number.
+    /// </summary>
+    public static double? Number(JsonNode? node) => node is JsonValue value && value.GetValueKind() == System.Text.Json.JsonValueKind.Number
+        && double.TryParse(value.ToJsonString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var number) && double.IsFinite(number) ? number : null;
+
     /// <summary>"#rrggbb" or "#rrggbbaa" as 0xRRGGBBAA.</summary>
     public static uint Colour(string text, string what)
     {
@@ -88,8 +95,8 @@ public static class TextStyleJson
             if (key is not ("grow" or "offset" or "blur" or "color"))
                 throw new FormatException($"layers[{index}]: \"{key}\" is no layer setting (grow, offset, blur, color).");
         float x = 0, y = 0;
-        if (layer["offset"] is JsonArray { Count: 2 } offset)
-            (x, y) = (offset[0]!.GetValue<float>(), offset[1]!.GetValue<float>());
+        if (layer["offset"] is JsonArray { Count: 2 } offset && Number(offset[0]) is { } ox && Number(offset[1]) is { } oy)
+            (x, y) = ((float)ox, (float)oy);
         else if (layer["offset"] is not null)
             throw new FormatException($"layers[{index}]: \"offset\" is [x, y].");
         var (top, bottom) = layer["color"] is { } colour ? colours(colour, $"layers[{index}].color") : (0xffffffffu, 0xffffffffu);
@@ -107,13 +114,8 @@ public static class TextStyleJson
         _ => throw new FormatException($"\"{what}\" is a colour or [top, bottom]."),
     };
 
-    private static float number(JsonObject node, string key, float otherwise) => node[key] switch
-    {
-        null => otherwise,
-        JsonValue value when value.TryGetValue<double>(out var number) && double.IsFinite(number) => (float)number,
-        JsonValue value when value.TryGetValue<float>(out var single) && float.IsFinite(single) => single, // set from code
-        _ => throw new FormatException($"\"{key}\" is a number."),
-    };
+    private static float number(JsonObject node, string key, float otherwise) => node[key] is null ? otherwise
+        : Number(node[key]) is { } number ? (float)number : throw new FormatException($"\"{key}\" is a number.");
 
     private static TextAlign align(JsonObject node, string key, TextAlign otherwise) => node[key]?.GetValue<string>() switch
     {

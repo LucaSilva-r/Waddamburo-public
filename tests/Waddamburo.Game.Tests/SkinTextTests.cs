@@ -37,6 +37,22 @@ public sealed class SkinTextTests
         Assert.Equal(0x123456ffu, own.Layers.Single().Top);
     }
 
+    // The editor sets numbers from code (ints, floats, doubles), not from text: each reads.
+    [Fact]
+    public void NumbersSetFromCodeRead()
+    {
+        var style = new System.Text.Json.Nodes.JsonObject
+        {
+            ["size"] = 30f,
+            ["layers"] = new System.Text.Json.Nodes.JsonArray(
+                new System.Text.Json.Nodes.JsonObject { ["grow"] = 4, ["offset"] = new System.Text.Json.Nodes.JsonArray(3, 4.5), ["blur"] = 2.5f, ["color"] = "#000000" },
+                new System.Text.Json.Nodes.JsonObject { ["offset"] = new System.Text.Json.Nodes.JsonArray(1f, Math.Round(2.25, 2)), ["color"] = "#ffffff" }),
+        };
+        var parsed = TextStyleJson.Parse(style);
+        Assert.Equal((30f, 4f, 3f, 4.5f, 2.5f, 1f, 2.25f), (parsed.Size, parsed.Layers[0].Grow, parsed.Layers[0].OffsetX, parsed.Layers[0].OffsetY,
+            parsed.Layers[0].Blur, parsed.Layers[1].OffsetX, parsed.Layers[1].OffsetY));
+    }
+
     [Theory]
     [InlineData("""{ "format": 1, "styles": { "a": { "font": "missing" } } }""", "no font \"missing\"")]
     [InlineData("""{ "format": 1, "styles": { "a": { "size": "big" } } }""", "\"size\" is a number")]
