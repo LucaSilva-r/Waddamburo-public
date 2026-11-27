@@ -104,6 +104,7 @@ public sealed partial class MovieInspectorSession
     // a value to try. A value typed here is what the movie reads until it is cleared; it survives the movie's restarts.
     private readonly Dictionary<string, string> _wdTyped = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _wdSet = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _wdCleared = new(StringComparer.Ordinal);
     private bool _wdAll;
 
     private void provider(LumenPlayer player)
@@ -119,7 +120,10 @@ public sealed partial class MovieInspectorSession
                 _wdSet[name.Name] = _wdTyped[name.Name] = name.Sample;
         ImGui.SameLine();
         if (ImGui.SmallButton("Clear all"))
+        {
+            _wdCleared.UnionWith(_wdSet.Keys);
             _wdSet.Clear();
+        }
         ImGui.SameLine();
         ImGui.Checkbox("Show every name", ref _wdAll);
         // Diagnostic: WADDAMBURO_EDITOR_EMIT="drum.hit:left,don" sends that event every 20 frames, for a screenshot run.
@@ -127,9 +131,12 @@ public sealed partial class MovieInspectorSession
             && repeated.Split(':') is [var repeatedName, var repeatedArguments])
             player.Emit(repeatedName, [.. repeatedArguments.Split(',').Select(parse)]);
         // Kept up every frame: a movie restarted by an edit reads the same values again. Publish ignores no change.
-        foreach (var name in WdNames.All)
-            if (name.Kind == WdKind.State)
-                player.Publish(name.Name, _wdSet.TryGetValue(name.Name, out var set) ? parse(set) : LumenHostValue.Undefined);
+        // Only what was typed here (and a cleared name once): the rest stays the example data the movie was given.
+        foreach (var (name, set) in _wdSet)
+            player.Publish(name, parse(set));
+        foreach (var name in _wdCleared)
+            player.Publish(name, LumenHostValue.Undefined);
+        _wdCleared.Clear();
         if (used.Count == 0)
             ImGui.TextWrapped("This movie has asked the engine for nothing yet. In a script: Wd.on(\"play.score\", function(score) { ... });");
         if ((!_wdAll && used.Count == 0) || !ImGui.BeginTable("##names", 4, ImGuiTableFlags.SizingFixedFit | ImGuiTableFlags.RowBg))
@@ -165,7 +172,10 @@ public sealed partial class MovieInspectorSession
                 }
                 ImGui.SameLine();
                 if (ImGui.Button("None") && _wdSet.Remove(name.Name))
+                {
+                    _wdCleared.Add(name.Name);
                     log($"Wd {name.Name} = (no value)");
+                }
             }
             else if (name.Kind == WdKind.List)
             {

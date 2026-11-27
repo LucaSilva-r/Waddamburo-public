@@ -39,6 +39,17 @@ public sealed partial class LumenPlayer
     /// <summary>What this movie asked the provider for that is not one of its names (a mistyped name, most likely).</summary>
     public IReadOnlyCollection<string> ProviderUnknownNames => _providerWarned is { } warned ? warned : [];
 
+    /// <summary>
+    /// Told of everything the provider gives this movie, as it is given (a changed state, a list's place, an event): the
+    /// skin editor's live link mirrors a running game's movies with it.
+    /// </summary>
+    public Action<LumenProvided>? ProviderTap { get; set; }
+
+    /// <summary>Every state and list place this movie holds now (for a link joining late).</summary>
+    public IEnumerable<LumenProvided> ProvidedNow() => _provided.Select(static pair => pair.Key.Name.IndexOf('#') is var cut and >= 0
+        ? new LumenProvided(WdKind.List, pair.Key.Name[..cut], pair.Key.Drum, int.Parse(pair.Key.Name.AsSpan(cut + 1)), [pair.Value])
+        : new LumenProvided(WdKind.State, pair.Key.Name, pair.Key.Drum, 0, [pair.Value]));
+
     /// <summary>A state's value as this movie would read it; undefined while it has none.</summary>
     public LumenHostValue Provided(string name, int drum = 0) => _provided.GetValueOrDefault(own(name, drum));
 
@@ -60,6 +71,7 @@ public sealed partial class LumenPlayer
             return;
         if (value.Kind == LumenHostValueKind.Undefined) _provided.Remove((name, drum));
         else _provided[(name, drum)] = value;
+        ProviderTap?.Invoke(new(WdKind.State, name, drum, 0, [value]));
         tell(name, drum, [fromHostValue(value)]);
     }
 
@@ -76,6 +88,7 @@ public sealed partial class LumenPlayer
             return;
         if (value.Kind == LumenHostValueKind.Undefined) _provided.Remove(key);
         else _provided[key] = value;
+        ProviderTap?.Invoke(new(WdKind.List, name, drum, index, [value]));
         tell(name, drum, [(double)index, fromHostValue(value)]);
     }
 
@@ -90,6 +103,7 @@ public sealed partial class LumenPlayer
     {
         if (WdNames.Find(name) is not { Kind: WdKind.Event })
             throw new ArgumentException($"'{name}' is not an event of the provider (WdNames).", nameof(name));
+        ProviderTap?.Invoke(new(WdKind.Event, name, drum, 0, arguments.ToArray()));
         if (_providerListeners.Count == 0)
             return;
         var converted = new object?[arguments.Length];
@@ -194,3 +208,6 @@ public sealed partial class LumenPlayer
         return wd;
     }
 }
+
+/// <summary>Something the provider gave a movie: a state (one value), a list's place, or an event (its arguments).</summary>
+public readonly record struct LumenProvided(WdKind Kind, string Name, int Drum, int Index, LumenHostValue[] Values);

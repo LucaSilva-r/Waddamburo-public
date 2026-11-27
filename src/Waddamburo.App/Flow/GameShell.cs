@@ -333,6 +333,28 @@ internal sealed partial class GameShell : IDisposable
 
     /// <summary>Song Select's quick reload (library, grouping, order, search).</summary>
     public SongSelectReload Reload { get; }
+
+    private SkinDevReload? _skinDev;
+    private SkinEditorLink? _editorLink;
+
+    // F7 (Waddamburo's frontend): the skin editor beside the game, on the skin folder the game now plays from.
+    private void openSkinEditor()
+    {
+        if (Frontend.GameMovies)
+            return;
+        if (_editorLink is null)
+        {
+            var root = SkinDevReload.Folder ?? Waddamburo.Editor.SkinStage.FindRoot();
+            if (_skinDev is null)
+            {
+                MovieContent.PackageRoot = root;
+                _skinDev = new SkinDevReload(this, root, _presenter.ForgetKept);
+                _skinDev.ReloadNow(scenes: true);
+            }
+            _editorLink = new SkinEditorLink(this, root);
+        }
+        _editorLink.Launch();
+    }
     private readonly Dictionary<SceneId, FlowScene> _scenes;
     private readonly WaiwaiOutcome? _diagnosticWaiwai;
     private ISystemIndicators? _indicators;
@@ -920,6 +942,9 @@ internal sealed partial class GameShell : IDisposable
             (MovieContent, Upscale) = GameMovieContent.Create(Application, Skin, Path.GetFullPath(assetRoot), cacheRoot, () => Arcade);
             // Movie packages (USRDIR/waddamburo/movies/<archive>/<movie>) replace the game's movies one by one.
             MovieContent.PackageRoot = options.ArcadePath is { } home ? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(home))!, "movies") : null;
+            // Skin development: the skin folder being edited stands in for the user's movies folder (SkinDevReload).
+            if (SkinDevReload.Folder is { } skinDev)
+                MovieContent.PackageRoot = skinDev;
             MovieContent.DecodeImage = GameMovieContent.DecodeImage;
             MovieContent.BundledRoot = Path.Combine(AppContext.BaseDirectory, "movies");
             // Waddamburo's screens: the skin's scenes.json (the user's movies folder before the bundled one) over the built-in ones.
@@ -964,6 +989,9 @@ internal sealed partial class GameShell : IDisposable
             DeviceTransfer = new DeviceTransfer(this, _libraries.SyncLibraries(dataRoot));
             _inputOverlays = [_search, _scores, Room, CustomUploadPrompt];
             Reload = new SongSelectReload(this);
+            Application.SkinEditorKey = openSkinEditor;
+            if (SkinDevReload.Folder is { } developed)
+                _skinDev = new SkinDevReload(this, developed, _presenter.ForgetKept);
             var entry = new EntryFlow(this);
             var ending = new CreditEndFlow(this, _gameplay);
             var songSelect = SongSelectFlow = new SongSelectFlow(this, _gameplay, calibration);

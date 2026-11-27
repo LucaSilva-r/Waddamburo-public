@@ -37,6 +37,29 @@ public sealed class SkinStage
 
     public string Root { get; }
 
+    /// <summary>
+    /// The skin folder to edit when none is named: the nearest movies/ with a skin.json up from the current folder (a
+    /// checkout's skin submodule), else the one beside the executable.
+    /// </summary>
+    public static string FindRoot()
+    {
+        for (var folder = new DirectoryInfo(Environment.CurrentDirectory); folder is not null; folder = folder.Parent)
+            if (File.Exists(Path.Combine(folder.FullName, "movies", "skin.json")))
+                return Path.Combine(folder.FullName, "movies");
+        return Path.Combine(AppContext.BaseDirectory, "movies");
+    }
+
+    /// <summary>The running game this editor was started from (F7 in the game), whose movies' data the previews follow; null: none.</summary>
+    public SkinLive? Live
+    {
+        get;
+        set
+        {
+            field = value;
+            if (value is not null) value.ScreenChanged += _ => Version++;
+        }
+    }
+
     /// <summary>Bumped whenever something a preview shows changed (a package saved or edited, scenes.json).</summary>
     public int Version { get; private set; }
 
@@ -108,6 +131,21 @@ public sealed class SkinStage
         return new(this, [.. under, .. layers], reuse, fixedCount: under.Count, scenario);
     }
 
+    /// <summary>
+    /// Gives a movie playing on its own (the component editor's) the example data of the part it plays in the skin's
+    /// screens (Song Select's list, a name board's drum...); the action to run every tick, if it needs one.
+    /// </summary>
+    public Action? GiveExampleData(LumenPlayer player, string folder, IEnumerable<SkinScenes.Layer> uses)
+    {
+        if (Live?.Holds(folder) == true)
+        {
+            Live.Follow(player, folder);
+            return null;
+        }
+        var use = uses.FirstOrDefault(layer => layer.Movie == folder);
+        return PreviewData.Attach(player, use?.Role ?? "", fresh: true, use?.Side);
+    }
+
     /// <summary>One package alone, fitted to the stage (a component's thumbnail): played for a moment, then measured.</summary>
     public Scene PlayFitted(string folder, int ticks)
     {
@@ -132,13 +170,16 @@ public sealed class SkinStage
         private readonly List<Action> _ticks = [];
 
         private readonly PreviewScenario? _scenario;
+        private readonly string? _liveScreen; // the game's screen when built (live data in): another one, every player again
         private double _clock;
 
         internal Scene(SkinStage stage, IReadOnlyList<SkinScenes.Layer> layers, Scene? reuse, int fixedCount = 0, PreviewScenario? scenario = null)
         {
             _stage = stage;
             _scenario = scenario;
-            if (reuse?._scenario != scenario) reuse = null; // another scenario: every movie starts again with its data
+            _liveScreen = stage.Live?.Screen;
+            // Another scenario, or the game on another screen: every movie starts again with its data.
+            if (reuse?._scenario != scenario || reuse?._liveScreen != _liveScreen) reuse = null;
             _clock = reuse?._clock ?? 0;
             FixedCount = fixedCount;
             var sceneLayers = new List<LumenSceneLayer>();
@@ -152,10 +193,18 @@ public sealed class SkinStage
                 var kept = reuse?._made.FirstOrDefault(made => made.Folder == layer.Movie && made.Version == version && made.Player is not null
                     && !_made.Any(taken => ReferenceEquals(taken.Player, made.Player))).Player;
                 var player = kept ?? fresh(content);
-                if (PreviewData.Attach(player, layer.Role, fresh: kept is null, layer.Side) is { } tick)
-                    _ticks.Add(tick);
-                if (kept is null)
-                    scenario?.Apply(player);
+                // The game's own data where it shows this movie (and no scenario was chosen), else the example data.
+                if (scenario is null && stage.Live?.Holds(layer.Movie) == true)
+                {
+                    if (kept is null) stage.Live.Follow(player, layer.Movie);
+                }
+                else
+                {
+                    if (PreviewData.Attach(player, layer.Role, fresh: kept is null, layer.Side) is { } tick)
+                        _ticks.Add(tick);
+                    if (kept is null)
+                        scenario?.Apply(player);
+                }
                 _made[index] = (layer.Movie, version, player);
                 sceneLayers.Add(new(player, layer.Transform, (uint)textures.Count, (uint)ids.Length));
                 textures.AddRange(ids);

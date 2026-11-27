@@ -58,6 +58,11 @@ internal sealed partial class GameShell
             throw new InvalidOperationException($"WADDAMBURO_CRASH_AT asked the game to crash at tick {Tick}.");
         var keys = Options.InputTimeline.Apply(Tick, keyboard);
         _benchmark?.Tick();
+        _skinDev?.Tick();
+        _editorLink?.Tick();
+        // F7 headless (--press=F7@tick); in a window the loop calls it (SdlApplication.SkinEditorKey).
+        if (keys.Presses.Any(static press => press.Key == SdlKeyboardKey.F7))
+            openSkinEditor();
         _flowSmoke?.Tick();
         Book.PowerOnTicks++;
         if (_gameplay.Playing)

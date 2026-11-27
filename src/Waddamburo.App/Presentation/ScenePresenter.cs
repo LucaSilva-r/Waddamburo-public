@@ -62,6 +62,15 @@ internal sealed class ScenePresenter(SdlApplication application, DirectoryLumenM
         Console.WriteLine($"Prefetching {scene.Id} ({missing.Length} of {scene.Layers.Length} movies).");
     }
 
+    /// <summary>Drops every kept copy (their files changed: the next load reads them again).</summary>
+    public void ForgetKept()
+    {
+        foreach (var kept in _kept.Values.ToArray())
+            unkeep(kept.Textures);
+        _kept.Clear();
+        dropWarming();
+    }
+
     private void dropStale()
     {
         var now = upscaling?.Invoke() == true;

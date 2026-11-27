@@ -212,6 +212,9 @@ public sealed unsafe partial class SdlApplication
     }
 
     /// <summary>Menus turn mouse wheel notches and left clicks (a don) into presses (false: the mouse is ignored there).</summary>
+    /// <summary>Run on F7 in the window, whatever has the keyboard (the game: its skin editor); null: F7 is a plain key.</summary>
+    public Action? SkinEditorKey { get; set; }
+
     public bool MouseControls { get; set; } = true;
 
     /// <summary>The <see cref="SdlInputBindings.Pads"/> entry a menu click presses: the first player's left don, or a lone right-drum player's.</summary>
@@ -515,6 +518,7 @@ public sealed unsafe partial class SdlApplication
         SDL_Keycode.SDLK_F2 => SdlKeyboardKey.F2,
         SDL_Keycode.SDLK_F3 => SdlKeyboardKey.F3,
         SDL_Keycode.SDLK_F5 => SdlKeyboardKey.F5,
+        SDL_Keycode.SDLK_F7 => SdlKeyboardKey.F7,
         SDL_Keycode.SDLK_F8 => SdlKeyboardKey.F8,
         SDL_Keycode.SDLK_F12 => SdlKeyboardKey.F12,
         SDL_Keycode.SDLK_LEFT => SdlKeyboardKey.Left,

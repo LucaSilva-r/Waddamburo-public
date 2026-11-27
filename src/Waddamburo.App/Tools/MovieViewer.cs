@@ -29,13 +29,7 @@ internal static class MovieViewer
         SdlKeyboardTimeline inputTimeline)
     {
         if (root.Length == 0)
-        {
-            for (var folder = new DirectoryInfo(Environment.CurrentDirectory); folder is not null && root.Length == 0; folder = folder.Parent)
-                if (File.Exists(Path.Combine(folder.FullName, "movies", "skin.json")))
-                    root = Path.Combine(folder.FullName, "movies");
-            if (root.Length == 0)
-                root = Path.Combine(AppContext.BaseDirectory, "movies");
-        }
+            root = Waddamburo.Editor.SkinStage.FindRoot();
         root = Path.GetFullPath(root);
         if (!Directory.Exists(root))
             throw new DirectoryNotFoundException($"No skin folder at {root}.");
@@ -175,6 +169,10 @@ internal static class MovieViewer
         DateTime stamp() => Directory.EnumerateFiles(package!, "*", SearchOption.AllDirectories).Max(File.GetLastWriteTimeUtc);
         var loaded = package is null || (debugger is null && inspector is null) ? default : stamp();
         var scriptsEnabled = true;
+        Waddamburo.Editor.SkinStage? skinStage = null;
+        Waddamburo.Editor.SceneDocument? skinScenes = null;
+        Action? exampleTick = null;
+        Waddamburo.Editor.SkinLive? skinLive = null;
         string? shownSprite = null;
         string? shownSpriteId = null;
         LumenPlayer previewPlayer(LumenMovieContent movie)
@@ -185,6 +183,14 @@ internal static class MovieViewer
                 hostBinding: ViewerHostBinding.Instance, scriptsEnabled: scriptsEnabled) { Name = movie.Name };
             if (id is not null)
                 preview.SetInstanceOffset("", 640, 360);
+            // In a skin: the data the package's part gets in the game's screens (Song Select's list...), as the previews do.
+            exampleTick = null;
+            if (skinStage is not null && package is not null && skinScenes is not null)
+            {
+                var folder = Path.GetRelativePath(skinStage.Root, package).Replace('\\', '/');
+                var uses = Waddamburo.Game.Scenes.SkinScenes.Screens.Keys.SelectMany(key => skinScenes.Layers(key).Concat(skinStage.Fixed?.Invoke(key) ?? []));
+                exampleTick = skinStage.GiveExampleData(preview, folder, uses);
+            }
             return preview;
         }
         void reload(bool force = false)
@@ -243,7 +249,6 @@ internal static class MovieViewer
             inspector.TextureOf = name => named.TryGetValue(name, out var texture) ? texture : null;
         }
         // A whole skin: the home page first; the package being edited plays live in every preview of the skin.
-        Waddamburo.Editor.SkinStage? skinStage = null;
         void liveSkinPackage()
         {
             if (skinStage is null)
@@ -259,7 +264,7 @@ internal static class MovieViewer
             skinStage = new Waddamburo.Editor.SkinStage(application, skin, Presentation.GameMovieContent.DecodeImage, ViewerHostBinding.Instance, textFields.Resolve);
             // Gameplay: the layout's layers (lane, gauge, notes...) under the skin's, as the game composes them, where the
             // skin's places put them (made again when they change).
-            var scenes = new Waddamburo.Editor.SceneDocument(skin);
+            var scenes = skinScenes = new Waddamburo.Editor.SceneDocument(skin);
             (string Text, Waddamburo.Game.Scenes.SkinScenes.Layer[] Layers)? gameplay = null;
             Waddamburo.Game.Scenes.SkinScenes.Layer[] gameplayLayers()
             {
@@ -283,6 +288,20 @@ internal static class MovieViewer
             inspector.Skin = skinStage;
             inspector.Scenes = scenes;
             inspector.ShowHome();
+            // Started from a running game (F7): its screens and its movies' data, live.
+            if (Environment.GetCommandLineArgs().FirstOrDefault(static arg => arg.StartsWith("--attach=", StringComparison.Ordinal)) is { } attach
+                && int.TryParse(attach["--attach=".Length..], out var port))
+            {
+                try
+                {
+                    skinLive = skinStage.Live = new Waddamburo.Editor.SkinLive(port);
+                    skinLive.ScreenChanged += inspector.FollowGame;
+                }
+                catch (System.Net.Sockets.SocketException error)
+                {
+                    Console.Error.WriteLine($"Could not join the game: {error.Message}");
+                }
+            }
             // --inspect=scene:<screen> starts on that screen's scene view.
             if (inspect?.Split('=', 2) is [_, var start] && start.StartsWith("scene:", StringComparison.Ordinal))
                 inspector.ShowScene(start[6..]);
@@ -355,6 +374,7 @@ internal static class MovieViewer
             keyboard =>
             {
                 simulationTick++;
+                skinLive?.Drain();
                 if (package is not null && (debugger is not null || inspector is not null) && simulationTick % 30 == 0)
                     reload();
                 keyboard = inputTimeline.Apply(simulationTick, keyboard);
@@ -363,7 +383,10 @@ internal static class MovieViewer
                 if (debugger is null)
                 {
                     if (inspector?.TakeTick() != false)
+                    {
+                        exampleTick?.Invoke();
                         player.Advance(LumenInputAdapter.CreateSnapshot(keyboard));
+                    }
                     // Diagnostic: WADDAMBURO_TREE_EVERY=N prints the display list every N ticks (lines containing
                     // WADDAMBURO_TREE_FILTER, '|'-separated, when set).
                     if (treeEvery > 0 && simulationTick % treeEvery == 0)

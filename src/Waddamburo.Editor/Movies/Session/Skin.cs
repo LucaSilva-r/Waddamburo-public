@@ -60,6 +60,20 @@ public sealed partial class MovieInspectorSession
     /// <summary>Starts on the skin's home page.</summary>
     public void ShowHome() => _page = Page.Home;
 
+    /// <summary>
+    /// The game the editor was started from shows another screen: the scene view follows it (from the home page or the
+    /// scene view; the component editor stays, its live window showing that screen when the package is on it).
+    /// </summary>
+    public void FollowGame(string key)
+    {
+        if (!SkinScenes.Screens.ContainsKey(key))
+            return;
+        if (_page != Page.Component)
+            openScene(key);
+        else if (usedIn().GetValueOrDefault(relativeFolder() ?? "")?.Contains(key) == true)
+            _sceneKey = key;
+    }
+
     /// <summary>Starts on a screen's scene view (a key of <see cref="SkinScenes.Screens"/>).</summary>
     public void ShowScene(string key) => openScene(key);
 
@@ -236,6 +250,12 @@ public sealed partial class MovieInspectorSession
         }
         if (relativeFolder() is not null && ImGui.MenuItem($"Back to {_title}")) _page = Page.Component;
         ImGui.TextDisabled(skinName() + (Scenes?.IsDirty == true ? "  (scenes.json *)" : ""));
+        if (Skin?.Live is { } live)
+        {
+            ImGui.SameLine();
+            ImGui.TextColored(live.Connected ? ImGui.ColorConvertU32ToFloat4(Good) : ImGui.ColorConvertU32ToFloat4(Bad),
+                live.Connected ? $"game: {live.Screen ?? "..."}" : "game closed");
+        }
         if (_notice is not null || Scenes?.Problem is not null)
         {
             ImGui.SameLine();

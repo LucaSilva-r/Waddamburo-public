@@ -216,6 +216,14 @@ public sealed unsafe partial class SdlApplication
                         SDL_SetWindowFullscreen(_window, (SDL_GetWindowFlags(_window) & SDL_WindowFlags.SDL_WINDOW_FULLSCREEN) == 0);
                     continue;
                 }
+                if (currentEvent.type == (uint)SDL_EventType.SDL_EVENT_KEY_DOWN && currentEvent.key.key == SDL_Keycode.SDLK_F7
+                    && SkinEditorKey is { } skinEditor && !bound(currentEvent.key.scancode))
+                {
+                    // F7: the skin editor beside the game (before any overlay can take the key).
+                    if (!currentEvent.key.repeat)
+                        skinEditor();
+                    continue;
+                }
                 if (_renderer!.ImGuiLayer?.ProcessEvent(currentEvent) == true)
                 {
                     // A key pressed before UI capture must still be released in game state.

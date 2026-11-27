@@ -27,6 +27,19 @@ from the current folder). `--inspect=scene:<screen>` starts on a scene view (for
 - **Gameplay's own movies** (lane, hit target, gauge, song info, combo...) are listed first and placed with the same
   tools as the skin's layers, written as scenes.json gameplay `places`; Back to the layout's place drops one. The
   notes follow `lane_hit` (the hit target); the engine's note templates are not shown.
+- **Beside the game (F7)**: in Waddamburo's frontend, F7 starts the skin editor as a second process
+  (`--skin=<folder> --attach=<port>`, `App/Flow/SkinEditorLink`), on `--skin-dev`'s folder or the nearest `movies/`
+  (`SkinStage.FindRoot`). The game then plays that folder's packages and shows a saved change at once
+  (`SkinDevReload`: the folder listed every half second, kept copies dropped, the screen shown again; Song Select
+  under its quick rainbow; during a song, after it). Over a loopback socket (`Skin/SkinLink.cs`, one JSON line a
+  message) the game tells the editor its screen (the scene view follows) and everything its provider gives each movie
+  on it (`LumenPlayer.ProviderTap`, `ProvidedNow` for a late join); the editor's players of those movies follow it
+  (`SkinLive.Follow`), shown as "Live from the game" in the scenario picker: the real song list, the real play. F7 is
+  caught by the window loop before ImGui (`SdlApplication.SkinEditorKey`). `--skin-dev=<folder>` alone gives the
+  reload without the editor. ponytail: unsaved edits reach the game on save only; the editor's movies send no
+  requests to the game.
+- The component editor's player gets the same data as its part in the skin (live, else the example data); its Wd
+  panel publishes only what was typed.
 - **Live scene window** (F4, Skin menu) over the component editor: the screen with the package being edited, from its
   unsaved document; only the edited movie restarts.
 - **Example data** (`Skin/PreviewData.cs`): every state at its sample, lists filled, both drums joined with names, the

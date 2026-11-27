@@ -42,11 +42,13 @@ public sealed partial class MovieInspectorSession
     private void scenarioPicker(string key)
     {
         var (list, problems) = scenarios(key);
-        var chosen = scenario(key)?.Name ?? ExampleData;
+        // Following a game showing this screen, "no scenario" is the game's own data.
+        var unchosen = Skin.Live is { Connected: true } live && live.Screen == key ? "Live from the game" : ExampleData;
+        var chosen = scenario(key)?.Name ?? unchosen;
         ImGui.SetNextItemWidth(170);
         if (ImGui.BeginCombo("##scenario", chosen))
         {
-            if (ImGui.Selectable(ExampleData, chosen == ExampleData)) _scenarioChosen.Remove(key);
+            if (ImGui.Selectable(unchosen, chosen == unchosen)) _scenarioChosen.Remove(key);
             foreach (var each in list)
                 if (ImGui.Selectable(each.Name, each.Name == chosen)) _scenarioChosen[key] = each.Name;
             ImGui.EndCombo();
