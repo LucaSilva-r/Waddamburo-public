@@ -327,6 +327,17 @@ public static class Boot
                 a.InputTimeline);
             return 0;
         }
+        if (a.LintSkinPath is not null)
+        {
+            var root = Path.GetFullPath(a.LintSkinPath.Length == 0 ? Waddamburo.Editor.SkinStage.FindRoot() : a.LintSkinPath);
+            var problems = Waddamburo.Editor.SkinLint.Check(root);
+            foreach (var problem in problems)
+                Console.WriteLine($"{problem.File}{(problem.Line > 0 ? $":{problem.Line}:{problem.Column}" : "")}: "
+                    + $"{problem.Level.ToString().ToLowerInvariant()}: {problem.Text}");
+            var errors = problems.Count(static problem => problem.Level == Waddamburo.Editor.SkinLint.Level.Error);
+            Console.WriteLine($"{root}: {errors} error(s), {problems.Count - errors} warning(s).");
+            return errors > 0 ? 1 : 0;
+        }
         if (a.SkinPath is not null)
         {
             MovieViewer.RunSkin(a.SkinPath, a.WindowSize.Width, a.WindowSize.Height, a.FrameLimit, a.TickLimit, a.ScreenshotPath, a.InputTimeline);

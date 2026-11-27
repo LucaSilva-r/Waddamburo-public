@@ -125,6 +125,13 @@ public sealed partial class MovieInspectorSession
             if (ImGui.Button("< Home")) _page = Page.Home;
             ImGui.SameLine();
             ImGui.TextUnformatted(key);
+            if (Skin.Live is { Connected: true } live)
+            {
+                ImGui.SameLine();
+                ImGui.BeginDisabled(live.Screen == key);
+                if (ImGui.SmallButton(live.Screen == key ? "in game" : "Show in game")) live.Show(key);
+                ImGui.EndDisabled();
+            }
             if (!Scenes.Composes(key) && layers.Count > 0)
                 ImGui.TextDisabled("The engine's built-in screen: an edit writes it into scenes.json.");
             foreach (var role in SkinScenes.Screens[key].Required)

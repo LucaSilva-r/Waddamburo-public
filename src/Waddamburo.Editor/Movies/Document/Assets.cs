@@ -27,6 +27,8 @@ public sealed partial class MovieDocument
     public IReadOnlyList<string> Uses(string group, string name) => group == "textures"
         ? [.. this.group("shapes").Where(shape => (string?)shape.Value?["texture"] == name).Select(static shape => $"shape {shape.Key}")]
         : [.. ((string?)Root["root"] == name ? new[] { "the movie's root" } : []),
+            // An exported sprite is made by the scripts (attachMovie) under its export name.
+            .. (group == "sprites" && this.group("sprites")[name]?["export"] is JsonValue export ? new[] { $"scripts (exported as {export})" } : []),
             .. layers().Where(each => (string?)each.Layer["character"] == name)
                 .Select(static each => $"{each.Sprite}: {(string?)each.Layer["name"] ?? (string?)each.Layer["character"]}")];
 

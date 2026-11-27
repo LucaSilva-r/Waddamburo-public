@@ -40,6 +40,17 @@ from the current folder). `--inspect=scene:<screen>` starts on a scene view (for
   requests to the game.
 - The component editor's player gets the same data as its part in the skin (live, else the example data); its Wd
   panel publishes only what was typed.
+- **Picking a screen moves the game** (linked by F7): a click on the home page's flow map, or Show in game in a scene
+  view, asks the game for that screen (`SkinLinkWire.Show`). Entry, Song Select (a guest), the dan list, the tutorial
+  and boot are reached straight; gameplay goes through Song Select and plays its first song (the flow smoke's request,
+  `FlowSmokeRun.FirstPlay`); a transition plays over the screen. Results, and anything during a song, are refused
+  with the reason in the editor's bar (`Notice`).
+- **Problems** (`Skin/SkinLint.cs`; the home page's Problems tab, `--lint-skin[=folder]`, exit 1 on an error, run by
+  the skin repository's CI): skin.json fields; scenes.json as the engine reads it; screens naming a missing package;
+  per package: movie.json, assembly, scripts that do not compile, Wd names the engine does not give, missing
+  textures, unused assets (an exported sprite counts as used: scripts make it); preview scenarios. Checked in the
+  background after each save; a line opens its place (VS Code at the line, or the package). File > Export skin
+  (zip) writes `<name>-<version>.zip` beside the folder, without dot folders.
 - **Live scene window** (F4, Skin menu) over the component editor: the screen with the package being edited, from its
   unsaved document; only the edited movie restarts.
 - **Example data** (`Skin/PreviewData.cs`): every state at its sample, lists filled, both drums joined with names, the

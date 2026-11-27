@@ -75,30 +75,41 @@ internal sealed class FlowSmokeRun(GameShell shell, GameplayFlow gameplay, SongS
             shell.Players.Join(1);
             shell.Credit.Waiwai = mode == FlowSmokeMode.Waiwai;
         }
+        if (FirstPlay(shell, title, two, waiwai: mode == FlowSmokeMode.Waiwai) is not var (request, picked, played))
+        {
+            fail("no song to play");
+            return;
+        }
+        Console.WriteLine($"Smoke: {mode} on '{picked}' ({played}).");
+        if (!shell.PlayRequests.TryRequestPlay(request))
+            fail("the play request was refused");
+    }
+
+    /// <summary>
+    /// The play request Song Select files for a song (the first with a course, or one whose title has
+    /// <paramref name="title"/>), on its oni chart where it has one; null when the library has none.
+    /// </summary>
+    public static (PlayRequest Request, string Title, TaikoCourse Course)? FirstPlay(GameShell shell, string? title, bool twoPlayers = false, bool waiwai = false)
+    {
         var songs = shell.SongCatalog.Categories.SelectMany(static category => category.Songs)
-            .Where(song => mode != FlowSmokeMode.Waiwai || song.Descriptor.WaiwaiComposition is not null)
+            .Where(song => !waiwai || song.Descriptor.WaiwaiComposition is not null)
             .Where(static song => song.Descriptor.Charts.Any(static chart => chart.Course is not null))
             .ToArray();
         var picked = songs.FirstOrDefault(song => title is not null
                 && song.Descriptor.Title.Primary.Contains(title, StringComparison.OrdinalIgnoreCase))
             ?? songs.FirstOrDefault();
         if (picked is null)
-        {
-            fail("no song to play");
-            return;
-        }
+            return null;
         var chart = picked.Descriptor.Charts.Where(static chart => chart.Course is not null)
             .OrderBy(static chart => chart.Course!.Value == TaikoCourse.Oni ? 0 : 1)
             .ThenByDescending(static chart => chart.Course!.Value).First();
         PlayerChartRequest player(LocalPlayerSlot slot) => new(slot, chart.Key, chart.ChartAsset, chart.Course!.Value);
         var request = new PlayRequest(shell.SongCatalog.Revision, picked.Descriptor.Key, picked.Descriptor.AudioAsset,
-            two ? [player(LocalPlayerSlot.PlayerOne), player(LocalPlayerSlot.PlayerTwo)] : [player(LocalPlayerSlot.PlayerOne)])
+            twoPlayers ? [player(LocalPlayerSlot.PlayerOne), player(LocalPlayerSlot.PlayerTwo)] : [player(LocalPlayerSlot.PlayerOne)])
         {
             Seed = 20261118,
         };
-        Console.WriteLine($"Smoke: {mode} on '{picked.Descriptor.Title.Primary}' ({chart.Course}).");
-        if (!shell.PlayRequests.TryRequestPlay(request))
-            fail("the play request was refused");
+        return (request, picked.Descriptor.Title.Primary, chart.Course!.Value);
     }
 
     private void fail(string why)

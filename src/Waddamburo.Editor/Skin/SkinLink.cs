@@ -20,6 +20,26 @@ public static class SkinLinkWire
 {
     public static string Screen(string key) => new JsonObject { ["t"] = "screen", ["k"] = key }.ToJsonString();
 
+    /// <summary>Editor to game: show this screen (a skin key).</summary>
+    public static string Show(string key) => new JsonObject { ["t"] = "show", ["k"] = key }.ToJsonString();
+
+    /// <summary>Game to editor: a sentence to show (why a screen could not be shown).</summary>
+    public static string Notice(string text) => new JsonObject { ["t"] = "notice", ["k"] = text }.ToJsonString();
+
+    /// <summary>A show request or a notice: its type and text; null when the line is something else.</summary>
+    public static (string Type, string Text)? Command(string line)
+    {
+        try
+        {
+            var node = JsonNode.Parse(line)!.AsObject();
+            return node["t"]?.GetValue<string>() is "show" or "notice" ? (node["t"]!.GetValue<string>(), node["k"]!.GetValue<string>()) : null;
+        }
+        catch (Exception error) when (error is JsonException or InvalidOperationException or NullReferenceException)
+        {
+            return null;
+        }
+    }
+
     public static string Provided(string movie, LumenProvided provided) => new JsonObject
     {
         ["t"] = provided.Kind switch { WdKind.State => "s", WdKind.List => "i", _ => "e" },
@@ -75,6 +95,10 @@ public sealed class SkinLinkServer : IDisposable
 {
     private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
     private readonly BlockingCollection<string> _outgoing = new(new ConcurrentQueue<string>(), 20000);
+    private readonly ConcurrentQueue<string> _incoming = new();
+
+    /// <summary>A line the editor sent (a show request), oldest first; false when none waits.</summary>
+    public bool TryTake(out string line) => _incoming.TryDequeue(out line!);
     private volatile bool _joined;
     private TcpClient? _client;
 
@@ -114,9 +138,21 @@ public sealed class SkinLinkServer : IDisposable
                 Interlocked.Exchange(ref _client, client)?.Dispose();
                 while (_outgoing.TryTake(out _)) { }
                 _joined = true;
+                new Thread(() => read(client)) { IsBackground = true, Name = "Skin link reader" }.Start();
             }
         }
         catch (Exception error) when (error is SocketException or ObjectDisposedException or InvalidOperationException) { }
+    }
+
+    private void read(TcpClient client)
+    {
+        try
+        {
+            using var reader = new StreamReader(client.GetStream(), Encoding.UTF8);
+            while (reader.ReadLine() is { } line)
+                _incoming.Enqueue(line);
+        }
+        catch (Exception error) when (error is IOException or SocketException or ObjectDisposedException or InvalidOperationException) { }
     }
 
     private void write()
@@ -172,6 +208,24 @@ public sealed class SkinLive : IDisposable
     /// <summary>Raised when the game shows another screen.</summary>
     public event Action<string>? ScreenChanged;
 
+    /// <summary>Raised with what the game says it could not do.</summary>
+    public event Action<string>? Notice;
+
+    /// <summary>Asks the game to show a screen (a skin key); it says so if it cannot.</summary>
+    public void Show(string key)
+    {
+        if (!Connected) return;
+        try
+        {
+            var bytes = Encoding.UTF8.GetBytes(SkinLinkWire.Show(key) + "\n");
+            _client.GetStream().Write(bytes);
+        }
+        catch (Exception error) when (error is IOException or SocketException or ObjectDisposedException or InvalidOperationException)
+        {
+            Connected = false;
+        }
+    }
+
     /// <summary>The game has given this movie something (it is on the game's screen, or was).</summary>
     public bool Holds(string movie) => _held.ContainsKey(movie);
 
@@ -192,6 +246,11 @@ public sealed class SkinLive : IDisposable
     {
         while (_incoming.TryDequeue(out var line))
         {
+            if (SkinLinkWire.Command(line) is ("notice", var text))
+            {
+                Notice?.Invoke(text);
+                continue;
+            }
             if (!SkinLinkWire.TryRead(line, out var screen, out var movie, out var provided))
                 continue;
             if (screen is not null)

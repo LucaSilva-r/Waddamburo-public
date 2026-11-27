@@ -64,6 +64,9 @@ public sealed partial class MovieInspectorSession
     /// The game the editor was started from shows another screen: the scene view follows it (from the home page or the
     /// scene view; the component editor stays, its live window showing that screen when the package is on it).
     /// </summary>
+    /// <summary>What the game says it could not do (a screen it cannot reach from where it is).</summary>
+    public void GameNotice(string text) => _notice = text;
+
     public void FollowGame(string key)
     {
         if (!SkinScenes.Screens.ContainsKey(key))
@@ -167,6 +170,13 @@ public sealed partial class MovieInspectorSession
         return (nint)_sceneTexture.Value.Value;
     }
 
+    // A screen picked by the user (the home page, the live window): the game it was started from goes there too.
+    private void pickScene(string key)
+    {
+        openScene(key);
+        Skin?.Live?.Show(key);
+    }
+
     private void openScene(string key)
     {
         _sceneKey = key;
@@ -215,6 +225,7 @@ public sealed partial class MovieInspectorSession
     private void skinPages(ImGuiIOPtr io, Vector2 size)
     {
         _thumbBudget = 2;
+        pollProblems();
         _application.StageRegion = new RenderRectangle(0, 0, .0001f, .0001f); // the package's own stage hides under the page
         if (!io.WantTextInput)
         {
@@ -238,6 +249,7 @@ public sealed partial class MovieInspectorSession
         {
             if (ImGui.MenuItem("Home", "", _page == Page.Home)) _page = Page.Home;
             if (ImGui.MenuItem("Save scenes", "Ctrl+S", false, Scenes?.IsDirty == true)) saveScenes();
+            if (ImGui.MenuItem("Export skin (zip)")) exportSkin();
             ImGui.Separator();
             if (ImGui.MenuItem("Close")) requestOpenOrClose(true);
             ImGui.EndMenu();
@@ -250,6 +262,11 @@ public sealed partial class MovieInspectorSession
         }
         if (relativeFolder() is not null && ImGui.MenuItem($"Back to {_title}")) _page = Page.Component;
         ImGui.TextDisabled(skinName() + (Scenes?.IsDirty == true ? "  (scenes.json *)" : ""));
+        if (problemCount(SkinLint.Level.Error) is var errors and > 0)
+        {
+            ImGui.SameLine();
+            ImGui.TextColored(ImGui.ColorConvertU32ToFloat4(Bad), $"{errors} problem{(errors == 1 ? "" : "s")}");
+        }
         if (Skin?.Live is { } live)
         {
             ImGui.SameLine();
@@ -296,6 +313,12 @@ public sealed partial class MovieInspectorSession
                     components(open: openPackage, columns: 0);
                     ImGui.EndTabItem();
                 }
+                var errors = problemCount(SkinLint.Level.Error);
+                if (ImGui.BeginTabItem(errors > 0 ? $"Problems ({errors})###problems" : "Problems###problems"))
+                {
+                    problemsTab();
+                    ImGui.EndTabItem();
+                }
                 ImGui.EndTabBar();
             }
         }
@@ -334,7 +357,7 @@ public sealed partial class MovieInspectorSession
             ImGui.SetCursorScreenPos(corner);
             ImGui.PushID(key);
             if (ImGui.InvisibleButton("node", new(width, height + 40)))
-                openScene(key);
+                pickScene(key);
             var hovered = ImGui.IsItemHovered();
             ImGui.PopID();
             list.AddRectFilled(corner, corner + new Vector2(width, height), Card, 4);
@@ -448,6 +471,11 @@ public sealed partial class MovieInspectorSession
             }
             ImGui.SameLine();
             if (ImGui.SmallButton("Open scene")) _page = Page.Scene;
+            if (Skin.Live is { Connected: true } live && live.Screen != _sceneKey)
+            {
+                ImGui.SameLine();
+                if (ImGui.SmallButton("Show in game")) live.Show(_sceneKey);
+            }
             scenarioPicker(_sceneKey);
             var area = ImGui.GetContentRegionAvail();
             var scale = Math.Max(.01f, Math.Min(area.X / 1280, area.Y / 720));

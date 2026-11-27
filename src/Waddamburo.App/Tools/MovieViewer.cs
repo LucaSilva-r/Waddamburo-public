@@ -296,6 +296,7 @@ internal static class MovieViewer
                 {
                     skinLive = skinStage.Live = new Waddamburo.Editor.SkinLive(port);
                     skinLive.ScreenChanged += inspector.FollowGame;
+                    skinLive.Notice += inspector.GameNotice;
                 }
                 catch (System.Net.Sockets.SocketException error)
                 {

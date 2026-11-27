@@ -29,6 +29,22 @@ public sealed class SkinLinkTests
     }
 
     [Fact]
+    public void TheEditorAsksForScreensAndHearsWhyNot()
+    {
+        Assert.Equal(("show", "gameplay"), SkinLinkWire.Command(SkinLinkWire.Show("gameplay")));
+        Assert.Equal(("notice", "no song"), SkinLinkWire.Command(SkinLinkWire.Notice("no song")));
+        Assert.Null(SkinLinkWire.Command(SkinLinkWire.Screen("entry")));
+        using var server = new SkinLinkServer();
+        using var live = new SkinLive(server.Port);
+        var waited = System.Diagnostics.Stopwatch.StartNew();
+        while (!server.TakeJoined() && waited.ElapsedMilliseconds < 5000) Thread.Sleep(10);
+        live.Show("song-select");
+        string? line = null;
+        while (!server.TryTake(out line) && waited.ElapsedMilliseconds < 5000) Thread.Sleep(10);
+        Assert.Equal(("show", "song-select"), SkinLinkWire.Command(line!));
+    }
+
+    [Fact]
     public void ValuesKeepTheirKindOnTheWire()
     {
         var line = SkinLinkWire.Provided("a/b", new(WdKind.Event, "note.judged", 2, 0,

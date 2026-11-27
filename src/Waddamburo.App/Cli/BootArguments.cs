@@ -23,6 +23,9 @@ internal sealed record BootArguments(string[] Raw)
 
     /// <summary>--skin[=folder]: the movie editor on a whole skin (its home page); bare: the skin found from here.</summary>
     public string? SkinPath { get; init; }
+
+    /// <summary>--lint-skin[=folder]: a skin's problems printed, exit 1 when one is an error (CI).</summary>
+    public string? LintSkinPath { get; init; }
     /// <summary>--play=CHART: the bot plays the chart straight after start-up, then quits.</summary>
     public Waddamburo.App.Flow.DirectPlay? Play { get; init; }
     public string? ScenePath { get; init; }
@@ -92,6 +95,7 @@ internal sealed record BootArguments(string[] Raw)
             MovieName = option(args, "--movie="),
             PackagePath = option(args, "--package="),
             SkinPath = option(args, "--skin=") ?? (args.Contains("--skin") ? "" : null),
+            LintSkinPath = option(args, "--lint-skin=") ?? (args.Contains("--lint-skin") ? "" : null),
             Play = option(args, "--play=") is { } playChart
                 ? new Waddamburo.App.Flow.DirectPlay(Path.GetFullPath(playChart),
                     Enum.Parse<Waddamburo.Catalog.TaikoCourse>(option(args, "--play-course=") ?? "oni", ignoreCase: true),
@@ -146,6 +150,7 @@ internal sealed record BootArguments(string[] Raw)
             || parsed.ArchivePath is not null
             || parsed.PackagePath is not null
             || parsed.SkinPath is not null
+            || parsed.LintSkinPath is not null
             || parsed.MovieName is not null
             || parsed.ScenePath is not null
             || parsed.AssetRoot is not null
