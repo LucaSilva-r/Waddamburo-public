@@ -93,7 +93,11 @@ internal static class PreviewData
 
     private static LibraryNode song(string title, string artist, params int[] stars)
     {
-        var node = new LibraryNode(LibraryNodeKind.Song, title) { Subtitle = artist, Artist = artist };
+        var node = new LibraryNode(LibraryNodeKind.Song, title)
+        {
+            Subtitle = artist, Artist = artist, Bpm = 150,
+            Levels = [.. Enumerable.Range(0, 5).Select(course => course < stars.Length ? stars[course] : (int?)null)],
+        };
         string[] names = ["easy", "normal", "hard", "oni", "ura"];
         for (var course = 0; course < stars.Length; course++)
             node.Children.Add(new LibraryNode(LibraryNodeKind.Chart, names[course]) { Stars = stars[course], Course = names[course] });

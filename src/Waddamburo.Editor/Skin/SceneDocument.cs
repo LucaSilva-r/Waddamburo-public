@@ -204,6 +204,9 @@ public sealed class SceneDocument
             var places = scene?["places"] is JsonObject placed && placed.Count > 0 ? placed : null;
             var layout = places is null ? "" : ", \"places\": {\n" + string.Join(",\n", places.Select(static pair =>
                 $"      {JsonSerializer.Serialize(pair.Key)}: {compact(pair.Value!)}")) + "\n    }";
+            // The screens it opens from by itself, kept as written.
+            if (scene?["opensFrom"] is JsonArray opens)
+                layout += $", \"opensFrom\": {opens.ToJsonString()}";
             if (layers.Count <= 1)
             {
                 lines.Add($"    {JsonSerializer.Serialize(key)}: {{ \"layers\": [{(layers.Count == 1 ? $" {compact(layers[0]!)} " : "")}]{layout} }}{comma}");

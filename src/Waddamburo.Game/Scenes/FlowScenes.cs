@@ -27,8 +27,8 @@ public static class FlowScenes
     public static readonly SceneId DaniSelect = new("dani-select");
     public static readonly SceneId RewardShop = new("reward-shop");
 
-    /// <summary>The drum a front-end name board is for, by where these scenes put it (0 left, 1 right); null for the
-    /// entry's centre board (a read card's player) and a board waiting hidden.</summary>
-    public static int? BoardSide(SceneLayerDefinition board) => board.Transform.Y == 638
-        ? board.Transform.X < 640 ? 0 : 1 : null;
+    /// <summary>The drum a front-end name board is for (0 left, 1 right): its layer's side, else where Green's scenes put
+    /// it; null for the entry's centre board (a read card's player) and a board waiting hidden.</summary>
+    public static int? BoardSide(SceneLayerDefinition board) => board.Side ?? (board.Transform.Y == 638
+        ? board.Transform.X < 640 ? 0 : 1 : null);
 }

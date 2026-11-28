@@ -40,11 +40,13 @@ internal sealed class WaddamburoScreens : IScreenCompositions
         new($"{area}/packeddata.ddp", $"{name}/{name}.lm", LumenMatrix.Identity with { X = x, Y = y }, host);
 
     // A player's name board: bottom left for the left drum, bottom right for the right one (FlowScenes.BoardSide).
-    private static SceneLayerDefinition board(int side) => movie("indicator", "player_name", LayerRoles.IndicatorPart, side == 1 ? 948 : 60, 638);
+    // In the bottom bar (Song Select's), at its ends.
+    private static SceneLayerDefinition board(int side) =>
+        movie("indicator", "player_name", LayerRoles.IndicatorPart, side == 1 ? 976 : 32, 674) with { Side = side };
 
     // The entry's name boards: top left, the left drum's first.
     private static SceneLayerDefinition topBoard(int side) =>
-        movie("indicator", "player_name", LayerRoles.IndicatorPart, side == 1 ? 316 : 32, 12) with { Anchor = Lumen.Rendering.LumenAnchor.Left };
+        movie("indicator", "player_name", LayerRoles.IndicatorPart, side == 1 ? 316 : 32, 12) with { Anchor = Lumen.Rendering.LumenAnchor.Left, Side = side };
 
     private static SceneDefinition screen(SceneId id, params SceneLayerDefinition[] layers) => new(SceneDefinition.CurrentVersion, id, layers);
 

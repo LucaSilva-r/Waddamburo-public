@@ -192,16 +192,22 @@ public sealed class FreeTimeCounterTests
     }
 
     [Fact]
-    public void TheSongSelectListsTheRowsAndPicksForThePlayerWhenTimeRunsOut()
+    public void TheSongSelectListsTheRowsAndPlaysTheChosenCourse()
     {
         var select = load("song_select/song_select");
         var asked = new List<string>();
-        select.RequestHandler = (name, _) => { if (name != "rows.window") asked.Add(name); return null; }; // the window it shows: any
+        select.RequestHandler = (name, arguments) =>
+        {
+            if (name != "rows.window") // the window it shows: any
+                asked.Add(name + (arguments is [{ Kind: LumenHostValueKind.Text } course] ? " " + course.AsString() : ""));
+            return null;
+        };
         static LumenHostValue text(string value) => LumenHostValue.FromString(value);
-        select.Publish("rows.count", n(3));
-        select.Publish("selected.row", n(2));
-        select.Publish("selected.kind", text("chart"));
-        select.Publish("selected.title", text("Oni"));
+        select.Publish("rows.count", n(2));
+        select.Publish("selected.row", n(1));
+        select.Publish("selected.kind", text("song"));
+        select.Publish("selected.title", text("Senbonzakura"));
+        select.Publish("selected.bpm", n(154));
         select.PublishItem("row.kind", 0, text("folder"));
         select.PublishItem("row.depth", 0, n(0));
         select.PublishItem("row.opened", 0, LumenHostValue.FromBoolean(true));
@@ -209,23 +215,24 @@ public sealed class FreeTimeCounterTests
         select.PublishItem("row.count", 0, n(1));
         select.PublishItem("row.kind", 1, text("song"));
         select.PublishItem("row.depth", 1, n(1));
-        select.PublishItem("row.opened", 1, LumenHostValue.FromBoolean(true));
         select.PublishItem("row.title", 1, text("Senbonzakura"));
-        select.PublishItem("row.kind", 2, text("chart"));
-        select.PublishItem("row.depth", 2, n(2));
-        select.PublishItem("row.title", 2, text("Oni"));
-        select.PublishItem("row.stars", 2, n(7));
+        select.PublishItem("row.levels", 1, text("3,5,6,7,"));
         advance(select, 2);
-        // A panel per row, in row order: the folder with its count, the chart with its level.
-        Assert.Equal("Vocaloid", select.ReadScriptValue("list.p0.title.text"));
-        Assert.Equal("1", select.ReadScriptValue("list.p0.meta.text"));
-        Assert.Equal("Oni", select.ReadScriptValue("list.p2.chart_title.text"));
-        Assert.Equal("7", select.ReadScriptValue("list.p2.chip.label.text"));
-        Assert.Equal("Senbonzakura", select.ReadScriptValue("info.title.text")); // a chart shows its song
-        Assert.Empty(asked);
-        select.Publish("select.timeLeft", n(0)); // out of time on a chart: it is played, once
+        // The folder as a spoke with its count, the song under the cursor grown, its details and courses on the right.
+        Assert.Equal("VOCALOID", select.ReadScriptValue("list.p0.htext.text"));
+        Assert.Equal("1 song", select.ReadScriptValue("list.p0.hcount.text"));
+        Assert.Equal("Senbonzakura", select.ReadScriptValue("list.p1.btitle.text"));
+        Assert.Equal("Senbonzakura", select.ReadScriptValue("detail.title.text"));
+        Assert.Equal("BPM 154", select.ReadScriptValue("detail.bpm.text"));
+        Assert.Equal("7", select.ReadScriptValue("c3.level.text"));
+        Assert.Equal("–", select.ReadScriptValue("c4.level.text")); // no ura
+        Assert.Equal(["select.course oni"], asked); // the shown course, told at once
+        select.EmitFor(1, "drum.hit", text("right"), text("don")); // DON on a song: the drum goes to the courses
+        select.EmitFor(1, "drum.hit", text("left"), text("ka"));   // back one: hard
+        Assert.Equal(["select.course oni", "select.course hard"], asked);
+        select.Publish("select.timeLeft", n(0)); // out of time: the course under the drum is played, once
         advance(select, 3);
-        Assert.Equal(["song.start"], asked);
+        Assert.Equal(["select.course oni", "select.course hard", "song.start"], asked);
         Assert.Empty(select.Diagnostics);
     }
 
@@ -308,6 +315,8 @@ public sealed class FreeTimeCounterTests
         advance(entry, 60); // the dial comes out of the drum
         Assert.True(entry.TryGetInstanceBounds("i0", out _));
         entry.Publish("entry.timeLeft", n(0)); // the countdown ran out: the mode shown starts
+        Assert.Empty(asked);                   // Play first settles to the bare drum Song Select opens from
+        advance(entry, 17);
         Assert.Equal(["session.start normal"], asked);
         Assert.Empty(entry.Diagnostics);
     }

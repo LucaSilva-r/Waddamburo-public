@@ -70,6 +70,25 @@ public sealed class SceneScaleTests
 public sealed class ScenePlaceTests
 {
     [Fact]
+    public void AScreensOpensFromIsKeptByLayerEdits()
+    {
+        var root = Directory.CreateTempSubdirectory("waddamburo-opens-test").FullName;
+        try
+        {
+            File.WriteAllText(Path.Combine(root, SkinScenes.FileName), """
+                { "format": 1, "scenes": { "song-select": { "layers": [ { "movie": "song_select/song_select", "role": "song-select" } ], "opensFrom": ["entry"] } } }
+                """);
+            var scenes = new SceneDocument(root);
+            scenes.Edit("song-select", list => list.Add(new("deco/stars", "decoration", 0, 0, null)));
+            Assert.Equal(["entry"], SkinScenes.Parse(scenes.Text).OpensFrom("song-select"));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void PlacesAreKeptByLayerEditsAndGoBackToTheLayout()
     {
         var root = Directory.CreateTempSubdirectory("waddamburo-place-test").FullName;

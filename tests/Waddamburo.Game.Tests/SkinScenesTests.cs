@@ -32,8 +32,19 @@ public sealed class SkinScenesTests
     [InlineData("""{ "format": 1, "scenes": { "boot": { "layers": [ { "movie": "../boot", "role": "boot" } ] } } }""", "package folder")]
     [InlineData("""{ "format": 1, "scenes": { "boot": { "layers": [ { "movie": "a/boot", "role": "boot", "side": 2 } ] } } }""", "side")]
     [InlineData("""{ "format": 2, "scenes": {} }""", "format")]
+    [InlineData("""{ "format": 1, "scenes": { "boot": { "layers": [ { "movie": "a/boot", "role": "boot" } ], "opensFrom": ["lobby"] } } }""", "opensFrom")]
     public void MistakesAreRefusedByName(string json, string message) =>
         Assert.Contains(message, Assert.Throws<InvalidDataException>(() => SkinScenes.Parse(json)).Message);
+
+    [Fact]
+    public void AScreenThatOpensFromAnotherMakesTheirSwitchACut()
+    {
+        var scenes = SkinScenes.Parse(Song.Replace("""] } } }""", """], "opensFrom": ["entry"] } } }"""));
+        Assert.Equal(["entry"], scenes.OpensFrom("song-select"));
+        Assert.True(scenes.OpensFrom(FlowScenes.SongSelect, FlowScenes.Entry));
+        Assert.False(scenes.OpensFrom(FlowScenes.SongSelect, FlowScenes.Result));
+        Assert.False(SkinScenes.Parse(Song).OpensFrom(FlowScenes.SongSelect, FlowScenes.Entry));
+    }
 
     [Fact]
     public void ABrokenFileFallsBackToTheNextFolder()

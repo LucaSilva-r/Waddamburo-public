@@ -503,6 +503,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
                 .Handle("row.open", arguments => at(arguments, 0) is { } row ? rows(loaded => openSongRow(loaded, host.Session, row)) : "row.open takes a row")
                 .Handle("row.close", arguments => at(arguments, 0) is { } row ? rows(loaded => closeSongRow(loaded, host.Session, row)) : "row.close takes a row")
                 .Handle("song.start", _ => rows(loaded => startSong(loaded, host.Session)))
+                .Handle("select.course", chooseCourse)
                 .Handle("tone.choose", arguments => at(arguments, 0) is { } tone && at(arguments, 1) is { } drum and (1 or 2)
                     ? chooseTone(drum - 1, tone) : "tone.choose takes a tone and a drum (1 or 2)")
                 .Install(Shell.Active.Player.Layers.Select(static layer => layer.Player));
@@ -535,8 +536,15 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
     // The chart under the cursor's online ranks (Rankings), as scores.*: none off a chart or before they arrive.
     private void publishScores(LumenPlayer movie, SongSelectSession session, LibraryRows rows)
     {
-        IReadOnlyList<Waddamburo.Game.Scores.RankingEntry>? ranks = rows.Selected?.Tag is ChartTag chart && session.Catalog.TryGetSong(chart.Folder, chart.Song, out var song)
-            && Shell.Rankings?.For(song) is { } courses && (uint)chart.Course < (uint)courses.Length ? courses[chart.Course] : null;
+        // A chart's own course; on a song, the course the movie shows (select.course).
+        var (folder, position, course) = rows.Selected?.Tag switch
+        {
+            ChartTag chart => (chart.Folder, chart.Song, chart.Course),
+            SongTag tagged => (tagged.Folder, tagged.Song, _shownCourse),
+            _ => (-1, -1, -1),
+        };
+        IReadOnlyList<Waddamburo.Game.Scores.RankingEntry>? ranks = folder >= 0 && session.Catalog.TryGetSong(folder, position, out var song)
+            && Shell.Rankings?.For(song) is { } courses && (uint)course < (uint)courses.Length ? courses[course] : null;
         movie.Publish("scores.count", ranks is null ? LumenHostValue.Undefined : LumenHostValue.FromNumber(ranks.Count));
         for (var index = 0; index < (ranks?.Count ?? 0); index++)
         {
@@ -563,6 +571,8 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
                         Subtitle = entry.Descriptor.Subtitle,
                         Artist = entry.Descriptor.Artist,
                         Tag = new SongTag(index, position),
+                        Levels = [.. Enum.GetValues<TaikoCourse>().Select(course => entry.HasCourse(course) ? entry.Level(course) ?? 1 : (int?)null)],
+                        Bpm = entry.Descriptor.Bpm,
                     };
                     foreach (var course in Enum.GetValues<TaikoCourse>().Where(entry.HasCourse))
                         song.Children.Add(new LibraryNode(LibraryNodeKind.Chart, course.ToString())
@@ -570,6 +580,7 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
                             Stars = entry.Level(course) ?? 1,
                             Course = course.ToString().ToLowerInvariant(),
                             Tag = new ChartTag(index, position, (int)course),
+                            Bpm = entry.Descriptor.Bpm,
                         });
                     folder.Children.Add(song);
                 }
@@ -635,10 +646,30 @@ internal sealed class SongSelectFlow(GameShell shell, GameplayFlow gameplay, Cal
     }
 
     // Plays the chart's course for every joined drum.
+    // The course the movie shows (select.course): song.start on a song plays its chart of it.
+    private int _shownCourse = (int)TaikoCourse.Oni;
+
+    private string? chooseCourse(LumenHostValue[] arguments)
+    {
+        if (arguments is not [{ Kind: LumenHostValueKind.Text } name]
+            || !Enum.TryParse<TaikoCourse>(name.AsString(), ignoreCase: true, out var course) || !Enum.IsDefined(course))
+            return "select.course takes easy, normal, hard, oni or ura";
+        _shownCourse = (int)course;
+        return null;
+    }
+
     private string? startSong(LibraryRows rows, SongSelectSession session)
     {
-        if (rows.Selected?.Tag is not ChartTag chart)
-            return "the cursor is not on a chart";
+        // On a song: its chart of the course the movie shows.
+        var chart = rows.Selected?.Tag switch
+        {
+            ChartTag tagged => tagged,
+            SongTag song when rows.Selected!.Children.Any(child => child.Tag is ChartTag { Course: var c } && c == _shownCourse) => new ChartTag(song.Folder, song.Song, _shownCourse),
+            SongTag => null,
+            _ => null,
+        };
+        if (chart is null)
+            return rows.Selected?.Tag is SongTag ? $"the song has no {(TaikoCourse)_shownCourse} chart" : "the cursor is not on a chart or a song";
         if (Shell.PlayRequests.Pending is not null)
             return "a song is already starting";
         int course(int side) => Shell.Credit.TwoPlayers || Shell.Credit.PlayerSide == side ? chart.Course : -1;

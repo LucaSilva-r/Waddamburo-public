@@ -75,6 +75,9 @@ public sealed record SceneLayerDefinition
     /// <summary>Where it holds on a stage wider or narrower than 1280 (LumenStage).</summary>
     public Waddamburo.Lumen.Rendering.LumenAnchor Anchor { get; init; }
 
+    /// <summary>The drum a per-player layer belongs to (0 left, 1 right; a name board's player); null for none.</summary>
+    public int? Side { get; init; }
+
     private static bool isFinite(LumenMatrix value) =>
         float.IsFinite(value.M11)
         && float.IsFinite(value.M12)

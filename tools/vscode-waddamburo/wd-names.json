@@ -570,6 +570,14 @@
       "sample": "true"
     },
     {
+      "name": "row.levels",
+      "kind": "list",
+      "type": "text",
+      "scope": "select",
+      "description": "A song's stars for each course, easy, normal, hard, oni, ura, comma separated, empty where the song has no chart of that course; no value for other rows.",
+      "sample": "3,5,6,7,"
+    },
+    {
       "name": "selected.row",
       "kind": "state",
       "type": "number",
@@ -592,6 +600,14 @@
       "scope": "select",
       "description": "The title of the node under the cursor.",
       "sample": "六段"
+    },
+    {
+      "name": "selected.bpm",
+      "kind": "state",
+      "type": "number",
+      "scope": "select",
+      "description": "The tempo of the song (or chart) under the cursor; no value when it has none or the cursor is on a folder.",
+      "sample": "154"
     },
     {
       "name": "scores.count",
@@ -654,8 +670,16 @@
       "kind": "request",
       "type": "",
       "scope": "select",
-      "description": "Plays the chart under the cursor, for every joined drum (the rainbow, then the song).",
+      "description": "Plays the chart under the cursor (or, on a song, its chart of the select.course course), for every joined drum (the rainbow, then the song).",
       "sample": ""
+    },
+    {
+      "name": "select.course",
+      "kind": "request",
+      "type": "course: text (easy, normal, hard, oni, ura)",
+      "scope": "select",
+      "description": "The course the movie shows: scores.* are the song under the cursor's for it, and song.start on a song plays it.",
+      "sample": "\"oni\""
     },
     {
       "name": "select.timeLeft",

@@ -15,6 +15,10 @@ public sealed class LibraryNode(LibraryNodeKind kind, string title)
     public int? Stars { get; init; }
     /// <summary>A chart's course: easy, normal, hard, oni, ura; none for a chart that has no course.</summary>
     public string? Course { get; init; }
+    /// <summary>A song's stars for each course, easy to ura (null: no chart of that course); published as row.levels.</summary>
+    public int?[]? Levels { get; init; }
+    /// <summary>A song's (or its chart's) tempo, for selected.bpm.</summary>
+    public double? Bpm { get; init; }
     /// <summary>A course whose songs are all in the library, a chart that can be played.</summary>
     public bool Playable { get; init; } = true;
     /// <summary>What the engine knows it by (a course's status, a chart's key).</summary>
@@ -120,6 +124,7 @@ public sealed class LibraryRows
         movie.Publish("selected.row", LumenHostValue.FromNumber(Cursor));
         movie.Publish("selected.kind", Selected is { } chosen ? LumenHostValue.FromString(chosen.Kind.ToString().ToLowerInvariant()) : LumenHostValue.Undefined);
         movie.Publish("selected.title", Selected is { } titled ? LumenHostValue.FromString(titled.Title) : LumenHostValue.Undefined);
+        movie.Publish("selected.bpm", Selected?.Bpm is { } bpm ? LumenHostValue.FromNumber(Math.Round(bpm, 2)) : LumenHostValue.Undefined);
         var end = Math.Min(_rows.Count, _window.First + _window.Count);
         foreach (var index in _published.Where(index => index < _window.First || index >= end).ToArray())
         {
@@ -139,11 +144,15 @@ public sealed class LibraryRows
             movie.PublishItem("row.stars", index, node.Stars is { } stars ? LumenHostValue.FromNumber(stars) : LumenHostValue.Undefined);
             movie.PublishItem("row.course", index, text(node.Course));
             movie.PublishItem("row.playable", index, LumenHostValue.FromBoolean(node.Playable));
+            movie.PublishItem("row.levels", index, node.Levels is { } levels ? LumenHostValue.FromString(Levels(levels)) : LumenHostValue.Undefined);
             _published.Add(index);
         }
         SelectionChanged = false;
     }
 
     private static readonly string[] Names = ["row.kind", "row.depth", "row.opened", "row.title", "row.subtitle", "row.count",
-        "row.stars", "row.course", "row.playable"];
+        "row.stars", "row.course", "row.playable", "row.levels"];
+
+    /// <summary>row.levels' text: each course's stars, easy to ura, comma separated, empty where there is none ("3,5,6,7,").</summary>
+    public static string Levels(IReadOnlyList<int?> levels) => string.Join(",", levels.Select(static level => level?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? ""));
 }

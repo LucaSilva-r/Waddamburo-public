@@ -136,8 +136,10 @@ internal sealed partial class GameShell
         if (Active.Id == FlowScenes.Entry && Coordinator.Flow.PendingTransition is { } request)
             Players.ChooseMode(aiBattle: request.SceneNumber == 10);
         // The entry and Song Select fade to black first, as the menu's Restart, Song Select and Title do;
-        // not under an intermission (the rainbow into a song covers its own switch).
-        if (!Overlay.IsShown && PlayRequests.Pending is null && (Active.Id == FlowScenes.Entry || Active.Id == FlowScenes.SongSelect))
+        // not under an intermission (the rainbow into a song covers its own switch), nor where the skin's next screen
+        // opens from this one's last picture itself (scenes.json opensFrom: the Drumhead wheel from the entry's drum).
+        if (!Overlay.IsShown && PlayRequests.Pending is null && (Active.Id == FlowScenes.Entry || Active.Id == FlowScenes.SongSelect)
+            && !opensItself())
         {
             _home.FadeThen(() =>
             {
@@ -148,6 +150,11 @@ internal sealed partial class GameShell
         }
         Scenes.ApplyPending();
     }
+
+    // The pending switch leads to a screen of our skin that opens from the active one by itself.
+    private bool opensItself() => !Frontend.GameMovies && Frontends.WaddamburoScreens.Instance.Skin is { } skin
+        && Coordinator.Flow.PendingTransition is { } request && Catalog.TryResolve(Active.Id, request, out var target)
+        && skin.OpensFrom(target!.Id, Active.Id);
 
     // An open overlay takes the tick's input; with none open, each may open on its own key (Tab, R).
     private bool overlaysTake(SdlKeyboardSnapshot keys, bool escape) =>

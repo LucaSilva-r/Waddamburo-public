@@ -14,6 +14,9 @@ namespace Waddamburo.Game.Scenes;
 /// Optional per layer: <c>scaleX</c>, <c>scaleY</c> (1), <c>rotation</c> (degrees, clockwise, about x/y).
 /// A layer's <c>movie</c> is its package folder under the skin (<c>attract/kidou/kidou</c>); <c>side</c> keeps it to
 /// the drum on that side where a screen is built per drum (Song Select's and the dan list's name boards).
+/// <para>Optional per screen: <c>"opensFrom": ["entry"]</c>, the screens it opens from by itself: its movies start from
+/// the picture those leave on screen (the Drumhead song wheel starts from the entry's drum), so the switch from them
+/// is a cut instead of the fade through black.</para>
 /// </summary>
 public sealed class SkinScenes
 {
@@ -78,13 +81,25 @@ public sealed class SkinScenes
         {
             var cut = Movie.LastIndexOf('/');
             var name = Movie[(cut + 1)..];
-            return new($"{Movie[..cut]}/packeddata.ddp", $"{name}/{name}.lm", Transform, Role) { Anchor = Anchor };
+            return new($"{Movie[..cut]}/packeddata.ddp", $"{name}/{name}.lm", Transform, Role) { Anchor = Anchor, Side = Side };
         }
     }
 
     private readonly Dictionary<string, Layer[]> _scenes;
+    private readonly Dictionary<string, string[]> _opensFrom;
 
-    private SkinScenes(Dictionary<string, Layer[]> scenes, Dictionary<string, Layer> places) => (_scenes, Places) = (scenes, places);
+    private SkinScenes(Dictionary<string, Layer[]> scenes, Dictionary<string, Layer> places, Dictionary<string, string[]> opensFrom) =>
+        (_scenes, Places, _opensFrom) = (scenes, places, opensFrom);
+
+    /// <summary>The screens a screen opens from by itself (its <c>opensFrom</c>), by key; empty when it has none.</summary>
+    public IReadOnlyList<string> OpensFrom(string key) => _opensFrom.GetValueOrDefault(key) ?? [];
+
+    /// <summary>
+    /// Whether the switch from scene <paramref name="from"/> to scene <paramref name="to"/> is a cut: a screen of the
+    /// skin that becomes <paramref name="to"/> opens from one that is <paramref name="from"/>.
+    /// </summary>
+    public bool OpensFrom(SceneId to, SceneId from) => _opensFrom.Any(pair => Screens[pair.Key].Id == to
+        && pair.Value.Any(source => Screens[source].Id == from));
 
     /// <summary>
     /// Where the skin puts gameplay's own movies (gameplay's <c>"places": {"lane": {"x": 248, "y": 271, "rotation": 5}}</c>),
@@ -146,6 +161,7 @@ public sealed class SkinScenes
             throw new InvalidDataException("\"scenes\" object expected.");
         var result = new Dictionary<string, Layer[]>(StringComparer.Ordinal);
         var places = new Dictionary<string, Layer>(StringComparer.Ordinal);
+        var opensFrom = new Dictionary<string, string[]>(StringComparer.Ordinal);
         foreach (var scene in scenes.EnumerateObject())
         {
             if (!Screens.TryGetValue(scene.Name, out var screen))
@@ -157,6 +173,15 @@ public sealed class SkinScenes
                 if (!layers.Any(layer => layer.Role == role))
                     throw new InvalidDataException($"{scene.Name}: needs a layer with role \"{role}\".");
             result[scene.Name] = layers;
+            if (scene.Value.TryGetProperty("opensFrom", out var from))
+            {
+                if (from.ValueKind != JsonValueKind.Array || from.EnumerateArray().Any(static item => item.ValueKind != JsonValueKind.String))
+                    throw new InvalidDataException($"{scene.Name}: \"opensFrom\" is a list of screens, like [\"entry\"].");
+                var sources = from.EnumerateArray().Select(static item => item.GetString()!).ToArray();
+                if (sources.FirstOrDefault(source => !Screens.ContainsKey(source)) is { } unknown)
+                    throw new InvalidDataException($"{scene.Name}: \"opensFrom\" names \"{unknown}\", no screen (known: {string.Join(", ", Screens.Keys)}).");
+                opensFrom[scene.Name] = sources;
+            }
             if (scene.Value.TryGetProperty("places", out var placed))
             {
                 if (scene.Name != "gameplay" || placed.ValueKind != JsonValueKind.Object)
@@ -169,7 +194,7 @@ public sealed class SkinScenes
                 }
             }
         }
-        return new(result, places);
+        return new(result, places, opensFrom);
     }
 
     private static Layer readLayer(JsonElement layer, string where, string? place = null)
