@@ -95,6 +95,19 @@ public sealed class LumenScenePlayer
             layer.Player.SceneScale = scaleX > 0 ? scaleX : 1;
             layer.Player.SceneX = layer.Transform.X;
             layer.Player.AppendRenderQuads(playerInterpolation?.Invoke(layer.Player) ?? interpolationFraction, quads);
+            // A layer that moves, fades and offsets nothing (the screen's own movie, mostly) keeps its quads as made: a
+            // quad holds references, so writing one back is a barriered copy of its ~150 bytes.
+            if (placed == LumenMatrix.Identity && layer.Alpha == 1 && layer.TextureOffset == 0)
+            {
+                for (var index = start; index < quads.Count; index++)
+                {
+                    ref readonly var made = ref quads.ItemRef(index);
+                    if (made.NativeSurface is null && made.TextureIndex >= layer.TextureCount)
+                        throw new InvalidOperationException(
+                            $"Child snapshot texture {made.TextureIndex} exceeds its {layer.TextureCount}-texture namespace.");
+                }
+                continue;
+            }
             for (var index = start; index < quads.Count; index++)
             {
                 var quad = quads[index];

@@ -2974,9 +2974,30 @@ public sealed partial class LumenPlayer : IAvm1Host
         instance.Color = color;
     }
 
-    private Rendering.LumenAnchor? anchorOf(DisplayInstance instance) =>
-        ClipAnchors is { Count: > 0 } anchors && instance.Parent is { } holder
-            && anchors.TryGetValue((holder.CharacterId, instance.Depth - TimelineDepthBase), out var anchor) ? anchor : null;
+    // Asked twice for every clip drawn: kept on the clip for the depth it was worked out at (swapDepths moves it).
+    private Rendering.LumenAnchor? anchorOf(DisplayInstance instance)
+    {
+        if (ClipAnchors is not { Count: > 0 } anchors)
+            return null;
+        if (instance.AnchorDepth != instance.Depth)
+        {
+            instance.Anchor = instance.Parent is { } holder
+                && anchors.TryGetValue((holder.CharacterId, instance.Depth - TimelineDepthBase), out var anchor) ? anchor : null;
+            instance.AnchorDepth = instance.Depth;
+        }
+        return instance.Anchor;
+    }
+
+    // What a clip draws, by its character (fixed for its life, as the player's slice table is): looked up once.
+    private void resolveDrawing(DisplayInstance instance)
+    {
+        if (instance.DrawingResolved)
+            return;
+        instance.TextDrawing = _texts.GetValueOrDefault(instance.CharacterId);
+        instance.ShapeDrawing = _shapes.GetValueOrDefault(instance.CharacterId);
+        instance.SliceDrawing = ShapeSlices is { Count: > 0 } slices && slices.TryGetValue(instance.CharacterId, out var slice) ? slice : null;
+        instance.DrawingResolved = true;
+    }
 
     // A stretched clip (a package's "anchor": "stretch") is drawn as it is, then its drawing is widened: each side to its
     // edge of the stage, a 9-sliced shape's corners and caps moved, not widened.
@@ -3072,9 +3093,10 @@ public sealed partial class LumenPlayer : IAvm1Host
             8 => LumenRenderBlend.Add,
             _ => parentBlend,
         };
-        if (_texts.TryGetValue(instance.CharacterId, out var textField))
+        resolveDrawing(instance);
+        if (instance.TextDrawing is { } textField)
             appendText(instance, textField, transform, color, blend, maskDepth, quads);
-        if (_shapes.TryGetValue(instance.CharacterId, out var shape))
+        if (instance.ShapeDrawing is { } shape)
         {
             foreach (var geometry in shape.Geometry)
             {
@@ -3117,7 +3139,7 @@ public sealed partial class LumenPlayer : IAvm1Host
                     continue;
                 }
 
-                if (ShapeSlices is { Count: > 0 } slices && slices.TryGetValue(instance.CharacterId, out var slice))
+                if (instance.SliceDrawing is { } slice)
                 {
                     appendSliced(geometry, slice, transform, color, blend, maskDepth, quads);
                     continue;
@@ -3629,6 +3651,14 @@ public sealed partial class LumenPlayer : IAvm1Host
 
         /// <summary>Its own properties as a script last wrote them, and in which action (LumenPlayer._action).</summary>
         public Dictionary<string, (int Action, Avm1Value Value)>? Written { get; set; }
+
+        /// <summary>What it draws (LumenPlayer.resolveDrawing) and its stage anchor at <see cref="AnchorDepth"/>.</summary>
+        public bool DrawingResolved { get; set; }
+        public LmbTextDefinition? TextDrawing { get; set; }
+        public LmbShapeDefinition? ShapeDrawing { get; set; }
+        public (float Left, float Top, float Right, float Bottom)? SliceDrawing { get; set; }
+        public long AnchorDepth { get; set; } = long.MinValue;
+        public Rendering.LumenAnchor? Anchor { get; set; }
 
         /// <summary>What a script gets for clip.transform (made on first read).</summary>
         public ClipTransform? TransformView { get; set; }
