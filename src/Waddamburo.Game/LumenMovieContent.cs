@@ -121,8 +121,9 @@ public sealed class LumenMovieContent
         {
             var image = decodeImage(read(file))
                 ?? throw new InvalidDataException($"Movie package '{root}': texture is not a readable PNG: {file}");
+            // A package's art is drawn for this engine (an SVG at twice its shown size): the upscaler bends its lines.
             textures.Add(new LumenTextureContent(textures.Count, image.Width, image.Height,
-                ImmutableCollectionsMarshal.AsImmutableArray(image.Rgba)));
+                ImmutableCollectionsMarshal.AsImmutableArray(image.Rgba)) { Upscalable = false });
         }
         var semantic = LmbSemanticReader.Read(LmbFile.Parse(assembled.Lmb, parserLimits), parserLimits,
             new LmbSemanticValidationContext(textures.Count));
@@ -284,6 +285,9 @@ public sealed record LumenTextureContent(
     /// the cache); empty when the texture is RGBA.
     /// </summary>
     public ReadOnlyMemory<byte> Bc7 { get; init; }
+
+    /// <summary>False for a package's own art (drawn sharp for this engine): never queued for upscaling.</summary>
+    public bool Upscalable { get; init; } = true;
 
     /// <summary>
     /// The texture's own BC1/BC3 blocks, kept in place of <see cref="Rgba8"/> (a slice of its archive's buffer: hold

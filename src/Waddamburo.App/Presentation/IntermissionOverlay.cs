@@ -188,7 +188,7 @@ internal static class SceneTextures
             var compressed = application.UploadBlocks(format, width, height, texture.Blocks.Span, atlas);
             // A queued texture keeps its own copy of the blocks (a slice would keep its whole archive alive),
             // decoded only if the upscaler gets to it.
-            if (Upscaler is { } queue && queue.Wants(width, height))
+            if (texture.Upscalable && Upscaler is { } queue && queue.Wants(width, height))
             {
                 var own = texture with { Blocks = texture.Blocks.ToArray() };
                 queue.Enqueue(compressed, width, height, own.Pixels, texture.UpscaleKey);
@@ -198,7 +198,7 @@ internal static class SceneTextures
         var rgba = texture.Pixels();
         var id = application.UploadRgba8(width, height, rgba, atlas);
         // The upscaler keeps the pixel arrays the content is about to drop.
-        if (Upscaler is { } upscaler && !upscaler.IsUpscaled(rgba))
+        if (texture.Upscalable && Upscaler is { } upscaler && !upscaler.IsUpscaled(rgba))
             upscaler.Enqueue(id, width, height, () => rgba, texture.UpscaleKey);
         return id;
     }
