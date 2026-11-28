@@ -50,8 +50,6 @@ internal sealed class TextFieldTextures : IDisposable
 
     public RenderTextureId? Resolve(LumenNativeSurfaceKey key)
     {
-        if (!LumenTextSurface.TryParse(key, out var text, out var width, out var height, out var size, out var align, out var rgb, out var settings))
-            return null;
         if (_version != SkinText.Version)
         {
             _margins.Clear();
@@ -67,6 +65,9 @@ internal sealed class TextFieldTextures : IDisposable
             _uploaded[(key, scale)] = kept with { Used = ++_uses };
             return kept.Texture;
         }
+        // Only a text not drawn yet is parsed (every field asks every frame).
+        if (!LumenTextSurface.TryParse(key, out var text, out var width, out var height, out var size, out var align, out var rgb, out var settings))
+            return null;
         if (_uploaded.Count >= Kept)
         {
             var oldest = _uploaded.MinBy(static pair => pair.Value.Used);

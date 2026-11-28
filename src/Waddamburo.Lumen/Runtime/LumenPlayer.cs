@@ -3414,21 +3414,22 @@ public sealed partial class LumenPlayer : IAvm1Host
     }
 
     // A text field's own settings (a package's field: its style, its text, its bind), read once per field.
-    private readonly record struct FieldText(int Settings, string? Text, string? Bind);
+    // A field's fixed drawing facts, read once from its package (its HTML's alignment and colour need a regex each).
+    private readonly record struct FieldText(int Settings, string? Text, string? Bind, char Align, uint Colour);
     private readonly Dictionary<LmbTextDefinition, FieldText> _fieldTexts = [];
 
     private FieldText fieldText(LmbTextDefinition field, string html)
     {
         if (_fieldTexts.TryGetValue(field, out var known))
             return known;
-        var made = default(FieldText);
+        var made = new FieldText(0, null, null, LumenTextSurface.Align(html), LumenTextSurface.Colour(html));
         if (LumenTextSurface.SettingsOf(html) is { } json)
             try
             {
                 using var settings = System.Text.Json.JsonDocument.Parse(json);
                 string? read(string key) => settings.RootElement.TryGetProperty(key, out var value)
                     && value.ValueKind == System.Text.Json.JsonValueKind.String ? value.GetString() : null;
-                made = new FieldText(LumenTextSurface.SettingsId(json), read("text"), read("bind"));
+                made = made with { Settings = LumenTextSurface.SettingsId(json), Text = read("text"), Bind = read("bind") };
                 // A bound field reads the provider as a script would (the editor's live link mirrors what was read).
                 if (made.Bind is { } bind)
                 {
@@ -3458,8 +3459,13 @@ public sealed partial class LumenPlayer : IAvm1Host
         if (text is not { Length: > 0 })
             return;
         var box = _movie.Bounds[(int)field.BoundsIndex];
-        var key = LumenTextSurface.Key(text, box.Right - box.Left, box.Bottom - box.Top, field.FontSize,
-            LumenTextSurface.Align(html), LumenTextSurface.Colour(html), own.Settings);
+        // The key changes only with the text (the rest is the field's): an instance keeps the last one it made.
+        if (!ReferenceEquals(instance.TextKeyText, text) && instance.TextKeyText != text)
+        {
+            instance.TextKey = LumenTextSurface.Key(text, box.Right - box.Left, box.Bottom - box.Top, field.FontSize, own.Align, own.Colour, own.Settings);
+            instance.TextKeyText = text;
+        }
+        var key = instance.TextKey;
         LumenRenderVertex corner(float x, float y, float u, float v)
         {
             var position = transform.Transform(x, y);
@@ -3528,6 +3534,10 @@ public sealed partial class LumenPlayer : IAvm1Host
 
         public bool Visible { get; set; } = true;
         public bool HiddenByHost { get; set; }
+
+        /// <summary>A text field's last surface key and the text it was made for.</summary>
+        public LumenNativeSurfaceKey TextKey { get; set; }
+        public string? TextKeyText { get; set; }
 
         public bool ScriptTransformed { get; set; }
 
