@@ -2,6 +2,23 @@ using System.Globalization;
 
 namespace Waddamburo.Lumen.Runtime;
 
+/// <summary>
+/// A script object or clip with a cheap number for hashing: the pending-write tables key on targets, and the runtime's
+/// identity hash took its slow path for every fresh object (a script's arrays and small objects, made each frame).
+/// </summary>
+internal interface IAvm1Identity
+{
+    int AvmId { get; }
+}
+
+internal static class Avm1Ids
+{
+    private static int s_next;
+
+    // ponytail: not atomic; two threads racing only share a number, which a hash tolerates.
+    public static int Next() => ++s_next;
+}
+
 internal enum Avm1Kind : byte
 {
     Undefined,

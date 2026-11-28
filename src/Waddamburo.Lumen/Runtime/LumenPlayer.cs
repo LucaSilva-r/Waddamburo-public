@@ -1466,10 +1466,18 @@ public sealed partial class LumenPlayer : IAvm1Host
         Avm1ExecutionContext? parentContext,
         Avm1LexicalScope? lexicalScope,
         Avm1Value thisValue,
-        object? timelineTarget) =>
+        object? timelineTarget)
+    {
+        // An outermost execution is a new action: what scripts wrote to clips' own properties before reads back as stored.
+        if (parentContext is null)
+            _action++;
         // One object per script call: the callbacks are this player's (IAvm1Host), the call's own state rides on the
         // context (a closure and eleven delegates per call were most of a song select tick's garbage).
-        new(this, instance, thisValue, lexicalScope, timelineTarget, parentContext);
+        return new(this, instance, thisValue, lexicalScope, timelineTarget, parentContext);
+    }
+
+    // The action now running (outermost executions counted), for DisplayInstance.Written.
+    private int _action;
 
     Avm1Lookup IAvm1Host.ReadVariable(Avm1ExecutionContext context, string name)
     {
@@ -1498,20 +1506,11 @@ public sealed partial class LumenPlayer : IAvm1Host
         instance.Variables[name] = value;
     }
 
-    Avm1Lookup IAvm1Host.ReadMember(Avm1ExecutionContext context, Avm1Value target, string name)
-    {
-        var parentContext = context.TransactionParent;
-        return parentContext?.GetMember(target, name) ?? readMember(target, name);
-    }
+    // The context has already looked in the transient tables of its call chain.
+    Avm1Lookup IAvm1Host.ReadMember(Avm1ExecutionContext context, Avm1Value target, string name) => readMember(target, name);
 
-    void IAvm1Host.WriteMember(Avm1ExecutionContext context, Avm1Value target, string name, Avm1Value value)
-    {
-        var parentContext = context.TransactionParent;
-        if (parentContext is null)
-            writeMember(target, name, value);
-        else
-            parentContext.SetMember(target, name, value);
-    }
+    void IAvm1Host.WriteMember(Avm1ExecutionContext context, Avm1Value target, string name, Avm1Value value) =>
+        writeMember(target, name, value);
 
     Avm1Lookup IAvm1Host.CallFunction(Avm1ExecutionContext context, string name, IReadOnlyList<Avm1Value> arguments)
     {
@@ -2379,15 +2378,16 @@ public sealed partial class LumenPlayer : IAvm1Host
         }
         if (target is DisplayInstance instance)
         {
-            // Every member read on a clip checks its children first: an index loop, no closure or enumerator.
-            var children = instance.Children.Values;
-            for (var index = 0; index < children.Count; index++)
-                if (children[index] is { Removed: false } child && child.Name == name)
-                    return new Avm1Lookup(true, child);
+            // Every member read on a clip checks its children first.
+            if (instance.ChildNamed(name) is { } child)
+                return new Avm1Lookup(true, child);
             if (instance.Variables.TryGetValue(name, out var value))
                 return new Avm1Lookup(true, value);
             if (instance.ScriptPrototype?.GetProperty(name) is { Found: true } inherited)
                 return inherited;
+            // A property this action wrote reads back as written (not as the clip stores it: float, decomposed matrix).
+            if (instance.Written is { } written && written.TryGetValue(name, out var mine) && mine.Action == _action)
+                return new Avm1Lookup(true, mine.Value);
             return name switch
             {
                 // One per clip: scripts read clip.transform each time they tint it.
@@ -2454,6 +2454,8 @@ public sealed partial class LumenPlayer : IAvm1Host
         }
         if (target is DisplayInstance instance)
         {
+            if (name is "_name" or "_visible" or "_x" or "_y" or "_xscale" or "_yscale" or "_rotation" or "_alpha")
+                (instance.Written ??= new(StringComparer.Ordinal))[name] = (_action, value);
             switch (name)
             {
                 case "_name":
@@ -2576,8 +2578,13 @@ public sealed partial class LumenPlayer : IAvm1Host
     // While recording, every run draws the same numbers so two runs of a session compare line by line.
     private static readonly Random EdgeRandom = LumenEdgeLog.Enabled ? new Random(1) : Random.Shared;
 
-    private sealed record ClipTransform(DisplayInstance Instance)
+    // One per clip (DisplayInstance.TransformView), so it is known by identity: the clip's number hashes it.
+    private sealed class ClipTransform(DisplayInstance instance) : IAvm1Identity
     {
+        public DisplayInstance Instance { get; } = instance;
+
+        public int AvmId => Instance.AvmId;
+
         public static implicit operator Avm1Value(ClipTransform value) => Avm1Value.Wrap(value);
     }
 
@@ -3523,8 +3530,56 @@ public sealed partial class LumenPlayer : IAvm1Host
     private static LumenRenderColor convertColor(LmbColorTransform color) =>
         new(color.Red / 256f, color.Green / 256f, color.Blue / 256f, color.Alpha / 256f);
 
-    private sealed class DisplayInstance(uint characterId, int hierarchyDepth, DisplayInstance? parent)
+    /// <summary>A clip's children by depth; every change counts in <see cref="Version"/> (DisplayInstance.ChildNamed).</summary>
+    private sealed class ChildList : SortedList<long, DisplayInstance>
     {
+        public int Version;
+
+        public new DisplayInstance this[long depth]
+        {
+            get => base[depth];
+            set
+            {
+                base[depth] = value;
+                Version++;
+            }
+        }
+
+        public new void Add(long depth, DisplayInstance child)
+        {
+            base.Add(depth, child);
+            Version++;
+        }
+
+        public new bool Remove(long depth)
+        {
+            Version++;
+            return base.Remove(depth);
+        }
+
+        public bool Remove(long depth, out DisplayInstance child)
+        {
+            Version++;
+            return TryGetValue(depth, out child!) && base.Remove(depth);
+        }
+
+        public new void RemoveAt(int index)
+        {
+            base.RemoveAt(index);
+            Version++;
+        }
+
+        public new void Clear()
+        {
+            base.Clear();
+            Version++;
+        }
+    }
+
+    private sealed class DisplayInstance(uint characterId, int hierarchyDepth, DisplayInstance? parent) : IAvm1Identity
+    {
+        public int AvmId { get; } = Avm1Ids.Next();
+
         public static implicit operator Avm1Value(DisplayInstance? value) => value is null ? Avm1Value.Null : Avm1Value.Wrap(value);
 
         public uint CharacterId { get; } = characterId;
@@ -3535,7 +3590,15 @@ public sealed partial class LumenPlayer : IAvm1Host
 
         public long Depth { get; set; }
 
-        public string Name { get; set; } = "";
+        public string Name
+        {
+            get;
+            set
+            {
+                field = value;
+                if (Parent is { } parent) parent.Children.Version++;
+            }
+        } = "";
 
         public bool ScriptColored { get; set; }
 
@@ -3547,7 +3610,15 @@ public sealed partial class LumenPlayer : IAvm1Host
 
         public int Frame { get; set; } = -1;
 
-        public bool Removed { get; set; }
+        public bool Removed
+        {
+            get;
+            set
+            {
+                field = value;
+                if (Parent is { } parent) parent.Children.Version++;
+            }
+        }
 
         public bool FromTimeline { get; set; }
 
@@ -3555,6 +3626,9 @@ public sealed partial class LumenPlayer : IAvm1Host
 
         public bool Visible { get; set; } = true;
         public bool HiddenByHost { get; set; }
+
+        /// <summary>Its own properties as a script last wrote them, and in which action (LumenPlayer._action).</summary>
+        public Dictionary<string, (int Action, Avm1Value Value)>? Written { get; set; }
 
         /// <summary>What a script gets for clip.transform (made on first read).</summary>
         public ClipTransform? TransformView { get; set; }
@@ -3579,7 +3653,28 @@ public sealed partial class LumenPlayer : IAvm1Host
 
         // A sorted list, not a SortedDictionary: enumerating that allocated a stack and its node array per clip per
         // frame (~45 MiB/s uncapped); a clip has tens of children, so its array insertion costs nothing.
-        public SortedList<long, DisplayInstance> Children { get; } = [];
+        public ChildList Children { get; } = [];
+
+        // The first live child of each name, in depth order: every member read on a clip asks it (a variable read
+        // misses it), so it is a map rebuilt only when the children, a name or a removal changed.
+        private Dictionary<string, DisplayInstance>? _childNames;
+        private int _childNamesVersion = -1;
+
+        public DisplayInstance? ChildNamed(string name)
+        {
+            if (Children.Count == 0)
+                return null;
+            if (_childNamesVersion != Children.Version || _childNames is null)
+            {
+                (_childNames ??= new(StringComparer.Ordinal)).Clear();
+                var values = Children.Values;
+                for (var index = 0; index < values.Count; index++)
+                    if (values[index] is { Removed: false } child)
+                        _childNames.TryAdd(child.Name, child);
+                _childNamesVersion = Children.Version;
+            }
+            return _childNames.GetValueOrDefault(name);
+        }
 
         public Dictionary<long, DisplayInstance>? ReusableTimelineChildren { get; set; }
 

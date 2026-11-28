@@ -105,6 +105,9 @@ public sealed class ActionScriptTests
         + " function outer() { var inner = function() { return arguments.length; }; return inner(1, 2, 3); }"
         + " var o = { n: 4, get: function() { return this.n; }, none: function() { return 'n'; } };"
         + " report(count(1, 2), plain('p'), outer(), o.get(), o.none());", "2,p,3,4,n")]
+    // A clip's own property reads back as the action wrote it (Green's song select depends on it), not as stored
+    // (alpha and scale go through floats and the clip's matrix).
+    [InlineData("clip._alpha = 33.3; clip._xscale = 41.7; clip._rotation = 12.5; report(clip._alpha, clip._xscale, clip._rotation);", "33.3,41.7,12.5")]
     public void ScriptsRun(string script, string expected)
     {
         var (_, reports) = run(script);

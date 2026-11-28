@@ -8,28 +8,29 @@ internal sealed class Avm1ExecutionContext(
     object? timelineTarget,
     Avm1ExecutionContext? transactionParent)
 {
-    // Made on the first write: a context is built for every script call and most write nothing (six collections
-    // per call were a large share of a song select tick's garbage).
-    private Dictionary<string, Avm1Value>? _variableWrites;
-    private Dictionary<LexicalKey, Avm1Value>? _lexicalWrites;
-    private Dictionary<MemberKey, Avm1Value>? _memberWrites;
+    // Writes apply at once, as in Flash (a failing action keeps what it did). What waits for the call to end: clips it
+    // creates (placed on commit; the transient tables let the script reach them before), host commands, playback.
+    // Every write used to wait in a table, so every read probed those tables up the call chain first (a third of a
+    // script's time); only the transient ones are probed now, and only when the chain has any.
     private List<Action>? _commitActions;
     private Dictionary<MemberKey, Avm1Value>? _transientMembers;
     private Dictionary<DisplayKey, object?>? _transientChildren;
+    private bool _transientInChain = transactionParent?._transientInChain == true;
 
-    public Avm1Lookup GetVariable(string name) =>
-        _variableWrites is not null && _variableWrites.TryGetValue(name, out var value)
-            ? new Avm1Lookup(true, value)
-            : host.ReadVariable(this, name);
+    public Avm1Lookup GetVariable(string name) => host.ReadVariable(this, name);
 
     public void SetVariable(string name, Avm1Value value)
     {
-        if (tryFindLexicalOwner(name, out var owner))
-            Pool<LexicalKey>.Set(ref _lexicalWrites, new LexicalKey(owner, name), value);
-        else if (TimelineTarget is not null)
+        for (var scope = LexicalScope; scope is not null; scope = scope.Parent)
+            if (scope.ContainsOwn(name))
+            {
+                scope.Define(name, value);
+                return;
+            }
+        if (TimelineTarget is not null)
             SetMember(Avm1Value.Of(TimelineTarget), name, value);
         else
-            Pool<string>.Set(ref _variableWrites, name, value);
+            host.WriteVariable(this, name, value);
     }
 
     public void DefineLocal(string name, Avm1Value value)
@@ -37,7 +38,7 @@ internal sealed class Avm1ExecutionContext(
         if (LexicalScope is null)
             SetVariable(name, value);
         else
-            Pool<LexicalKey>.Set(ref _lexicalWrites, new LexicalKey(LexicalScope, name), value);
+            LexicalScope.Define(name, value);
     }
 
     public Avm1LexicalScope? LexicalScope { get; } = lexicalScope;
@@ -57,28 +58,26 @@ internal sealed class Avm1ExecutionContext(
     public Avm1Lookup GetLexicalVariable(string name)
     {
         for (var scope = LexicalScope; scope is not null; scope = scope.Parent)
-        {
-            var key = new LexicalKey(scope, name);
-            if (tryGetLexicalWrite(key, out var pending))
-                return new Avm1Lookup(true, pending);
             if (scope.TryGetOwn(name, out var value))
                 return new Avm1Lookup(true, value);
-        }
         return default;
     }
 
-    public Avm1Lookup GetMember(Avm1Value target, string name) =>
-        _transientMembers is not null && _transientMembers.TryGetValue(new MemberKey(identity(target), name), out var transient)
-            ? new Avm1Lookup(true, transient)
-            : _memberWrites is not null && _memberWrites.TryGetValue(new MemberKey(identity(target), name), out var value)
-            ? new Avm1Lookup(true, value)
-            : host.ReadMember(this, target, name);
+    public Avm1Lookup GetMember(Avm1Value target, string name)
+    {
+        if (_transientInChain)
+        {
+            var key = new MemberKey(identity(target), name);
+            for (var context = this; context is not null; context = context.TransactionParent)
+                if (context._transientMembers is not null && context._transientMembers.TryGetValue(key, out var transient))
+                    return new Avm1Lookup(true, transient);
+        }
+        return host.ReadMember(this, target, name);
+    }
 
-    public void SetMember(Avm1Value target, string name, Avm1Value value) =>
-        Pool<MemberKey>.Set(ref _memberWrites, new MemberKey(identity(target), name), value);
+    public void SetMember(Avm1Value target, string name, Avm1Value value) => host.WriteMember(this, target, name, value);
 
-    // What a member's target is known by in the pending writes: its string or object (a number's members are never
-    // written, so its box is no cost).
+    // What a member's target is known by in the transient table: its string or object.
     private static object? identity(Avm1Value target) => target.Reference ?? target.Boxed;
 
     public Avm1Lookup CallFunction(string name, IReadOnlyList<Avm1Value> arguments) =>
@@ -106,8 +105,11 @@ internal sealed class Avm1ExecutionContext(
 
     public void RemoveSprite(Avm1Value target) => host.RemoveSprite(this, target);
 
-    public void SetTransientMember(object target, string name, Avm1Value value) =>
+    public void SetTransientMember(object target, string name, Avm1Value value)
+    {
         (_transientMembers ??= [])[new MemberKey(target, name)] = value;
+        _transientInChain = true;
+    }
 
     public void SetTransientChild(object parent, long depth, object? value) =>
         (_transientChildren ??= [])[new DisplayKey(parent, depth)] = value;
@@ -132,19 +134,6 @@ internal sealed class Avm1ExecutionContext(
                 foreach (var (key, value) in _transientChildren)
                     transactionParent.SetTransientChild(key.Parent, key.Depth, value);
         }
-        if (_lexicalWrites is not null)
-            foreach (var (key, value) in _lexicalWrites)
-                key.Scope.Define(key.Name, value);
-        if (_variableWrites is not null)
-            foreach (var (name, value) in _variableWrites)
-                host.WriteVariable(this, name, value);
-        if (_memberWrites is not null)
-            foreach (var (key, value) in _memberWrites)
-                host.WriteMember(this, Avm1Value.Of(key.Target), key.Name, value);
-        // The write dictionaries are spent: back to the pool, capacity kept (a fresh one per call grew by resizing).
-        Pool<LexicalKey>.Return(ref _lexicalWrites);
-        Pool<string>.Return(ref _variableWrites);
-        Pool<MemberKey>.Return(ref _memberWrites);
         if (_commitActions is null)
             return;
         foreach (var action in _commitActions)
@@ -154,83 +143,6 @@ internal sealed class Avm1ExecutionContext(
             else
                 transactionParent.OnCommit(action);
         }
-    }
-
-    // Per thread, so scripts on other threads (a loading screen's) never share one.
-    private static class Pool<TKey> where TKey : notnull
-    {
-        [ThreadStatic] private static Stack<Dictionary<TKey, Avm1Value>>? s_small;
-        [ThreadStatic] private static Stack<Dictionary<TKey, Avm1Value>>? s_large;
-
-        // Most executions write a few names; a helper that others commit into (a layout() whose place() calls each write
-        // _x, _y and _rotation) gathers hundreds each tick. Every execution starts with a small dictionary, as clearing
-        // costs a dictionary's capacity, and one that passes SmallCount writes moves to a large one kept grown.
-        private const int SmallCount = 16;          // under a small one's capacity (17), so it never resizes
-        private const int MaximumPooledCapacity = 8192; // a freak (tens of thousands of writes) is dropped
-
-        public static void Set(ref Dictionary<TKey, Avm1Value>? dictionary, TKey key, Avm1Value value)
-        {
-            var written = dictionary ??= rent(s_small ??= new(), SmallCount + 1);
-            written[key] = value;
-            if (written.Count != SmallCount || written.EnsureCapacity(0) > SmallCount + 1)
-                return;
-            // Insertion order is kept (a fresh dictionary, no removals): Commit applies writes in the order made.
-            var large = rent(s_large ??= new(), 0);
-            foreach (var (name, each) in written)
-                large[name] = each;
-            Return(ref dictionary);
-            dictionary = large;
-        }
-
-        private static Dictionary<TKey, Avm1Value> rent(Stack<Dictionary<TKey, Avm1Value>> pool, int capacity) =>
-            pool.TryPop(out var reused) ? reused
-            : typeof(TKey) == typeof(string) ? (Dictionary<TKey, Avm1Value>)(object)new Dictionary<string, Avm1Value>(capacity, StringComparer.Ordinal)
-            : new Dictionary<TKey, Avm1Value>(capacity);
-
-        public static void Return(ref Dictionary<TKey, Avm1Value>? dictionary)
-        {
-            if (dictionary is null)
-                return;
-            var capacity = dictionary.EnsureCapacity(0);
-            var pool = capacity <= SmallCount + 1 ? s_small ??= new() : s_large ??= new();
-            if (capacity <= MaximumPooledCapacity && pool.Count < 64)
-            {
-                dictionary.Clear();
-                pool.Push(dictionary);
-            }
-            dictionary = null;
-        }
-    }
-
-    private bool tryFindLexicalOwner(string name, out Avm1LexicalScope owner)
-    {
-        for (var scope = LexicalScope; scope is not null; scope = scope.Parent)
-        {
-            var key = new LexicalKey(scope, name);
-            if (hasLexicalWrite(key) || scope.ContainsOwn(name))
-            {
-                owner = scope;
-                return true;
-            }
-        }
-        owner = null!;
-        return false;
-    }
-
-    private bool hasLexicalWrite(LexicalKey key) =>
-        _lexicalWrites?.ContainsKey(key) == true || commitParentHasLexicalWrite(key);
-
-    private bool commitParentHasLexicalWrite(LexicalKey key) =>
-        transactionParent?.hasLexicalWrite(key) == true;
-
-    private bool tryGetLexicalWrite(LexicalKey key, out Avm1Value value)
-    {
-        if (_lexicalWrites is not null && _lexicalWrites.TryGetValue(key, out value))
-            return true;
-        if (transactionParent is not null)
-            return transactionParent.tryGetLexicalWrite(key, out value);
-        value = default;
-        return false;
     }
 
     private void applyTransientChildren(object parent, HashSet<long> depths)
@@ -249,14 +161,23 @@ internal sealed class Avm1ExecutionContext(
         }
     }
 
-    private readonly record struct MemberKey(object? Target, string Name);
-    private readonly record struct DisplayKey(object Parent, long Depth);
-    private readonly record struct LexicalKey(Avm1LexicalScope Scope, string Name)
+    private readonly struct MemberKey(object? target, string name) : IEquatable<MemberKey>
     {
-        public bool Equals(LexicalKey other) => ReferenceEquals(Scope, other.Scope) && string.Equals(Name, other.Name, StringComparison.Ordinal);
+        public object? Target { get; } = target;
+        public string Name { get; } = name;
 
-        public override int GetHashCode() => HashCode.Combine(Scope.Id, string.GetHashCode(Name, StringComparison.Ordinal));
+        public bool Equals(MemberKey other) => string.Equals(Name, other.Name, StringComparison.Ordinal) && Equals(Target, other.Target);
+
+        public override bool Equals(object? obj) => obj is MemberKey other && Equals(other);
+
+        public override int GetHashCode() => HashCode.Combine(Target switch
+        {
+            IAvm1Identity known => known.AvmId,
+            null => 0,
+            var other => other.GetHashCode(),
+        }, Name.GetHashCode());
     }
+    private readonly record struct DisplayKey(object Parent, long Depth);
 }
 
 internal readonly record struct Avm1Lookup(bool Found, Avm1Value Value);

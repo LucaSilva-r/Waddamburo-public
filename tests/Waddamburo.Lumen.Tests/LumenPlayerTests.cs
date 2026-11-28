@@ -923,7 +923,7 @@ public sealed class LumenPlayerTests
     }
 
     [Fact]
-    public void FailedMemberActionDoesNotCommitStagedVisibility()
+    public void AFailedActionKeepsWhatItAlreadyWrote()
     {
         var player = new LumenPlayer(createMovie(placementNameStringIndex: 31, actionBytecode: [
             0x96, 0x03, 0x00, 0x09, 0x1F, 0x00,
@@ -936,7 +936,8 @@ public sealed class LumenPlayerTests
 
         player.Advance();
 
-        Assert.Single(player.CreateRenderSnapshot().Quads);
+        // clip._visible = false ran before the Not on an empty stack failed the action: as in Flash, it stays.
+        Assert.Empty(player.CreateRenderSnapshot().Quads);
         Assert.Contains(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_ACTION_DEFERRED");
     }
 

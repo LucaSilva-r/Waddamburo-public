@@ -52,9 +52,10 @@ inheritance, return, and playback opcodes needed by the Entry initialization pat
 `DefineFunction` and `DefineFunction2` create inert function values with validated
 out-of-line bodies. Invocations seed bounded registers from parameters and observed
 preload flags; recursive calls are depth-limited. The entire code block is
-preflighted, and playback/member changes are committed only after successful
-termination, so unsupported opcodes and stack underflow defer the whole record
-without partial writes.
+preflighted, so a block with an unsupported opcode never runs. Variable, local and
+member writes apply as they execute, as in Flash: an action that fails at run time
+(stack underflow, the instruction budget) keeps what it already wrote. Playback
+changes still wait for the action to finish successfully.
 
 Authored function returns propagate through nested calls rather than collapsing to
 `undefined`. Primitive strings expose `length`, `charAt`, and `toString`.
@@ -80,12 +81,13 @@ of enter-frame candidates collected during one dispatch. Actions queued by an
 authored timeline jump drain in subsequent bounded batches during the same phase.
 Tick-wide instruction budgets remain outside this slice.
 
-Each action also receives bounded registers and a transactional variable/member
-context. Named child clips, `this`, `_root`, `_parent`, and `_global` resolve without
-exposing mutable display instances publicly. `_visible`, `_x`, `_y`, `_alpha`, and
-`_currentframe` bridge to private clip state. Writes commit only when the action
-finishes successfully, while later instructions and nested calls can read pending
-instance/global member writes through the same transaction. Unregistered function calls consume the authored arguments,
+Each action also receives bounded registers and a context for what waits for it to end
+(clips it creates, host commands, playback). Named child clips, `this`, `_root`, `_parent`,
+and `_global` resolve without exposing mutable display instances publicly. `_visible`,
+`_x`, `_y`, `_alpha`, and `_currentframe` bridge to private clip state. Variable and member
+writes apply at once (until November 2026 they were buffered until the action succeeded;
+every read then probed the buffers up the call chain, a third of a script's time).
+Unregistered function calls consume the authored arguments,
 return `undefined`, and emit `LUM_AVM_CALL_UNRESOLVED`, allowing optional host calls
 to remain observable without aborting otherwise valid initialization.
 
@@ -160,8 +162,8 @@ CPU textures for the platform adapter. The diagnostic app's
 exercise the measured Entry request against user-supplied archives; its relative
 movie IDs and route live in the app composition, not in Lumen runtime behavior.
 
-Standard AVM1 `CloneSprite` and `RemoveSprite` participate in the same action
-transaction as variable and member writes. A clone copies the source display state,
+Standard AVM1 `CloneSprite` and `RemoveSprite` wait for the action to end, as the clips it
+creates do. A clone copies the source display state,
 script variables, prototype/class binding, and child hierarchy into its authored
 dynamic depth; replacement and removal become visible only when the action commits.
 Timeline placements occupy Flash's negative internal depth band while script-created

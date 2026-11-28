@@ -13,7 +13,6 @@ internal sealed class Avm1Undefined
 
 internal sealed class Avm1LexicalScope(Avm1LexicalScope? parent = null)
 {
-    private static int s_nextId;
     // A function call's locals: a handful, so a flat list searched in order beats a dictionary (made per call and grown
     // by resizing as its locals were defined, a large share of a script's garbage). Names are mostly the movie's own
     // interned strings, so the reference check usually settles a comparison.
@@ -51,10 +50,6 @@ internal sealed class Avm1LexicalScope(Avm1LexicalScope? parent = null)
         scope.Parent = null;
         s_free.Push(scope);
     }
-
-    /// <summary>A cheap hash for the pending-write keys: a scope is made per function call and hashed at once, and an
-    /// object's first identity hash takes the runtime's slow path.</summary>
-    public int Id { get; } = Interlocked.Increment(ref s_nextId);
 
     public bool ContainsOwn(string name) => indexOf(name) >= 0;
 
@@ -105,8 +100,10 @@ internal sealed class Avm1LexicalScope(Avm1LexicalScope? parent = null)
     }
 }
 
-internal class Avm1Object(int capacity = 0)
+internal class Avm1Object(int capacity = 0) : IAvm1Identity
 {
+    public int AvmId { get; } = Avm1Ids.Next();
+
     public Dictionary<string, Avm1Value> Properties { get; } = new(capacity, StringComparer.Ordinal);
 
     public Avm1Object? Prototype { get; set; }
