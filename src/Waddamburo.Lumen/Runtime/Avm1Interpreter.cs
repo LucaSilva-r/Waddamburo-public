@@ -35,7 +35,7 @@ internal static class Avm1Interpreter
 
     public static Avm1ExecutionStatus TryExecute(
         Avm1CodeBlock code,
-        IReadOnlyList<LmbString> strings,
+        ImmutableArray<LmbString> strings,
         bool initialPlaying,
         LumenRuntimeLimits limits,
         Avm1ExecutionContext context,
@@ -56,7 +56,7 @@ internal static class Avm1Interpreter
 
     public static Avm1ExecutionStatus TryExecuteFunction(
         Avm1FunctionValue function,
-        IReadOnlyList<LmbString> strings,
+        ImmutableArray<LmbString> strings,
         Avm1Value thisValue,
         IReadOnlyList<Avm1Value> arguments,
         bool initialPlaying,
@@ -186,7 +186,7 @@ internal static class Avm1Interpreter
 
     private static Avm1ExecutionStatus tryExecute(
         Avm1CodeBlock code,
-        IReadOnlyList<LmbString> strings,
+        ImmutableArray<LmbString> strings,
         bool initialPlaying,
         LumenRuntimeLimits limits,
         Avm1ExecutionContext context,
@@ -635,7 +635,7 @@ internal static class Avm1Interpreter
     private static Avm1ExecutionStatus pushValues(
         List<Avm1Value> stack,
         Avm1PushOperand push,
-        IReadOnlyList<LmbString> strings,
+        ImmutableArray<LmbString> strings,
         Avm1Value[] registers,
         int maxStackValues)
     {
@@ -644,7 +644,7 @@ internal static class Avm1Interpreter
             Avm1Value pushed;
             switch (value.Type)
             {
-                case 0 or 8 or 9 when value.StringIndex < strings.Count:
+                case 0 or 8 or 9 when value.StringIndex < strings.Length:
                     pushed = strings[value.StringIndex].Value;
                     break;
                 case 1 or 6 or 7:
@@ -777,8 +777,8 @@ internal static class Avm1Interpreter
         return true;
     }
 
-    private static string getString(IReadOnlyList<LmbString> strings, ushort index) =>
-        index < strings.Count ? strings[index].Value : "";
+    private static string getString(ImmutableArray<LmbString> strings, ushort index) =>
+        index < strings.Length ? strings[index].Value : "";
 
     private static int toInt32(Avm1Value value)
     {
