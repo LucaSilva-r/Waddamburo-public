@@ -5,7 +5,9 @@ public sealed record LumenRuntimeLimits
     public static LumenRuntimeLimits Default { get; } = new();
 
     public LumenRuntimeLimits(
-        int maxInstructionsPerAction = 10_000,
+        // Against runaway loops only: a menu's enter-frame layout runs past 10,000 (and an infinite loop at 100,000
+        // costs a few milliseconds a frame).
+        int maxInstructionsPerAction = 100_000,
         int maxStackValues = 4_096,
         int maxPendingActions = 4_096,
         int maxRegisters = 256,

@@ -21,7 +21,7 @@ public sealed class ActionScriptTests
         }
         """;
 
-    private static (LumenPlayer Player, List<string> Reports) run(string script, string? classes = null)
+    private static (LumenPlayer Player, List<string> Reports) run(string script, string? classes = null, bool clean = true)
     {
         var reports = new List<string>();
         var files = new Dictionary<string, string> { ["main.as"] = script, ["classes.as"] = classes ?? "" };
@@ -39,7 +39,7 @@ public sealed class ActionScriptTests
             })));
             return LumenHostValue.FromNumber(reports.Count);
         })));
-        Assert.True(player.Diagnostics.IsEmpty, string.Join(" | ", player.Diagnostics.Select(static each => $"{each.Code}: {each.Message}")));
+        Assert.True(!clean || player.Diagnostics.IsEmpty, string.Join(" | ", player.Diagnostics.Select(static each => $"{each.Code}: {each.Message}")));
         return (player, reports);
     }
 
@@ -112,6 +112,16 @@ public sealed class ActionScriptTests
     {
         var (_, reports) = run(script);
         Assert.Equal(expected, string.Join("|", reports));
+    }
+
+    [Fact]
+    public void AFailedActionStillPlacesTheClipsItMade()
+    {
+        // The loop never ends: the action stops at the instruction limit, after attachMovie.
+        var (player, reports) = run("var made = this.attachMovie('Clip', 'made', 50); report('attached'); while (true) { }", clean: false);
+        Assert.Equal(["attached"], reports);
+        Assert.NotNull(player.ReadScriptValue("made"));
+        Assert.Contains(player.Diagnostics, diagnostic => diagnostic.Code == "LUM_ACTION_LIMIT");
     }
 
     [Fact]

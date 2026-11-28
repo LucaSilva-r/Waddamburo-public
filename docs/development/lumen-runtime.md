@@ -54,8 +54,11 @@ out-of-line bodies. Invocations seed bounded registers from parameters and obser
 preload flags; recursive calls are depth-limited. The entire code block is
 preflighted, so a block with an unsupported opcode never runs. Variable, local and
 member writes apply as they execute, as in Flash: an action that fails at run time
-(stack underflow, the instruction budget) keeps what it already wrote. Playback
-changes still wait for the action to finish successfully.
+(stack underflow, the instruction budget) keeps what it already did, its writes and
+also what waits for its end (the clips it created are placed, its host commands sent;
+left out, a script would hold clips that never reach the stage). Only its playback
+change is dropped. The budget (`LumenRuntimeLimits.MaxInstructionsPerAction`, 100,000
+per execution) is against runaway loops: a menu's enter-frame layout passes 10,000.
 
 Authored function returns propagate through nested calls rather than collapsing to
 `undefined`. Primitive strings expose `length`, `charAt`, and `toString`.

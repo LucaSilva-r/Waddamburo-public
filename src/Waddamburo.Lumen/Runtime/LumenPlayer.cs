@@ -1448,9 +1448,10 @@ public sealed partial class LumenPlayer : IAvm1Host
                     instance.Playing = requestedPlayback;
                 else if (instance.Frame == startingFrame && instance.Playing == startingPlaying)
                     instance.Playing = playing;
-                context.Commit();
             }
-            else if (status == Avm1ExecutionStatus.StackUnderflow)
+            // A failed action keeps what it did (its clips placed, its host commands sent), all but its playback.
+            context.Commit();
+            if (status == Avm1ExecutionStatus.StackUnderflow)
                 reportOnce("LUM_AVM_STACK_UNDERFLOW", instance.CharacterId, instance.Frame,
                     $"AVM stack underflow at action offset 0x{context.InstructionOffset:X}.");
             return status;
@@ -2243,6 +2244,9 @@ public sealed partial class LumenPlayer : IAvm1Host
                     timelineTarget.Frame,
                     $"AVM function body requires unsupported semantics or failed with {status}"
                     + (unsupported.Length == 0 ? "." : $": {unsupported}."));
+                // It keeps what it did, as its writes already are: the clips it created are placed, its host commands
+                // sent (left out, a script holds clips that never reach the stage). Its playback change is not made.
+                context.Commit();
                 return default;
             }
             if (context.PendingPlayback is { } requestedPlayback)

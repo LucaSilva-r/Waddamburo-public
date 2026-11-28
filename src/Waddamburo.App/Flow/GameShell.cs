@@ -470,6 +470,7 @@ internal sealed partial class GameShell : IDisposable
         foreach (var movie in movies)
         {
             movie.Publish("screen.name", screen);
+            movie.Publish("stage.width", LumenHostValue.FromNumber(Waddamburo.Lumen.Rendering.LumenStage.Width));
             movie.Publish("credits.freePlay", LumenHostValue.FromBoolean(Coins is null));
             movie.Publish("credits.count", number(Coins?.Credits));
             movie.Publish("credits.service", Coins is { } bank ? LumenHostValue.FromBoolean(bank.Service) : LumenHostValue.Undefined);

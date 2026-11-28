@@ -914,6 +914,14 @@
       "sample": "cover"
     },
     {
+      "name": "stage.width",
+      "kind": "state",
+      "type": "number",
+      "scope": "app",
+      "description": "How wide the stage is in movie units (720 tall): 960 at 4:3, 1280 at 16:9, 1680 at 21:9 and more for wider. Movies are made for 1280 and drawn in its middle (free-movies.md, Screen shapes); a movie that places things by script reads it to hold an edge.",
+      "sample": "1280"
+    },
+    {
       "name": "screen.name",
       "kind": "state",
       "type": "text",
