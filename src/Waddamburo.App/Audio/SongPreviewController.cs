@@ -1,3 +1,4 @@
+using Waddamburo.Catalog;
 using Waddamburo.Game.SongSelect;
 using Waddamburo.Platform.Sdl.Media;
 
@@ -24,6 +25,23 @@ internal sealed class SongPreviewController : ISongPreviewController, IDisposabl
     private bool _disposed;
     // A song was chosen: what plays goes on and nothing replaces it, until Silence (or Song Select's music again).
     private bool _held;
+    // The preview playing now: its song, where in its audio it started, and when (null: none, or Song Select's music).
+    private (SongKey Song, TimeSpan From, long Since)? _playing;
+
+    /// <summary>Loads the beat map of each song previewed (null: none).</summary>
+    public MusicBeats? Beats { get; init; }
+
+    /// <summary>
+    /// The song previewing now and how far into its audio it is (counted from when its stream started: close enough to
+    /// draw by, not to judge by); null when no preview plays.
+    /// </summary>
+    public (SongKey Song, TimeSpan Position)? NowPlaying()
+    {
+        lock (_gate)
+            return _playing is { } playing
+                ? (playing.Song, playing.From + System.Diagnostics.Stopwatch.GetElapsedTime(playing.Since))
+                : null;
+    }
 
     public SongPreviewController(
         AudioEngine audio,
@@ -85,6 +103,9 @@ internal sealed class SongPreviewController : ISongPreviewController, IDisposabl
                 return;
             if (request is not null && !_resolver.Resolves(request.Audio))
                 throw new ArgumentException("The preview asset belongs to another catalog provider.", nameof(request));
+            // Its beat map loads while the preview waits out its debounce and opens its audio.
+            if (request is not null)
+                Beats?.Want(request.Song);
             if (request is null
                 && _current is { Request: null } background
                 && (background.Handle is not { } handle || _audio.Mixer.IsPlaying(handle)))
@@ -150,6 +171,7 @@ internal sealed class SongPreviewController : ISongPreviewController, IDisposabl
                         return;
                     _audio.Mixer.SetBusVolume(AudioBus.Preview, 0f);
                     operation.Handle = _audio.Mixer.PlayStream(source, AudioBus.Preview, volume);
+                    _playing = (operation.Request.Song, operation.Request.Start, System.Diagnostics.Stopwatch.GetTimestamp());
                     _audio.Mixer.FadeBusVolume(AudioBus.Preview, 1f, PreviewFadeIn);
                     source = null;
                 }
@@ -213,6 +235,7 @@ internal sealed class SongPreviewController : ISongPreviewController, IDisposabl
 
     private void stopCurrent()
     {
+        _playing = null;
         var current = _current;
         _current = null;
         if (current is null)

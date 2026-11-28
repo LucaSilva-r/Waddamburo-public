@@ -463,6 +463,8 @@ internal sealed partial class GameShell : IDisposable
         // Song select's tab: which song of the credit comes next (the game has art for 1 to 4; home shows none).
         var stage = Active.Id == FlowScenes.SongSelect && !Arcade.Home ? Credit.SongsPlayed + 1 : (int?)null;
         var card = Sync.Pairing?.Shown();
+        // The beat of the song previewing now, for movies that move with it.
+        var beat = Previews?.NowPlaying() is { } playing ? Previews.Beats?.At(playing.Song, playing.Position) : null;
         var names = new LumenHostValue[2];
         for (var side = 0; side < 2; side++)
             names[side] = joined.Contains(side) ? LumenHostValue.FromString(TaikoGuest.Profiles[side]?.DisplayName ?? Strings.T("setup.guest"))
@@ -471,6 +473,8 @@ internal sealed partial class GameShell : IDisposable
         {
             movie.Publish("screen.name", screen);
             movie.Publish("stage.width", LumenHostValue.FromNumber(Waddamburo.Lumen.Rendering.LumenStage.Width));
+            movie.Publish("music.beat", beat is { } now ? LumenHostValue.FromNumber(now.Beat) : LumenHostValue.Undefined);
+            movie.Publish("music.bpm", beat is { } tempo ? LumenHostValue.FromNumber(tempo.Bpm) : LumenHostValue.Undefined);
             movie.Publish("credits.freePlay", LumenHostValue.FromBoolean(Coins is null));
             movie.Publish("credits.count", number(Coins?.Credits));
             movie.Publish("credits.service", Coins is { } bank ? LumenHostValue.FromBoolean(bank.Service) : LumenHostValue.Undefined);
@@ -866,7 +870,12 @@ internal sealed partial class GameShell : IDisposable
             Previews = Audio is null
                 ? null
                 : new SongPreviewController(Audio, Assets, FindJingle("JINGLE_GENRE.nub"), FindJingle("JINGLE_WAIGENRE.nub"),
-                    FindJingle("JINGLE_AIBTL_GENRE.nub"));
+                    FindJingle("JINGLE_AIBTL_GENRE.nub"))
+                {
+                    // A song's beat comes from its first chart (they share their audio and its tempo).
+                    Beats = new MusicBeats(song => FindSong(song)?.Descriptor.Charts.FirstOrDefault() is { } chart
+                        ? Assets.LoadChartAsync(chart.Key, chart.ChartAsset).AsTask().GetAwaiter().GetResult() : null),
+                };
             _boot.Begin("SOUND DATA");
             Sounds = Audio is null ? null : createSounds(Audio, options.SoundRoot, options.ArcadePath);
             _boot.Begin("GRAPHICS");

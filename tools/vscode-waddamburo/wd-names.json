@@ -914,6 +914,22 @@
       "sample": "cover"
     },
     {
+      "name": "music.beat",
+      "kind": "state",
+      "type": "number",
+      "scope": "app",
+      "description": "Where the song playing now (a song select preview) is in its beat: the count of beats from its chart's start, fractional (negative before it); no value when no song plays or its tempo is not known yet. The pulse of a beat is its fraction (beat % 1).",
+      "sample": "12.37"
+    },
+    {
+      "name": "music.bpm",
+      "kind": "state",
+      "type": "number",
+      "scope": "app",
+      "description": "The tempo of the song playing now, where it is (it changes with the chart's BPM changes); no value as for music.beat.",
+      "sample": "154"
+    },
+    {
       "name": "stage.width",
       "kind": "state",
       "type": "number",
