@@ -21,12 +21,15 @@ public enum LumenHostValueKind
 /// <summary>A bounded primitive value crossing the runtime/host boundary.</summary>
 public readonly record struct LumenHostValue
 {
+    // A number or a boolean in its own field (as an object each was a box: every Wd value the engine publishes).
     private readonly object? _value;
+    private readonly double _number;
 
-    private LumenHostValue(LumenHostValueKind kind, object? value)
+    private LumenHostValue(LumenHostValueKind kind, object? value, double number = 0)
     {
         Kind = kind;
         _value = value;
+        _number = number;
     }
 
     public LumenHostValueKind Kind { get; }
@@ -35,9 +38,9 @@ public readonly record struct LumenHostValue
 
     public static LumenHostValue Null { get; } = new(LumenHostValueKind.Null, null);
 
-    public static LumenHostValue FromBoolean(bool value) => new(LumenHostValueKind.Boolean, value);
+    public static LumenHostValue FromBoolean(bool value) => new(LumenHostValueKind.Boolean, null, value ? 1 : 0);
 
-    public static LumenHostValue FromNumber(double value) => new(LumenHostValueKind.Number, value);
+    public static LumenHostValue FromNumber(double value) => new(LumenHostValueKind.Number, null, value);
 
     public static LumenHostValue FromString(string value) =>
         new(LumenHostValueKind.Text, value ?? throw new ArgumentNullException(nameof(value)));
@@ -49,11 +52,11 @@ public readonly record struct LumenHostValue
         ? (IReadOnlyDictionary<string, LumenHostValue>)_value! : throw wrongKind(LumenHostValueKind.Fields);
 
     public bool AsBoolean() => Kind == LumenHostValueKind.Boolean
-        ? (bool)_value!
+        ? _number != 0
         : throw wrongKind(LumenHostValueKind.Boolean);
 
     public double AsNumber() => Kind == LumenHostValueKind.Number
-        ? (double)_value!
+        ? _number
         : throw wrongKind(LumenHostValueKind.Number);
 
     public string AsString() => Kind == LumenHostValueKind.Text
