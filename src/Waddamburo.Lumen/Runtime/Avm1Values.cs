@@ -18,10 +18,10 @@ internal sealed class Avm1LexicalScope(Avm1LexicalScope? parent = null)
     // by resizing as its locals were defined, a large share of a script's garbage). Names are mostly the movie's own
     // interned strings, so the reference check usually settles a comparison.
     private string[] _names = s_empty;
-    private object?[] _values = s_noValues;
+    private Avm1Value[] _values = s_noValues;
     private int _count;
     private static readonly string[] s_empty = [];
-    private static readonly object?[] s_noValues = [];
+    private static readonly Avm1Value[] s_noValues = [];
 
     public Avm1LexicalScope? Parent { get; private set; } = parent;
 
@@ -58,24 +58,24 @@ internal sealed class Avm1LexicalScope(Avm1LexicalScope? parent = null)
 
     public bool ContainsOwn(string name) => indexOf(name) >= 0;
 
-    public bool TryGetOwn(string name, out object? value)
+    public bool TryGetOwn(string name, out Avm1Value value)
     {
         var at = indexOf(name);
-        value = at >= 0 ? _values[at] : null;
+        value = at >= 0 ? _values[at] : default;
         return at >= 0;
     }
 
-    public bool TryGet(string name, out object? value)
+    public bool TryGet(string name, out Avm1Value value)
     {
         if (TryGetOwn(name, out value))
             return true;
         if (Parent is not null)
             return Parent.TryGet(name, out value);
-        value = null;
+        value = default;
         return false;
     }
 
-    public void Define(string name, object? value)
+    public void Define(string name, Avm1Value value)
     {
         var at = indexOf(name);
         if (at >= 0)
@@ -107,7 +107,7 @@ internal sealed class Avm1LexicalScope(Avm1LexicalScope? parent = null)
 
 internal class Avm1Object(int capacity = 0)
 {
-    public Dictionary<string, object?> Properties { get; } = new(capacity, StringComparer.Ordinal);
+    public Dictionary<string, Avm1Value> Properties { get; } = new(capacity, StringComparer.Ordinal);
 
     public Avm1Object? Prototype { get; set; }
 
@@ -119,11 +119,11 @@ internal class Avm1Object(int capacity = 0)
     }
 }
 
-internal sealed class Avm1ArrayObject(IReadOnlyList<object?> values) : Avm1Object
+internal sealed class Avm1ArrayObject(IReadOnlyList<Avm1Value> values) : Avm1Object
 {
-    private readonly List<object?> _values = [.. values];
+    private readonly List<Avm1Value> _values = [.. values];
 
-    public IReadOnlyList<object?> Values => _values;
+    public IReadOnlyList<Avm1Value> Values => _values;
 
     public Avm1Lookup GetIndexedProperty(string name)
     {
@@ -135,15 +135,12 @@ internal sealed class Avm1ArrayObject(IReadOnlyList<object?> values) : Avm1Objec
             : default;
     }
 
-    public bool TrySetIndexedProperty(string name, object? value, int maximumLength)
+    public bool TrySetIndexedProperty(string name, Avm1Value value, int maximumLength)
     {
         if (name == "length")
         {
-            var requested = value switch
-            {
-                double number when double.IsFinite(number) && number == Math.Truncate(number) => number,
-                _ => -1,
-            };
+            var requested = value.TryGetNumber(out var number) && double.IsFinite(number) && number == Math.Truncate(number)
+                ? number : -1;
             if (requested < 0 || requested > maximumLength)
                 return false;
             resize(checked((int)requested));
@@ -168,7 +165,7 @@ internal sealed class Avm1ArrayObject(IReadOnlyList<object?> values) : Avm1Objec
             _values.RemoveRange(length, _values.Count - length);
         else
             while (_values.Count < length)
-                _values.Add(Avm1Undefined.Instance);
+                _values.Add(Avm1Value.Undefined);
     }
 }
 
@@ -180,7 +177,7 @@ internal sealed class Avm1FunctionValue : Avm1Object
         Body = body;
         IsFunction2 = isFunction2;
         var prototype = new Avm1Object();
-        prototype.Properties["constructor"] = this;
+        prototype.Properties["constructor"] = Avm1Value.Of(this);
         Properties["prototype"] = prototype;
     }
 
@@ -208,9 +205,9 @@ internal sealed class Avm1NativeFunction(string name, LumenHostCallback callback
 }
 
 /// <summary>A host wrapper standing in for a script method (see LumenPlayer.TryWrapScriptMethod); gets the real this.</summary>
-internal sealed class Avm1MethodWrapper(Func<object?, IReadOnlyList<object?>, Avm1Lookup> invoke) : Avm1Object
+internal sealed class Avm1MethodWrapper(Func<Avm1Value, IReadOnlyList<Avm1Value>, Avm1Lookup> invoke) : Avm1Object
 {
-    public Avm1Lookup Invoke(object? thisValue, IReadOnlyList<object?> arguments) => invoke(thisValue, arguments);
+    public Avm1Lookup Invoke(Avm1Value thisValue, IReadOnlyList<Avm1Value> arguments) => invoke(thisValue, arguments);
 }
 
-internal sealed record Avm1SuperValue(object? ThisValue, Avm1Object? Level);
+internal sealed record Avm1SuperValue(Avm1Value ThisValue, Avm1Object? Level);

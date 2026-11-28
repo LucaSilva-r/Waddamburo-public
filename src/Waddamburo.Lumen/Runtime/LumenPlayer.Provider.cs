@@ -19,7 +19,7 @@ public sealed partial class LumenPlayer
 {
     // Drum 0 is "this movie's own"; a state's index is -1, a list's places their own (no key text made per read).
     private readonly Dictionary<(string Name, int Index, int Drum), LumenHostValue> _provided = [];
-    private readonly Dictionary<(string Name, int Drum), List<(Avm1FunctionValue Function, object? This)>> _providerListeners = [];
+    private readonly Dictionary<(string Name, int Drum), List<(Avm1FunctionValue Function, Avm1Value This)>> _providerListeners = [];
     private HashSet<string>? _providerWarned;
     private readonly HashSet<string> _providerAsked = new(StringComparer.Ordinal);
     private bool _hasOwnDrum;
@@ -106,12 +106,12 @@ public sealed partial class LumenPlayer
         ProviderTap?.Invoke(new(WdKind.Event, name, drum, 0, arguments.ToArray()));
         if (_providerListeners.Count == 0)
             return;
-        var converted = new object?[arguments.Length];
+        var converted = new Avm1Value[arguments.Length];
         for (var i = 0; i < arguments.Length; i++) converted[i] = fromHostValue(arguments[i]);
         tell(name, drum, converted);
     }
 
-    private void tell(string name, int drum, object?[] arguments)
+    private void tell(string name, int drum, Avm1Value[] arguments)
     {
         var told = false;
         void to(int listening)
@@ -132,41 +132,41 @@ public sealed partial class LumenPlayer
     private Avm1Object createProvider()
     {
         var wd = new Avm1Object();
-        string? known(IReadOnlyList<object?> arguments, string method)
+        string? known(IReadOnlyList<Avm1Value> arguments, string method)
         {
             UsesProvider = true;
-            if (arguments.Count > 0 && arguments[0] is string name && WdNames.Find(name) is not null)
+            if (arguments.Count > 0 && arguments[0].String is { } name && WdNames.Find(name) is not null)
             {
                 _providerAsked.Add(name);
                 return name;
             }
             // A mistyped name is the quiet failure of a pull API: say so, once, naming the movie.
-            var asked = arguments.Count > 0 ? arguments[0]?.ToString() ?? "null" : "(nothing)";
+            var asked = arguments.Count > 0 ? arguments[0].ToString() : "(nothing)";
             if ((_providerWarned ??= []).Add(asked))
                 Console.Error.WriteLine($"{Name ?? "A movie"}: Wd.{method}(\"{asked}\") is not a name the engine provides (version {WdNames.Version}).");
             return null;
         }
         wd.Properties["version"] = (double)WdNames.Version;
         // The player argument, where given: 1 or 2. Anything else is the movie's own drum.
-        static int drum(IReadOnlyList<object?> arguments, int at) =>
-            arguments.Count > at && arguments[at] is double number && number is 1 or 2 ? (int)number : 0;
+        static int drum(IReadOnlyList<Avm1Value> arguments, int at) =>
+            arguments.Count > at && arguments[at].TryGetNumber(out var number) && number is 1 or 2 ? (int)number : 0;
         // A list's name takes its index before the player: the key asked for, and where the player argument is.
-        (string Name, int Index, int Drum) asked(string name, IReadOnlyList<object?> arguments)
+        (string Name, int Index, int Drum) asked(string name, IReadOnlyList<Avm1Value> arguments)
         {
             if (WdNames.Find(name)!.Kind != WdKind.List)
                 return own(name, -1, drum(arguments, 1));
             // A list read without a usable index finds nothing (-2 is no place).
-            var index = arguments.Count > 1 && arguments[1] is double number && number >= 0 ? (int)number : -2;
+            var index = arguments.Count > 1 && arguments[1].TryGetNumber(out var number) && number >= 0 ? (int)number : -2;
             return own(name, index, drum(arguments, 2));
         }
         wd.Properties["get"] = new Avm1MethodWrapper((_, arguments) => new Avm1Lookup(true,
             known(arguments, "get") is { } name && _provided.TryGetValue(asked(name, arguments), out var value)
-                ? fromHostValue(value) : Avm1Undefined.Instance));
+                ? fromHostValue(value) : Avm1Value.Undefined));
         wd.Properties["has"] = new Avm1MethodWrapper((_, arguments) => new Avm1Lookup(true,
             known(arguments, "has") is { } name && _provided.ContainsKey(asked(name, arguments))));
         wd.Properties["on"] = new Avm1MethodWrapper((self, arguments) =>
         {
-            if (known(arguments, "on") is { } name && arguments.Count > 1 && arguments[1] is Avm1FunctionValue function)
+            if (known(arguments, "on") is { } name && arguments.Count > 1 && arguments[1].Object is Avm1FunctionValue function)
             {
                 var player = drum(arguments, 2);
                 if (!_providerListeners.TryGetValue((name, player), out var listeners))
@@ -176,7 +176,7 @@ public sealed partial class LumenPlayer
                 // "nothing yet" look from the same function as everything else. An event has no "now".
                 if (WdNames.Find(name)!.Kind == WdKind.State)
                     invokeFunction(_root, function, self,
-                        [_provided.TryGetValue(own(name, -1, player), out var value) ? fromHostValue(value) : Avm1Undefined.Instance], _activeContext);
+                        [_provided.TryGetValue(own(name, -1, player), out var value) ? fromHostValue(value) : Avm1Value.Undefined], _activeContext);
                 // A list's listener: every place that has a value, in order.
                 if (WdNames.Find(name)!.Kind == WdKind.List)
                 {
@@ -186,7 +186,7 @@ public sealed partial class LumenPlayer
                         invokeFunction(_root, function, self, [(double)index, fromHostValue(value)], _activeContext);
                 }
             }
-            return new Avm1Lookup(true, Avm1Undefined.Instance);
+            return new Avm1Lookup(true, Avm1Value.Undefined);
         });
         // Wd.request(name, ...): true when the engine took it. A refusal is no error in the movie; why is printed.
         wd.Properties["request"] = new Avm1MethodWrapper((_, arguments) =>

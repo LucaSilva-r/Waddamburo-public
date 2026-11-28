@@ -5,16 +5,16 @@ namespace Waddamburo.Lumen.Runtime;
 internal interface IAvm1Host
 {
     Avm1Lookup ReadVariable(Avm1ExecutionContext context, string name);
-    void WriteVariable(Avm1ExecutionContext context, string name, object? value);
-    Avm1Lookup ReadMember(Avm1ExecutionContext context, object? target, string name);
-    void WriteMember(Avm1ExecutionContext context, object? target, string name, object? value);
-    Avm1Lookup CallFunction(Avm1ExecutionContext context, string name, IReadOnlyList<object?> arguments);
-    Avm1Lookup CallMethod(Avm1ExecutionContext context, object? target, string name, IReadOnlyList<object?> arguments, int instructionOffset);
-    Avm1Lookup ConstructObject(Avm1ExecutionContext context, string name, IReadOnlyList<object?> arguments);
+    void WriteVariable(Avm1ExecutionContext context, string name, Avm1Value value);
+    Avm1Lookup ReadMember(Avm1ExecutionContext context, Avm1Value target, string name);
+    void WriteMember(Avm1ExecutionContext context, Avm1Value target, string name, Avm1Value value);
+    Avm1Lookup CallFunction(Avm1ExecutionContext context, string name, IReadOnlyList<Avm1Value> arguments);
+    Avm1Lookup CallMethod(Avm1ExecutionContext context, Avm1Value target, string name, IReadOnlyList<Avm1Value> arguments, int instructionOffset);
+    Avm1Lookup ConstructObject(Avm1ExecutionContext context, string name, IReadOnlyList<Avm1Value> arguments);
     void GotoLabel(Avm1ExecutionContext context, string label);
-    Avm1Lookup CloneSprite(Avm1ExecutionContext context, object? source, string name, int depth);
-    void RemoveSprite(Avm1ExecutionContext context, object? target);
-    void GotoFrame(Avm1ExecutionContext context, object? value, bool play, int bias);
+    Avm1Lookup CloneSprite(Avm1ExecutionContext context, Avm1Value source, string name, int depth);
+    void RemoveSprite(Avm1ExecutionContext context, Avm1Value target);
+    void GotoFrame(Avm1ExecutionContext context, Avm1Value value, bool play, int bias);
     void HostCommand(Avm1ExecutionContext context, string command, string argument);
-    Avm1Lookup ConstructMethod(Avm1ExecutionContext context, object? target, string name, IReadOnlyList<object?> arguments);
+    Avm1Lookup ConstructMethod(Avm1ExecutionContext context, Avm1Value target, string name, IReadOnlyList<Avm1Value> arguments);
 }

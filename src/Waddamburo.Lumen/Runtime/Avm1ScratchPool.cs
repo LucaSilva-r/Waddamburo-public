@@ -9,17 +9,17 @@ namespace Waddamburo.Lumen.Runtime;
 internal static class Avm1ScratchPool
 {
     // One pool per register count (each script's register file is sized to what it references).
-    [ThreadStatic] private static Dictionary<int, Stack<object?[]>>? s_registers;
-    [ThreadStatic] private static Stack<List<object?>>? s_stacks;
+    [ThreadStatic] private static Dictionary<int, Stack<Avm1Value[]>>? s_registers;
+    [ThreadStatic] private static Stack<List<Avm1Value>>? s_stacks;
 
     public static RegisterLease RentRegisters(int count)
     {
-        var registers = pool(count).TryPop(out var reused) ? reused : new object?[count];
-        Array.Fill(registers, Avm1Undefined.Instance);
+        // Cleared when it came back, and a cleared value is undefined.
+        var registers = pool(count).TryPop(out var reused) ? reused : new Avm1Value[count];
         return new RegisterLease(registers);
     }
 
-    private static Stack<object?[]> pool(int count)
+    private static Stack<Avm1Value[]> pool(int count)
     {
         var pools = s_registers ??= [];
         if (!pools.TryGetValue(count, out var pool))
@@ -29,9 +29,9 @@ internal static class Avm1ScratchPool
 
     public static StackLease RentStack() => new((s_stacks ??= new()).TryPop(out var reused) ? reused : []);
 
-    public readonly struct RegisterLease(object?[] registers) : IDisposable
+    public readonly struct RegisterLease(Avm1Value[] registers) : IDisposable
     {
-        public object?[] Registers { get; } = registers;
+        public Avm1Value[] Registers { get; } = registers;
 
         public void Dispose()
         {
@@ -40,9 +40,9 @@ internal static class Avm1ScratchPool
         }
     }
 
-    public readonly struct StackLease(List<object?> stack) : IDisposable
+    public readonly struct StackLease(List<Avm1Value> stack) : IDisposable
     {
-        public List<object?> Stack { get; } = stack;
+        public List<Avm1Value> Stack { get; } = stack;
 
         public void Dispose()
         {

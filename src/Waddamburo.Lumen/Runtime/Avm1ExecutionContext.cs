@@ -3,18 +3,18 @@ namespace Waddamburo.Lumen.Runtime;
 internal sealed class Avm1ExecutionContext(
     IAvm1Host host,
     object owner,
-    object? thisValue,
+    Avm1Value thisValue,
     Avm1LexicalScope? lexicalScope,
     object? timelineTarget,
     Avm1ExecutionContext? transactionParent)
 {
     // Made on the first write: a context is built for every script call and most write nothing (six collections
     // per call were a large share of a song select tick's garbage).
-    private Dictionary<string, object?>? _variableWrites;
-    private Dictionary<LexicalKey, object?>? _lexicalWrites;
-    private Dictionary<MemberKey, object?>? _memberWrites;
+    private Dictionary<string, Avm1Value>? _variableWrites;
+    private Dictionary<LexicalKey, Avm1Value>? _lexicalWrites;
+    private Dictionary<MemberKey, Avm1Value>? _memberWrites;
     private List<Action>? _commitActions;
-    private Dictionary<MemberKey, object?>? _transientMembers;
+    private Dictionary<MemberKey, Avm1Value>? _transientMembers;
     private Dictionary<DisplayKey, object?>? _transientChildren;
 
     public Avm1Lookup GetVariable(string name) =>
@@ -22,17 +22,17 @@ internal sealed class Avm1ExecutionContext(
             ? new Avm1Lookup(true, value)
             : host.ReadVariable(this, name);
 
-    public void SetVariable(string name, object? value)
+    public void SetVariable(string name, Avm1Value value)
     {
         if (tryFindLexicalOwner(name, out var owner))
             Pool<LexicalKey>.Set(ref _lexicalWrites, new LexicalKey(owner, name), value);
         else if (TimelineTarget is not null)
-            SetMember(TimelineTarget, name, value);
+            SetMember(Avm1Value.Of(TimelineTarget), name, value);
         else
             Pool<string>.Set(ref _variableWrites, name, value);
     }
 
-    public void DefineLocal(string name, object? value)
+    public void DefineLocal(string name, Avm1Value value)
     {
         if (LexicalScope is null)
             SetVariable(name, value);
@@ -45,7 +45,7 @@ internal sealed class Avm1ExecutionContext(
     /// <summary>The clip whose script runs (its timeline for a function's call).</summary>
     public object Owner { get; } = owner;
 
-    public object? ThisValue { get; } = thisValue;
+    public Avm1Value ThisValue { get; } = thisValue;
 
     /// <summary>The execution this one commits into (null: commits to the player).</summary>
     public Avm1ExecutionContext? TransactionParent => transactionParent;
@@ -67,42 +67,46 @@ internal sealed class Avm1ExecutionContext(
         return default;
     }
 
-    public Avm1Lookup GetMember(object? target, string name) =>
-        _transientMembers is not null && _transientMembers.TryGetValue(new MemberKey(target, name), out var transient)
+    public Avm1Lookup GetMember(Avm1Value target, string name) =>
+        _transientMembers is not null && _transientMembers.TryGetValue(new MemberKey(identity(target), name), out var transient)
             ? new Avm1Lookup(true, transient)
-            : _memberWrites is not null && _memberWrites.TryGetValue(new MemberKey(target, name), out var value)
+            : _memberWrites is not null && _memberWrites.TryGetValue(new MemberKey(identity(target), name), out var value)
             ? new Avm1Lookup(true, value)
             : host.ReadMember(this, target, name);
 
-    public void SetMember(object? target, string name, object? value) =>
-        Pool<MemberKey>.Set(ref _memberWrites, new MemberKey(target, name), value);
+    public void SetMember(Avm1Value target, string name, Avm1Value value) =>
+        Pool<MemberKey>.Set(ref _memberWrites, new MemberKey(identity(target), name), value);
 
-    public Avm1Lookup CallFunction(string name, IReadOnlyList<object?> arguments) =>
+    // What a member's target is known by in the pending writes: its string or object (a number's members are never
+    // written, so its box is no cost).
+    private static object? identity(Avm1Value target) => target.Reference ?? target.Boxed;
+
+    public Avm1Lookup CallFunction(string name, IReadOnlyList<Avm1Value> arguments) =>
         host.CallFunction(this, name, arguments);
 
-    public Avm1Lookup CallMethod(object? target, string name, IReadOnlyList<object?> arguments, int instructionOffset) =>
+    public Avm1Lookup CallMethod(Avm1Value target, string name, IReadOnlyList<Avm1Value> arguments, int instructionOffset) =>
         host.CallMethod(this, target, name, arguments, instructionOffset);
 
-    public Avm1Lookup ConstructObject(string name, IReadOnlyList<object?> arguments) =>
+    public Avm1Lookup ConstructObject(string name, IReadOnlyList<Avm1Value> arguments) =>
         host.ConstructObject(this, name, arguments);
 
-    public Avm1Lookup ConstructMethod(object? target, string name, IReadOnlyList<object?> arguments) =>
+    public Avm1Lookup ConstructMethod(Avm1Value target, string name, IReadOnlyList<Avm1Value> arguments) =>
         host.ConstructMethod(this, target, name, arguments);
 
     public void GotoLabel(string label) => host.GotoLabel(this, label);
 
-    public void GotoFrame(object? frame, bool play, int sceneBias) =>
+    public void GotoFrame(Avm1Value frame, bool play, int sceneBias) =>
         host.GotoFrame(this, frame, play, sceneBias);
 
     public void SendHostCommand(string command, string argument) =>
         OnCommit(() => host.HostCommand(this, command, argument));
 
-    public Avm1Lookup CloneSprite(object? source, string name, int depth)
+    public Avm1Lookup CloneSprite(Avm1Value source, string name, int depth)
         => host.CloneSprite(this, source, name, depth);
 
-    public void RemoveSprite(object? target) => host.RemoveSprite(this, target);
+    public void RemoveSprite(Avm1Value target) => host.RemoveSprite(this, target);
 
-    public void SetTransientMember(object target, string name, object? value) =>
+    public void SetTransientMember(object target, string name, Avm1Value value) =>
         (_transientMembers ??= [])[new MemberKey(target, name)] = value;
 
     public void SetTransientChild(object parent, long depth, object? value) =>
@@ -136,7 +140,7 @@ internal sealed class Avm1ExecutionContext(
                 host.WriteVariable(this, name, value);
         if (_memberWrites is not null)
             foreach (var (key, value) in _memberWrites)
-                host.WriteMember(this, key.Target, key.Name, value);
+                host.WriteMember(this, Avm1Value.Of(key.Target), key.Name, value);
         // The write dictionaries are spent: back to the pool, capacity kept (a fresh one per call grew by resizing).
         Pool<LexicalKey>.Return(ref _lexicalWrites);
         Pool<string>.Return(ref _variableWrites);
@@ -155,8 +159,8 @@ internal sealed class Avm1ExecutionContext(
     // Per thread, so scripts on other threads (a loading screen's) never share one.
     private static class Pool<TKey> where TKey : notnull
     {
-        [ThreadStatic] private static Stack<Dictionary<TKey, object?>>? s_small;
-        [ThreadStatic] private static Stack<Dictionary<TKey, object?>>? s_large;
+        [ThreadStatic] private static Stack<Dictionary<TKey, Avm1Value>>? s_small;
+        [ThreadStatic] private static Stack<Dictionary<TKey, Avm1Value>>? s_large;
 
         // Most executions write a few names; a helper that others commit into (a layout() whose place() calls each write
         // _x, _y and _rotation) gathers hundreds each tick. Every execution starts with a small dictionary, as clearing
@@ -164,7 +168,7 @@ internal sealed class Avm1ExecutionContext(
         private const int SmallCount = 16;          // under a small one's capacity (17), so it never resizes
         private const int MaximumPooledCapacity = 8192; // a freak (tens of thousands of writes) is dropped
 
-        public static void Set(ref Dictionary<TKey, object?>? dictionary, TKey key, object? value)
+        public static void Set(ref Dictionary<TKey, Avm1Value>? dictionary, TKey key, Avm1Value value)
         {
             var written = dictionary ??= rent(s_small ??= new(), SmallCount + 1);
             written[key] = value;
@@ -178,12 +182,12 @@ internal sealed class Avm1ExecutionContext(
             dictionary = large;
         }
 
-        private static Dictionary<TKey, object?> rent(Stack<Dictionary<TKey, object?>> pool, int capacity) =>
+        private static Dictionary<TKey, Avm1Value> rent(Stack<Dictionary<TKey, Avm1Value>> pool, int capacity) =>
             pool.TryPop(out var reused) ? reused
-            : typeof(TKey) == typeof(string) ? (Dictionary<TKey, object?>)(object)new Dictionary<string, object?>(capacity, StringComparer.Ordinal)
-            : new Dictionary<TKey, object?>(capacity);
+            : typeof(TKey) == typeof(string) ? (Dictionary<TKey, Avm1Value>)(object)new Dictionary<string, Avm1Value>(capacity, StringComparer.Ordinal)
+            : new Dictionary<TKey, Avm1Value>(capacity);
 
-        public static void Return(ref Dictionary<TKey, object?>? dictionary)
+        public static void Return(ref Dictionary<TKey, Avm1Value>? dictionary)
         {
             if (dictionary is null)
                 return;
@@ -219,13 +223,13 @@ internal sealed class Avm1ExecutionContext(
     private bool commitParentHasLexicalWrite(LexicalKey key) =>
         transactionParent?.hasLexicalWrite(key) == true;
 
-    private bool tryGetLexicalWrite(LexicalKey key, out object? value)
+    private bool tryGetLexicalWrite(LexicalKey key, out Avm1Value value)
     {
         if (_lexicalWrites is not null && _lexicalWrites.TryGetValue(key, out value))
             return true;
         if (transactionParent is not null)
             return transactionParent.tryGetLexicalWrite(key, out value);
-        value = null;
+        value = default;
         return false;
     }
 
@@ -255,4 +259,4 @@ internal sealed class Avm1ExecutionContext(
     }
 }
 
-internal readonly record struct Avm1Lookup(bool Found, object? Value);
+internal readonly record struct Avm1Lookup(bool Found, Avm1Value Value);

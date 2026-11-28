@@ -33,7 +33,9 @@ public sealed partial class LumenPlayer : IAvm1Host
     private bool _constructing;
     // Clips a goto creates on the frames it passes through (their scripts are not queued there).
     private List<DisplayInstance>? _gotoBorn;
-    private readonly Dictionary<string, object?> _globals = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Avm1Value> _globals = new(StringComparer.Ordinal);
+    // The globals table as a script sees it (_global), made once.
+    private Avm1Value GlobalsValue => Avm1Value.Wrap(_globals);
     private readonly Dictionary<string, Avm1FunctionValue> _classes = new(StringComparer.Ordinal);
     private readonly Dictionary<string, CallbackRegistration> _callbacks = new(StringComparer.Ordinal);
     private readonly Dictionary<string, NativeFillBinding> _nativeFills = new(StringComparer.Ordinal);
@@ -81,13 +83,13 @@ public sealed partial class LumenPlayer : IAvm1Host
             throw new ArgumentException($"Root character {rootId} is not a defined sprite.", nameof(rootCharacterId));
 
         _root = new DisplayInstance(rootId, hierarchyDepth: 0, parent: null) { Name = "_level0" };
-        _globals["_global"] = _globals;
-        _globals["_root"] = _root;
+        _globals["_global"] = GlobalsValue;
+        _globals["_root"] = Avm1Value.Of(_root);
         _globals["Object"] = createBuiltinConstructor();
         _globals["MovieClip"] = createBuiltinConstructor();
         _globals["Array"] = createBuiltinConstructor();
-        _globals["MovieClipLoader"] = new MovieClipLoaderConstructor();
-        _globals["Date"] = new DateConstructor();
+        _globals["MovieClipLoader"] = Avm1Value.Of(new MovieClipLoaderConstructor());
+        _globals["Date"] = Avm1Value.Of(new DateConstructor());
         installKeyObject();
         installMathObject();
         installExternalInterface();
@@ -257,7 +259,7 @@ public sealed partial class LumenPlayer : IAvm1Host
             null => "null",
             LumenHostValue value => describe(value),
             DisplayInstance => "clip",
-            Avm1Object or Dictionary<string, object?> => "object",
+            Avm1Object or Dictionary<string, Avm1Value> => "object",
             _ => Convert.ToString(result, CultureInfo.InvariantCulture) ?? "",
         };
         if (!(_edgeResults ??= new(StringComparer.Ordinal)).TryGetValue(what, out var last) || last != text)
@@ -375,15 +377,15 @@ public sealed partial class LumenPlayer : IAvm1Host
         var target = readScriptValue(targetPath);
         var function = target switch
         {
-            Avm1Object script => script.GetProperty(method).Value,
-            DisplayInstance clip => clip.ScriptPrototype?.GetProperty(method).Value,
+            Avm1Object script => script.GetProperty(method).Value.Object,
+            DisplayInstance clip => clip.ScriptPrototype?.GetProperty(method).Value.Object,
             _ => null,
         };
         if (LumenEdgeLog.Enabled)
             edge("call", $"{targetPath}.{method}({describe(arguments)}){(function is Avm1FunctionValue ? "" : " -> (missing)")}");
         if (target is null || function is not Avm1FunctionValue callable)
             return false;
-        var invoked = invokeFunction(_root, callable, target, arguments.Select(fromHostValue).ToArray(), _activeContext).Found;
+        var invoked = invokeFunction(_root, callable, Avm1Value.Of(target), arguments.Select(fromHostValue).ToArray(), _activeContext).Found;
         if (invoked)
             drainActions();
         return invoked;
@@ -402,7 +404,7 @@ public sealed partial class LumenPlayer : IAvm1Host
         ArgumentException.ThrowIfNullOrWhiteSpace(method);
         ArgumentNullException.ThrowIfNull(host);
         if (readScriptValue(targetPath) is not Avm1Object target
-            || target.GetProperty(method).Value is not Avm1FunctionValue original)
+            || target.GetProperty(method).Value.Object is not Avm1FunctionValue original)
             return used(false, "wrap", targetPath, "." + method);
         used(true, "wrap", targetPath, "." + method);
         target.Properties[method] = new Avm1MethodWrapper((self, arguments) => new Avm1Lookup(true, fromHostValue(host(
@@ -422,12 +424,12 @@ public sealed partial class LumenPlayer : IAvm1Host
         ArgumentException.ThrowIfNullOrWhiteSpace(method);
         var what = LumenEdgeLog.Enabled ? $".{method}({string.Join(", ", arguments)}){(member is null ? "" : "." + member)}" : "";
         if (readScriptValue(targetPath) is not Avm1Object target
-            || target.GetProperty(method).Value is not Avm1FunctionValue function)
+            || target.GetProperty(method).Value.Object is not Avm1FunctionValue function)
             return used((double?)null, "call", targetPath, what);
-        var result = invokeFunction(_root, function, target, [.. arguments.Select(static argument => (object?)argument)], _activeContext).Value;
+        var result = invokeFunction(_root, function, target, [.. arguments.Select(static argument => (Avm1Value)argument)], _activeContext).Value;
         if (member is not null)
-            result = result is Avm1Object returned ? returned.GetProperty(member).Value : null;
-        return used(result is double number ? number : (double?)null, "call", targetPath, what);
+            result = result.Object is Avm1Object returned ? returned.GetProperty(member).Value : Avm1Value.Undefined;
+        return used(result.TryGetNumber(out var number) ? number : (double?)null, "call", targetPath, what);
     }
 
     public void Advance()
@@ -465,17 +467,17 @@ public sealed partial class LumenPlayer : IAvm1Host
         var pending = _pendingLoadInits.ToArray();
         _pendingLoadInits.Clear();
         foreach (var (listener, target) in pending)
-            if (listener.GetProperty("onLoadInit").Value is Avm1FunctionValue onLoadInit)
-                invokeFunction(_root, onLoadInit, listener, [target], _activeContext);
+            if (listener.GetProperty("onLoadInit").Value.Object is Avm1FunctionValue onLoadInit)
+                invokeFunction(_root, onLoadInit, listener, [Avm1Value.Of(target)], _activeContext);
         if (pending.Length != 0)
             drainActions();
     }
 
     /// <summary>A method called on a clip holding a loaded movie: its root function or callback.</summary>
-    private static Avm1Lookup callLoadedMovie(LumenPlayer child, string name, IReadOnlyList<object?> arguments)
+    private static Avm1Lookup callLoadedMovie(LumenPlayer child, string name, IReadOnlyList<Avm1Value> arguments)
     {
         var converted = arguments.Select(toHostValue).ToArray();
-        if (child._root.Variables.GetValueOrDefault(name) is Avm1FunctionValue function)
+        if (child._root.Variables.GetValueOrDefault(name).Object is Avm1FunctionValue function)
         {
             if (LumenEdgeLog.Enabled)
                 child.edge("in", $"{name}({describe(converted)}) (root function, from the loading movie)");
@@ -484,7 +486,7 @@ public sealed partial class LumenPlayer : IAvm1Host
             child.drainActions();
             return new Avm1Lookup(true, fromHostValue(toHostValue(result.Value)));
         }
-        return new Avm1Lookup(child.TryInvokeCallback(name, converted), Avm1Undefined.Instance);
+        return new Avm1Lookup(child.TryInvokeCallback(name, converted), Avm1Value.Undefined);
     }
 
     public void Seek(int frame)
@@ -694,16 +696,16 @@ public sealed partial class LumenPlayer : IAvm1Host
             _scriptPaths[path] = parts = path.Split('.');
         // "_global.x" starts at the script globals, anything else at the root timeline.
         var global = parts[0] == "_global";
-        object? value = global ? _globals.GetValueOrDefault("_global") : _root;
+        object? value = global ? _globals.GetValueOrDefault("_global").Object : _root;
         for (var index = global ? 1 : 0; index < parts.Length; index++)
         {
             var part = parts[index];
             value = value switch
             {
-                DisplayInstance instance => instance.Variables.GetValueOrDefault(part) ?? childNamed(instance, part),
-                Avm1ArrayObject array => array.GetIndexedProperty(part).Value,
-                Avm1Object script => script.Properties.GetValueOrDefault(part),
-                Dictionary<string, object?> globals => globals.GetValueOrDefault(part),
+                DisplayInstance instance => instance.Variables.TryGetValue(part, out var own) && !own.IsNull ? own.Boxed : childNamed(instance, part),
+                Avm1ArrayObject array => array.GetIndexedProperty(part) is { Found: true } element ? element.Value.Boxed : null,
+                Avm1Object script => script.Properties.TryGetValue(part, out var property) ? property.Boxed : null,
+                Dictionary<string, Avm1Value> globals => globals.TryGetValue(part, out var fromGlobals) ? fromGlobals.Boxed : null,
                 _ => null,
             };
             if (value is null) return null;
@@ -725,18 +727,19 @@ public sealed partial class LumenPlayer : IAvm1Host
             return false;
         var name = path[(split + 1)..];
         used(value, "write", path);
+        var written = Avm1Value.Of(value);
         switch (readScriptValue(path[..split]))
         {
             case DisplayInstance instance:
-                instance.Variables[name] = value;
+                instance.Variables[name] = written;
                 return true;
             case Avm1ArrayObject array:
-                return array.TrySetIndexedProperty(name, value, _limits.MaxStackValues);
+                return array.TrySetIndexedProperty(name, written, _limits.MaxStackValues);
             case Avm1Object script:
-                script.Properties[name] = value;
+                script.Properties[name] = written;
                 return true;
-            case Dictionary<string, object?> globals:
-                globals[name] = value;
+            case Dictionary<string, Avm1Value> globals:
+                globals[name] = written;
                 return true;
             default:
                 return false;
@@ -961,7 +964,7 @@ public sealed partial class LumenPlayer : IAvm1Host
                      .Order(StringComparer.Ordinal))
         {
             var candidate = _activeContext.GetVariable(name);
-            if (candidate.Found && candidate.Value is double number && number == value)
+            if (candidate.Found && candidate.Value.TryGetNumber(out var number) && number == value)
                 return name;
         }
         return null;
@@ -1200,7 +1203,7 @@ public sealed partial class LumenPlayer : IAvm1Host
     // Prototypes are available immediately, so a parent's constructor can still find child methods.
     private void queueConstruction(DisplayInstance instance, Avm1FunctionValue function)
     {
-        instance.ScriptPrototype = function.GetProperty("prototype").Value as Avm1Object;
+        instance.ScriptPrototype = function.GetProperty("prototype").Value.Object as Avm1Object;
         _pendingConstructions.Add((instance, function));
     }
 
@@ -1393,7 +1396,7 @@ public sealed partial class LumenPlayer : IAvm1Host
             if (instance.Removed)
                 continue;
             var handler = readMember(instance, "onEnterFrame");
-            if (handler.Found && handler.Value is Avm1FunctionValue function)
+            if (handler.Found && handler.Value.Object is Avm1FunctionValue function)
                 invokeFunction(instance, function, instance, []);
         }
     }
@@ -1462,7 +1465,7 @@ public sealed partial class LumenPlayer : IAvm1Host
         DisplayInstance instance,
         Avm1ExecutionContext? parentContext,
         Avm1LexicalScope? lexicalScope,
-        object? thisValue,
+        Avm1Value thisValue,
         object? timelineTarget) =>
         // One object per script call: the callbacks are this player's (IAvm1Host), the call's own state rides on the
         // context (a closure and eleven delegates per call were most of a song select tick's garbage).
@@ -1479,29 +1482,29 @@ public sealed partial class LumenPlayer : IAvm1Host
         if (name == "_parent")
             return new Avm1Lookup(instance.Parent is not null, instance.Parent);
         if (name == "_global")
-            return new Avm1Lookup(true, _globals);
+            return new Avm1Lookup(true, GlobalsValue);
         var lexical = context.GetLexicalVariable(name);
         if (lexical.Found)
             return lexical;
         var instanceMember = context.GetMember(instance, name);
         return instanceMember.Found
             ? instanceMember
-            : context.GetMember(_globals, name);
+            : context.GetMember(GlobalsValue, name);
     }
 
-    void IAvm1Host.WriteVariable(Avm1ExecutionContext context, string name, object? value)
+    void IAvm1Host.WriteVariable(Avm1ExecutionContext context, string name, Avm1Value value)
     {
         var instance = (DisplayInstance)context.Owner;
         instance.Variables[name] = value;
     }
 
-    Avm1Lookup IAvm1Host.ReadMember(Avm1ExecutionContext context, object? target, string name)
+    Avm1Lookup IAvm1Host.ReadMember(Avm1ExecutionContext context, Avm1Value target, string name)
     {
         var parentContext = context.TransactionParent;
         return parentContext?.GetMember(target, name) ?? readMember(target, name);
     }
 
-    void IAvm1Host.WriteMember(Avm1ExecutionContext context, object? target, string name, object? value)
+    void IAvm1Host.WriteMember(Avm1ExecutionContext context, Avm1Value target, string name, Avm1Value value)
     {
         var parentContext = context.TransactionParent;
         if (parentContext is null)
@@ -1510,18 +1513,18 @@ public sealed partial class LumenPlayer : IAvm1Host
             parentContext.SetMember(target, name, value);
     }
 
-    Avm1Lookup IAvm1Host.CallFunction(Avm1ExecutionContext context, string name, IReadOnlyList<object?> arguments)
+    Avm1Lookup IAvm1Host.CallFunction(Avm1ExecutionContext context, string name, IReadOnlyList<Avm1Value> arguments)
     {
         var instance = (DisplayInstance)context.Owner;
         var candidate = context.GetVariable(name);
-        if (candidate.Found && candidate.Value is Avm1FunctionValue function)
+        if (candidate.Found && candidate.Value.Object is Avm1FunctionValue function)
             return invokeFunction(instance, function, instance, arguments, context);
-        if (candidate.Found && candidate.Value is Avm1MethodWrapper wrapper)
+        if (candidate.Found && candidate.Value.Object is Avm1MethodWrapper wrapper)
             return wrapper.Invoke(instance, arguments);
-        if (candidate.Found && candidate.Value is Avm1NativeFunction nativeFunction)
+        if (candidate.Found && candidate.Value.Object is Avm1NativeFunction nativeFunction)
             return invokeHost(instance, nativeFunction, arguments);
         if (name == "ASSetPropFlags")
-            return new Avm1Lookup(true, Avm1Undefined.Instance);
+            return new Avm1Lookup(true, Avm1Value.Undefined);
         // Boolean(x) as a conversion function (attract title polls its stream this way).
         if (name == "Boolean")
             return new Avm1Lookup(true, arguments.Count > 0 && toBoolean(arguments[0]));
@@ -1533,11 +1536,11 @@ public sealed partial class LumenPlayer : IAvm1Host
         return default;
     }
 
-    private Avm1Lookup addCallback(Avm1ExecutionContext context, DisplayInstance instance, IReadOnlyList<object?> arguments)
+    private Avm1Lookup addCallback(Avm1ExecutionContext context, DisplayInstance instance, IReadOnlyList<Avm1Value> arguments)
     {
         if (arguments.Count >= 3
-            && arguments[0] is string callbackName
-            && arguments[2] is Avm1FunctionValue callbackFunction)
+            && arguments[0].String is { } callbackName
+            && arguments[2].Object is Avm1FunctionValue callbackFunction)
         {
             var thisObject = arguments[1];
             context.OnCommit(() =>
@@ -1552,7 +1555,7 @@ public sealed partial class LumenPlayer : IAvm1Host
     }
 
     // Array.pop, shift, join and reverse.
-    private static Avm1Lookup listMethod(Avm1ExecutionContext context, Avm1ArrayObject listArray, string name, IReadOnlyList<object?> arguments)
+    private static Avm1Lookup listMethod(Avm1ExecutionContext context, Avm1ArrayObject listArray, string name, IReadOnlyList<Avm1Value> arguments)
     {
         var lengthLookup = context.GetMember(listArray, "length");
         var length = lengthLookup.Found ? toNumber(lengthLookup.Value) : 0;
@@ -1560,9 +1563,9 @@ public sealed partial class LumenPlayer : IAvm1Host
         string key(int index) => index.ToString(System.Globalization.CultureInfo.InvariantCulture);
         if (name == "join")
         {
-            var separator = arguments.Count > 0 && arguments[0] is not Avm1Undefined ? toAvmString(arguments[0]) : ",";
+            var separator = arguments.Count > 0 && !arguments[0].IsUndefined ? toAvmString(arguments[0]) : ",";
             return new Avm1Lookup(true, string.Join(separator, Enumerable.Range(0, count).Select(index =>
-                context.GetMember(listArray, key(index)) is { Found: true, Value: not (null or Avm1Undefined) } item
+                context.GetMember(listArray, key(index)) is { Found: true, Value.IsNullish: false } item
                     ? toAvmString(item.Value) : "")));
         }
         // In place, and the array itself (reward_shop's reward list).
@@ -1574,8 +1577,8 @@ public sealed partial class LumenPlayer : IAvm1Host
             return new Avm1Lookup(true, listArray);
         }
         if (count == 0)
-            return new Avm1Lookup(true, Avm1Undefined.Instance);
-        object? removed;
+            return new Avm1Lookup(true, Avm1Value.Undefined);
+        Avm1Value removed;
         if (name == "pop")
             removed = context.GetMember(listArray, key(count - 1)).Value;
         else
@@ -1585,13 +1588,13 @@ public sealed partial class LumenPlayer : IAvm1Host
                 context.SetMember(listArray, key(index - 1), context.GetMember(listArray, key(index)).Value);
         }
         context.SetMember(listArray, "length", (double)(count - 1));
-        return new Avm1Lookup(true, removed ?? Avm1Undefined.Instance);
+        return new Avm1Lookup(true, removed);
     }
 
     // Flash 8's String methods (AS2 semantics: a negative start counts from the end where Flash does, NaN is 0).
-    private static object stringMethod(string text, string name, IReadOnlyList<object?> arguments)
+    private static Avm1Value stringMethod(string text, string name, IReadOnlyList<Avm1Value> arguments)
     {
-        bool given(int index) => arguments.Count > index && arguments[index] is not Avm1Undefined and not null;
+        bool given(int index) => arguments.Count > index && !arguments[index].IsNullish;
         int number(int index, int otherwise)
         {
             if (!given(index)) return otherwise;
@@ -1619,13 +1622,13 @@ public sealed partial class LumenPlayer : IAvm1Host
             }
             case "indexOf":
             {
-                var wanted = toAvmString(given(0) ? arguments[0] : Avm1Undefined.Instance);
+                var wanted = toAvmString(given(0) ? arguments[0] : Avm1Value.Undefined);
                 var from = Math.Clamp(number(1, 0), 0, text.Length);
                 return (double)text.IndexOf(wanted, from, StringComparison.Ordinal);
             }
             case "lastIndexOf":
             {
-                var wanted = toAvmString(given(0) ? arguments[0] : Avm1Undefined.Instance);
+                var wanted = toAvmString(given(0) ? arguments[0] : Avm1Value.Undefined);
                 var from = Math.Clamp(number(1, text.Length), 0, text.Length);
                 var limit = Math.Min(text.Length, from + wanted.Length);
                 return (double)text[..limit].LastIndexOf(wanted, StringComparison.Ordinal);
@@ -1637,32 +1640,32 @@ public sealed partial class LumenPlayer : IAvm1Host
         }
     }
 
-    Avm1Lookup IAvm1Host.CallMethod(Avm1ExecutionContext context, object? target, string name, IReadOnlyList<object?> arguments, int instructionOffset)
+    Avm1Lookup IAvm1Host.CallMethod(Avm1ExecutionContext context, Avm1Value target, string name, IReadOnlyList<Avm1Value> arguments, int instructionOffset)
     {
         var instance = (DisplayInstance)context.Owner;
         // Branches whose lambdas would capture this method's parameters live in methods of their own: a captured
         // parameter makes C# allocate the closure on every call, and this runs for every script call.
-        if (ReferenceEquals(target, _externalInterface) && name == "addCallback")
+        if (ReferenceEquals(target.Object, _externalInterface) && name == "addCallback")
             return addCallback(context, instance, arguments);
-        if (name == "toString" && target is null or bool or double or string or Avm1Undefined)
+        if (name == "toString" && target.Kind is not Avm1Kind.Object)
             return new Avm1Lookup(true, toAvmString(target));
-        if (target is string text && name == "charAt")
+        if (target.String is { } text && name == "charAt")
         {
             var index = arguments.Count > 0 ? (int)toNumber(arguments[0]) : 0;
             return new Avm1Lookup(
                 true,
                 (uint)index < (uint)text.Length ? text[index].ToString() : string.Empty);
         }
-        if (target is string stringTarget && name is "substr" or "substring" or "slice" or "indexOf" or "lastIndexOf" or "toUpperCase" or "toLowerCase")
+        if (target.String is { } stringTarget && name is "substr" or "substring" or "slice" or "indexOf" or "lastIndexOf" or "toUpperCase" or "toLowerCase")
             return new Avm1Lookup(true, stringMethod(stringTarget, name, arguments));
-        if (target is string codeText && name == "charCodeAt")
+        if (target.String is { } codeText && name == "charCodeAt")
         {
             var index = arguments.Count > 0 ? (int)toNumber(arguments[0]) : 0;
             return new Avm1Lookup(
                 true,
                 (uint)index < (uint)codeText.Length ? (double)codeText[index] : double.NaN);
         }
-        if (target is Avm1ArrayObject array && name == "push")
+        if (target.Object is Avm1ArrayObject array && name == "push")
         {
             var lengthLookup = context.GetMember(array, "length");
             var length = lengthLookup.Found ? toNumber(lengthLookup.Value) : 0;
@@ -1681,16 +1684,16 @@ public sealed partial class LumenPlayer : IAvm1Host
             context.SetMember(array, "length", newLength);
             return new Avm1Lookup(true, newLength);
         }
-        if (target is Avm1ArrayObject listArray && name is "pop" or "shift" or "join" or "reverse")
+        if (target.Object is Avm1ArrayObject listArray && name is "pop" or "shift" or "join" or "reverse")
             return listMethod(context, listArray, name, arguments);
-        if (target is MovieClipLoaderObject loader && name == "addListener"
-            && arguments.Count > 0 && arguments[0] is Avm1Object listener)
+        if (target.Object is MovieClipLoaderObject loader && name == "addListener"
+            && arguments.Count > 0 && arguments[0].Object is Avm1Object listener)
         {
             loader.Listeners.Add(listener);
             return new Avm1Lookup(true, true);
         }
-        if (target is MovieClipLoaderObject clipLoader && name == "loadClip" && arguments.Count >= 2
-            && arguments[0] is string url && arguments[1] is DisplayInstance loadTarget)
+        if (target.Object is MovieClipLoaderObject clipLoader && name == "loadClip" && arguments.Count >= 2
+            && arguments[0].String is { } url && arguments[1].Object is DisplayInstance loadTarget)
         {
             if (LumenEdgeLog.Enabled)
                 edge("load", url);
@@ -1706,42 +1709,42 @@ public sealed partial class LumenPlayer : IAvm1Host
                 _pendingLoadInits.Add((each, loadTarget));
             return new Avm1Lookup(true, true);
         }
-        if (target is DisplayInstance { LoadedMovie: { } loadedMovie } && name.Length != 0
-            && context.GetMember(target, name).Value is not (Avm1FunctionValue or Avm1NativeFunction or Avm1MethodWrapper))
+        if (target.Object is DisplayInstance { LoadedMovie: { } loadedMovie } && name.Length != 0
+            && context.GetMember(target, name).Value.Object is not (Avm1FunctionValue or Avm1NativeFunction or Avm1MethodWrapper))
         {
             var forwarded = callLoadedMovie(loadedMovie.Player, name, arguments);
             if (forwarded.Found)
                 return forwarded;
         }
-        if (target is DisplayInstance depthTarget && name == "getNextHighestDepth")
+        if (target.Object is DisplayInstance depthTarget && name == "getNextHighestDepth")
         {
             var nextDepth = context.GetNextHighestDepth(depthTarget, depthTarget.Children.Keys);
             return new Avm1Lookup(true, (double)nextDepth);
         }
-        if (target is DisplayInstance depthInstance && name == "getDepth")
+        if (target.Object is DisplayInstance depthInstance && name == "getDepth")
             return new Avm1Lookup(true, (double)depthInstance.Depth);
-        if (target is DisplayInstance swapInstance
+        if (target.Object is DisplayInstance swapInstance
             && name == "swapDepths"
             && arguments.Count > 0)
         {
-            var destination = arguments[0] is DisplayInstance other
+            var destination = arguments[0].Object is DisplayInstance other
                 ? other.Depth
                 : tryAvmDepth(arguments[0], out var numericDepth)
                     ? numericDepth
                     : long.MinValue;
             if (destination != long.MinValue)
                 swapDepth(swapInstance, destination);
-            return new Avm1Lookup(true, Avm1Undefined.Instance);
+            return new Avm1Lookup(true, Avm1Value.Undefined);
         }
-        if (target is DisplayInstance removeInstance && name == "removeMovieClip")
+        if (target.Object is DisplayInstance removeInstance && name == "removeMovieClip")
         {
             scheduleRemoval(context, removeInstance);
-            return new Avm1Lookup(true, Avm1Undefined.Instance);
+            return new Avm1Lookup(true, Avm1Value.Undefined);
         }
-        if (target is DisplayInstance emptyParent
+        if (target.Object is DisplayInstance emptyParent
             && name == "createEmptyMovieClip"
             && arguments.Count >= 2
-            && arguments[0] is string emptyName
+            && arguments[0].String is { } emptyName
             && tryAvmDepth(arguments[1], out var emptyDepth))
         {
             var empty = new DisplayInstance(uint.MaxValue, emptyParent.HierarchyDepth + 1, emptyParent)
@@ -1755,11 +1758,11 @@ public sealed partial class LumenPlayer : IAvm1Host
             context.OnCommit(() => placeScriptChild(emptyAt, empty));
             return new Avm1Lookup(true, empty);
         }
-        if (target is DisplayInstance attachTarget
+        if (target.Object is DisplayInstance attachTarget
             && name == "attachMovie"
             && arguments.Count >= 3
-            && arguments[0] is string linkageName
-            && arguments[1] is string instanceName
+            && arguments[0].String is { } linkageName
+            && arguments[1].String is { } instanceName
             && tryAvmDepth(arguments[2], out var attachDepth))
         {
             var linkage = linkageName;
@@ -1773,7 +1776,7 @@ public sealed partial class LumenPlayer : IAvm1Host
                     instance.CharacterId,
                     instance.Frame,
                     $"MovieClip.attachMovie could not resolve exported symbol '{linkageName}'.");
-                return new Avm1Lookup(true, Avm1Undefined.Instance);
+                return new Avm1Lookup(true, Avm1Value.Undefined);
             }
 
             var attached = new DisplayInstance(
@@ -1784,7 +1787,7 @@ public sealed partial class LumenPlayer : IAvm1Host
                 Name = instanceName,
                 Depth = attachDepth,
             };
-            if (arguments.Count >= 4 && arguments[3] is Avm1Object initialValues)
+            if (arguments.Count >= 4 && arguments[3].Object is Avm1Object initialValues)
             {
                 foreach (var (propertyName, propertyValue) in initialValues.Properties)
                     writeMember(attached, propertyName, propertyValue);
@@ -1803,11 +1806,11 @@ public sealed partial class LumenPlayer : IAvm1Host
         // place: Green's sliders sit there (the template is authored at y -90, then SetAndStart moves the copy up 90;
         // with Flash's copied transform they end a row too high, under the title; checked against Green in
         // TaikoRecomp, session-rewards-7).
-        if (target is DisplayInstance original
+        if (target.Object is DisplayInstance original
             && name == "duplicateMovieClip"
             && original.Parent is { } duplicateParent
             && arguments.Count >= 2
-            && arguments[0] is string duplicateName
+            && arguments[0].String is { } duplicateName
             && tryAvmDepth(arguments[1], out var duplicateDepth))
         {
             var duplicate = new DisplayInstance(original.CharacterId, original.HierarchyDepth, duplicateParent)
@@ -1819,7 +1822,7 @@ public sealed partial class LumenPlayer : IAvm1Host
                 Visible = original.Visible,
                 ScriptTransformed = true,
             };
-            if (arguments.Count >= 3 && arguments[2] is Avm1Object duplicateValues)
+            if (arguments.Count >= 3 && arguments[2].Object is Avm1Object duplicateValues)
             {
                 foreach (var (propertyName, propertyValue) in duplicateValues.Properties)
                     writeMember(duplicate, propertyName, propertyValue);
@@ -1833,14 +1836,14 @@ public sealed partial class LumenPlayer : IAvm1Host
             context.OnCommit(() => placeScriptChild(duplicateAt, duplicate));
             return new Avm1Lookup(true, duplicate);
         }
-        if (target is DisplayInstance targetInstance && name is "play" or "stop")
+        if (target.Object is DisplayInstance targetInstance && name is "play" or "stop")
         {
             if (ReferenceEquals(targetInstance, instance))
                 context.PendingPlayback = name == "play";
             targetInstance.Playing = name == "play";
-            return new Avm1Lookup(true, Avm1Undefined.Instance);
+            return new Avm1Lookup(true, Avm1Value.Undefined);
         }
-        if (target is DisplayInstance jumpTarget
+        if (target.Object is DisplayInstance jumpTarget
             && name is "gotoAndPlay" or "gotoAndStop"
             && arguments.Count > 0)
         {
@@ -1860,34 +1863,34 @@ public sealed partial class LumenPlayer : IAvm1Host
                     + $"instance '{jumpTarget.Name}' could not resolve target '{toAvmString(arguments[0])}'; "
                     + $"available labels: {string.Join(", ", _sprites[jumpTarget.CharacterId].Labels.Keys.Order(StringComparer.Ordinal))}.",
                     jumpTarget.Name, format: false);
-            return new Avm1Lookup(true, Avm1Undefined.Instance);
+            return new Avm1Lookup(true, Avm1Value.Undefined);
         }
-        if (name.Length == 0 && target is Avm1Object)
-            return new Avm1Lookup(true, Avm1Undefined.Instance);
+        if (name.Length == 0 && target.Object is Avm1Object)
+            return new Avm1Lookup(true, Avm1Value.Undefined);
         if (name == "registerClass"
-            && ReferenceEquals(target, _globals["Object"])
+            && ReferenceEquals(target.Object, _globals["Object"].Object)
             && arguments.Count >= 2
-            && arguments[0] is string exportName
-            && arguments[1] is Avm1FunctionValue registeredClass)
+            && arguments[0].String is { } exportName
+            && arguments[1].Object is Avm1FunctionValue registeredClass)
         {
             var (classExport, classFunction) = (exportName, registeredClass);
             context.OnCommit(() => registerClass(classExport, classFunction));
             return new Avm1Lookup(true, true);
         }
-        var receiver = target is Avm1SuperValue super ? super.ThisValue : target;
+        var receiver = target.Object is Avm1SuperValue super ? super.ThisValue : target;
         var candidate = name.Length == 0
-            ? target is Avm1SuperValue superTarget
+            ? target.Object is Avm1SuperValue superTarget
                 ? superTarget.Level?.GetProperty("__constructor__") ?? default
-                : new Avm1Lookup(target is Avm1FunctionValue, target)
+                : new Avm1Lookup(target.Object is Avm1FunctionValue, target)
             : context.GetMember(target, name);
-        if (candidate.Found && candidate.Value is Avm1FunctionValue function)
+        if (candidate.Found && candidate.Value.Object is Avm1FunctionValue function)
             return invokeFunction(instance, function, receiver, arguments, context);
-        if (candidate.Found && candidate.Value is Avm1MethodWrapper wrapper)
+        if (candidate.Found && candidate.Value.Object is Avm1MethodWrapper wrapper)
             return wrapper.Invoke(receiver, arguments);
-        if (candidate.Found && candidate.Value is Avm1NativeFunction nativeFunction)
+        if (candidate.Found && candidate.Value.Object is Avm1NativeFunction nativeFunction)
             return invokeHost(instance, nativeFunction, arguments);
-        if (target is Avm1SuperValue && name.Length == 0)
-            return new Avm1Lookup(true, Avm1Undefined.Instance);
+        if (target.Object is Avm1SuperValue && name.Length == 0)
+            return new Avm1Lookup(true, Avm1Value.Undefined);
         reportOnce(
             "LUM_AVM_METHOD_UNRESOLVED",
             instance.CharacterId,
@@ -1896,7 +1899,7 @@ public sealed partial class LumenPlayer : IAvm1Host
         return default;
     }
 
-    Avm1Lookup IAvm1Host.ConstructObject(Avm1ExecutionContext context, string name, IReadOnlyList<object?> arguments)
+    Avm1Lookup IAvm1Host.ConstructObject(Avm1ExecutionContext context, string name, IReadOnlyList<Avm1Value> arguments)
     {
         var instance = (DisplayInstance)context.Owner;
         var candidate = context.GetVariable(name);
@@ -1910,23 +1913,22 @@ public sealed partial class LumenPlayer : IAvm1Host
                 && requestedLength == Math.Truncate(requestedLength)
                 && requestedLength <= _limits.MaxStackValues)
             {
-                value = new Avm1ArrayObject(
-                    Enumerable.Repeat<object?>(Avm1Undefined.Instance, (int)requestedLength).ToArray());
+                value = new Avm1ArrayObject(new Avm1Value[(int)requestedLength]); // all undefined
             }
             else
                 value = new Avm1ArrayObject(arguments);
         }
-        else if (candidate.Value is MovieClipLoaderConstructor)
+        else if (candidate.Value.Object is MovieClipLoaderConstructor)
             return new Avm1Lookup(true, new MovieClipLoaderObject());
-        else if (candidate.Value is DateConstructor)
+        else if (candidate.Value.Object is DateConstructor)
             return new Avm1Lookup(true, createDate(arguments));
         else
             value = new Avm1Object();
         value.Properties["__constructor__"] = name;
         value.Properties["__arguments__"] = new Avm1ArrayObject(arguments);
-        if (candidate.Found && candidate.Value is Avm1FunctionValue constructor)
+        if (candidate.Found && candidate.Value.Object is Avm1FunctionValue constructor)
         {
-            value.Prototype = constructor.GetProperty("prototype").Value as Avm1Object;
+            value.Prototype = constructor.GetProperty("prototype").Value.Object as Avm1Object;
             if (!invokeFunction(instance, constructor, value, arguments, context).Found)
                 return default;
         }
@@ -1947,9 +1949,9 @@ public sealed partial class LumenPlayer : IAvm1Host
                 $"Timeline action could not resolve label '{label}'.");
     }
 
-    Avm1Lookup IAvm1Host.CloneSprite(Avm1ExecutionContext context, object? source, string name, int depth)
+    Avm1Lookup IAvm1Host.CloneSprite(Avm1ExecutionContext context, Avm1Value source, string name, int depth)
     {
-        if (source is not DisplayInstance sourceInstance
+        if (source.Object is not DisplayInstance sourceInstance
             || sourceInstance.Parent is not DisplayInstance parent
             || depth < 0)
             return default;
@@ -1967,19 +1969,19 @@ public sealed partial class LumenPlayer : IAvm1Host
         return new Avm1Lookup(true, clone);
     }
 
-    void IAvm1Host.RemoveSprite(Avm1ExecutionContext context, object? target)
+    void IAvm1Host.RemoveSprite(Avm1ExecutionContext context, Avm1Value target)
     {
-        if (target is not DisplayInstance targetInstance
+        if (target.Object is not DisplayInstance targetInstance
             || targetInstance.Parent is null)
             return;
         scheduleRemoval(context, targetInstance);
     }
 
-    void IAvm1Host.GotoFrame(Avm1ExecutionContext context, object? value, bool play, int bias)
+    void IAvm1Host.GotoFrame(Avm1ExecutionContext context, Avm1Value value, bool play, int bias)
     {
         var instance = (DisplayInstance)context.Owner;
         var target = instance;
-        if (value is string pathAndFrame && pathAndFrame.LastIndexOf(':') is var separator && separator >= 0)
+        if (value.String is { } pathAndFrame && pathAndFrame.LastIndexOf(':') is var separator && separator >= 0)
         {
             var path = pathAndFrame[..separator];
             target = path.StartsWith('/') ? _root : instance;
@@ -2009,19 +2011,19 @@ public sealed partial class LumenPlayer : IAvm1Host
         HostCommand?.Invoke(command, argument);
     }
 
-    Avm1Lookup IAvm1Host.ConstructMethod(Avm1ExecutionContext context, object? target, string name, IReadOnlyList<object?> arguments)
+    Avm1Lookup IAvm1Host.ConstructMethod(Avm1ExecutionContext context, Avm1Value target, string name, IReadOnlyList<Avm1Value> arguments)
     {
         var instance = (DisplayInstance)context.Owner;
         var candidate = string.IsNullOrEmpty(name) ? new Avm1Lookup(true, target) : context.GetMember(target, name);
-        if (candidate.Value is ColorTransformConstructor)
+        if (candidate.Value.Object is ColorTransformConstructor)
             return new Avm1Lookup(true, createColorTransform(arguments));
-        if (candidate.Value is not Avm1FunctionValue constructor)
+        if (candidate.Value.Object is not Avm1FunctionValue constructor)
         {
             reportOnce("LUM_AVM_CONSTRUCTOR_UNRESOLVED", instance.CharacterId, instance.Frame,
                 $"AVM constructor '{name}' is not registered.");
             return default;
         }
-        var value = new Avm1Object { Prototype = constructor.GetProperty("prototype").Value as Avm1Object };
+        var value = new Avm1Object { Prototype = constructor.GetProperty("prototype").Value.Object as Avm1Object };
         value.Properties["__constructor__"] = constructor;
         return invokeFunction(instance, constructor, value, arguments, context).Found
             ? new Avm1Lookup(true, value) : default;
@@ -2041,7 +2043,7 @@ public sealed partial class LumenPlayer : IAvm1Host
             return;
         context.SetTransientChild(parent, instance.Depth, null);
         if (instance.Name is { Length: > 0 } name)
-            context.SetTransientMember(parent, name, Avm1Undefined.Instance);
+            context.SetTransientMember(parent, name, Avm1Value.Undefined);
         context.OnCommit(() =>
         {
             if (parent.Children.TryGetValue(instance.Depth, out var current)
@@ -2119,7 +2121,7 @@ public sealed partial class LumenPlayer : IAvm1Host
     private Avm1Lookup invokeHost(
         DisplayInstance instance,
         Avm1NativeFunction function,
-        IReadOnlyList<object?> arguments)
+        IReadOnlyList<Avm1Value> arguments)
     {
         try
         {
@@ -2143,32 +2145,32 @@ public sealed partial class LumenPlayer : IAvm1Host
                 instance.CharacterId,
                 instance.Frame,
                 $"Host call '{function.Name}' failed with {exception.GetType().Name}: {exception.Message} Undefined was returned.");
-            return new Avm1Lookup(true, Avm1Undefined.Instance);
+            return new Avm1Lookup(true, Avm1Value.Undefined);
         }
     }
 
-    private static LumenHostValue toHostValue(object? value) => value switch
+    private static LumenHostValue toHostValue(Avm1Value value) => value.Kind switch
     {
-        null => LumenHostValue.Null,
-        Avm1Undefined => LumenHostValue.Undefined,
-        bool boolean => LumenHostValue.FromBoolean(boolean),
-        double number => LumenHostValue.FromNumber(number),
-        string text => LumenHostValue.FromString(text),
-        Avm1Object script => LumenHostValue.FromObject(script.Properties
-            .Where(static field => field.Value is null or bool or double or string)
+        Avm1Kind.Null => LumenHostValue.Null,
+        Avm1Kind.Undefined => LumenHostValue.Undefined,
+        Avm1Kind.Boolean => LumenHostValue.FromBoolean(value.Boolean),
+        Avm1Kind.Number => LumenHostValue.FromNumber(value.Number),
+        Avm1Kind.String => LumenHostValue.FromString(value.String!),
+        _ when value.Object is Avm1Object script => LumenHostValue.FromObject(script.Properties
+            .Where(static field => field.Value.Kind is Avm1Kind.Null or Avm1Kind.Boolean or Avm1Kind.Number or Avm1Kind.String)
             .ToDictionary(static field => field.Key, static field => toHostValue(field.Value), StringComparer.Ordinal)),
         _ => LumenHostValue.Undefined,
     };
 
-    private static object? fromHostValue(LumenHostValue value) => value.Kind switch
+    private static Avm1Value fromHostValue(LumenHostValue value) => value.Kind switch
     {
-        LumenHostValueKind.Undefined => Avm1Undefined.Instance,
-        LumenHostValueKind.Null => null,
+        LumenHostValueKind.Undefined => Avm1Value.Undefined,
+        LumenHostValueKind.Null => Avm1Value.Null,
         LumenHostValueKind.Boolean => value.AsBoolean(),
         LumenHostValueKind.Number => value.AsNumber(),
         LumenHostValueKind.Text => value.AsString(),
         LumenHostValueKind.Fields => hostFields(value),
-        _ => Avm1Undefined.Instance,
+        _ => Avm1Value.Undefined,
     };
 
     private static Avm1Object hostFields(LumenHostValue value)
@@ -2181,8 +2183,8 @@ public sealed partial class LumenPlayer : IAvm1Host
     private Avm1Lookup invokeFunction(
         DisplayInstance timelineTarget,
         Avm1FunctionValue function,
-        object? thisValue,
-        IReadOnlyList<object?> arguments,
+        Avm1Value thisValue,
+        IReadOnlyList<Avm1Value> arguments,
         Avm1ExecutionContext? parentContext = null)
     {
         if (!_scriptsEnabled) return default;
@@ -2213,7 +2215,7 @@ public sealed partial class LumenPlayer : IAvm1Host
             _activeContext = context;
             Avm1ExecutionStatus status;
             bool playing;
-            object? returnValue;
+            Avm1Value returnValue;
             try
             {
                 status = Avm1Interpreter.TryExecuteFunction(
@@ -2282,21 +2284,21 @@ public sealed partial class LumenPlayer : IAvm1Host
 
     private void constructInstance(DisplayInstance instance, Avm1FunctionValue function)
     {
-        instance.ScriptPrototype = function.GetProperty("prototype").Value as Avm1Object;
+        instance.ScriptPrototype = function.GetProperty("prototype").Value.Object as Avm1Object;
         var result = invokeFunction(instance, function, instance, []);
         if (result.Found)
         {
             instance.ConstructedClass = function;
             var onLoad = readMember(instance, "onLoad");
-            if (onLoad.Found && onLoad.Value is Avm1FunctionValue onLoadFunction)
+            if (onLoad.Found && onLoad.Value.Object is Avm1FunctionValue onLoadFunction)
                 _ = invokeFunction(instance, onLoadFunction, instance, []);
         }
     }
 
-    private bool tryResolveTimelineFrame(DisplayInstance instance, object? value, out int frame)
+    private bool tryResolveTimelineFrame(DisplayInstance instance, Avm1Value value, out int frame)
     {
         var timeline = _sprites[instance.CharacterId];
-        if (value is string label && timeline.Labels.TryGetValue(label, out frame))
+        if (value.String is { } label && timeline.Labels.TryGetValue(label, out frame))
             return true;
         var authoredFrame = toNumber(value);
         if (double.IsFinite(authoredFrame)
@@ -2361,8 +2363,9 @@ public sealed partial class LumenPlayer : IAvm1Host
         instance.Playing = play;
     }
 
-    private Avm1Lookup readMember(object? target, string name)
+    private Avm1Lookup readMember(Avm1Value targetValue, string name)
     {
+        var target = targetValue.Reference;
         if (target is ClipTransform transform && name == "colorTransform")
             return new Avm1Lookup(true, createColorTransform([
                 (double)transform.Instance.Color.Multiply.Red, (double)transform.Instance.Color.Multiply.Green,
@@ -2387,7 +2390,8 @@ public sealed partial class LumenPlayer : IAvm1Host
                 return inherited;
             return name switch
             {
-                "transform" => new Avm1Lookup(true, new ClipTransform(instance)),
+                // One per clip: scripts read clip.transform each time they tint it.
+                "transform" => new Avm1Lookup(true, instance.TransformView ??= new ClipTransform(instance)),
                 "_parent" => new Avm1Lookup(instance.Parent is not null, instance.Parent),
                 "_root" => new Avm1Lookup(true, rootOf(instance)),
                 "_name" => new Avm1Lookup(true, instance.Name),
@@ -2419,7 +2423,7 @@ public sealed partial class LumenPlayer : IAvm1Host
             return name == "__proto__"
                 ? new Avm1Lookup(avmObject.Prototype is not null, avmObject.Prototype)
                 : avmObject.GetProperty(name);
-        if (target is Dictionary<string, object?> dictionary && dictionary.TryGetValue(name, out var member))
+        if (target is Dictionary<string, Avm1Value> dictionary && dictionary.TryGetValue(name, out var member))
             return new Avm1Lookup(true, member);
         return default;
     }
@@ -2431,9 +2435,10 @@ public sealed partial class LumenPlayer : IAvm1Host
         return instance;
     }
 
-    private void writeMember(object? target, string name, object? value)
+    private void writeMember(Avm1Value targetValue, string name, Avm1Value value)
     {
-        if (target is ClipTransform transform && name == "colorTransform" && value is Avm1Object color)
+        var target = targetValue.Reference;
+        if (target is ClipTransform transform && name == "colorTransform" && value.Object is Avm1Object color)
         {
             float channel(string property, double fallback, double divisor = 1)
             {
@@ -2518,23 +2523,23 @@ public sealed partial class LumenPlayer : IAvm1Host
         }
         if (target is Avm1Object avmObject)
         {
-            if (name == "__proto__" && value is Avm1Object prototype)
+            if (name == "__proto__" && value.Object is Avm1Object prototype)
                 avmObject.Prototype = prototype;
             else
             {
                 avmObject.Properties[name] = value;
-                if (value is Avm1FunctionValue function)
+                if (value.Object is Avm1FunctionValue function)
                     function.OwnerPrototype = avmObject;
             }
             return;
         }
-        if (target is Dictionary<string, object?> dictionary)
+        if (target is Dictionary<string, Avm1Value> dictionary)
             dictionary[name] = value;
     }
 
-    private static bool tryDisplayNumber(object? value, out double number)
+    private static bool tryDisplayNumber(Avm1Value value, out double number)
     {
-        if (value is null or Avm1Undefined)
+        if (value.IsNullish)
         {
             number = 0;
             return false;
@@ -2571,10 +2576,25 @@ public sealed partial class LumenPlayer : IAvm1Host
     // While recording, every run draws the same numbers so two runs of a session compare line by line.
     private static readonly Random EdgeRandom = LumenEdgeLog.Enabled ? new Random(1) : Random.Shared;
 
-    private sealed record ClipTransform(DisplayInstance Instance);
-    private sealed class ColorTransformConstructor;
-    private sealed class MovieClipLoaderConstructor;
-    private sealed class DateConstructor;
+    private sealed record ClipTransform(DisplayInstance Instance)
+    {
+        public static implicit operator Avm1Value(ClipTransform value) => Avm1Value.Wrap(value);
+    }
+
+    private sealed class ColorTransformConstructor
+    {
+        public static implicit operator Avm1Value(ColorTransformConstructor value) => Avm1Value.Wrap(value);
+    }
+
+    private sealed class MovieClipLoaderConstructor
+    {
+        public static implicit operator Avm1Value(MovieClipLoaderConstructor value) => Avm1Value.Wrap(value);
+    }
+
+    private sealed class DateConstructor
+    {
+        public static implicit operator Avm1Value(DateConstructor value) => Avm1Value.Wrap(value);
+    }
     private sealed class MovieClipLoaderObject : Avm1Object
     {
         public List<Avm1Object> Listeners { get; } = [];
@@ -2583,7 +2603,7 @@ public sealed partial class LumenPlayer : IAvm1Host
         ["redMultiplier", "greenMultiplier", "blueMultiplier", "alphaMultiplier",
          "redOffset", "greenOffset", "blueOffset", "alphaOffset"];
 
-    private static Avm1Object createColorTransform(IReadOnlyList<object?> arguments)
+    private static Avm1Object createColorTransform(IReadOnlyList<Avm1Value> arguments)
     {
         var value = new Avm1Object(ColorTransformProperties.Length);
         for (var index = 0; index < ColorTransformProperties.Length; index++)
@@ -2597,7 +2617,7 @@ public sealed partial class LumenPlayer : IAvm1Host
     /// after 1970 (UTC), new Date(year, month[, day, hours, minutes, seconds, ms]) that local time (month 0 to 11).
     /// ponytail: no setters, UTC getters or parse; add them when a movie needs them.
     /// </summary>
-    private static Avm1Object createDate(IReadOnlyList<object?> arguments)
+    private static Avm1Object createDate(IReadOnlyList<Avm1Value> arguments)
     {
         DateTime time;
         try
@@ -2726,26 +2746,27 @@ public sealed partial class LumenPlayer : IAvm1Host
         _ => double.NaN,
     };
 
-    private static bool toBoolean(object? value) => value switch
+    private static bool toBoolean(Avm1Value value) => value.Kind switch
     {
-        null or Avm1Undefined => false,
-        bool boolean => boolean,
-        double number => number != 0 && !double.IsNaN(number),
-        string text => text.Length != 0,
+        Avm1Kind.Undefined or Avm1Kind.Null => false,
+        Avm1Kind.Boolean => value.Boolean,
+        Avm1Kind.Number => value.Number != 0 && !double.IsNaN(value.Number),
+        Avm1Kind.String => value.String!.Length != 0,
         _ => true,
     };
 
-    private static double toNumber(object? value) => value switch
+    // The host side's reading of a number: a string parses as is (no trimming, empty is NaN), as before.
+    private static double toNumber(Avm1Value value) => value.Kind switch
     {
-        null => 0,
-        Avm1Undefined => double.NaN,
-        bool boolean => boolean ? 1 : 0,
-        double number => number,
-        string text when double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var number) => number,
+        Avm1Kind.Null => 0,
+        Avm1Kind.Undefined => double.NaN,
+        Avm1Kind.Boolean => value.Boolean ? 1 : 0,
+        Avm1Kind.Number => value.Number,
+        Avm1Kind.String when double.TryParse(value.String, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var number) => number,
         _ => double.NaN,
     };
 
-    private static bool tryAvmDepth(object? value, out long depth)
+    private static bool tryAvmDepth(Avm1Value value, out long depth)
     {
         var number = toNumber(value);
         if (double.IsFinite(number)
@@ -2760,17 +2781,9 @@ public sealed partial class LumenPlayer : IAvm1Host
         return false;
     }
 
-    private static string toAvmString(object? value) => value switch
-    {
-        null => "null",
-        Avm1Undefined => "undefined",
-        bool boolean => boolean ? "true" : "false",
-        double number => number.ToString("G15", System.Globalization.CultureInfo.InvariantCulture),
-        string text => text,
-        _ => "[object Object]",
-    };
+    private static string toAvmString(Avm1Value value) => Avm1Interpreter.toAvmString(value);
 
-    private static string describeAvmType(object? value) => value switch
+    private static string describeAvmType(Avm1Value value) => value.Boxed switch
     {
         null => "null",
         Avm1Undefined => "undefined",
@@ -2779,7 +2792,7 @@ public sealed partial class LumenPlayer : IAvm1Host
         Avm1FunctionValue => "a function",
         Avm1ArrayObject => "an array",
         Avm1Object => "an object",
-        Dictionary<string, object?> => "a global object",
+        Dictionary<string, Avm1Value> => "a global object",
         bool => "a boolean",
         double => "a number",
         string => "a string",
@@ -3512,6 +3525,8 @@ public sealed partial class LumenPlayer : IAvm1Host
 
     private sealed class DisplayInstance(uint characterId, int hierarchyDepth, DisplayInstance? parent)
     {
+        public static implicit operator Avm1Value(DisplayInstance? value) => value is null ? Avm1Value.Null : Avm1Value.Wrap(value);
+
         public uint CharacterId { get; } = characterId;
 
         public int HierarchyDepth { get; } = hierarchyDepth;
@@ -3541,6 +3556,9 @@ public sealed partial class LumenPlayer : IAvm1Host
         public bool Visible { get; set; } = true;
         public bool HiddenByHost { get; set; }
 
+        /// <summary>What a script gets for clip.transform (made on first read).</summary>
+        public ClipTransform? TransformView { get; set; }
+
         /// <summary>A text field's last surface key and the text it was made for.</summary>
         public LumenNativeSurfaceKey TextKey { get; set; }
         public string? TextKeyText { get; set; }
@@ -3565,7 +3583,7 @@ public sealed partial class LumenPlayer : IAvm1Host
 
         public Dictionary<long, DisplayInstance>? ReusableTimelineChildren { get; set; }
 
-        public Dictionary<string, object?> Variables { get; } = new(StringComparer.Ordinal);
+        public Dictionary<string, Avm1Value> Variables { get; } = new(StringComparer.Ordinal);
 
         public Avm1Object? ScriptPrototype { get; set; }
 
@@ -3589,7 +3607,7 @@ public sealed partial class LumenPlayer : IAvm1Host
 
     private readonly record struct CallbackRegistration(
         DisplayInstance Instance,
-        object? ThisValue,
+        Avm1Value ThisValue,
         Avm1FunctionValue Function);
 
     private readonly record struct ColorState(LumenRenderColor Multiply, LumenRenderColor Add)

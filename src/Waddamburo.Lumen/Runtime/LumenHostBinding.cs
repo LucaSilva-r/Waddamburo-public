@@ -87,13 +87,13 @@ public sealed class LumenHostObject
 /// <summary>Registration surface scoped to one Lumen player.</summary>
 public sealed class LumenHostContext
 {
-    private readonly Dictionary<string, object?> _globals;
+    private readonly Dictionary<string, Avm1Value> _globals;
     private readonly Avm1Object _externalInterface;
     private readonly Func<string, double, string?>? _numericVariableResolver;
     private bool _externalInterfaceCallRegistered;
 
     internal LumenHostContext(
-        Dictionary<string, object?> globals,
+        Dictionary<string, Avm1Value> globals,
         Avm1Object externalInterface,
         Func<string, double, string?>? numericVariableResolver = null)
     {
@@ -134,7 +134,7 @@ public sealed class LumenHostContext
             return null;
         return _globals
             .Where(pair => pair.Key.StartsWith(prefix, StringComparison.Ordinal)
-                && pair.Value is double number
+                && pair.Value.TryGetNumber(out var number)
                 && number == value)
             .Select(static pair => pair.Key)
             .Order(StringComparer.Ordinal)
@@ -154,7 +154,7 @@ public sealed class LumenHostContext
 
     private void addGlobal(string name, object value)
     {
-        if (!_globals.TryAdd(name, value))
+        if (!_globals.TryAdd(name, Avm1Value.Of(value)))
             throw new ArgumentException($"Global '{name}' is already registered.", nameof(name));
     }
 

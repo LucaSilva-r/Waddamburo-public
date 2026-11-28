@@ -63,7 +63,7 @@ public sealed partial class LumenPlayer
     /// <summary>A clip's script variables as text (objects by kind only).</summary>
     public IReadOnlyList<(string Name, string Value)> InspectVariables(string path) =>
         inspected(path) is { } instance
-            ? [.. instance.Variables.OrderBy(static pair => pair.Key, StringComparer.Ordinal).Select(static pair => (pair.Key, pair.Value switch
+            ? [.. instance.Variables.OrderBy(static pair => pair.Key, StringComparer.Ordinal).Select(static pair => (pair.Key, pair.Value.Boxed switch
             {
                 null => "null",
                 Avm1Undefined => "undefined",
