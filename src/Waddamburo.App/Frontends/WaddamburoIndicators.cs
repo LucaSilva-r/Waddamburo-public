@@ -34,14 +34,17 @@ internal sealed class WaddamburoIndicators(LumenGameSceneInstance scene) : ISyst
             layer.Player.Advance();
     }
 
+    // Drawn every frame: each snapshot reuses its own quad list.
+    private readonly LumenQuadBuffer _quads = new(), _networkQuads = new();
+
     public LumenRenderSnapshot CreateSnapshot(bool overIntermission, float interpolation)
     {
         var layers = scene.Player.Layers;
-        return new LumenScenePlayer(1280, 720, overIntermission ? [layers[0], layers[1]] : [layers[2]]).CreateRenderSnapshot(interpolation);
+        return new LumenScenePlayer(1280, 720, overIntermission ? [layers[0], layers[1]] : [layers[2]]).CreateRenderSnapshot(interpolation, buffer: _quads);
     }
 
     public LumenRenderSnapshot CreateNetworkSnapshot(float interpolation) =>
-        new LumenScenePlayer(1280, 720, [scene.Player.Layers[0]]).CreateRenderSnapshot(interpolation);
+        new LumenScenePlayer(1280, 720, [scene.Player.Layers[0]]).CreateRenderSnapshot(interpolation, buffer: _networkQuads);
 
     public void SetupPanels(bool left, bool right)
     {

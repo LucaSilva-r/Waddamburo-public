@@ -93,8 +93,10 @@ internal sealed class IntermissionOverlay(SdlApplication application, LumenGameS
             _scene?.Player.Advance();
     }
 
+    private readonly LumenQuadBuffer _quads = new();
+
     public IEnumerable<RenderQuad> Quads(float interpolation, Func<LumenNativeSurfaceKey, RenderTextureId?> surfaces) =>
-        _scene is null ? [] : SceneTextures.Compose(_scene.Player.CreateRenderSnapshot(interpolation), _textures, "Intermission",
+        _scene is null ? [] : SceneTextures.Compose(_scene.Player.CreateRenderSnapshot(interpolation, buffer: _quads), _textures, "Intermission",
             surfaces).Quads;
 
     public void Dispose()
