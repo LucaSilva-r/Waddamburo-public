@@ -100,6 +100,11 @@ public sealed class ActionScriptTests
     [InlineData("var d = new Date(2026, 10, 27, 21, 4, 9); report(d.getFullYear(), d.getMonth(), d.getDate(), d.getDay(), d.getHours(), d.getMinutes(), d.getSeconds());", "2026,10,27,5,21,4,9")]
     [InlineData("var d = new Date(2026, 0, 31, 23, 59); var e = new Date(d.getTime() + 60000); report(e.getMonth(), e.getDate(), e.getHours(), e.getMinutes());", "1,1,0,0")]
     [InlineData("var r = report('first'); report(r, report('second') + 10);", "first|second|1,12")]
+    // A function gets this and arguments only when it names them; a nested one gets its own.
+    [InlineData("function count() { return arguments.length; } function plain(a) { return a; }"
+        + " function outer() { var inner = function() { return arguments.length; }; return inner(1, 2, 3); }"
+        + " var o = { n: 4, get: function() { return this.n; }, none: function() { return 'n'; } };"
+        + " report(count(1, 2), plain('p'), outer(), o.get(), o.none());", "2,p,3,4,n")]
     public void ScriptsRun(string script, string expected)
     {
         var (_, reports) = run(script);

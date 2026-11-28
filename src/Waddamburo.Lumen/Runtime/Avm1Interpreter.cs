@@ -546,6 +546,8 @@ internal static class Avm1Interpreter
                 case 0x8E: // DefineFunction2
                 case 0x9B: // DefineFunction
                     var definition = (Avm1FunctionOperand)instruction.Operand!;
+                    if (context.LexicalScope is { } closing)
+                        closing.Captured = true;
                     var function = new Avm1FunctionValue(
                         definition,
                         instruction.Body!,

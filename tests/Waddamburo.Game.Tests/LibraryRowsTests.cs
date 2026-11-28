@@ -38,11 +38,11 @@ public sealed class LibraryRowsTests
         Assert.Null(rows.Window(0, 2));
         rows.Publish(movie);
         Assert.Equal(3d, movie.Provided("rows.count").AsNumber());
-        Assert.Equal("A", movie.Provided("row.title#0").AsString());
-        Assert.Equal(LumenHostValueKind.Undefined, movie.Provided("row.title#2").Kind);
+        Assert.Equal("A", movie.ProvidedItem("row.title", 0).AsString());
+        Assert.Equal(LumenHostValueKind.Undefined, movie.ProvidedItem("row.title", 2).Kind);
         Assert.Null(rows.Window(1, 2));
         rows.Publish(movie);
-        Assert.Equal(LumenHostValueKind.Undefined, movie.Provided("row.title#0").Kind);
-        Assert.Equal("C", movie.Provided("row.title#2").AsString());
+        Assert.Equal(LumenHostValueKind.Undefined, movie.ProvidedItem("row.title", 0).Kind);
+        Assert.Equal("C", movie.ProvidedItem("row.title", 2).AsString());
     }
 }

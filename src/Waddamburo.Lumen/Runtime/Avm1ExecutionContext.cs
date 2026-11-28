@@ -25,11 +25,11 @@ internal sealed class Avm1ExecutionContext(
     public void SetVariable(string name, object? value)
     {
         if (tryFindLexicalOwner(name, out var owner))
-            (_lexicalWrites ??= Pool<LexicalKey>.Rent())[new LexicalKey(owner, name)] = value;
+            Pool<LexicalKey>.Set(ref _lexicalWrites, new LexicalKey(owner, name), value);
         else if (TimelineTarget is not null)
             SetMember(TimelineTarget, name, value);
         else
-            (_variableWrites ??= Pool<string>.Rent())[name] = value;
+            Pool<string>.Set(ref _variableWrites, name, value);
     }
 
     public void DefineLocal(string name, object? value)
@@ -37,7 +37,7 @@ internal sealed class Avm1ExecutionContext(
         if (LexicalScope is null)
             SetVariable(name, value);
         else
-            (_lexicalWrites ??= Pool<LexicalKey>.Rent())[new LexicalKey(LexicalScope, name)] = value;
+            Pool<LexicalKey>.Set(ref _lexicalWrites, new LexicalKey(LexicalScope, name), value);
     }
 
     public Avm1LexicalScope? LexicalScope { get; } = lexicalScope;
@@ -75,7 +75,7 @@ internal sealed class Avm1ExecutionContext(
             : host.ReadMember(this, target, name);
 
     public void SetMember(object? target, string name, object? value) =>
-        (_memberWrites ??= Pool<MemberKey>.Rent())[new MemberKey(target, name)] = value;
+        Pool<MemberKey>.Set(ref _memberWrites, new MemberKey(target, name), value);
 
     public Avm1Lookup CallFunction(string name, IReadOnlyList<object?> arguments) =>
         host.CallFunction(this, name, arguments);
@@ -155,24 +155,44 @@ internal sealed class Avm1ExecutionContext(
     // Per thread, so scripts on other threads (a loading screen's) never share one.
     private static class Pool<TKey> where TKey : notnull
     {
-        [ThreadStatic] private static Stack<Dictionary<TKey, object?>>? s_free;
+        [ThreadStatic] private static Stack<Dictionary<TKey, object?>>? s_small;
+        [ThreadStatic] private static Stack<Dictionary<TKey, object?>>? s_large;
 
-        public static Dictionary<TKey, object?> Rent() =>
-            (s_free ??= new()).TryPop(out var reused) ? reused
-            : typeof(TKey) == typeof(string) ? (Dictionary<TKey, object?>)(object)new Dictionary<string, object?>(StringComparer.Ordinal) : [];
+        // Most executions write a few names; a helper that others commit into (a layout() whose place() calls each write
+        // _x, _y and _rotation) gathers hundreds each tick. Every execution starts with a small dictionary, as clearing
+        // costs a dictionary's capacity, and one that passes SmallCount writes moves to a large one kept grown.
+        private const int SmallCount = 16;          // under a small one's capacity (17), so it never resizes
+        private const int MaximumPooledCapacity = 8192; // a freak (tens of thousands of writes) is dropped
 
-        // Clear costs the dictionary's capacity, not its contents: one that grew large (a call writing many members) would
-        // make every later reuse pay for it, so only small ones come back.
-        private const int MaximumPooledCapacity = 32;
+        public static void Set(ref Dictionary<TKey, object?>? dictionary, TKey key, object? value)
+        {
+            var written = dictionary ??= rent(s_small ??= new(), SmallCount + 1);
+            written[key] = value;
+            if (written.Count != SmallCount || written.EnsureCapacity(0) > SmallCount + 1)
+                return;
+            // Insertion order is kept (a fresh dictionary, no removals): Commit applies writes in the order made.
+            var large = rent(s_large ??= new(), 0);
+            foreach (var (name, each) in written)
+                large[name] = each;
+            Return(ref dictionary);
+            dictionary = large;
+        }
+
+        private static Dictionary<TKey, object?> rent(Stack<Dictionary<TKey, object?>> pool, int capacity) =>
+            pool.TryPop(out var reused) ? reused
+            : typeof(TKey) == typeof(string) ? (Dictionary<TKey, object?>)(object)new Dictionary<string, object?>(capacity, StringComparer.Ordinal)
+            : new Dictionary<TKey, object?>(capacity);
 
         public static void Return(ref Dictionary<TKey, object?>? dictionary)
         {
             if (dictionary is null)
                 return;
-            if (dictionary.EnsureCapacity(0) <= MaximumPooledCapacity && (s_free ??= new()).Count < 64)
+            var capacity = dictionary.EnsureCapacity(0);
+            var pool = capacity <= SmallCount + 1 ? s_small ??= new() : s_large ??= new();
+            if (capacity <= MaximumPooledCapacity && pool.Count < 64)
             {
                 dictionary.Clear();
-                s_free.Push(dictionary);
+                pool.Push(dictionary);
             }
             dictionary = null;
         }

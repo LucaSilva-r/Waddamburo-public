@@ -2123,7 +2123,10 @@ public sealed partial class LumenPlayer : IAvm1Host
     {
         try
         {
-            var converted = arguments.Select(toHostValue).ToImmutableArray();
+            var builder = ImmutableArray.CreateBuilder<LumenHostValue>(arguments.Count);
+            for (var index = 0; index < arguments.Count; index++)
+                builder.Add(toHostValue(arguments[index]));
+            var converted = builder.MoveToImmutable();
             var result = function.Callback(new LumenHostCall(converted));
             if (function.Host && LumenEdgeLog.Enabled)
                 edge("out", $"{function.Name}({describe(converted)}) -> {describe(result)}");
@@ -2199,10 +2202,11 @@ public sealed partial class LumenPlayer : IAvm1Host
         {
             var startingFrame = timelineTarget.Frame;
             var startingPlaying = timelineTarget.Playing;
+            var scope = Avm1LexicalScope.Rent(function.CapturedScope);
             var context = createExecutionContext(
                 timelineTarget,
                 parentContext,
-                new Avm1LexicalScope(function.CapturedScope),
+                scope,
                 thisValue,
                 timelineTarget);
             var previousContext = _activeContext;
@@ -2248,6 +2252,8 @@ public sealed partial class LumenPlayer : IAvm1Host
             if (context.PendingPlayback is { } nestedPlayback
                 && parentContext is not null && ReferenceEquals(parentContext.TimelineTarget, timelineTarget))
                 parentContext.PendingPlayback = nestedPlayback;
+            // Its writes are in: nothing reaches the call's scope now unless a function defined in it kept it.
+            Avm1LexicalScope.Return(scope);
             return new Avm1Lookup(true, returnValue);
         }
         finally
@@ -2579,7 +2585,7 @@ public sealed partial class LumenPlayer : IAvm1Host
 
     private static Avm1Object createColorTransform(IReadOnlyList<object?> arguments)
     {
-        var value = new Avm1Object();
+        var value = new Avm1Object(ColorTransformProperties.Length);
         for (var index = 0; index < ColorTransformProperties.Length; index++)
             value.Properties[ColorTransformProperties[index]] = index < arguments.Count
                 ? toNumber(arguments[index]) : index < 4 ? 1d : 0d;

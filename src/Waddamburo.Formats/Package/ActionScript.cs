@@ -689,6 +689,8 @@ public static class ActionScript
             public Stack<(int Break, int Continue)> Exits { get; } = new();
             public int Switches, Calls;
             public bool IsFunction;
+            // Names this code pushes (any text counts, so a string "this" keeps it: never wrong, at worst no saving).
+            public bool UsesThis, UsesArguments, UsesSuper;
         }
 
         private readonly Stack<Code> _codes = new();
@@ -736,6 +738,13 @@ public static class ActionScript
 
         private void pushText(string value)
         {
+            if (_codes.Count > 0)
+                switch (value)
+                {
+                    case "this": Now.UsesThis = true; break;
+                    case "arguments": Now.UsesArguments = true; break;
+                    case "super": Now.UsesSuper = true; break;
+                }
             Span<byte> index = stackalloc byte[2];
             BinaryPrimitives.WriteUInt16LittleEndian(index, intern(value));
             push(0, index);
@@ -1041,10 +1050,14 @@ public static class ActionScript
             _codes.Push(code);
             body(function.Body);
             var bytes = finish(function.At);
-            // DefineFunction2 without registers or preloads: this, arguments and super are locals by name.
+            // DefineFunction2 without registers or preloads: this, arguments and super are locals by name, and only the
+            // ones the body names are made (suppress this 0x02, arguments 0x08, super 0x20): a call that defines none
+            // makes no arguments array and writes no locals for them.
+            var flags = (code.UsesThis ? 0 : 0x02) | (code.UsesArguments ? 0 : 0x08) | (code.UsesSuper ? 0 : 0x20);
             var header = new byte[2 + 2 + 1 + 2 + function.Parameters.Count * 3 + 2];
             BinaryPrimitives.WriteUInt16LittleEndian(header, intern(function.Name ?? ""));
             BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(2), (ushort)function.Parameters.Count);
+            BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(5), (ushort)flags);
             for (var index = 0; index < function.Parameters.Count; index++)
                 BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(8 + index * 3), intern(function.Parameters[index]));
             BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(header.Length - 2), (ushort)bytes.Length);

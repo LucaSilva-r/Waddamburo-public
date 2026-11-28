@@ -17,8 +17,8 @@ namespace Waddamburo.Lumen.Runtime;
 // any time, and one without a value reads undefined.
 public sealed partial class LumenPlayer
 {
-    // Drum 0 is "this movie's own".
-    private readonly Dictionary<(string Name, int Drum), LumenHostValue> _provided = [];
+    // Drum 0 is "this movie's own"; a state's index is -1, a list's places their own (no key text made per read).
+    private readonly Dictionary<(string Name, int Index, int Drum), LumenHostValue> _provided = [];
     private readonly Dictionary<(string Name, int Drum), List<(Avm1FunctionValue Function, object? This)>> _providerListeners = [];
     private HashSet<string>? _providerWarned;
     private readonly HashSet<string> _providerAsked = new(StringComparer.Ordinal);
@@ -46,16 +46,19 @@ public sealed partial class LumenPlayer
     public Action<LumenProvided>? ProviderTap { get; set; }
 
     /// <summary>Every state and list place this movie holds now (for a link joining late).</summary>
-    public IEnumerable<LumenProvided> ProvidedNow() => _provided.Select(static pair => pair.Key.Name.IndexOf('#') is var cut and >= 0
-        ? new LumenProvided(WdKind.List, pair.Key.Name[..cut], pair.Key.Drum, int.Parse(pair.Key.Name.AsSpan(cut + 1)), [pair.Value])
+    public IEnumerable<LumenProvided> ProvidedNow() => _provided.Select(static pair => pair.Key.Index >= 0
+        ? new LumenProvided(WdKind.List, pair.Key.Name, pair.Key.Drum, pair.Key.Index, [pair.Value])
         : new LumenProvided(WdKind.State, pair.Key.Name, pair.Key.Drum, 0, [pair.Value]));
 
     /// <summary>A state's value as this movie would read it; undefined while it has none.</summary>
-    public LumenHostValue Provided(string name, int drum = 0) => _provided.GetValueOrDefault(own(name, drum));
+    public LumenHostValue Provided(string name, int drum = 0) => _provided.GetValueOrDefault(own(name, -1, drum));
+
+    /// <summary>One place of a list as this movie would read it; undefined while it has none.</summary>
+    public LumenHostValue ProvidedItem(string name, int index, int drum = 0) => _provided.GetValueOrDefault(own(name, index, drum));
 
     // A movie of no drum reads player 1's where it asks for "its own"; a name of the whole app has no drum.
-    private (string, int) own(string name, int drum) =>
-        (name, drum == 0 && !_hasOwnDrum && WdNames.Find(name)?.Scope != "app" ? 1 : drum);
+    private (string, int, int) own(string name, int index, int drum) =>
+        (name, index, drum == 0 && !_hasOwnDrum && WdNames.Find(name)?.Scope != "app" ? 1 : drum);
 
     /// <summary>
     /// Sets a state's value for this movie; its listeners hear of a change. Undefined withdraws it.
@@ -67,10 +70,10 @@ public sealed partial class LumenPlayer
             throw new ArgumentException($"'{name}' is not a state of the provider (WdNames).", nameof(name));
         // A name of the whole app (credits, the screen) says nothing about which drum the movie belongs to.
         if (drum == 0 && WdNames.Find(name)!.Scope != "app") _hasOwnDrum = true;
-        if (_provided.TryGetValue((name, drum), out var before) ? before == value : value.Kind == LumenHostValueKind.Undefined)
+        if (_provided.TryGetValue((name, -1, drum), out var before) ? before == value : value.Kind == LumenHostValueKind.Undefined)
             return;
-        if (value.Kind == LumenHostValueKind.Undefined) _provided.Remove((name, drum));
-        else _provided[(name, drum)] = value;
+        if (value.Kind == LumenHostValueKind.Undefined) _provided.Remove((name, -1, drum));
+        else _provided[(name, -1, drum)] = value;
         ProviderTap?.Invoke(new(WdKind.State, name, drum, 0, [value]));
         tell(name, drum, [fromHostValue(value)]);
     }
@@ -83,7 +86,7 @@ public sealed partial class LumenPlayer
         ArgumentOutOfRangeException.ThrowIfNegative(index);
         // A name of the whole app (credits, the screen) says nothing about which drum the movie belongs to.
         if (drum == 0 && WdNames.Find(name)!.Scope != "app") _hasOwnDrum = true;
-        var key = (item(name, index), drum);
+        var key = (name, index, drum);
         if (_provided.TryGetValue(key, out var before) ? before == value : value.Kind == LumenHostValueKind.Undefined)
             return;
         if (value.Kind == LumenHostValueKind.Undefined) _provided.Remove(key);
@@ -91,9 +94,6 @@ public sealed partial class LumenPlayer
         ProviderTap?.Invoke(new(WdKind.List, name, drum, index, [value]));
         tell(name, drum, [(double)index, fromHostValue(value)]);
     }
-
-    // A list's places are kept beside the states, under "name#index" (# is in no name).
-    private static string item(string name, int index) => $"{name}#{index}";
 
     /// <summary>Something happened at this moment on this movie's drum; listeners get the arguments in WdNames' order.</summary>
     public void Emit(string name, params ReadOnlySpan<LumenHostValue> arguments) => EmitFor(0, name, arguments);
@@ -151,12 +151,13 @@ public sealed partial class LumenPlayer
         static int drum(IReadOnlyList<object?> arguments, int at) =>
             arguments.Count > at && arguments[at] is double number && number is 1 or 2 ? (int)number : 0;
         // A list's name takes its index before the player: the key asked for, and where the player argument is.
-        (string Name, int Drum) asked(string name, IReadOnlyList<object?> arguments)
+        (string Name, int Index, int Drum) asked(string name, IReadOnlyList<object?> arguments)
         {
             if (WdNames.Find(name)!.Kind != WdKind.List)
-                return own(name, drum(arguments, 1));
-            var index = arguments.Count > 1 && arguments[1] is double number && number >= 0 ? (int)number : -1;
-            return own(item(name, index), drum(arguments, 2));
+                return own(name, -1, drum(arguments, 1));
+            // A list read without a usable index finds nothing (-2 is no place).
+            var index = arguments.Count > 1 && arguments[1] is double number && number >= 0 ? (int)number : -2;
+            return own(name, index, drum(arguments, 2));
         }
         wd.Properties["get"] = new Avm1MethodWrapper((_, arguments) => new Avm1Lookup(true,
             known(arguments, "get") is { } name && _provided.TryGetValue(asked(name, arguments), out var value)
@@ -175,14 +176,13 @@ public sealed partial class LumenPlayer
                 // "nothing yet" look from the same function as everything else. An event has no "now".
                 if (WdNames.Find(name)!.Kind == WdKind.State)
                     invokeFunction(_root, function, self,
-                        [_provided.TryGetValue(own(name, player), out var value) ? fromHostValue(value) : Avm1Undefined.Instance], _activeContext);
+                        [_provided.TryGetValue(own(name, -1, player), out var value) ? fromHostValue(value) : Avm1Undefined.Instance], _activeContext);
                 // A list's listener: every place that has a value, in order.
                 if (WdNames.Find(name)!.Kind == WdKind.List)
                 {
-                    var (_, from) = own(name, player);
-                    var prefix = name + "#";
-                    foreach (var (index, value) in _provided.Where(pair => pair.Key.Drum == from && pair.Key.Name.StartsWith(prefix, StringComparison.Ordinal))
-                        .Select(pair => (Index: int.Parse(pair.Key.Name.AsSpan(prefix.Length)), pair.Value)).OrderBy(static each => each.Index).ToArray())
+                    var (_, _, from) = own(name, 0, player);
+                    foreach (var (index, value) in _provided.Where(pair => pair.Key.Drum == from && pair.Key.Index >= 0 && pair.Key.Name == name)
+                        .Select(pair => (pair.Key.Index, pair.Value)).OrderBy(static each => each.Index).ToArray())
                         invokeFunction(_root, function, self, [(double)index, fromHostValue(value)], _activeContext);
                 }
             }
