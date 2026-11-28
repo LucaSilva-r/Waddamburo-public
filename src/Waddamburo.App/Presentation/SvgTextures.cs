@@ -11,6 +11,40 @@ internal static class SvgTextures
 {
     private const int MaxSide = 8192;
 
+    /// <summary>
+    /// The drawing at <paramref name="width"/> x <paramref name="height"/> pixels (the size a shape shows it at); a drawing
+    /// of one flat colour (a background, a bar) stays at its own size, as it looks the same at any.
+    /// </summary>
+    public static (int Width, int Height, byte[] Rgba)? DecodeAt(byte[] svg, int width, int height)
+    {
+        if (Decode(svg) is not { } own)
+            return null;
+        if (own.Width == width && own.Height == height || flat(own.Rgba))
+            return own;
+        using var document = new SKSvg();
+        using var stream = new MemoryStream(svg);
+        if (document.Load(stream) is not { } picture)
+            return own;
+        using var bitmap = new SKBitmap(new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Unpremul));
+        using (var canvas = new SKCanvas(bitmap))
+        {
+            canvas.Clear(SKColors.Transparent);
+            canvas.Scale(width / picture.CullRect.Width, height / picture.CullRect.Height);
+            canvas.Translate(-picture.CullRect.Left, -picture.CullRect.Top);
+            canvas.DrawPicture(picture);
+        }
+        return (width, height, bitmap.Bytes);
+    }
+
+    private static bool flat(byte[] rgba)
+    {
+        var first = BitConverter.ToUInt32(rgba, 0);
+        for (var index = 4; index < rgba.Length; index += 4)
+            if (BitConverter.ToUInt32(rgba, index) != first)
+                return false;
+        return true;
+    }
+
     /// <summary>The drawing as straight RGBA rows; null when the bytes are not an SVG with a size.</summary>
     public static (int Width, int Height, byte[] Rgba)? Decode(byte[] svg, float scale = 1)
     {

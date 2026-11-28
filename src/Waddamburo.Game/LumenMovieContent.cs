@@ -81,18 +81,26 @@ public sealed class LumenMovieContent
     /// <param name="scriptErrors">Given: scripts with errors are left out and reported here (see MoviePackage.Assemble).</param>
     /// <param name="movieJson">Optional working JSON for an unsaved editor preview.</param>
     /// <param name="readFile">Optional working asset reader; receives validated package-relative paths.</param>
+    /// <param name="decodeSized">
+    /// Given: an SVG texture is drawn for the size its shapes show it at (decodeSized(file, width, height), in pixels:
+    /// the shape's units times <paramref name="pixelsPerUnit"/>), one texture per size it is shown at (there are no
+    /// mipmaps: one drawing shown much smaller than it was drawn aliases). Null: every texture at its own size.
+    /// </param>
     public static LumenMovieContent LoadPackage(string directory,
         Func<byte[], (int Width, int Height, byte[] Rgba)?> decodeImage, ParserLimits? limits = null,
         ICollection<Formats.Package.ActionScriptException>? scriptErrors = null, string? movieJson = null,
-        Func<string, byte[]>? readFile = null)
+        Func<string, byte[]>? readFile = null,
+        Func<byte[], int, int, (int Width, int Height, byte[] Rgba)?>? decodeSized = null, float pixelsPerUnit = 2)
     {
         ArgumentNullException.ThrowIfNull(directory);
         ArgumentNullException.ThrowIfNull(decodeImage);
         var parserLimits = limits ?? ParserLimits.Default;
         var root = Path.GetFullPath(directory);
-        var assembled = Formats.Package.MoviePackage.Assemble(
-            movieJson ?? File.ReadAllText(Path.Combine(root, Formats.Package.MoviePackage.FileName)),
-            readScript, scriptErrors);
+        var json = movieJson ?? File.ReadAllText(Path.Combine(root, Formats.Package.MoviePackage.FileName));
+        var shownAt = new Dictionary<string, (float Width, float Height)>(StringComparer.Ordinal);
+        if (decodeSized is not null)
+            json = sizeSvgTextures(json, shownAt);
+        var assembled = Formats.Package.MoviePackage.Assemble(json, readScript, scriptErrors);
         string readScript(string file)
         {
             using var stream = new MemoryStream(read(file));
@@ -117,9 +125,17 @@ public sealed class LumenMovieContent
                 : throw new InvalidDataException($"Movie package '{root}': a file path leaves the package: {file}");
         }
         var textures = ImmutableArray.CreateBuilder<LumenTextureContent>(assembled.TextureFiles.Length);
+        var textureNames = decodeSized is null ? [] : textureNamesOf(json);
         foreach (var file in assembled.TextureFiles)
         {
-            var image = decodeImage(read(file))
+            var bytes = read(file);
+            var image = (decodeSized is not null && file.EndsWith(".svg", StringComparison.OrdinalIgnoreCase)
+                    && textures.Count < textureNames.Length && shownAt.TryGetValue(textureNames[textures.Count], out var shown)
+                    ? decodeSized(bytes,
+                        (int)Math.Clamp(MathF.Ceiling(shown.Width * pixelsPerUnit), 1, MaxSvgSide),
+                        (int)Math.Clamp(MathF.Ceiling(shown.Height * pixelsPerUnit), 1, MaxSvgSide))
+                    : null)
+                ?? decodeImage(bytes)
                 ?? throw new InvalidDataException($"Movie package '{root}': texture is not a readable PNG: {file}");
             // A package's art is drawn for this engine (an SVG at twice its shown size): the upscaler bends its lines.
             textures.Add(new LumenTextureContent(textures.Count, image.Width, image.Height,
@@ -147,6 +163,47 @@ public sealed class LumenMovieContent
     /// A movie of ours that does not exist yet, on a frontend that never shows the game's: a small yellow label naming the
     /// slot, so it is plain what is missing. Takes every call like <see cref="Empty"/>.
     /// </summary>
+    // An SVG drawn for its size is at most this many pixels a side (a stage-wide ring at 3 pixels a unit is not).
+    private const int MaxSvgSide = 2048;
+
+    // movie.json with each SVG texture shown at more than one size split into one texture per size ("dot@26x26"),
+    // the shapes pointed at theirs; shownAt gets each SVG texture's size in units (a shape's rect).
+    private static string sizeSvgTextures(string json, Dictionary<string, (float Width, float Height)> shownAt)
+    {
+        var root = System.Text.Json.Nodes.JsonNode.Parse(json, documentOptions: new() { CommentHandling = System.Text.Json.JsonCommentHandling.Skip, AllowTrailingCommas = true });
+        if (root?["textures"] is not System.Text.Json.Nodes.JsonObject textures || root["shapes"] is not System.Text.Json.Nodes.JsonObject shapes)
+            return json;
+        var uses = new Dictionary<string, List<(System.Text.Json.Nodes.JsonObject Shape, float Width, float Height)>>(StringComparer.Ordinal);
+        foreach (var (_, node) in shapes)
+            if (node is System.Text.Json.Nodes.JsonObject shape && shape["texture"]?.GetValueKind() == System.Text.Json.JsonValueKind.String
+                && shape["rect"] is System.Text.Json.Nodes.JsonArray { Count: 4 } rect
+                && textures[shape["texture"]!.GetValue<string>()]?.GetValueKind() == System.Text.Json.JsonValueKind.String
+                && textures[shape["texture"]!.GetValue<string>()]!.GetValue<string>().EndsWith(".svg", StringComparison.OrdinalIgnoreCase))
+            {
+                var name = shape["texture"]!.GetValue<string>();
+                (uses.TryGetValue(name, out var list) ? list : uses[name] = []).Add((shape, MathF.Abs(rect[2]!.GetValue<float>()), MathF.Abs(rect[3]!.GetValue<float>())));
+            }
+        foreach (var (name, list) in uses)
+        {
+            var sizes = list.Select(static use => (use.Width, use.Height)).Distinct().ToArray();
+            shownAt[name] = sizes[0];
+            foreach (var size in sizes.Skip(1))
+            {
+                var sized = FormattableString.Invariant($"{name}@{size.Width}x{size.Height}");
+                textures[sized] = textures[name]!.DeepClone();
+                shownAt[sized] = size;
+                foreach (var use in list.Where(use => (use.Width, use.Height) == size))
+                    use.Shape["texture"] = sized;
+            }
+        }
+        return root.ToJsonString();
+    }
+
+    // The texture names of movie.json in texture-index order (the assembler's).
+    private static string[] textureNamesOf(string json) =>
+        System.Text.Json.Nodes.JsonNode.Parse(json, documentOptions: new() { CommentHandling = System.Text.Json.JsonCommentHandling.Skip, AllowTrailingCommas = true })
+            ?["textures"] is System.Text.Json.Nodes.JsonObject textures ? [.. textures.Select(static entry => entry.Key)] : [];
+
     public static LumenMovieContent Placeholder(string name, string label)
     {
         var assembled = Formats.Package.MoviePackage.Assemble("""

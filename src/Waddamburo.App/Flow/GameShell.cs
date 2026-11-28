@@ -963,6 +963,9 @@ internal sealed partial class GameShell : IDisposable
             if (SkinDevReload.Folder is { } skinDev)
                 MovieContent.PackageRoot = skinDev;
             MovieContent.DecodeImage = GameMovieContent.DecodeImage;
+            MovieContent.DecodeSized = GameMovieContent.DecodeSized;
+            MovieContent.PixelsPerUnit = static () => GameMovieContent.PixelsPerUnit;
+            GameMovieContent.PixelsPerUnit = Math.Clamp(Application.GetPixelSize().Height / 720f, 1f, 3f);
             MovieContent.BundledRoot = Path.Combine(AppContext.BaseDirectory, "movies");
             // Waddamburo's screens: the skin's scenes.json (the user's movies folder before the bundled one) over the built-in ones.
             Frontends.WaddamburoScreens.Instance.Skin = Waddamburo.Game.Scenes.SkinScenes.Find([MovieContent.PackageRoot, MovieContent.BundledRoot],

@@ -41,6 +41,12 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
     /// <summary>Decodes a package's PNG textures (see <see cref="LumenMovieContent.LoadPackage"/>).</summary>
     public Func<byte[], (int Width, int Height, byte[] Rgba)?>? DecodeImage { get; set; }
 
+    /// <summary>Decodes a package's texture for the size its shapes show it at, in pixels (an SVG drawn for it).</summary>
+    public Func<byte[], int, int, (int Width, int Height, byte[] Rgba)?>? DecodeSized { get; set; }
+
+    /// <summary>Pixels a movie unit takes on screen now (read at each load).</summary>
+    public Func<float>? PixelsPerUnit { get; set; }
+
     /// <summary>
     /// The movie packages that come with the engine (same layout as <see cref="PackageRoot"/>). One is played when
     /// <see cref="PreferBundled"/> says so, and always when the game data has no such movie, so the engine runs
@@ -188,7 +194,8 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
             // A package is the user's or our own work: no patches, no upscaling, no archive needed.
             // ponytail: read and decoded here on every load; cache with the prefetches if a package gets heavy.
             if (owner.packageDirectory(archiveId, movieId) is { } package)
-                return LumenMovieContent.LoadPackage(package, owner.DecodeImage!, owner._limits);
+                return LumenMovieContent.LoadPackage(package, owner.DecodeImage!, owner._limits,
+                    decodeSized: owner.DecodeSized, pixelsPerUnit: owner.PixelsPerUnit?.Invoke() ?? 2);
             if (owner.PackagesOnly?.Invoke() == true)
             {
                 var slot = $"{Path.GetDirectoryName(archiveId)}/{Path.GetFileNameWithoutExtension(movieId)}";
@@ -213,7 +220,8 @@ public sealed class DirectoryLumenMovieContentSource : IScopedLumenMovieContentS
             // No such archive in the game data: the engine's own movie, when it has one.
             if (!File.Exists(Path.GetFullPath(archiveId, owner._assetRoot))
                 && owner.packageDirectory(archiveId, movieId, archiveMissing: true) is { } bundled)
-                return LumenMovieContent.LoadPackage(bundled, owner.DecodeImage!, owner._limits);
+                return LumenMovieContent.LoadPackage(bundled, owner.DecodeImage!, owner._limits,
+                    decodeSized: owner.DecodeSized, pixelsPerUnit: owner.PixelsPerUnit?.Invoke() ?? 2);
             if (owner.EmptyWhenMissing)
             {
                 if (owner._reportedMissing.TryAdd(movieId, true))

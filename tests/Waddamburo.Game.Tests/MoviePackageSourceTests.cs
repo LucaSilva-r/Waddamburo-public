@@ -14,6 +14,30 @@ public sealed class MoviePackageSourceTests
         """;
 
     [Fact]
+    public void AnSvgIsDrawnForEachSizeItsShapesShowItAt()
+    {
+        const string movie = """
+            {
+              "format": 1, "root": "main",
+              "textures": { "dot": "dot.svg", "art": "art.png" },
+              "shapes": { "small": { "texture": "dot", "rect": [-7, -7, 14, 14] }, "big": { "texture": "dot", "rect": [-19, -19, 38, 38] },
+                          "also": { "texture": "dot", "rect": [0, 0, 14, 14] }, "picture": { "texture": "art", "rect": [0, 0, 100, 50] } },
+              "sprites": { "main": { "frames": 1, "layers": [ { "character": "small", "keys": [ { "frame": 0 } ] },
+                { "character": "big", "keys": [ { "frame": 0 } ] }, { "character": "picture", "keys": [ { "frame": 0 } ] } ] } }
+            }
+            """;
+        var sized = new List<(int, int)>();
+        var content = LumenMovieContent.LoadPackage(Path.Combine(Path.GetTempPath(), "sized"), static _ => (4, 4, new byte[64]), movieJson: movie,
+            readFile: static _ => [1],
+            decodeSized: (_, width, height) => { sized.Add((width, height)); return (width, height, new byte[width * height * 4]); },
+            pixelsPerUnit: 1.5f);
+        // One drawing per size (14 units twice: one), at 1.5 pixels a unit; the PNG as it is.
+        Assert.Equal([(21, 21), (57, 57)], sized.Order());
+        Assert.Equal(3, content.Textures.Length);
+        Assert.Contains(content.Textures, static texture => texture.Width == 4);
+    }
+
+    [Fact]
     public async Task APackageStandsInForAnArchiveMovieAndAMissingMovieIsNamed()
     {
         var root = Directory.CreateTempSubdirectory("waddamburo-package-test").FullName;

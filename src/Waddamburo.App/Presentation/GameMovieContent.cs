@@ -56,6 +56,18 @@ internal static class GameMovieContent
     /// A movie package's texture as straight RGBA: a PNG, or an SVG drawn at its own size
     /// (see <see cref="LumenMovieContent.LoadPackage"/>).
     /// </summary>
+    /// <summary>
+    /// A package texture for the size a shape shows it at (pixels): an SVG drawn at that size, a PNG as it is.
+    /// </summary>
+    public static (int Width, int Height, byte[] Rgba)? DecodeSized(byte[] file, int width, int height) =>
+        file is [0x89, (byte)'P', (byte)'N', (byte)'G', ..] ? DecodeImage(file) : SvgTextures.DecodeAt(file, width, height);
+
+    /// <summary>
+    /// Pixels a movie unit takes on screen (the window's height over 720), kept by the frame loop: packages loaded from
+    /// then on draw their SVGs for it.
+    /// </summary>
+    public static float PixelsPerUnit { get; set; } = 2;
+
     public static (int Width, int Height, byte[] Rgba)? DecodeImage(byte[] file) =>
         file is [0x89, (byte)'P', (byte)'N', (byte)'G', ..]
             ? Waddamburo.Platform.Sdl.Text.SdlPng.Decode(file) is { } image ? ((int)image.Width, (int)image.Height, image.Pixels) : null
