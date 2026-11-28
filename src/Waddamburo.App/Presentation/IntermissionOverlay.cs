@@ -142,6 +142,46 @@ internal static class SceneTextures
     private static readonly Dictionary<UInt128, RenderTextureId> _byHash = [];
     private static readonly Dictionary<RenderTextureId, (UInt128 Hash, int References)> _held = [];
 
+    // The SVG textures up (each drawn for the pixels a unit it was made at), and the drawing again for a resize.
+    private sealed record SvgTexture(byte[] Svg, (float Width, float Height) Units, float PixelsPerUnit);
+    private static readonly Dictionary<RenderTextureId, SvgTexture> _svgs = [];
+    private static readonly System.Collections.Concurrent.ConcurrentQueue<(RenderTextureId Id, float PixelsPerUnit, (int Width, int Height, byte[] Rgba)? Image)> _sharpened = new();
+    private static readonly HashSet<RenderTextureId> _sharpening = [];
+    private static float _wanted;
+    private static long _wantedSince;
+
+    /// <summary>
+    /// Each frame (main thread): once the screen's pixels per unit have held for a moment after a change (a resize
+    /// settled), the SVG textures up are drawn again for them in the background and swapped in as they are done.
+    /// </summary>
+    public static void Sharpen(SdlApplication application, float pixelsPerUnit)
+    {
+        while (_sharpened.TryDequeue(out var done))
+        {
+            _sharpening.Remove(done.Id);
+            // Not drawn (not an SVG after all): kept as it is, not tried again for these pixels a unit.
+            if (_svgs.TryGetValue(done.Id, out var svg)
+                && (done.Image is not { } image || application.TryReplaceRgba8(done.Id, (uint)image.Width, (uint)image.Height, image.Rgba)))
+                _svgs[done.Id] = svg with { PixelsPerUnit = done.PixelsPerUnit };
+        }
+        if (MathF.Abs(pixelsPerUnit - _wanted) > 0.01f)
+        {
+            (_wanted, _wantedSince) = (pixelsPerUnit, System.Diagnostics.Stopwatch.GetTimestamp());
+            return;
+        }
+        if (System.Diagnostics.Stopwatch.GetElapsedTime(_wantedSince).TotalMilliseconds < 300)
+            return;
+        foreach (var (id, svg) in _svgs)
+        {
+            // Within 5%: as sharp as it gets; a texture of one flat colour stays small (SvgTextures.DecodeAt).
+            if (MathF.Abs(svg.PixelsPerUnit - pixelsPerUnit) <= 0.05f * pixelsPerUnit || !_sharpening.Add(id))
+                continue;
+            var (bytes, units, wanted) = (svg.Svg, svg.Units, pixelsPerUnit);
+            _ = Task.Run(() => _sharpened.Enqueue((id, wanted,
+                SvgTextures.DecodeAt(bytes, LumenMovieContent.SvgPixels(units.Width, wanted), LumenMovieContent.SvgPixels(units.Height, wanted)))));
+        }
+    }
+
     /// <summary>Textures really uploaded so far (a shared one costs nothing): per-frame upload limits count these.</summary>
     public static long Uploads { get; private set; }
 
@@ -154,7 +194,8 @@ internal static class SceneTextures
             _held[shared] = (hash, _held[shared].References + 1);
             return shared;
         }
-        var id = UploadOne(application, content.Textures[index], atlas: !content.TextureTiles(index));
+        // An SVG drawn for the screen stays out of the atlas: a resize draws it again at another size (Sharpen).
+        var id = UploadOne(application, content.Textures[index], atlas: !content.TextureTiles(index) && content.Textures[index].Svg is null);
         Uploads++;
         _byHash[hash] = id;
         _held[id] = (hash, 1);
@@ -197,6 +238,8 @@ internal static class SceneTextures
         }
         var rgba = texture.Pixels();
         var id = application.UploadRgba8(width, height, rgba, atlas);
+        if (texture.Svg is { } svg)
+            _svgs[id] = new SvgTexture(svg, texture.ShownUnits, GameMovieContent.PixelsPerUnit);
         // The upscaler keeps the pixel arrays the content is about to drop.
         if (texture.Upscalable && Upscaler is { } upscaler && !upscaler.IsUpscaled(rgba))
             upscaler.Enqueue(id, width, height, () => rgba, texture.UpscaleKey);
@@ -239,6 +282,7 @@ internal static class SceneTextures
                 _held.Remove(texture);
                 _byHash.Remove(held.Hash);
             }
+            _svgs.Remove(texture);
             application.ReleaseTexture(texture);
         }
     }

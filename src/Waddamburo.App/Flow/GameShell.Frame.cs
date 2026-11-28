@@ -87,6 +87,8 @@ internal sealed partial class GameShell
     {
         // Packages loaded from now on draw their SVGs for the window's size (the stage is 720 units tall).
         Presentation.GameMovieContent.PixelsPerUnit = Math.Clamp(Application.GetPixelSize().Height / 720f, 1f, 3f);
+        // And those already up are drawn again for a resized window.
+        Presentation.SceneTextures.Sharpen(Application, Presentation.GameMovieContent.PixelsPerUnit);
         if (_service is { IsOpen: true } service && !Arcade.Home)
         {
             // The menu's frame is the one shown: the switch under it lets go of its held frame, and the switch out

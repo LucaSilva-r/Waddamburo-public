@@ -129,17 +129,20 @@ public sealed class LumenMovieContent
         foreach (var file in assembled.TextureFiles)
         {
             var bytes = read(file);
-            var image = (decodeSized is not null && file.EndsWith(".svg", StringComparison.OrdinalIgnoreCase)
-                    && textures.Count < textureNames.Length && shownAt.TryGetValue(textureNames[textures.Count], out var shown)
-                    ? decodeSized(bytes,
-                        (int)Math.Clamp(MathF.Ceiling(shown.Width * pixelsPerUnit), 1, MaxSvgSide),
-                        (int)Math.Clamp(MathF.Ceiling(shown.Height * pixelsPerUnit), 1, MaxSvgSide))
+            var sized = decodeSized is not null && file.EndsWith(".svg", StringComparison.OrdinalIgnoreCase)
+                && textures.Count < textureNames.Length && shownAt.TryGetValue(textureNames[textures.Count], out var shown)
+                ? shown : ((float Width, float Height)?)null;
+            var image = (sized is { } units
+                    ? decodeSized!(bytes, SvgPixels(units.Width, pixelsPerUnit), SvgPixels(units.Height, pixelsPerUnit))
                     : null)
                 ?? decodeImage(bytes)
                 ?? throw new InvalidDataException($"Movie package '{root}': texture is not a readable PNG: {file}");
             // A package's art is drawn for this engine (an SVG at twice its shown size): the upscaler bends its lines.
             textures.Add(new LumenTextureContent(textures.Count, image.Width, image.Height,
-                ImmutableCollectionsMarshal.AsImmutableArray(image.Rgba)) { Upscalable = false });
+                ImmutableCollectionsMarshal.AsImmutableArray(image.Rgba))
+            {
+                Upscalable = false, Svg = sized is null ? null : bytes, ShownUnits = sized ?? default,
+            });
         }
         var semantic = LmbSemanticReader.Read(LmbFile.Parse(assembled.Lmb, parserLimits), parserLimits,
             new LmbSemanticValidationContext(textures.Count));
@@ -165,6 +168,9 @@ public sealed class LumenMovieContent
     /// </summary>
     // An SVG drawn for its size is at most this many pixels a side (a stage-wide ring at 3 pixels a unit is not).
     private const int MaxSvgSide = 2048;
+
+    /// <summary>The pixels an SVG shown <paramref name="units"/> long is drawn with, at this many pixels a unit.</summary>
+    public static int SvgPixels(float units, float pixelsPerUnit) => (int)Math.Clamp(MathF.Ceiling(units * pixelsPerUnit), 1, MaxSvgSide);
 
     // movie.json with each SVG texture shown at more than one size split into one texture per size ("dot@26x26"),
     // the shapes pointed at theirs; shownAt gets each SVG texture's size in units (a shape's rect).
@@ -345,6 +351,14 @@ public sealed record LumenTextureContent(
 
     /// <summary>False for a package's own art (drawn sharp for this engine): never queued for upscaling.</summary>
     public bool Upscalable { get; init; } = true;
+
+    /// <summary>
+    /// A package SVG drawn for the size its shapes show it at: the drawing, and that size in units. The host draws it
+    /// again when the screen's pixels per unit change (a resized window); null for any other texture.
+    /// </summary>
+    public byte[]? Svg { get; init; }
+
+    public (float Width, float Height) ShownUnits { get; init; }
 
     /// <summary>
     /// The texture's own BC1/BC3 blocks, kept in place of <see cref="Rgba8"/> (a slice of its archive's buffer: hold
